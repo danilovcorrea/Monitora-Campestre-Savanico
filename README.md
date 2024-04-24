@@ -9,12 +9,12 @@
 
 Todos os scripts estão em desenvolvimento, podendo ser atualizados a qualquer momento.
 
+Instruções para a utilização dos scripts encontram-se comentadas em cada arquivo.
+
 Todos os scritps estão disponíveis para utilização, modificação e compartilhamento, citada a fonte.
 
 Para citar este repositório:
 
-CBC - ICMBio/MMA, 2024. 
+CBC - ICMBio/MMA, 2024. Scripts de análise de dados do Alvo Global do Componente Campestre Savânico do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio. Disponível em https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
-https://github.com/danilovcorrea/Monitora-Campestre-Savanico.git
-
-Instruções para a utilização dos scripts encontram-se comentadas em cada arquivo.
+## Contato: danilo.correa@icmbio.gov.br
