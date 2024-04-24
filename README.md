@@ -11,4 +11,10 @@ Todos os scripts estão em desenvolvimento, podendo ser atualizados a qualquer m
 
 Todos os scritps estão disponíveis para utilização, modificação e compartilhamento, citada a fonte.
 
+Para citar este repositório:
+
+CBC - ICMBio/MMA, 2024. 
+
+https://github.com/danilovcorrea/Monitora-Campestre-Savanico.git
+
 Instruções para a utilização dos scripts encontram-se comentadas em cada arquivo.
