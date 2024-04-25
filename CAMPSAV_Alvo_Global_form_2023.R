@@ -630,23 +630,10 @@ registros_corrig_stat <- registros_corrig_stat %>%
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
     ))) %>% rowSums(na.rm = TRUE),
     .after = sum_exotica
-  ) %>%
-  dplyr::mutate(
-    serrapilheira = dplyr::select(., which((
-      str_detect(colnames(registros_corrig_stat), "_serrapilheira", negate = FALSE)
-    ))) %>% rowSums(na.rm = TRUE),
-    .after = sum_seca_morta
-  ) %>%
-  dplyr::select(-any_of(
-    c(
-      "exotica",
-      "nativa",
-      "seca_morta",
-      "nativa_serrapilheira",
-      "exot_serrapilheira",
-      "seca_morta_serrapilheira"
-    )
-  ))
+  )
+dplyr::select(-any_of(c("exotica",
+                        "nativa",
+                        "seca_morta")))
 
 ### criação sum_herbacea, sum_lenhosa
 
@@ -1064,9 +1051,11 @@ fwrite(registros_corrig_stat,
        file.path("registros_corrig_stat.csv"),
        row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p1,
-       file.path("sum_herbacea_sum_lenhosa.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p1,
+  file.path("sum_herbacea_sum_lenhosa.csv"),
+  row.names = FALSE
+)
 
 fwrite(reg_corrig_stat_summarise_p2,
        file.path("sum_categorias.csv"),
@@ -1076,10 +1065,14 @@ fwrite(reg_corrig_stat_summarise_p3,
        file.path("sum_form_vida_nativas.csv"),
        row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p4,
-       file.path("sum_form_vida_exoticas.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p4,
+  file.path("sum_form_vida_exoticas.csv"),
+  row.names = FALSE
+)
 
-fwrite(reg_corrig_stat_summarise_p5,
-       file.path("sum_form_vida_secas_mortas.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p5,
+  file.path("sum_form_vida_secas_mortas.csv"),
+  row.names = FALSE
+)
