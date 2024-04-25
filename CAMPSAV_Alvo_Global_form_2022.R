@@ -8,7 +8,7 @@
 
 ### Para citar este repositório:
 ###    CBC - ICMBio/MMA, 2024. Scripts de análise de dados do Alvo Global do Componente Campestre Savânico
-###    do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio. 
+###    do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio.
 
 ### Disponível em https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
@@ -33,31 +33,28 @@
 
 ### Verificação e download dos pacotes necessários:
 
-if (!require("dplyr")) install.packages("dplyr"); library("dplyr")
-if (!require("data.table")) install.packages("data.table"); library("data.table")
-if (!require("tidyverse")) install.packages("tidyverse"); library("tidyverse")
-if (!require("purrr")) install.packages("purrr"); library("purrr")
-if (!require("stringr")) install.packages("stringr"); library("stringr")
-
-#rstudioapi::getActiveDocumentContext
-
-#setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
-### csv batch import and read
-
-#install.packages("dplyr")                           # Install dplyr package
-#install.packages("plyr")                            # Install plyr package
-#install.packages("readr")                           # Install readr package
-
-#library("dplyr")                                    # Load dplyr package
-#library("plyr")                                     # Load plyr package
-#library("readr")
+if (!require("dplyr"))
+  install.packages("dplyr")
+library("dplyr")
+if (!require("data.table"))
+  install.packages("data.table")
 library("data.table")
-#library("tidyverse")
+if (!require("purrr"))
+  install.packages("purrr")
+library("purrr")
+if (!require("stringr"))
+  install.packages("stringr")
+library("stringr")
+if (!require("tidyverse"))
+  install.packages("tidyverse")
+library("tidyverse")
+if (!require("ggplot2"))
+  install.packages("ggplot2")
+library("ggplot2")
 
-# get all the zip files, unzip and remove temp object
+### lista e extração de todos os arquivos .zip. OBS: necessário ter o app unzip instalado.
 
-zipF <-
+zipfiles <-
   list.files(
     path = setwd(dirname(
       rstudioapi::getActiveDocumentContext()$path
@@ -67,36 +64,11 @@ zipF <-
     full.names = TRUE
   )
 
-# lapply(.data = zipF, fun = unzip, exdir = "extracted")
+purrr::map(.x = zipfiles, .f = unzip, exdir = "extracted")
 
-library("purrr")
-purrr::map(.x = zipF, .f = unzip, exdir = "extracted")
-detach("package:purrr", unload = TRUE)
+rm(zipfiles)
 
-#library("plyr")
-#llply(.data = zipF, .fun = unzip, exdir = "extracted")
-#detach("package:plyr", unload=TRUE)
-
-rm(zipF)
-
-#zipped_csv_names <- grep('\\.csv$', unzip(zipF, list=TRUE)$Name,
-#                         ignore.case=TRUE, value=TRUE)
-
-#install.packages("easycsv")
-#library(easycsv)
-
-#fread_zip(zipF, extension = "CSV", colClasses=list(character=1:95))
-
-#csvnames <- list.files(path = setwd(dirname(rstudioapi::getActiveDocumentContext()$path)),  # Identify all CSV files
-#                        pattern = "*.csv", recursive = T, full.names = TRUE)
-
-#registros <- list.files(path = setwd(dirname(rstudioapi::getActiveDocumentContext()$path)),  # Identify all CSV files
-#                        pattern = "*.csv", recursive = T, full.names = TRUE) %>%
-#  stringr::str_subset(., "registros_corrig_stat", negate = TRUE) %>%
-#  lapply(fread,colClasses=list(character=1:95,extension = "CSV")) %>%                              # Store all files in list
-#  #.[,csvname] <- csvnames %>%
-#  bind_rows                                         # Combine data sets into one data set
-#registros
+### Leitura e concatenação (por linha) dos arquivos .csv
 
 
 csvfiles <-
@@ -104,12 +76,18 @@ csvfiles <-
     path = setwd(dirname(
       rstudioapi::getActiveDocumentContext()$path
     )),
-    # Identify all CSV files
     pattern = "*.csv",
     recursive = T,
     full.names = TRUE
   ) %>%
-  stringr::str_subset(., "registros_corrig_stat", negate = TRUE)
+  
+  stringr::str_subset(., "registros_corrig.csv", negate = TRUE) %>%
+  stringr::str_subset(., "registros_corrig_stat", negate = TRUE) %>%
+  stringr::str_subset(., "sum_herbacea_sum_lenhosa.csv", negate = TRUE) %>%
+  stringr::str_subset(., "sum_categorias.csv", negate = TRUE) %>%
+  stringr::str_subset(., "sum_form_vida_nativas.csv", negate = TRUE) %>%
+  stringr::str_subset(., "sum_form_vida_exoticas.csv", negate = TRUE) %>%
+  stringr::str_subset(., "sum_form_vida_secas_mortas.csv", negate = TRUE)
 
 registros <-
   data.table::rbindlist(
@@ -122,93 +100,42 @@ registros[, .id := factor(.id, labels = basename(csvfiles))]
 
 setnames(registros, make.unique(names(registros)))
 
+rm(csvfiles)
 
-###
-
-#registros <- list.files(path = setwd(dirname(rstudioapi::getActiveDocumentContext()$path)),  # Identify all CSV files
-#                        pattern = "*.csv", recursive = T, full.names = TRUE) %>%
-#  stringr::str_subset(., "registros_corrig_stat", negate = TRUE) %>%
-#  rbindlist((lapply(.,fread, colClasses = "character")), idcol = TRUE,fill=TRUE,use.names = TRUE)
-
-### Column classes to fread
-
-#reg_classes <- list("character", "integer", c("POSIXct", "POSIXt"), c("POSIXct", "POSIXt"), "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                c("IDate", "Date"), "character", "character", "character", "character",
-#                "character", "character", "character", "character", "integer",
-#                "character", "integer", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character",
-#                "character", "character", "character", "character", "character")
-
-
-#library("dplyr")                                    # Load dplyr package
-#library("plyr")                                     # Load plyr package
-#library("readr")
-#library("data.table")
-
-#registros <- list.files(path = setwd(dirname(rstudioapi::getActiveDocumentContext()$path)),  # Identify all CSV files
-#                        pattern = "*.csv", recursive = T, full.names = TRUE) %>%
-#                        stringr::str_subset(., "registros_corrig_stat", negate = TRUE) %>%
-#                        lapply(fread, colClasses=list(character=1:95)) %>%                              # Store all files in list
-#                        bind_rows                                         # Combine data sets into one data set
-#registros                                           # Print data to RStudio console
-
-#detach("package:data.table", unload=TRUE)
-#detach("package:plyr", unload=TRUE)
-#detach("package:readr", unload=TRUE)
-
-#library("dplyr")                                    # Load dplyr package
-#library("plyr")                                     # Load plyr package
-#library("readr")
-#library("data.table")
-
-#registros <- list.files(path = setwd(dirname(rstudioapi::getActiveDocumentContext()$path)),  # Identify all CSV files
-#                        pattern = "*.csv", recursive = T, full.names = TRUE) %>%
-#  lapply(fread) %>%                              # Store all files in list
-#  bind_rows                                         # Combine data sets into one data set
-#registros
-
-#detach("package:data.table", unload=TRUE)
-
-#detach("package:plyr", unload=TRUE)
-#detach("package:readr", unload=TRUE)
-
-### extract last token (stringi, faster but not working)
-
-#install.packages("stringi")
-#library("stringi")
-
-#stri_extract_last(seq2,coll="|")
-
-#stri_extract_last_fixed(seq2,pattern = "|")
-
-
-### extract last token (stringr)
-
-#install.packages("stringr")
-library("stringr")
-
-#word(data_all$`Formas de vida de plantas <span style="color:red">nativas:</span> (amostragem/registro)`,sep = fixed("|"),-1)
-
-#word(data_all$`ponto_metro (amostragem/registro)`,sep = fixed("|"),-1)
-
-### registros_corrig
+### criação do arquivo onde serão realizadas as correções, mantendo o arquivo original:
 
 registros -> registros_corrig
 
-### replace labels to names (erro em uma versao do xlsform, presente em algumas campanhas amostrais)
+### correção de labels para names (erro em uma versao do xlsform, presente em algumas campanhas amostrais)
+
+registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)` <-
+  registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)` %>%
+  str_replace_all(
+    .,
+    c(
+      "Serrapilheira ou folhiço \\(partes de plantas em decomposição no solo\\)" = "serrapilheira",
+      "Graminoide \\(gramíneas, ciperácease juncáceas\\)" = "graminoide",
+      "Erva não graminoide" = "erva_nao_graminoide",
+      "Arbusto abaixo de 0,5m de altura," = "arbusto_abaixo",
+      "Arbusto acima de 0,5m de altura," = "arbusto_acima",
+      "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
+      "Arbusto acima de 0,5m de altura" = "arbusto_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Bambu ou taquara" = "bambu",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
+      "Cactácea" = "cactacea",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
+      "Orquídea" = "orquidea",
+      "Palmeira" = "palmeira",
+      "Samambaia" = "samambaia",
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Outra forma de vida" = "outra",
+      "Forma de vida desconhecida" = "desconhecida"
+    )
+  )
+
 
 registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)` <-
   registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)` %>%
@@ -232,7 +159,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
       "Samambaia" = "samambaia",
-      "Outra forma de vida" = "outra"
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Outra forma de vida" = "outra",
+      "Forma de vida desconhecida" = "desconhecida"
     )
   )
 
@@ -258,41 +187,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
       "Samambaia" = "samambaia",
-      "Outra forma de vida" = "outra"
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Outra forma de vida" = "outra",
+      "Forma de vida desconhecida" = "desconhecida"
     )
   )
 
-### atualizacao dos names para o xlsform atual (o name está o mesmo, não é necessário). O código está funcionando:
-
-## graminoides nativas
-
-#registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)` <-
-#  str_replace_all(registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,c(
-#    "[^\\w]graminoide" = " erva_graminoide",
-#    "\\sgraminoide" = "erva_graminoide",
-#    "(?<!\\w)graminoide" = "erva_graminoide",
-#    "bromelioide" = "erva_bromelioide"
-#))
-
-## graminoides exoticas
-
-#registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)` <-
-#  str_replace_all(registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,c(
-#    "[^\\w]graminoide" = " erva_graminoide",
-#    "\\sgraminoide" = "erva_graminoide",
-#    "(?<!\\w)graminoide" = "erva_graminoide"
-#  ))
-
-## graminoides secas ou mortas
-
-#registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)` <-
-#  str_replace_all(registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,c(
-#    "[^\\w]graminoide" = " erva_graminoide",
-#    "\\sgraminoide" = "erva_graminoide",
-#    "(?<!\\w)graminoide" = "erva_graminoide"
-#  ))
-
-### registros_corrig (keep last token in specific columns)
+### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por "|")
 
 ## ponto amostral
 
@@ -332,7 +233,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
     NA_character_
   )
 
-## bromélia nativa
+## erva bromelioide nativa
 
 registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro)` <-
   fifelse(
@@ -349,14 +250,14 @@ registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro)` 
     NA_character_
   )
 
-## cactacea nativa
+## cactacea nativa (não disponível na versão do formulário utilizada em 2022)
 
-#registros_corrig$`A cactácea observada é: (amostragem/registro)...34` <-
+# registros_corrig$`A cactácea observada é: (amostragem/registro)...34` <-
 #  fifelse(str_detect(registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`, "cactacea", negate = FALSE),
 #          word(registros_corrig$`A cactácea observada é: (amostragem/registro)...34`,sep = fixed("|"),-1),
 #          NA_character_)
 
-## orquidea nativa
+## orquídea nativa
 
 registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro)` <-
   fifelse(
@@ -390,7 +291,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
     NA_character_
   )
 
-## bromélia exótica
+## erva bromelioide exótica
 
 registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).1` <-
   fifelse(
@@ -407,14 +308,14 @@ registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).1
     NA_character_
   )
 
-## cactacea exótica
+## cactacea exótica (não disponível na versão do formulário utilizada em 2022)
 
-#registros_corrig$`A cactácea observada é: (amostragem/registro)...71` <-
+# registros_corrig$`A cactácea observada é: (amostragem/registro)...71` <-
 #  fifelse(str_detect(registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`, "cactacea", negate = FALSE),
 #          word(registros_corrig$`A cactácea observada é: (amostragem/registro)...71`,sep = fixed("|"),-1),
 #          NA_character_)
 
-## orquidea exótica
+## orquídea exótica
 
 registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).1` <-
   fifelse(
@@ -448,7 +349,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
     NA_character_
   )
 
-## bromélia seca ou morta
+## erva bromelioide seca ou morta
 
 registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).2` <-
   fifelse(
@@ -465,9 +366,9 @@ registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).2
     NA_character_
   )
 
-## cactacea seca ou morta
+## cactacea seca ou morta (não disponível na versão do formulário utilizada em 2022)
 
-#registros_corrig$`A cactácea observada é: (amostragem/registro)...87` <-
+# registros_corrig$`A cactácea observada é: (amostragem/registro)...87` <-
 #  fifelse(str_detect(registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`, "cactacea", negate = FALSE),
 #          word(registros_corrig$`A cactácea observada é: (amostragem/registro)...87`,sep = fixed("|"),-1),
 #          NA_character_)
@@ -489,13 +390,8 @@ registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).2`
     NA_character_
   )
 
-## extract year from date
-
-#install.packages("fasttime")
-#library("fasttime")
-
-#registros_corrig$ANO <- year(fastDate(registros_corrig$`Data (data_hora)`)) #não funciona com os dados de Taiamã, pois a data está num formato diferente das demais campanhas.
-# em taiama ha dois formatos de datas nos csv: dd/mm/yyy e yyyy-mm-dd. Abaixo segue funcao para coercao:
+### extração do ANO a partir da DATA. O SISMONITORA exportou datas em diferentes formatos. A função
+### a seguir faz a coerção dos formatos identificados
 
 registros_corrig$`Data (data_hora)` <-
   fifelse(
@@ -508,13 +404,9 @@ registros_corrig$ANO <-
   format(as.Date(registros_corrig$`Data (data_hora)`, "%Y-%m-%d"),
          "%Y")
 
-### stat count
+### construção das tabelas estatísticas
 
-library(dplyr)
-#install.packages("tidyr")
-#library(tidyr)
-
-### avançando a partir da solução A:
+## somatório de categorias por UC, UA, ANO
 
 sum_categ_by_UC_UA_ANO <- registros_corrig %>%
   group_by(
@@ -529,6 +421,8 @@ sum_categ_by_UC_UA_ANO <- registros_corrig %>%
   filter(nzchar(`**Encostam** na vareta: (amostragem/registro)`)) %>%
   dplyr::count(UA, `**Encostam** na vareta: (amostragem/registro)`) %>%
   spread(`**Encostam** na vareta: (amostragem/registro)`, n, fill = 0)
+
+## somatório de formas de vida nativas por UC, UA, ANO
 
 sum_form_vida_nat_by_UC_UA_ANO <- registros_corrig %>%
   group_by(
@@ -559,6 +453,8 @@ sum_form_vida_nat_by_UC_UA_ANO <- registros_corrig %>%
   ) %>%
   rename_with( ~ paste("nativa", ., sep = "_"),-(1:6))
 
+## somatório de formas de vida exóticas por UC, UA, ANO
+
 sum_form_vida_exot_by_UC_UA_ANO <- registros_corrig %>%
   group_by(
     .id,
@@ -587,6 +483,8 @@ sum_form_vida_exot_by_UC_UA_ANO <- registros_corrig %>%
     fill = 0
   ) %>%
   rename_with( ~ paste("exot", ., sep = "_"),-(1:6))
+
+## somatório de formas de vida secas ou mortas por UC, UA, ANO
 
 sum_form_vida_seca_morta_by_UC_UA_ANO <- registros_corrig %>%
   group_by(
@@ -617,7 +515,7 @@ sum_form_vida_seca_morta_by_UC_UA_ANO <- registros_corrig %>%
   ) %>%
   rename_with( ~ paste("seca_morta", ., sep = "_"),-(1:6))
 
-### form_veg:
+### formação vegetacional por UC, UA, ANO:
 
 form_veg <- registros_corrig %>%
   group_by(
@@ -657,9 +555,8 @@ registros_corrig_stat <-
     )
   )
 
-### tidyr:
-
-library(tidyr)
+### criação de colunas "lat_ini", "long_ini", "alt_ini", "acc_ini" e
+### "lat_fin", "long_fin", "alt_fin", "acc_fin"
 
 registros_corrig_stat <- registros_corrig_stat %>%
   separate_wider_delim(
@@ -675,16 +572,12 @@ registros_corrig_stat <- registros_corrig_stat %>%
 
 ### remove NA:
 
-#registros_corrig_stat <- subset(registros_corrig_stat,select=-c(`nativa_<NA>`,`exot_<NA>`,`seca_morta_<NA>`))
-
 registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::select(-any_of(c(
     "nativa_<NA>", "exot_<NA>", "seca_morta_<NA>"
   )))
 
-### create sum_nativa, sum_exotica, sum_seca_morta and remove nativa, exotica, seca_morta correction:
-
-library(tidyverse)
+### criação sum_nativa, sum_exotica, sum_seca_morta and remove nativa, exotica, seca_morta correction:
 
 registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(
@@ -721,9 +614,8 @@ registros_corrig_stat <- registros_corrig_stat %>%
       "seca_morta_serrapilheira"
     )
   ))
-#select_if(!colnames(.) %in% c("exotica","nativa","seca_morta","nativa_serrapilheira","exot_serrapilheira","seca_morta_serrapilheira")) #solucao qnd nao existe alguma coluna
 
-### create sum_herbacea, sum_lenhosa
+### criação sum_herbacea, sum_lenhosa
 
 registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(sum_herbacea = select(
@@ -782,7 +674,7 @@ registros_corrig_stat <- registros_corrig_stat %>%
     rowSums(na.rm = TRUE),
   .after = sum_herbacea)
 
-### remove unnecessary objects:
+### remoção de objetos não mais necessários:
 
 rm(registros)
 rm(sum_categ_by_UC_UA_ANO)
@@ -791,38 +683,11 @@ rm(sum_form_vida_exot_by_UC_UA_ANO)
 rm(sum_form_vida_seca_morta_by_UC_UA_ANO)
 rm(form_veg)
 
-### analysis (dev)
+### Análises
 
-#install.packages("tidyverse")
+### Proporção relativa de plantas herbáceas e lenhosas
 
-library("tidyverse")
-
-library(ggplot2)
-
-#ggplot(registros_corrig_stat, aes(x=form_veg, fill = sum_herbacea)) +
-#  geom_bar(position = "fill") +
-#  stat_count(geom = "text",
-#             aes(label = paste(round((..count..)/sum(..count..)*100), "%")),
-#             position=position_fill(vjust=0.5), colour="white")
-
-#registros_corrig_stat_longer <- registros_corrig_stat %>%
-#  pivot_longer(!c(UC,UA,ANO,form_veg), names_to = "formas_vida", values_to = "n")
-
-#ggplot(registros_corrig_stat_longer, aes(x=form_veg, fill = n)) +
-#  geom_bar(position = "fill") +
-#  stat_count(geom = "text",
-#             aes(label = paste(round((..count..)/sum(..count..)*100), "%")),
-#             position=position_fill(vjust=0.5), colour="white")
-
-###
-
-#library(scales)
-#(p <- ggplot(registros_corrig_stat_longer, aes(form_veg, n, fill = formas_vida)) +
-#    geom_bar(position = "fill", stat = "identity") +
-#    scale_y_continuous(labels = percent)
-#)
-
-### plot herbacea x lenhosa
+## plot herbacea x lenhosa
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "sum_herbacea", negate = FALSE)
@@ -847,7 +712,7 @@ sum(select(.data = registros_corrig_stat, which((
   )
 }
 
-# reg_corrig_stat_summarise_p1
+## reg_corrig_stat_summarise_p1
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "sum_herbacea", negate = FALSE)
@@ -883,7 +748,10 @@ sum(select(.data = registros_corrig_stat, which((
   p1
 }
 
-### plot nativa, exotica, seca_morta, serrapilheira, solo_nu
+### Proporção relativa de plantas nativas, exóticas, secas ou mortas, serrapilheira
+### e solo nu
+
+## plot nativa, exotica, seca_morta, serrapilheira, solo_nu
 
 reg_categ_plantas_longer <- registros_corrig_stat %>%
   dplyr::select(any_of(
@@ -916,7 +784,7 @@ library(scales)
     theme_bw()
 )
 
-### reg_corrig_stat_summarise_p2
+## reg_corrig_stat_summarise_p2
 
 reg_corrig_stat_summarise_p2 <- registros_corrig_stat %>%
   dplyr::select(any_of(
@@ -956,7 +824,9 @@ p2 <- reg_corrig_stat_summarise_p2 %>%
 
 p2
 
-### plot formas vida nativa
+### Proporção relativa de formas de vida de plantas nativas
+
+## plot formas vida nativa
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
@@ -985,7 +855,7 @@ if (sum(select(.data = registros_corrig_stat, which((
   )
 }
 
-### reg_corrig_stat_summarise_p3
+## reg_corrig_stat_summarise_p3
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
@@ -1017,7 +887,9 @@ if (sum(select(.data = registros_corrig_stat, which((
   p3
 }
 
-### plot formas vida exotica
+### Proporção relativa de formas de vida de plantas exóticas
+
+## plot formas vida exotica
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
@@ -1046,7 +918,7 @@ if (sum(select(.data = registros_corrig_stat, which((
   )
 }
 
-### reg_corrig_stat_summarise_p4
+## reg_corrig_stat_summarise_p4
 
 if (sum(select(.data = registros_corrig_stat, which((
   str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
@@ -1077,6 +949,8 @@ if (sum(select(.data = registros_corrig_stat, which((
   
   p4
 }
+
+### Proporção relativa de formas de vida de plantas secas ou mortas
 
 ### plot formas vida seca ou morta
 
@@ -1157,9 +1031,10 @@ fwrite(registros_corrig_stat,
        file.path("registros_corrig_stat.csv"),
        row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p1,
-       file.path("sum_herbacea_sum_lenhosa.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p1,
+  file.path("sum_herbacea_sum_lenhosa.csv"),
+  row.names = FALSE)
 
 fwrite(reg_corrig_stat_summarise_p2,
        file.path("sum_categorias.csv"),
@@ -1169,10 +1044,12 @@ fwrite(reg_corrig_stat_summarise_p3,
        file.path("sum_form_vida_nativas.csv"),
        row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p4,
-       file.path("sum_form_vida_exoticas.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p4,
+  file.path("sum_form_vida_exoticas.csv"),
+  row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p5,
-       file.path("sum_form_vida_secas_mortas.csv"),
-       row.names = FALSE)
+fwrite(
+  reg_corrig_stat_summarise_p5,
+  file.path("sum_form_vida_secas_mortas.csv"),
+  row.names = FALSE)
