@@ -196,28 +196,23 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
 
 ### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por "|")
 
-### registros_corrig (keep last token in specific columns)
-
 ## ponto amostral
 
 registros_corrig$`ponto_amostral (amostragem/registro)` <-
   word(registros_corrig$`ponto_amostral (amostragem/registro)`,
-       sep = fixed("|"),
-       -1)
+       sep = fixed("|"),-1)
 
 ## metro
 
 registros_corrig$`ponto_metro (amostragem/registro)` <-
   word(registros_corrig$`ponto_metro (amostragem/registro)`,
-       sep = fixed("|"),
-       -1)
+       sep = fixed("|"),-1)
 
 ## encostam na vareta
 
 registros_corrig$`**Encostam** na vareta: (amostragem/registro)` <-
   word(registros_corrig$`**Encostam** na vareta: (amostragem/registro)`,
-       sep = fixed("|"),
-       -1)
+       sep = fixed("|"),-1)
 
 ## forma de vida de planta nativa
 
@@ -230,8 +225,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -247,8 +241,7 @@ registros_corrig$`A bromélia observada é: (amostragem/registro)` <-
     ),
     word(
       registros_corrig$`A bromélia observada é: (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -264,8 +257,7 @@ registros_corrig$`A cactácea observada é: (amostragem/registro)` <-
     ),
     word(
       registros_corrig$`A cactácea observada é: (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -281,8 +273,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro)` <-
     ),
     word(
       registros_corrig$`A orquídea observada é: (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -298,8 +289,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -315,8 +305,7 @@ registros_corrig$`A bromélia observada é: (amostragem/registro).1` <-
     ),
     word(
       registros_corrig$`A bromélia observada é: (amostragem/registro).1`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -332,15 +321,14 @@ registros_corrig$`A cactácea observada é: (amostragem/registro).1` <-
     ),
     word(
       registros_corrig$`A cactácea observada é: (amostragem/registro).1`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
 
 ## orquídea exótica
 
-registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
+registros_corrig$`A orquídea observada é: (amostragem/registro).1` <-
   fifelse(
     str_detect(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
@@ -348,9 +336,8 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
       negate = FALSE
     ),
     word(
-      registros_corrig$`A orquídea observada é: (amostragem/registro).2`,
-      sep = fixed("|"),
-      -1
+      registros_corrig$`A orquídea observada é: (amostragem/registro).1`,
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -366,8 +353,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -383,8 +369,7 @@ registros_corrig$`A bromélia observada é: (amostragem/registro).2` <-
     ),
     word(
       registros_corrig$`A bromélia observada é: (amostragem/registro).2`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -400,8 +385,7 @@ registros_corrig$`A cactácea observada é: (amostragem/registro).2` <-
     ),
     word(
       registros_corrig$`A cactácea observada é: (amostragem/registro).2`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -417,8 +401,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
     ),
     word(
       registros_corrig$`A orquídea observada é: (amostragem/registro).2`,
-      sep = fixed("|"),
-      -1
+      sep = fixed("|"),-1
     ),
     NA_character_
   )
@@ -484,7 +467,7 @@ sum_form_vida_nat_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with(~ paste("nativa", ., sep = "_"), -(1:6))
+  rename_with( ~ paste("nativa", ., sep = "_"),-(1:6))
 
 ## somatório de formas de vida exóticas por UC, UA, ANO
 
@@ -515,7 +498,7 @@ sum_form_vida_exot_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with(~ paste("exot", ., sep = "_"), -(1:6))
+  rename_with( ~ paste("exot", ., sep = "_"),-(1:6))
 
 ## somatório de formas de vida secas ou mortas por UC, UA, ANO
 
@@ -546,7 +529,7 @@ sum_form_vida_seca_morta_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with(~ paste("seca_morta", ., sep = "_"), -(1:6))
+  rename_with( ~ paste("seca_morta", ., sep = "_"),-(1:6))
 
 ### formação vegetacional por UC, UA, ANO:
 
@@ -630,10 +613,10 @@ registros_corrig_stat <- registros_corrig_stat %>%
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
     ))) %>% rowSums(na.rm = TRUE),
     .after = sum_exotica
-  )
-dplyr::select(-any_of(c("exotica",
-                        "nativa",
-                        "seca_morta")))
+  ) %>%
+  dplyr::select(-any_of(c("exotica",
+                          "nativa",
+                          "seca_morta")))
 
 ### criação sum_herbacea, sum_lenhosa
 
@@ -1054,8 +1037,7 @@ fwrite(registros_corrig_stat,
 fwrite(
   reg_corrig_stat_summarise_p1,
   file.path("sum_herbacea_sum_lenhosa.csv"),
-  row.names = FALSE
-)
+  row.names = FALSE)
 
 fwrite(reg_corrig_stat_summarise_p2,
        file.path("sum_categorias.csv"),
@@ -1068,11 +1050,9 @@ fwrite(reg_corrig_stat_summarise_p3,
 fwrite(
   reg_corrig_stat_summarise_p4,
   file.path("sum_form_vida_exoticas.csv"),
-  row.names = FALSE
-)
+  row.names = FALSE)
 
 fwrite(
   reg_corrig_stat_summarise_p5,
   file.path("sum_form_vida_secas_mortas.csv"),
-  row.names = FALSE
-)
+  row.names = FALSE)
