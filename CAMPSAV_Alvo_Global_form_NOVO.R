@@ -297,7 +297,7 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
 
 ## erva bromelioide exótica
 
-registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
+registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
   fifelse(
     str_detect(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
@@ -305,7 +305,7 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
       negate = FALSE
     ),
     word(
-      registros_corrig$`A erva bromelioide observada é: (amostragem/registro)`,
+      registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1`,
       sep = fixed("|"),-1
     ),
     NA_character_
@@ -329,7 +329,7 @@ registros_corrig$`A cactácea observada é: (amostragem/registro).1` <-
 
 ## orquídea exótica
 
-registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
+registros_corrig$`A orquídea observada é: (amostragem/registro).1` <-
   fifelse(
     str_detect(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
@@ -337,7 +337,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
       negate = FALSE
     ),
     word(
-      registros_corrig$`A orquídea observada é: (amostragem/registro).2`,
+      registros_corrig$`A orquídea observada é: (amostragem/registro).1`,
       sep = fixed("|"),-1
     ),
     NA_character_
