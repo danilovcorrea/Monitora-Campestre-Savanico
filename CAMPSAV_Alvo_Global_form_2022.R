@@ -31,6 +31,10 @@
 ###     ticas necessárias para análise. O arquivo estará localizado no mesmo diretório do script;
 ### 6 - Os gráficos gerados podem ser exportados em formato .png ou .pdf no menu "Export" na aba "plots";
 
+### Especificação do diretório de trabalho como o diretório onde está o script
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
 ### Verificação e download dos pacotes necessários:
 
 if (!require("dplyr"))
@@ -1015,41 +1019,52 @@ if (sum(select(.data = registros_corrig_stat, which((
 
 ### remoção de objetos não mais necessários:
 
-rm(reg_herb_lenh)
-rm(reg_categ_plantas_longer)
-rm(reg_formas_vida_nat_longer)
-rm(reg_formas_vida_exot_longer)
-rm(reg_formas_vida_seca_morta_longer)
+if(exists("reg_herb_lenh")) rm(reg_herb_lenh)
+if(exists("reg_categ_plantas_longer")) rm(reg_categ_plantas_longer)
+if(exists("reg_formas_vida_nat_longer")) rm(reg_formas_vida_nat_longer)
+if(exists("reg_formas_vida_exot_longer")) rm(reg_formas_vida_exot_longer)
+if(exists("reg_formas_vida_seca_morta_longer")) rm(reg_formas_vida_seca_morta_longer)
 
 ### exportação das tabelas estatísticas em .csv
 
-fwrite(registros_corrig,
-       file.path("registros_corrig.csv"),
-       row.names = FALSE)
+if(exists("registros_corrig.csv"))
+  fwrite(registros_corrig,
+         file.path("registros_corrig.csv"),
+         row.names = FALSE)
 
-fwrite(registros_corrig_stat,
-       file.path("registros_corrig_stat.csv"),
-       row.names = FALSE)
+if(exists("registros_corrig_stat.csv"))
+  fwrite(registros_corrig_stat,
+         file.path("registros_corrig_stat.csv"),
+         row.names = FALSE)
 
-fwrite(
-  reg_corrig_stat_summarise_p1,
-  file.path("sum_herbacea_sum_lenhosa.csv"),
-  row.names = FALSE)
+if(exists("sum_herbacea_sum_lenhosa.csv"))
+  fwrite(
+    reg_corrig_stat_summarise_p1,
+    file.path("sum_herbacea_sum_lenhosa.csv"),
+    row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p2,
-       file.path("sum_categorias.csv"),
-       row.names = FALSE)
+if(exists("sum_categorias.csv"))
+  fwrite(reg_corrig_stat_summarise_p2,
+         file.path("sum_categorias.csv"),
+         row.names = FALSE)
 
-fwrite(reg_corrig_stat_summarise_p3,
-       file.path("sum_form_vida_nativas.csv"),
-       row.names = FALSE)
+if(exists("sum_form_vida_nativas.csv"))
+  fwrite(reg_corrig_stat_summarise_p3,
+         file.path("sum_form_vida_nativas.csv"),
+         row.names = FALSE)
 
-fwrite(
-  reg_corrig_stat_summarise_p4,
-  file.path("sum_form_vida_exoticas.csv"),
-  row.names = FALSE)
+if(exists("sum_form_vida_exoticas.csv"))
+  fwrite(
+    reg_corrig_stat_summarise_p4,
+    file.path("sum_form_vida_exoticas.csv"),
+    row.names = FALSE)
 
-fwrite(
-  reg_corrig_stat_summarise_p5,
-  file.path("sum_form_vida_secas_mortas.csv"),
-  row.names = FALSE)
+if(exists("sum_form_vida_secas_mortas.csv"))
+  fwrite(
+    reg_corrig_stat_summarise_p5,
+    file.path("sum_form_vida_secas_mortas.csv"),
+    row.names = FALSE)
+
+### limpeza da memória ram
+
+gc()
