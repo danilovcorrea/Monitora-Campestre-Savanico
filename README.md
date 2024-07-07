@@ -2,6 +2,7 @@
 ## Scripts de análise de dados do Alvo Global do Componente Campestre Savânico do Programa Monitora.
 
 * O script **CAMPSAV_Alvo_Global_all_forms.R** analisa registros de campanhas amostrais cujos dados foram obtidos a partir de todos os formulários do Alvo Global do Componente Campestre Savânico já implementandos no ambiente de produção do SISMONITORA:
+  
   * PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 (Básico e Avançado)
   * PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 (Básico e Avançado)
   * PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 (Básico e Avançado)
