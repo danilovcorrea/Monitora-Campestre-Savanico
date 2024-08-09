@@ -131,17 +131,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
       "Samambaia" = "samambaia",
-      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida"
     )
@@ -160,17 +160,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
       "Samambaia" = "samambaia",
-      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida"
     )
@@ -188,17 +188,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
       "Samambaia" = "samambaia",
-      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
+      "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida"
     )
@@ -822,7 +822,7 @@ registros_corrig_stat <- registros_corrig_stat %>%
 registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(
     sum_nativa = dplyr::select(., which((
-      str_detect(colnames(registros_corrig_stat), "nativa", negate = FALSE) &
+      str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE) &
         str_detect(
           colnames(registros_corrig_stat),
           "^nativa_serrapilheira",
@@ -830,10 +830,12 @@ registros_corrig_stat <- registros_corrig_stat %>%
         )
     ))) %>% rowSums(na.rm = TRUE),
     .after = form_veg
-  ) %>%
+  )
+
+registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(
     sum_exotica = dplyr::select(., which((
-      str_detect(colnames(registros_corrig_stat), "exot", negate = FALSE) &
+      str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE) &
         str_detect(
           colnames(registros_corrig_stat),
           "^exot_serrapilheira",
@@ -841,7 +843,9 @@ registros_corrig_stat <- registros_corrig_stat %>%
         )
     ))) %>% rowSums(na.rm = TRUE),
     .after = sum_nativa
-  ) %>%
+  )
+
+registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(
     sum_seca_morta = dplyr::select(., which((
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE) &
@@ -852,7 +856,9 @@ registros_corrig_stat <- registros_corrig_stat %>%
         )
     ))) %>% rowSums(na.rm = TRUE),
     .after = sum_exotica
-  ) %>%
+  )
+
+registros_corrig_stat <- registros_corrig_stat %>%
   dplyr::mutate(
     serrapilheira = dplyr::select(., which((
       str_detect(colnames(registros_corrig_stat), "serrapilheira", negate = FALSE)
