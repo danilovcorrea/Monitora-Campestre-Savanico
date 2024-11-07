@@ -57,7 +57,15 @@ library("ggplot2")
 # if (!require("ggtext"))
 #   install.packages("ggtext")
 # library("ggtext")
-
+# if (!require("rio"))
+#   install.packages("rio")
+# library("rio")
+if (!require("readxl"))
+  install.packages("readxl")
+library("readxl")
+if (!require("openxlsx"))
+  install.packages("openxlsx")
+library("openxlsx")
 
 ### Especificação do diretório de trabalho como o diretório onde está o script
 
@@ -79,8 +87,33 @@ purrr::map(.x = zipfiles, .f = unzip, exdir = "extracted")
 
 rm(zipfiles)
 
-### Leitura e concatenação (por linha) dos arquivos .csv
+# Load necessary library
+library(readxl)
 
+# List all .xlsx files in the directory
+xlsx_files <- list.files(pattern = "\\.xlsx$", full.names = TRUE)
+
+# Loop through each .xlsx file
+for (xlsx_file in xlsx_files) {
+  # Create the corresponding .csv filename
+  csv_file <- sub("\\.xlsx$", ".csv", xlsx_file)
+  
+  # Check if the .csv file already exists
+  if (!file.exists(csv_file)) {
+    # Read the .xlsx file into a data frame
+    data <- read_excel(xlsx_file)
+    
+    # Write the data frame to a .csv file
+    write.csv(data, file = csv_file, row.names = FALSE)
+    cat("Converted:", xlsx_file, "to", csv_file, "\n")
+  } else {
+    cat("CSV file already exists:", csv_file, "\n")
+  }
+}
+
+rm(data,csv_file,xlsx_file,xlsx_files)
+
+### Leitura e concatenação (por linha) dos arquivos .csv
 
 csvfiles <-
   list.files(
@@ -107,6 +140,14 @@ registros <-
     fill = TRUE,
     use.names = TRUE
   )
+
+# Check if '.id' exists in the 'registros' data.table
+
+if (!".id" %in% colnames(registros)) {
+  # If '.id' doesn't exist, create it and assign NA
+  registros[, .id := NA]
+}
+
 registros[, .id := factor(.id, labels = basename(csvfiles))]
 
 setnames(registros, make.unique(names(registros)))
