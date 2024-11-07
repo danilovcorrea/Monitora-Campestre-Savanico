@@ -816,12 +816,14 @@ registros_corrig_stat <- registros_corrig_stat %>%
   separate_wider_delim(
     cols = `Coordenada inicial da amostragem (amostragem)`,
     delim = " ",
-    names = c("lat_ini", "long_ini", "alt_ini", "acc_ini")
+    names = c("lat_ini", "long_ini", "alt_ini", "acc_ini"),
+    too_few = "align_start"
   ) %>%
   separate_wider_delim(
     cols = `Coordenada final da amostragem (amostragem)`,
     delim = " ",
-    names = c("lat_fin", "long_fin", "alt_fin", "acc_fin")
+    names = c("lat_fin", "long_fin", "alt_fin", "acc_fin"),
+    too_few = "align_start"
   )
 
 ### remove NA:
