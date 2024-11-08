@@ -29,7 +29,7 @@
 ### 4 - Execute o script (CTRL+ENTER);
 ### 5 - Após a conclusão da execução, será gerado o arquivo "registros_corrig_stat.csv" contendo as estatís-
 ###     ticas necessárias para análise. O arquivo estará localizado no mesmo diretório do script;
-### 6 - Os gráficos gerados podem ser exportados em formato .png ou .pdf no menu "Export" na aba "plots";
+### 6 - Os gráficos gerados podem ser exportados em formato .png ou .pregistros_corrig_stat no menu "Export" na aba "plots";
 
 ### Verificação e download dos pacotes necessários:
 
@@ -66,6 +66,10 @@ library("readxl")
 if (!require("openxlsx"))
   install.packages("openxlsx")
 library("openxlsx")
+if (!require("sf"))
+  install.packages("sf")
+library("sf")
+
 
 ### Especificação do diretório de trabalho como o diretório onde está o script
 
@@ -111,7 +115,7 @@ for (xlsx_file in xlsx_files) {
   }
 }
 
-rm(data,csv_file,xlsx_file,xlsx_files)
+rm(data, csv_file, xlsx_file, xlsx_files)
 
 ### Leitura e concatenação (por linha) dos arquivos .csv
 
@@ -158,203 +162,299 @@ rm(csvfiles)
 
 registros -> registros_corrig
 
-### rename columns from Thiago.xlsx to SISMONITORA.csv
+### rename columns from script downloaded xlsx to directly downloaded SISMONITORA.csv
 
-# colnames(registros_corrig)[colnames(registros_corrig) == ".id"] <- ".id"
-# colnames(registros_corrig)[colnames(registros_corrig) == "registro_uuid"] <- "UUID"
-# colnames(registros_corrig)[colnames(registros_corrig) == "coleta"] <- "COLETA"
-# colnames(registros_corrig)[colnames(registros_corrig) == "data do registro"] <- "DATA DO REGISTRO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "data do recebimento"] <- "DATA DO RECEBIMENTO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "uc"] <- "UC"
-# colnames(registros_corrig)[colnames(registros_corrig) == "ciclo"] <- "CICLO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "campanha"] <- "CAMPANHA"
-# colnames(registros_corrig)[colnames(registros_corrig) == "protocolo"] <- "PROTOCOLO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "ea"] <- "EA"
-# colnames(registros_corrig)[colnames(registros_corrig) == "ua"] <- "UA"
-# colnames(registros_corrig)[colnames(registros_corrig) == "usuario"] <- "USUARIO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "coletores"] <- "COLETORES"
-# colnames(registros_corrig)[colnames(registros_corrig) == "validado"] <- "VALIDADO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "validado por"] <- "VALIDADO POR"
-# colnames(registros_corrig)[colnames(registros_corrig) == "data validacao"] <- "DATA VALIDAÇÃO"
-# colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/data"] <- "Data (data_hora)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/hora"] <- "Horário (data_hora)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "form_veg"] <- "Qual a formação vegetacional onde está situado o transecto?"
-# colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/impacto_manejo_uso"] <- "Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso"] <- "Qual(is)? (impact_manejo_uso)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_outro"] <- "Outros tipos de manejo ou uso: (impact_manejo_uso)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_descricao"] <- "Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "observacoes_gerais"] <- "Descreva observações gerais do transecto, caso necessário:"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_inicio_transecto"] <- "Coordenada inicial da amostragem (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_inicial"] <- "Foto do ponto inicial do transecto (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/num_placa"] <- "Número da plaqueta (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/modulo"] <- "Módulo (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_amostral"] <- "ponto_amostral (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_metro"] <- "ponto_metro (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/tipo_forma_vida"] <- "**Encostam** na vareta: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">nativas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide_sp"] <- "Espécie ou nome popular (Erva bromelioide) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea"] <- "A cactácea observada é: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea_sp"] <- "Espécie ou nome popular (Cactácea) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea"] <- "A orquídea observada é: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea_sp"] <- "Espécie ou nome popular (Orquídea) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_outra"] <- "Outra forma de vida de planta nativa: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_outra"] <- "Foto de outra forma de vida de planta nativa: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_desconhecida"] <- "Foto da forma de vida desconhecida de planta nativa: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_graminoide"] <- "Espécie ou nome popular (Erva graminoide) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_erva_nao_graminoide"] <- "Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_abaixo"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_acima"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_abaixo"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_acima"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bambu"] <- "Espécie ou nome popular (Bambu) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_lianas"] <- "Espécie ou nome popular (Lianas) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_ervas_de_passarinho"] <- "Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_palmeira"] <- "Espécie ou nome popular (Palmeira) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_samambaia"] <- "Espécie ou nome popular (Samambaia) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_canela_de_ema"] <- "Espécie ou nome popular (Velósia) (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> graminóides exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_erva_nao_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> ervas não graminóides exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_bambu"] <- "**Espécies** de <span style=\"\"color:red\"\"> bambus exóticos:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_cactacea"] <- "**Espécies** de <span style=\"\"color:red\"\"> cactáceas exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_lianas"] <- "**Espécies** de <span style=\"\"color:red\"\"> lianas exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_orquidea"] <- "**Espécies** de <span style=\"\"color:red\"\"> orquídeas exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_palmeira"] <- "**Espécies** de <span style=\"\"color:red\"\"> palmeiras exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_samambaia"] <- "**Espécies** de <span style=\"\"color:red\"\"> samambaias exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_outros"] <- "**Espécies** de <span style=\"\"color:red\"\"> outros exóticas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_outra"] <- "Outra forma de vida de planta exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_outra"] <- "Foto de outra forma de vida de planta exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_desconhecida"] <- "Foto da forma de vida desconhecida de planta exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).1"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_cactacea"] <- "A cactácea observada é: (amostragem/registro).1"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_orquidea"] <- "A orquídea observada é: (amostragem/registro).1"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_graminoide_outra_sp"] <- "Outra espécie de erva graminoide exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_erva_outra_sp"] <- "Outra espécie de erva não graminoide exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_abaixo_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_acima_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_abaixo_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_acima_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_bambu_outra_sp"] <- "Outra espécie de bambu exótico: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_cactacea_outra_sp"] <- "Outra espécie de cactácea exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_orquidea_outra_sp"] <- "Outra espécie de orquídea exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_palmeira_outra_sp"] <- "Outra espécie de palmeira exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_samambaia_outra_sp"] <- "Outra espécie de samambaia exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_outros_outra_sp"] <- "Outra espécie exótica: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">secas ou mortas:</span> (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).2"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_cactacea"] <- "A cactácea observada é: (amostragem/registro).2"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_orquidea"] <- "A orquídea observada é: (amostragem/registro).2"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_outra"] <- "Outra forma de vida de planta seca e/ou morta: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_outra"] <- "Foto de outra forma de vida de planta seca ou morta: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_desconhecida"] <- "Foto da forma de vida desconhecida de planta seca ou morta: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/observacao"] <- "Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/uuid"] <- "uuid (amostragem/registro)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_fim_transecto"] <- "Coordenada final da amostragem (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_final"] <- "Foto do ponto final do transecto (amostragem)"
-# colnames(registros_corrig)[colnames(registros_corrig) == "uuid"] <- "uuid"
-
-if(".id" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == ".id"] <- ".id"}
-if("registro_uuid" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "registro_uuid"] <- "UUID"}
-if("coleta" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "coleta"] <- "COLETA"}
-if("data do registro" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "data do registro"] <- "DATA DO REGISTRO"}
-if("data do recebimento" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "data do recebimento"] <- "DATA DO RECEBIMENTO"}
-if("uc" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "uc"] <- "UC"}
-if("ciclo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "ciclo"] <- "CICLO"}
-if("campanha" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "campanha"] <- "CAMPANHA"}
-if("protocolo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "protocolo"] <- "PROTOCOLO"}
-if("ea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "ea"] <- "EA"}
-if("ua" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "ua"] <- "UA"}
-if("usuario" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "usuario"] <- "USUARIO"}
-if("coletores" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "coletores"] <- "COLETORES"}
-if("validado" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "validado"] <- "VALIDADO"}
-if("validado por" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "validado por"] <- "VALIDADO POR"}
-if("data validacao" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "data validacao"] <- "DATA VALIDAÇÃO"}
-if("data_hora/data" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/data"] <- "Data (data_hora)"}
-if("data_hora/hora" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/hora"] <- "Horário (data_hora)"}
-if("form_veg" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "form_veg"] <- "Qual a formação vegetacional onde está situado o transecto?"}
-if("impact_manejo_uso/impacto_manejo_uso" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/impacto_manejo_uso"] <- "Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)"}
-if("impact_manejo_uso/tipos_impacto_manejo_uso" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso"] <- "Qual(is)? (impact_manejo_uso)"}
-if("impact_manejo_uso/tipos_impacto_manejo_uso_outro" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_outro"] <- "Outros tipos de manejo ou uso: (impact_manejo_uso)"}
-if("impact_manejo_uso/tipos_impacto_manejo_uso_descricao" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_descricao"] <- "Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)"}
-if("observacoes_gerais" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "observacoes_gerais"] <- "Descreva observações gerais do transecto, caso necessário:"}
-if("amostragem/ponto_inicio_transecto" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_inicio_transecto"] <- "Coordenada inicial da amostragem (amostragem)"}
-if("amostragem/foto_ponto_inicial" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_inicial"] <- "Foto do ponto inicial do transecto (amostragem)"}
-if("amostragem/num_placa" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/num_placa"] <- "Número da plaqueta (amostragem)"}
-if("amostragem/modulo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/modulo"] <- "Módulo (amostragem)"}
-if("amostragem/registro/ponto_amostral" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_amostral"] <- "ponto_amostral (amostragem/registro)"}
-if("amostragem/registro/ponto_metro" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_metro"] <- "ponto_metro (amostragem/registro)"}
-if("amostragem/registro/tipo_forma_vida" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/tipo_forma_vida"] <- "**Encostam** na vareta: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">nativas:</span> (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_bromelioide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_bromelioide_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide_sp"] <- "Espécie ou nome popular (Erva bromelioide) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_cactacea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea"] <- "A cactácea observada é: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_cactacea_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea_sp"] <- "Espécie ou nome popular (Cactácea) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_orquidea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea"] <- "A orquídea observada é: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_orquidea_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea_sp"] <- "Espécie ou nome popular (Orquídea) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_outra"] <- "Outra forma de vida de planta nativa: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_nativa_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_outra"] <- "Foto de outra forma de vida de planta nativa: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_nativa_desconhecida" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_desconhecida"] <- "Foto da forma de vida desconhecida de planta nativa: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_graminoide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_graminoide"] <- "Espécie ou nome popular (Erva graminoide) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_erva_nao_graminoide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_erva_nao_graminoide"] <- "Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_arbusto_abaixo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_abaixo"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_arbusto_acima" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_acima"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_arvore_abaixo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_abaixo"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_arvore_acima" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_acima"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_bambu" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bambu"] <- "Espécie ou nome popular (Bambu) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_lianas" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_lianas"] <- "Espécie ou nome popular (Lianas) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_ervas_de_passarinho" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_ervas_de_passarinho"] <- "Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_palmeira" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_palmeira"] <- "Espécie ou nome popular (Palmeira) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_samambaia" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_samambaia"] <- "Espécie ou nome popular (Samambaia) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_nativa_canela_de_ema" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_canela_de_ema"] <- "Espécie ou nome popular (Velósia) (amostragem/registro)"}
-if("amostragem/registro/forma_vida_exotica" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_graminoide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> graminóides exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_erva_nao_graminoide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_erva_nao_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> ervas não graminóides exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_arbusto_abaixo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_arbusto_acima" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_arvore_abaixo" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_arvore_acima" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_bambu" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_bambu"] <- "**Espécies** de <span style=\"\"color:red\"\"> bambus exóticos:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_cactacea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_cactacea"] <- "**Espécies** de <span style=\"\"color:red\"\"> cactáceas exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_lianas" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_lianas"] <- "**Espécies** de <span style=\"\"color:red\"\"> lianas exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_orquidea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_orquidea"] <- "**Espécies** de <span style=\"\"color:red\"\"> orquídeas exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_palmeira" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_palmeira"] <- "**Espécies** de <span style=\"\"color:red\"\"> palmeiras exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_samambaia" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_samambaia"] <- "**Espécies** de <span style=\"\"color:red\"\"> samambaias exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/especies_exotica_outros" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_outros"] <- "**Espécies** de <span style=\"\"color:red\"\"> outros exóticas:</span> (amostragem/registro)"}
-if("amostragem/registro/forma_vida_exotica_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_outra"] <- "Outra forma de vida de planta exótica: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_exotica_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_outra"] <- "Foto de outra forma de vida de planta exótica: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_exotica_desconhecida" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_desconhecida"] <- "Foto da forma de vida desconhecida de planta exótica: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_exotica_bromelioide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).1"}
-if("amostragem/registro/forma_vida_exotica_cactacea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_cactacea"] <- "A cactácea observada é: (amostragem/registro).1"}
-if("amostragem/registro/forma_vida_exotica_orquidea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_orquidea"] <- "A orquídea observada é: (amostragem/registro).1"}
-if("amostragem/registro/exotica_graminoide_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_graminoide_outra_sp"] <- "Outra espécie de erva graminoide exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_erva_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_erva_outra_sp"] <- "Outra espécie de erva não graminoide exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_arbusto_abaixo_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_abaixo_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"}
-if("amostragem/registro/exotica_arbusto_acima_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_acima_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro)"}
-if("amostragem/registro/exotica_arvore_abaixo_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_abaixo_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"}
-if("amostragem/registro/exotica_arvore_acima_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_acima_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"}
-if("amostragem/registro/exotica_bambu_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_bambu_outra_sp"] <- "Outra espécie de bambu exótico: (amostragem/registro)"}
-if("amostragem/registro/exotica_cactacea_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_cactacea_outra_sp"] <- "Outra espécie de cactácea exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_orquidea_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_orquidea_outra_sp"] <- "Outra espécie de orquídea exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_palmeira_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_palmeira_outra_sp"] <- "Outra espécie de palmeira exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_samambaia_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_samambaia_outra_sp"] <- "Outra espécie de samambaia exótica: (amostragem/registro)"}
-if("amostragem/registro/exotica_outros_outra_sp" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_outros_outra_sp"] <- "Outra espécie exótica: (amostragem/registro)"}
-if("amostragem/registro/forma_vida_seca_morta" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">secas ou mortas:</span> (amostragem/registro)"}
-if("amostragem/registro/forma_vida_seca_morta_bromelioide" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).2"}
-if("amostragem/registro/forma_vida_seca_morta_cactacea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_cactacea"] <- "A cactácea observada é: (amostragem/registro).2"}
-if("amostragem/registro/forma_vida_seca_morta_orquidea" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_orquidea"] <- "A orquídea observada é: (amostragem/registro).2"}
-if("amostragem/registro/forma_vida_seca_morta_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_outra"] <- "Outra forma de vida de planta seca e/ou morta: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_seca_morta_outra" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_outra"] <- "Foto de outra forma de vida de planta seca ou morta: (amostragem/registro)"}
-if("amostragem/registro/foto_forma_vida_seca_morta_desconhecida" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_desconhecida"] <- "Foto da forma de vida desconhecida de planta seca ou morta: (amostragem/registro)"}
-if("amostragem/registro/observacao" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/observacao"] <- "Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)"}
-if("amostragem/registro/uuid" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/uuid"] <- "uuid (amostragem/registro)"}
-if("amostragem/ponto_fim_transecto" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_fim_transecto"] <- "Coordenada final da amostragem (amostragem)"}
-if("amostragem/foto_ponto_final" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_final"] <- "Foto do ponto final do transecto (amostragem)"}
-if("uuid" %in% colnames(registros_corrig)){colnames(registros_corrig)[colnames(registros_corrig) == "uuid"] <- "uuid"}
+if (".id" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == ".id"] <- ".id"
+}
+if ("registro_uuid" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "registro_uuid"] <- "UUID"
+}
+if ("coleta" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "coleta"] <- "COLETA"
+}
+if ("data do registro" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "data do registro"] <- "DATA DO REGISTRO"
+}
+if ("data do recebimento" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "data do recebimento"] <- "DATA DO RECEBIMENTO"
+}
+if ("uc" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "uc"] <- "UC"
+}
+if ("ciclo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "ciclo"] <- "CICLO"
+}
+if ("campanha" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "campanha"] <- "CAMPANHA"
+}
+if ("protocolo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "protocolo"] <- "PROTOCOLO"
+}
+if ("ea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "ea"] <- "EA"
+}
+if ("ua" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "ua"] <- "UA"
+}
+if ("usuario" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "usuario"] <- "USUARIO"
+}
+if ("coletores" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "coletores"] <- "COLETORES"
+}
+if ("validado" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "validado"] <- "VALIDADO"
+}
+if ("validado por" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "validado por"] <- "VALIDADO POR"
+}
+if ("data validacao" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "data validacao"] <- "DATA VALIDAÇÃO"
+}
+if ("data_hora/data" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/data"] <- "Data (data_hora)"
+}
+if ("data_hora/hora" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "data_hora/hora"] <- "Horário (data_hora)"
+}
+if ("form_veg" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "form_veg"] <- "Qual a formação vegetacional onde está situado o transecto?"
+}
+if ("impact_manejo_uso/impacto_manejo_uso" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/impacto_manejo_uso"] <- "Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)"
+}
+if ("impact_manejo_uso/tipos_impacto_manejo_uso" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso"] <- "Qual(is)? (impact_manejo_uso)"
+}
+if ("impact_manejo_uso/tipos_impacto_manejo_uso_outro" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_outro"] <- "Outros tipos de manejo ou uso: (impact_manejo_uso)"
+}
+if ("impact_manejo_uso/tipos_impacto_manejo_uso_descricao" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "impact_manejo_uso/tipos_impacto_manejo_uso_descricao"] <- "Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)"
+}
+if ("observacoes_gerais" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "observacoes_gerais"] <- "Descreva observações gerais do transecto, caso necessário:"
+}
+if ("amostragem/ponto_inicio_transecto" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_inicio_transecto"] <- "Coordenada inicial da amostragem (amostragem)"
+}
+if ("amostragem/foto_ponto_inicial" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_inicial"] <- "Foto do ponto inicial do transecto (amostragem)"
+}
+if ("amostragem/num_placa" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/num_placa"] <- "Número da plaqueta (amostragem)"
+}
+if ("amostragem/modulo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/modulo"] <- "Módulo (amostragem)"
+}
+if ("amostragem/registro/ponto_amostral" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_amostral"] <- "ponto_amostral (amostragem/registro)"
+}
+if ("amostragem/registro/ponto_metro" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/ponto_metro"] <- "ponto_metro (amostragem/registro)"
+}
+if ("amostragem/registro/tipo_forma_vida" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/tipo_forma_vida"] <- "**Encostam** na vareta: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">nativas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_bromelioide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_bromelioide_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bromelioide_sp"] <- "Espécie ou nome popular (Erva bromelioide) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_cactacea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea"] <- "A cactácea observada é: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_cactacea_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_cactacea_sp"] <- "Espécie ou nome popular (Cactácea) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_orquidea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea"] <- "A orquídea observada é: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_orquidea_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_orquidea_sp"] <- "Espécie ou nome popular (Orquídea) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_outra"] <- "Outra forma de vida de planta nativa: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_nativa_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_outra"] <- "Foto de outra forma de vida de planta nativa: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_nativa_desconhecida" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_nativa_desconhecida"] <- "Foto da forma de vida desconhecida de planta nativa: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_graminoide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_graminoide"] <- "Espécie ou nome popular (Erva graminoide) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_erva_nao_graminoide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_erva_nao_graminoide"] <- "Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_arbusto_abaixo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_abaixo"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_arbusto_acima" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arbusto_acima"] <- "Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_arvore_abaixo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_abaixo"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_arvore_acima" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_arvore_acima"] <- "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_bambu" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_bambu"] <- "Espécie ou nome popular (Bambu) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_lianas" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_lianas"] <- "Espécie ou nome popular (Lianas) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_ervas_de_passarinho" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_ervas_de_passarinho"] <- "Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_palmeira" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_palmeira"] <- "Espécie ou nome popular (Palmeira) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_samambaia" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_samambaia"] <- "Espécie ou nome popular (Samambaia) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_nativa_canela_de_ema" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_nativa_canela_de_ema"] <- "Espécie ou nome popular (Velósia) (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_exotica" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_graminoide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> graminóides exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_erva_nao_graminoide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_erva_nao_graminoide"] <- "**Espécies** de <span style=\"\"color:red\"\"> ervas não graminóides exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_arbusto_abaixo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_arbusto_acima" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arbusto_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_arvore_abaixo" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_abaixo"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_arvore_acima" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_arvore_acima"] <- "**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_bambu" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_bambu"] <- "**Espécies** de <span style=\"\"color:red\"\"> bambus exóticos:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_cactacea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_cactacea"] <- "**Espécies** de <span style=\"\"color:red\"\"> cactáceas exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_lianas" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_lianas"] <- "**Espécies** de <span style=\"\"color:red\"\"> lianas exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_orquidea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_orquidea"] <- "**Espécies** de <span style=\"\"color:red\"\"> orquídeas exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_palmeira" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_palmeira"] <- "**Espécies** de <span style=\"\"color:red\"\"> palmeiras exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_samambaia" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_samambaia"] <- "**Espécies** de <span style=\"\"color:red\"\"> samambaias exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/especies_exotica_outros" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/especies_exotica_outros"] <- "**Espécies** de <span style=\"\"color:red\"\"> outros exóticas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_exotica_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_outra"] <- "Outra forma de vida de planta exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_exotica_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_outra"] <- "Foto de outra forma de vida de planta exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_exotica_desconhecida" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_exotica_desconhecida"] <- "Foto da forma de vida desconhecida de planta exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_exotica_bromelioide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).1"
+}
+if ("amostragem/registro/forma_vida_exotica_cactacea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_cactacea"] <- "A cactácea observada é: (amostragem/registro).1"
+}
+if ("amostragem/registro/forma_vida_exotica_orquidea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_exotica_orquidea"] <- "A orquídea observada é: (amostragem/registro).1"
+}
+if ("amostragem/registro/exotica_graminoide_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_graminoide_outra_sp"] <- "Outra espécie de erva graminoide exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_erva_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_erva_outra_sp"] <- "Outra espécie de erva não graminoide exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_arbusto_abaixo_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_abaixo_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_arbusto_acima_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arbusto_acima_outra_sp"] <- "Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_arvore_abaixo_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_abaixo_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_arvore_acima_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_arvore_acima_outra_sp"] <- "Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_bambu_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_bambu_outra_sp"] <- "Outra espécie de bambu exótico: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_cactacea_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_cactacea_outra_sp"] <- "Outra espécie de cactácea exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_orquidea_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_orquidea_outra_sp"] <- "Outra espécie de orquídea exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_palmeira_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_palmeira_outra_sp"] <- "Outra espécie de palmeira exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_samambaia_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_samambaia_outra_sp"] <- "Outra espécie de samambaia exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/exotica_outros_outra_sp" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/exotica_outros_outra_sp"] <- "Outra espécie exótica: (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_seca_morta" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta"] <- "Formas de vida de plantas <span style=\"\"color:red\"\">secas ou mortas:</span> (amostragem/registro)"
+}
+if ("amostragem/registro/forma_vida_seca_morta_bromelioide" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_bromelioide"] <- "A erva bromelioide observada é: (amostragem/registro).2"
+}
+if ("amostragem/registro/forma_vida_seca_morta_cactacea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_cactacea"] <- "A cactácea observada é: (amostragem/registro).2"
+}
+if ("amostragem/registro/forma_vida_seca_morta_orquidea" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_orquidea"] <- "A orquídea observada é: (amostragem/registro).2"
+}
+if ("amostragem/registro/forma_vida_seca_morta_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/forma_vida_seca_morta_outra"] <- "Outra forma de vida de planta seca e/ou morta: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_seca_morta_outra" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_outra"] <- "Foto de outra forma de vida de planta seca ou morta: (amostragem/registro)"
+}
+if ("amostragem/registro/foto_forma_vida_seca_morta_desconhecida" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/foto_forma_vida_seca_morta_desconhecida"] <- "Foto da forma de vida desconhecida de planta seca ou morta: (amostragem/registro)"
+}
+if ("amostragem/registro/observacao" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/observacao"] <- "Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)"
+}
+if ("amostragem/registro/uuid" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/registro/uuid"] <- "uuid (amostragem/registro)"
+}
+if ("amostragem/ponto_fim_transecto" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/ponto_fim_transecto"] <- "Coordenada final da amostragem (amostragem)"
+}
+if ("amostragem/foto_ponto_final" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "amostragem/foto_ponto_final"] <- "Foto do ponto final do transecto (amostragem)"
+}
+if ("uuid" %in% colnames(registros_corrig)) {
+  colnames(registros_corrig)[colnames(registros_corrig) == "uuid"] <- "uuid"
+}
 
 ### merge duplicated columns names:
 
@@ -367,23 +467,27 @@ for (col in unique(dups)) {
   cols <- which(names(registros_corrig) == col)
   
   # Merge non-NA values (concatenate with "_")
-  registros_corrig[, (col) := apply(.SD, 1, function(x) paste(na.omit(x), collapse = "_")), .SDcols = cols]
+  registros_corrig[, (col) := apply(.SD, 1, function(x)
+    paste(na.omit(x), collapse = "_")), .SDcols = cols]
   
   # Remove all duplicate columns (those with the same name)
   registros_corrig[, (cols[-1]) := NULL]
 }
 
-rm(col,cols,dups)
+rm(col, cols, dups)
 
-### rename columns values from Thiago.xlsx to SISMONITORA.csv
+### rename columns values from script downloaded .xlsx to directly downloaded SISMONITORA.csv
 
-# registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`=="campestre"] <- "Campestre"
-# registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`=="savanica"] <- "Savânica"
+if ("campestre" %in% registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`) {
+  registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?` ==
+                                                                                   "campestre"] <- "Campestre"
+}
+if ("savanica" %in% registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`) {
+  registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?` ==
+                                                                                   "savanica"] <- "Savânica"
+}
 
-if("campestre" %in% registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`){registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`=="campestre"] <- "Campestre"}
-if("savanica" %in% registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`){registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`[registros_corrig$`Qual a formação vegetacional onde está situado o transecto?`=="savanica"] <- "Savânica"}
-
-### correção de labels para names (erro em uma versao do xlsform, presente em algumas campanhas amostrais)
+### labels to names correction
 
 registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)` <-
   registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)` %>%
@@ -476,53 +580,67 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
 
 registros_corrig$`ponto_amostral (amostragem/registro)` <-
   word(registros_corrig$`ponto_amostral (amostragem/registro)`,
-       sep = fixed("|"),-1)
+       sep = fixed("|"),
+       -1)
 
 ## metro
 
 registros_corrig$`ponto_metro (amostragem/registro)` <-
   word(registros_corrig$`ponto_metro (amostragem/registro)`,
-       sep = fixed("|"),-1)
+       sep = fixed("|"),
+       -1)
 
 ## encostam na vareta
 
 registros_corrig$`**Encostam** na vareta: (amostragem/registro)` <-
   word(registros_corrig$`**Encostam** na vareta: (amostragem/registro)`,
-       sep = fixed("|"),-1)
+       sep = fixed("|"),
+       -1)
 
 # ## descrição do ponto amostral (corrigido)
-# 
-# if (is.null(registros_corrig[['Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)']]))
-#   set(registros_corrig, j = 'Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)', value = NA_character_)
-# 
-# # nº tokens e último token
-# obs_pa_tokens <- registros_corrig[, .(
-#   Tokens = lengths(strsplit(`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`, "\\|")),
-#   Last_token = sapply(strsplit(`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`, "\\|"), tail, 1)
-# ),by = .(COLETA,`ponto_amostral (amostragem/registro)`)]
-# 
-# # nº max tokens
-# obs_pa_tokens[, MaxTokens_coleta := max(Tokens), by = .(COLETA)]
-# 
-# # token válido
-# obs_pa_tokens[, `Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)` := fifelse(Tokens == MaxTokens_coleta, Last_token, NA_character_)]
-# 
-# # atualização tokens válidos em registros_corrig
-# registros_corrig$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)` <- obs_pa_tokens$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`
-# 
-# rm(obs_pa_tokens)
+
+if (is.null(registros_corrig[['Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)']]))
+  set(registros_corrig, j = 'Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)', value = NA_character_)
+
+# nº tokens e último token
+obs_pa_tokens <- registros_corrig[, .(
+  Tokens = lengths(strsplit(`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`, "\\|")),
+  Last_token = sapply(strsplit(`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`, "\\|"), tail, 1)
+),by = .(COLETA,`ponto_amostral (amostragem/registro)`)]
+
+# nº max tokens
+obs_pa_tokens[, MaxTokens_coleta := max(Tokens), by = .(COLETA)]
+
+# token válido
+obs_pa_tokens[, `Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)` := fifelse(Tokens == MaxTokens_coleta, Last_token, NA_character_)]
+
+# atualização tokens válidos em registros_corrig
+registros_corrig$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)` <- obs_pa_tokens$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`
+
+rm(obs_pa_tokens)
 
 # remocao line breaks (\r , \n) nos campos descritivos
 
 registros_corrig$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)` <-
-  str_replace_all(registros_corrig$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`,"[\r\n]"," ")
+  str_replace_all(
+    registros_corrig$`Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)`,
+    "[\r\n]",
+    " "
+  )
 
-registros_corrig$`Descreva observações gerais do transecto, caso necessário:` <- 
-  str_replace_all(registros_corrig$`Descreva observações gerais do transecto, caso necessário:`,"[\r\n]"," ")
+registros_corrig$`Descreva observações gerais do transecto, caso necessário:` <-
+  str_replace_all(
+    registros_corrig$`Descreva observações gerais do transecto, caso necessário:`,
+    "[\r\n]",
+    " "
+  )
 
-registros_corrig$`Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)` <- 
-  str_replace_all(registros_corrig$`Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)`,"[\r\n]"," ")
-
+registros_corrig$`Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)` <-
+  str_replace_all(
+    registros_corrig$`Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)`,
+    "[\r\n]",
+    " "
+  )
 
 ## forma de vida de planta nativa
 
@@ -535,7 +653,8 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -562,8 +681,7 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
       ),
       word(
         registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro)`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
@@ -575,7 +693,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
       ),
       word(
         registros_corrig$`A bromélia observada é: (amostragem/registro)`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
@@ -587,7 +706,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
       ),
       word(
         registros_corrig$`A erva bromelioide observada é: (amostragem/registro)`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     )
   )
@@ -606,7 +726,8 @@ registros_corrig$'A cactácea observada é: (amostragem/registro)' <-
     ),
     word(
       registros_corrig$'A cactácea observada é: (amostragem/registro)',
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -630,8 +751,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro)` <-
       ),
       word(
         registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro)`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       ),
       NA_character_
     ),
@@ -643,7 +763,8 @@ registros_corrig$`A orquídea observada é: (amostragem/registro)` <-
       ),
       word(
         registros_corrig$`A orquídea observada é: (amostragem/registro)`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       ),
       NA_character_
     ),
@@ -661,7 +782,8 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -688,8 +810,7 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
       ),
       word(
         registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).1`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
@@ -701,7 +822,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
       ),
       word(
         registros_corrig$`A bromélia observada é: (amostragem/registro).1`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
@@ -713,7 +835,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
       ),
       word(
         registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     )
   )
@@ -732,7 +855,8 @@ registros_corrig$'A cactácea observada é: (amostragem/registro)' <-
     ),
     word(
       registros_corrig$'A cactácea observada é: (amostragem/registro).1',
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -756,8 +880,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).1` <-
       ),
       word(
         registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).1`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       ),
       NA_character_
     ),
@@ -769,7 +892,8 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).1` <-
       ),
       word(
         registros_corrig$`A orquídea observada é: (amostragem/registro).1`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       ),
       NA_character_
     ),
@@ -787,7 +911,8 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
     ),
     word(
       registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -814,8 +939,7 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2` <-
       ),
       word(
         registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).2`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
@@ -827,7 +951,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2` <-
       ),
       word(
         registros_corrig$`A bromélia observada é: (amostragem/registro).2`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     ),
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
@@ -839,7 +964,8 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2` <-
       ),
       word(
         registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       )
     )
   )
@@ -858,7 +984,8 @@ registros_corrig$'A cactácea observada é: (amostragem/registro).2' <-
     ),
     word(
       registros_corrig$'A cactácea observada é: (amostragem/registro).1',
-      sep = fixed("|"),-1
+      sep = fixed("|"),
+      -1
     ),
     NA_character_
   )
@@ -882,8 +1009,7 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
       ),
       word(
         registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).2`,
-        sep = fixed("|"),
-        -1
+        sep = fixed("|"),-1
       ),
       NA_character_
     ),
@@ -895,7 +1021,8 @@ registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
       ),
       word(
         registros_corrig$`A orquídea observada é: (amostragem/registro).2`,
-        sep = fixed("|"),-1
+        sep = fixed("|"),
+        -1
       ),
       NA_character_
     ),
@@ -917,6 +1044,19 @@ registros_corrig$ANO <-
   format(as.Date(registros_corrig$`Data (data_hora)`, "%Y-%m-%d"),
          "%Y")
 
+### correct incorrect coordinates delimiters
+
+# Replace all incorrect delimiters with a single space
+registros_corrig$`Coordenada inicial da amostragem (amostragem)` <- gsub(
+  "\\s*,\\s*|\\s*,|,\\s*",
+  " ",
+  registros_corrig$`Coordenada inicial da amostragem (amostragem)`
+)
+registros_corrig$`Coordenada final da amostragem (amostragem)` <- gsub(
+  "\\s*,\\s*|\\s*,|,\\s*",
+  " ",
+  registros_corrig$`Coordenada final da amostragem (amostragem)`
+)
 
 ### construção das tabelas estatísticas
 
@@ -967,7 +1107,7 @@ sum_form_vida_nat_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with( ~ paste("nativa", ., sep = "_"), -(1:7))
+  rename_with(~ paste("nativa", ., sep = "_"), -(1:7))
 
 ## somatório de formas de vida exóticas por UC, UA, ANO
 
@@ -999,7 +1139,7 @@ sum_form_vida_exot_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with( ~ paste("exot", ., sep = "_"), -(1:7))
+  rename_with(~ paste("exot", ., sep = "_"), -(1:7))
 
 ## somatório de formas de vida secas ou mortas por UC, UA, ANO
 
@@ -1031,7 +1171,7 @@ sum_form_vida_seca_morta_by_UC_UA_ANO <- registros_corrig %>%
     n,
     fill = 0
   ) %>%
-  rename_with( ~ paste("seca_morta", ., sep = "_"), -(1:7))
+  rename_with(~ paste("seca_morta", ., sep = "_"), -(1:7))
 
 ### formação vegetacional por UC, UA, ANO:
 
@@ -1818,3 +1958,85 @@ if (exists("reg_corrig_stat_summarise_p5"))
     file.path("sum_form_vida_secas_mortas.csv"),
     row.names = FALSE
   )
+
+### kml export
+
+  # Convert coordinate columns to numeric (if not already)
+  registros_corrig_stat$long_ini <- as.numeric(registros_corrig_stat$long_ini)
+  registros_corrig_stat$lat_ini <- as.numeric(registros_corrig_stat$lat_ini)
+  registros_corrig_stat$long_fin <- as.numeric(registros_corrig_stat$long_fin)
+  registros_corrig_stat$lat_fin <- as.numeric(registros_corrig_stat$lat_fin)
+  
+  # Remove rows with missing coordinates (if any)
+  registros_corrig_stat <- registros_corrig_stat[!is.na(registros_corrig_stat$long_ini) &
+                                                   !is.na(registros_corrig_stat$lat_ini) &
+                                                   !is.na(registros_corrig_stat$long_fin) &
+                                                   !is.na(registros_corrig_stat$lat_fin), ]
+  
+  # Ensure uniqueness in the 'name' column
+  registros_corrig_stat <- registros_corrig_stat %>%
+    mutate(name = paste(UA, ANO, sep = "_")) %>%
+    group_by(name) %>%
+    mutate(name = paste(name, row_number(), sep = "_")) %>%
+    ungroup()
+  
+  # Create a 'LineString' for each row, combining the start and end coordinates
+  geometry <- st_sfc(lapply(1:nrow(registros_corrig_stat), function(i) {
+    st_linestring(matrix(
+      c(
+        registros_corrig_stat$long_ini[i],
+        registros_corrig_stat$lat_ini[i],
+        registros_corrig_stat$long_fin[i],
+        registros_corrig_stat$lat_fin[i]
+      ),
+      ncol = 2,
+      byrow = TRUE
+    ))
+  }))
+  
+  # Create point geometries for each start and end coordinate
+  points_ini <- st_sfc(lapply(1:nrow(registros_corrig_stat), function(i) {
+    st_point(c(
+      registros_corrig_stat$long_ini[i],
+      registros_corrig_stat$lat_ini[i]
+    ))  # Start points
+  }))
+  
+  points_fin <- st_sfc(lapply(1:nrow(registros_corrig_stat), function(i) {
+    st_point(c(
+      registros_corrig_stat$long_fin[i],
+      registros_corrig_stat$lat_fin[i]
+    ))
+  }))
+  
+  # Create a new dataframe for points (start and end points) and keep all original attributes
+  registros_corrig_stat_points_ini <- registros_corrig_stat %>%
+    mutate(
+      name = paste("Start: ", UA, "_", ANO, sep = ""),
+      point_type = "start",
+      geometry = points_ini
+    )
+  
+  registros_corrig_stat_points_fin <- registros_corrig_stat %>%
+    mutate(
+      name = paste("End: ", UA, "_", ANO, sep = ""),
+      point_type = "end",
+      geometry = points_fin
+    )
+  
+  # Combine the points and lines dataframes
+  combined_sf_object <- bind_rows(
+    st_sf(registros_corrig_stat, geometry = geometry),
+    registros_corrig_stat_points_ini,
+    registros_corrig_stat_points_fin
+  )
+  
+  # Assign CRS (WGS84 - EPSG:4326) to the sf object
+  combined_sf_object <- st_set_crs(combined_sf_object, 4326)
+  
+  # Export to KML file, overwriting if it already exists
+  st_write(combined_sf_object, "output.kml", driver = "KML", delete_dsn=TRUE)
+  
+  rm(combined_sf_object,geometry,points_ini,points_fin,
+     registros_corrig_stat_points_ini,registros_corrig_stat_points_fin)
+  
