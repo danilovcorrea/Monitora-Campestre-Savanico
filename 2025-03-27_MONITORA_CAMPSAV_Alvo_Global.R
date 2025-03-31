@@ -2703,9 +2703,6 @@ registros_corrig_stat <- registros_corrig_stat %>%
         colnames(registros_corrig_stat), "_graminoide", negate = FALSE
       )),
       which(str_detect(
-        colnames(registros_corrig_stat), "_bambu", negate = FALSE
-      )),
-      which(str_detect(
         colnames(registros_corrig_stat), "_bromelioide", negate = FALSE
       )),
       which(str_detect(
