@@ -1,5 +1,5 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do Programa Monitora
-### Versão pública: versão interna 2.0.0
+### Versão pública: v2.0.1
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
