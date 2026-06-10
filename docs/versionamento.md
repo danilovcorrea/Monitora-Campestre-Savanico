@@ -1,6 +1,6 @@
 # Versionamento público do repositório
 
-A partir da consolidação da versão pública `v2.0.0`, o repositório passa a adotar versionamento semântico para as versões públicas estáveis.
+A partir da consolidação da versão pública `v2.0.1`, o repositório passa a adotar versionamento semântico para as versões públicas estáveis.
 
 ## Esquema adotado
 
