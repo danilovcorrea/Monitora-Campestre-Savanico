@@ -1,3 +1,22 @@
+## v2.0.1 - Correções de integridade na consolidação de entradas mistas
+
+Versão validada para produção.
+
+Principais alterações:
+- Corrige falha em `monitora_merge_duplicate_columns()` quando arquivos CSV chegam com nomes de colunas exatamente repetidos no cabeçalho.
+- Adiciona trava final de deduplicação por `UC + CICLO + CAMPANHA + UA + ANO + ponto`, antes da geração de `registros_corrig_stat`.
+- Mantém preferência por entradas pós-tratamento quando há sobreposição com arquivos brutos individuais.
+- Gera auditoria da deduplicação final em `log/` e `output/`.
+- Mantém auditorias de completude, datas ambíguas, fontes duplicadas e compatibilidade entre formatos de entrada.
+
+Validação:
+- Testada com `registros_corrig_PNCV_com2025.zip` combinado com `massa_teste.zip`.
+- Execução concluída sem erro fatal.
+- `registros_corrig.csv`: 82.314 linhas.
+- `registros_corrig_stat.csv`: 815 linhas, uma por `UC + UA + ANO`.
+- Nenhuma duplicata final por `UC + CICLO + CAMPANHA + UA + ANO + ponto`.
+- Ressalva de dado real mantida: PNCV `UA-019_VgCS` em 2022 com 100 pontos, faltando o ponto 89.
+
 # Changelog
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
