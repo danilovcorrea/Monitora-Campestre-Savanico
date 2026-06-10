@@ -1,0 +1,9 @@
+reports/
+.Rhistory
+.RData
+.Rproj.user/
+output/
+log/
+extracted/
+input/
+*.zip

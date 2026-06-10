@@ -1,0 +1,90 @@
+name: Revisão editorial e versionamento público
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_version:
+        description: 'Versão pública semântica a aplicar, sem o prefixo v'
+        required: true
+        default: '2.0.0'
+      current_script:
+        description: 'Caminho do script principal atual, se já existir no repo'
+        required: false
+        default: ''
+      mode:
+        description: 'Modo de execução: audit ou apply'
+        required: true
+        default: 'audit'
+        type: choice
+        options:
+          - audit
+          - apply
+      use_ai:
+        description: 'Usar revisão assistida por IA quando OPENAI_API_KEY estiver configurada'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências opcionais
+        if: ${{ inputs.use_ai == true }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install openai
+
+      - name: Executar auditoria/revisão editorial
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python tools/revisar_repo_monitora.py \
+            --root . \
+            --mode "${{ inputs.mode }}" \
+            --public-version "${{ inputs.public_version }}" \
+            --current-script "${{ inputs.current_script }}" \
+            ${{ inputs.use_ai == true && '--use-ai' || '' }}
+
+      - name: Criar Pull Request com alterações
+        if: ${{ inputs.mode == 'apply' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: revisar comentários e aplicar versionamento público'
+          branch: 'automacao/revisao-editorial-versionamento'
+          delete-branch: true
+          title: 'Revisão editorial dos scripts e versionamento público'
+          body: |
+            Este PR foi gerado automaticamente pelo workflow de revisão editorial.
+
+            Alterações previstas:
+            - revisão de comentários dos scripts R conforme política editorial;
+            - inclusão/atualização de VERSION;
+            - inclusão/atualização de CHANGELOG.md;
+            - registro de versionamento público semântico;
+            - geração de relatório de auditoria em reports/.
+
+            Antes do merge, revisar especialmente:
+            - comentários reescritos automaticamente;
+            - scripts históricos marcados como pré-versionamento semântico;
+            - cabeçalho do script principal atual.
+
+      - name: Publicar relatório como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-revisao-editorial
+          path: reports/
