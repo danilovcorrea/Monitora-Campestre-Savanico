@@ -777,10 +777,27 @@ monitora_merge_duplicate_columns <- function(dt) {
   #      grandes, pois isso pode multiplicar strings e RAM; os conflitos ficam em
   #      auditoria.
   dt <- monitora_as_dt_ref(dt)
-  original_names <- names(dt)
-  base_names <- monitora_base_colname(original_names)
 
-  protected <- grepl("^MONITORA_", original_names) | original_names %in% c(".id")
+  # Correção v2.0.1: alguns CSVs do SISMONITORA podem chegar com nomes de
+  # colunas exatamente repetidos no próprio cabeçalho. data.table permite esse
+  # estado, mas operações como dt[, (cols) := NULL] falham quando `cols` contém
+  # o mesmo nome mais de uma vez. Além disso, dt[[nome]] sempre recupera a
+  # primeira coluna com aquele nome, impedindo coalesce correto por posição.
+  #
+  # Estratégia: guardar os nomes originais para formar os grupos de fusão e,
+  # antes de operar por referência, tornar os nomes fisicamente únicos por
+  # posição. Assim, colunas originalmente iguais continuam no mesmo grupo, mas
+  # passam a ser endereçáveis sem ambiguidade.
+  original_names_raw <- names(dt)
+  original_names <- original_names_raw
+  if (anyDuplicated(original_names_raw)) {
+    original_names <- make.unique(original_names_raw, sep = "__dup")
+    data.table::setnames(dt, original_names)
+  }
+
+  base_names <- monitora_base_colname(original_names_raw)
+
+  protected <- grepl("^MONITORA_", original_names_raw) | original_names_raw %in% c(".id")
   base_names[protected] <- original_names[protected]
 
   n_linhas_dt <- nrow(dt)
@@ -1690,6 +1707,126 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
 monitora_data_ano_plausivel <- function(d, ano_min = 2000L, ano_max = lubridate::year(Sys.Date()) + 1L) {
   ano <- suppressWarnings(as.integer(format(d, "%Y")))
   !is.na(d) & !is.na(ano) & ano >= ano_min & ano <= ano_max
+}
+
+
+monitora_deduplicar_final_por_ponto_ano <- function(dt) {
+  # Trava final de integridade antes da construção de registros_corrig_stat.
+  # Objetivo: impedir que a mesma unidade amostral/ponto/ano entre duas vezes
+  # quando arquivos pós-tratamento são combinados com brutos individuais/lote.
+  # A deduplicação inicial ocorre antes de algumas padronizações e pode deixar
+  # passar sobreposições raras; esta etapa usa os campos já normalizados e ANO.
+  dt <- monitora_as_dt_ref(dt)
+
+  ponto_col <- if ("ponto_amostral (amostragem/registro)" %in% names(dt)) {
+    "ponto_amostral (amostragem/registro)"
+  } else if ("ponto_metro (amostragem/registro)" %in% names(dt)) {
+    "ponto_metro (amostragem/registro)"
+  } else {
+    NA_character_
+  }
+
+  by_cols <- c("UC", "CICLO", "CAMPANHA", "UA", "ANO")
+  by_cols <- by_cols[by_cols %in% names(dt)]
+  if (is.na(ponto_col) || length(by_cols) < 4L) {
+    monitora_log(
+      "deduplicacao_final_ponto_ano",
+      "AVISO",
+      NA_character_,
+      paste0("Campos insuficientes para deduplicação final: by_cols=", paste(by_cols, collapse = ", "), "; ponto_col=", ponto_col),
+      "mantido sem alteração"
+    )
+    return(dt)
+  }
+
+  norm_key <- function(x) {
+    x <- monitora_norm_empty(x)
+    stringr::str_squish(toupper(as.character(x)))
+  }
+
+  aux <- data.table::data.table(MONITORA_ORDEM_ORIGINAL = seq_len(nrow(dt)))
+  for (cc in by_cols) {
+    data.table::set(aux, j = cc, value = norm_key(dt[[cc]]))
+  }
+  data.table::set(aux, j = "ponto", value = norm_key(dt[[ponto_col]]))
+
+  campos_chave <- c(by_cols, "ponto")
+  ok <- Reduce(`&`, lapply(campos_chave, function(cc) !is.na(aux[[cc]]) & nzchar(aux[[cc]])))
+  aux[, MONITORA_CHAVE_FINAL := NA_character_]
+  if (any(ok)) {
+    aux[ok, MONITORA_CHAVE_FINAL := do.call(paste, c(.SD, sep = "||")), .SDcols = campos_chave]
+  }
+
+  tipo <- if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_TIPO_ENTRADA"]]) else rep("desconhecido", nrow(dt))
+  fonte <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
+    as.character(dt[["MONITORA_ARQUIVO_ENTRADA"]])
+  } else if (".id" %in% names(dt)) {
+    as.character(dt[[".id"]])
+  } else {
+    rep(NA_character_, nrow(dt))
+  }
+
+  prioridade <- data.table::fifelse(tipo == "pos_tratamento_script", 1L,
+    data.table::fifelse(tipo == "bruto_lote_sismonitora_dev", 2L,
+      data.table::fifelse(tipo == "bruto_individual_sismonitora", 3L, 9L)
+    )
+  )
+  data.table::set(aux, j = "MONITORA_TIPO_ENTRADA", value = tipo)
+  data.table::set(aux, j = "MONITORA_FONTE", value = fonte)
+  data.table::set(aux, j = "MONITORA_PRIORIDADE_DEDUP", value = prioridade)
+
+  cand <- aux[!is.na(MONITORA_CHAVE_FINAL)]
+  if (nrow(cand) == 0) {
+    monitora_log("deduplicacao_final_ponto_ano", "AVISO", NA_character_, "Nenhuma chave final UC/CICLO/CAMPANHA/UA/ANO/ponto confiável encontrada", "mantido sem alteração")
+    rm(aux, cand); monitora_gc("dedup_final_sem_chaves")
+    return(dt)
+  }
+
+  duplicadas <- cand[, .N, by = MONITORA_CHAVE_FINAL][N > 1L]
+  if (nrow(duplicadas) == 0) {
+    monitora_log("deduplicacao_final_ponto_ano", "INFO", NA_character_, "Nenhuma duplicidade final UC/CICLO/CAMPANHA/UA/ANO/ponto encontrada", "sem remoção")
+    rm(aux, cand, duplicadas); monitora_gc("dedup_final_sem_duplicidade")
+    return(dt)
+  }
+
+  data.table::setorder(cand, MONITORA_CHAVE_FINAL, MONITORA_PRIORIDADE_DEDUP, MONITORA_ORDEM_ORIGINAL)
+  manter_ordem <- cand[, .SD[1L], by = MONITORA_CHAVE_FINAL]$MONITORA_ORDEM_ORIGINAL
+  sem_chave <- aux[is.na(MONITORA_CHAVE_FINAL), MONITORA_ORDEM_ORIGINAL]
+  keep <- sort(unique(c(sem_chave, manter_ordem)))
+
+  exportar_chaves <- head(duplicadas$MONITORA_CHAVE_FINAL, MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA)
+  detalhes <- cand[MONITORA_CHAVE_FINAL %in% exportar_chaves,
+    .(
+      n_registros = .N,
+      tipos_entrada = paste(unique(MONITORA_TIPO_ENTRADA), collapse = " | "),
+      arquivos = paste(unique(as.character(MONITORA_FONTE)), collapse = " | "),
+      linhas_originais = paste(MONITORA_ORDEM_ORIGINAL, collapse = " | "),
+      linha_mantida = MONITORA_ORDEM_ORIGINAL[order(MONITORA_PRIORIDADE_DEDUP, MONITORA_ORDEM_ORIGINAL)][1L],
+      tipo_mantido = MONITORA_TIPO_ENTRADA[order(MONITORA_PRIORIDADE_DEDUP, MONITORA_ORDEM_ORIGINAL)][1L],
+      arquivo_mantido = MONITORA_FONTE[order(MONITORA_PRIORIDADE_DEDUP, MONITORA_ORDEM_ORIGINAL)][1L]
+    ),
+    by = MONITORA_CHAVE_FINAL
+  ][n_registros > 1L]
+  detalhes[, auditoria_truncada := nrow(duplicadas) > MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA]
+  detalhes[, n_chaves_duplicadas_total := nrow(duplicadas)]
+  detalhes[, n_chaves_duplicadas_exportadas := nrow(detalhes)]
+
+  saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_deduplicacao_final_ponto_ano_", MONITORA_EXEC_ID, ".csv"))
+  fwrite(detalhes, saida)
+  fwrite(detalhes, file.path(MONITORA_OUTPUT_DIR, "auditoria_deduplicacao_final_ponto_ano_ultima_execucao.csv"))
+
+  removidas_n <- nrow(dt) - length(keep)
+  monitora_log(
+    "deduplicacao_final_ponto_ano",
+    "AVISO",
+    saida,
+    paste0(nrow(duplicadas), " chaves UC/CICLO/CAMPANHA/UA/ANO/ponto duplicadas detectadas; ", removidas_n, " linha(s) removida(s) antes de registros_corrig_stat"),
+    "preferência final: pos_tratamento_script > bruto_lote_sismonitora_dev > bruto_individual_sismonitora > desconhecido"
+  )
+
+  rm(aux, cand, duplicadas, detalhes, manter_ordem, sem_chave); monitora_gc("dedup_final_antes_subconjunto")
+  out <- dt[keep]
+  out[]
 }
 
 monitora_parse_date <- function(x) {
@@ -4773,6 +4910,13 @@ if ("Data (data_hora)" %in% names(registros_corrig)) {
   registros_corrig[, ANO := NA_character_]
   monitora_log("datas", "ERRO", NA_character_, "Coluna Data (data_hora) ausente", "ANO criado como NA")
 }
+# Trava final v2.0.1: após ANO estar calculado e antes das auditorias/estatísticas,
+# remove sobreposições residuais por UC+CICLO+CAMPANHA+UA+ANO+ponto.
+registros_corrig <- monitora_deduplicar_final_por_ponto_ano(registros_corrig)
+registros_corrig <- monitora_drop_legacy_technical_columns(registros_corrig, "pos_deduplicacao_final_ponto_ano")
+monitora_controlar_recursos("deduplicacao_final_ponto_ano", risco = "alto", objeto = registros_corrig, force_log = TRUE)
+monitora_perf_checkpoint("deduplicacao_final_ponto_ano", "trava final por UC+CICLO+CAMPANHA+UA+ANO+ponto antes das estatísticas", registros_corrig)
+
 MONITORA_AUDITORIA_ANOS_INVALIDOS <- monitora_auditar_anos_invalidos(registros_corrig)
 MONITORA_AUDITORIA_COMPLETUDE_101_PONTOS <- monitora_auditar_completude_101_pontos(registros_corrig)
 monitora_perf_checkpoint("auditoria_datas_pontos", "auditoria de ANO plausível e completude de 101 pontos", registros_corrig)
