@@ -1,4 +1,5 @@
-### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do Programa Monitora
+### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
+### Programa Monitora
 ### Versão pública: versão interna 2.0.0
 ###
 ### Finalidade:
@@ -8,13 +9,15 @@
 ### Entradas aceitas:
 ###   - arquivos ZIP exportados individualmente pelo SISMONITORA;
 ###   - arquivos ZIP/CSV/XLSX de exportação em lote da ferramenta em desenvolvimento;
-###   - arquivos registros_corrig*.csv gerados por execuções anteriores, quando usados como nova entrada.
+###   - arquivos registros_corrig*.csv gerados por execuções anteriores, quando usados como nova
+###   entrada.
 ###
 ### Saídas principais:
 ###   - registros_corrig.csv: registros padronizados, deduplicados e auditáveis;
 ###   - registros_corrig_stat.csv: tabela estatística por UC, UA e ano;
 ###   - output/: tabelas analíticas, gráficos e arquivos geográficos, quando habilitados;
-###   - log/: relatórios de execução, auditorias, performance, memória e rastreabilidade de arquivos.
+###   - log/: relatórios de execução, auditorias, performance, memória e rastreabilidade de
+###   arquivos.
 ###
 ### Uso básico:
 ###   1. Coloque este script no diretório de trabalho do projeto.
@@ -28,8 +31,9 @@
 ###   - Parâmetros de performance e memória podem ser ajustados por variáveis de ambiente.
 ###
 ### Citação:
-###   CBC - ICMBio/MMA, 2026. Scripts de análise de dados do Alvo Global do Componente
-###   Campestre Savânico do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio.
+###   CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global Plantas
+###   Herbáceas e Lenhosas, Nativas e Exóticas do Componente Campestre Savânico do Programa
+###   Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio.
 ###
 ### Repositório: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 ### Contato: danilo.correa@icmbio.gov.br
@@ -150,7 +154,8 @@ tryCatch(
 message("MONITORA_BASE_DIR definido como: ", MONITORA_BASE_DIR)
 
 ### Estrutura defensiva de pastas e relatório de execução
-### - input/: opcional; se existir e tiver arquivos, será a origem preferencial dos ZIP/CSV/XLSX brutos.
+### - input/: opcional; se existir e tiver arquivos, será a origem preferencial dos ZIP/CSV/XLSX
+### brutos.
 ### - extracted/: destino limpo das extrações recursivas.
 ### - output/: destino das tabelas, KML e gráficos.
 ### - log/: destino dos relatórios de auditoria da execução.
@@ -367,7 +372,8 @@ MONITORA_MAX_LINHAS_GRAFICOS_AUTO <- monitora_env_int("MONITORA_MAX_LINHAS_GRAFI
 MONITORA_MAX_UAS_KML_AUTO <- monitora_env_int("MONITORA_MAX_UAS_KML_AUTO", if (perfil_rapido) 10000L else 5000L)
 MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA <- monitora_env_int("MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA", if (perfil_economico) 50000L else 100000L)
 
-# Coleta de lixo: "auto" preserva desempenho e executa gc() apenas quando a memória disponível fica baixa.
+# Coleta de lixo: "auto" preserva desempenho e executa gc() apenas quando a memória disponível fica
+# baixa.
 # "agressivo" força gc() nos pontos instrumentados; "desligado" evita gc() manual.
 MONITORA_GC_MODO <- monitora_env_chr("MONITORA_GC_MODO", if (perfil_economico) "auto" else "auto")
 if (!(MONITORA_GC_MODO %in% c("auto", "agressivo", "desligado", "false", "true"))) MONITORA_GC_MODO <- "auto"
@@ -510,7 +516,8 @@ monitora_recurso_modo_por_memoria <- function(mem_available_mb, risco = "normal"
   folga <- mem_available_mb - reserva
 
   # Limiares operacionais:
-  # crítico: preservar usuário/sistema; econômico: evitar falta de memória; equilibrado: boa velocidade;
+  # crítico: preservar usuário/sistema; econômico: evitar falta de memória; equilibrado: boa
+  # velocidade;
   # rápido: usar o máximo possível de recursos, preservando reserva para sistema/Firefox/RStudio.
   modo <- if (folga <= 0) {
     "critico"
@@ -560,7 +567,8 @@ monitora_controlar_recursos <- function(etapa = NA_character_, risco = "normal",
   threads_prev <- suppressWarnings(as.integer(data.table::getDTthreads()))
   batch_prev <- suppressWarnings(as.integer(MONITORA_BATCH_SIZE_CSV_ATUAL))
 
-  # Se o objeto informado já é muito grande em relação à folga, aumenta o nível de risco para reduzir pico
+  # Se o objeto informado já é muito grande em relação à folga, aumenta o nível de risco para
+  # reduzir pico
   # em operações subsequentes que podem copiar vetores temporários.
   objeto_mb <- NA_real_
   if (!is.null(objeto)) {
@@ -1093,7 +1101,8 @@ monitora_consolidate_aliases <- function(dt) {
 
 ### Detecção formal do tipo de entrada por nome de arquivo e cabeçalho.
 ### O objetivo é distinguir: exportação individual do SISMONITORA, exportação em lote
-### da ferramenta em desenvolvimento e arquivos pós-tratamento registros_corrig*.csv usados como entrada.
+### da ferramenta em desenvolvimento e arquivos pós-tratamento registros_corrig*.csv usados como
+### entrada.
 monitora_detectar_tipo_csv <- function(path) {
   base <- basename(path)
   header <- tryCatch(
@@ -1107,14 +1116,16 @@ monitora_detectar_tipo_csv <- function(path) {
     return("pos_tratamento_script")
   }
 
-  # Exportação em lote da ferramenta em desenvolvimento: normalmente CSV consolidado com caminhos internos
+  # Exportação em lote da ferramenta em desenvolvimento: normalmente CSV consolidado com caminhos
+  # internos
   # do formulário e colunas com sufixos de nomes repetidos, como uc...5.
   if (any(header %in% c("amostragem/registro/ponto_amostral", "amostragem/registro/ponto_metro", "amostragem/registro/uuid", "coleta_uuid", "data_do_registro")) ||
       any(grepl("^uc\\.\\.\\.[0-9]+$", header))) {
     return("bruto_lote_sismonitora_dev")
   }
 
-  # Exportação individual tradicional: CSVs de uma coleta, frequentemente extraídos de ZIPs internos,
+  # Exportação individual tradicional: CSVs de uma coleta, frequentemente extraídos de ZIPs
+  # internos,
   # com colunas em maiúsculas no cabeçalho principal.
   if (all(c("UUID", "COLETA", "UC", "CICLO", "CAMPANHA", "UA") %in% header) ||
       all(c("uuid", "coleta", "uc", "ciclo", "campanha", "ua") %in% header_canon)) {
@@ -1755,7 +1766,8 @@ monitora_parse_date <- function(x) {
     if (any(ok)) out[idx[ok]] <- parsed[ok]
   }
 
-  # Segunda tentativa com a parte anterior ao espaço, útil para datas com hora/fuso não padronizados.
+  # Segunda tentativa com a parte anterior ao espaço, útil para datas com hora/fuso não
+  # padronizados.
   for (fmt in formats[1:18]) {
     idx <- which(is.na(out) & !is.na(x_date_only))
     if (length(idx) == 0) break
@@ -1821,7 +1833,8 @@ monitora_extract_recursive_zips <- function(source_dirs, extract_dir) {
 }
 
 # Identifica a cadeia de origem de cada CSV, incluindo ZIP externo e ZIP interno quando houver.
-# Isso facilita a conferência operacional: o relatório mostra tanto o CSV interno quanto o ZIP baixado pelo usuário.
+# Isso facilita a conferência operacional: o relatório mostra tanto o CSV interno quanto o ZIP
+# baixado pelo usuário.
 monitora_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_DIRS, extract_dir = MONITORA_EXTRACT_DIR) {
   paths_norm <- normalizePath(paths, winslash = "/", mustWork = FALSE)
   extract_norm <- normalizePath(extract_dir, winslash = "/", mustWork = FALSE)
@@ -2009,7 +2022,8 @@ monitora_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_
   out[]
 }
 
-### Origem dos dados: se input/ tiver arquivos, usa input/. Caso contrário, usa o diretório do script.
+### Origem dos dados: se input/ tiver arquivos, usa input/. Caso contrário, usa o diretório do
+### script.
 input_has_files <- dir.exists(MONITORA_INPUT_DIR) && length(list.files(MONITORA_INPUT_DIR, recursive = TRUE, all.files = FALSE, no.. = TRUE)) > 0
 MONITORA_SOURCE_DIRS <- if (input_has_files) MONITORA_INPUT_DIR else MONITORA_BASE_DIR
 monitora_log("configuracao", "INFO", MONITORA_SOURCE_DIRS, "diretorio de origem selecionado", ifelse(input_has_files, "input/", "diretorio do script"))
@@ -2040,7 +2054,8 @@ if (exists("xlsx_files")) rm(xlsx_files)
 monitora_perf_checkpoint("conversao_xlsx", "conversão defensiva de XLSX para CSV, quando aplicável")
 
 ### Leitura e concatenação dos CSVs de entrada.
-### Importante: arquivos registros_corrig*.csv são aceitos como entrada válida quando colocados em input/
+### Importante: arquivos registros_corrig*.csv são aceitos como entrada válida quando colocados em
+### input/
 ### ou na pasta-base, pois é comum usar produtos pós-tratamento como base para nova rodada.
 ### Apenas output/, log/ e produtos analíticos/relatórios são excluídos automaticamente.
 all_csvfiles <- list.files(c(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR), pattern = "\\.csv$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
@@ -2139,7 +2154,8 @@ monitora_controlar_recursos("auditoria_csv_hash_md5", risco = if (nrow(csv_audit
 monitora_perf_checkpoint("auditoria_csv_hash_md5", paste0(nrow(csv_audit), " CSV(s) auditados por tamanho e MD5"), csv_audit)
 
 csv_keep <- rep(TRUE, length(csvfiles))
-# Duplicidade confiável: mesmo hash MD5 e mesmo tamanho em bytes. Nesses casos, mantém o primeiro arquivo.
+# Duplicidade confiável: mesmo hash MD5 e mesmo tamanho em bytes. Nesses casos, mantém o primeiro
+# arquivo.
 # Registra CSV interno, ZIP externo e ZIP interno para facilitar a conferência operacional.
 monitora_peek_metadados_csv <- function(path) {
   dt0 <- tryCatch(fread(path, nrows = 1, colClasses = "character", encoding = "UTF-8", na.strings = c("", "NA", "N/A", "NULL"), showProgress = FALSE), error = function(e) NULL)
@@ -2278,7 +2294,8 @@ monitora_perf_checkpoint("limpeza_colunas_tecnicas_legadas", "remoção de colun
 monitora_perf_checkpoint("concatenacao_rbindlist", "concatenação dos CSVs lidos por lotes", registros)
 MONITORA_ARQUIVOS_ENTRADA <- csv_audit[arquivo %in% csvfiles_sucesso, .(arquivo, basename, tipo_entrada, md5, tamanho_bytes, n_linhas, n_colunas, arquivo_entrada_externo, nome_arquivo_entrada_externo, arquivo_zip_externo, nome_zip_externo, arquivo_zip_interno, nome_zip_interno, caminho_relativo_extraido)]
 
-# Normaliza sufixos artificiais tipo ...5 e consolida colunas duplicadas/aliases antes das renomeações específicas do formulário.
+# Normaliza sufixos artificiais tipo ...5 e consolida colunas duplicadas/aliases antes das
+# renomeações específicas do formulário.
 monitora_controlar_recursos("pre_merge_duplicate_columns_importacao", risco = "muito_alto", objeto = registros, force_log = TRUE)
 monitora_perf_checkpoint("pre_merge_duplicate_columns_importacao", "antes do merge econômico de colunas duplicadas/sufixadas", registros)
 registros <- monitora_merge_duplicate_columns(registros)
@@ -2690,7 +2707,8 @@ registros_corrig <- monitora_consolidate_aliases(registros_corrig)
 monitora_perf_checkpoint("consolidacao_aliases_pos_renomeacao", "coalesce de aliases críticos após renomeações", registros_corrig)
 
 # Anota o tipo de entrada antes da auditoria pré-deduplicação.
-# Isso permite auditar a equivalência individual x lote antes de a deduplicação aplicar a preferência de fonte.
+# Isso permite auditar a equivalência individual x lote antes de a deduplicação aplicar a
+# preferência de fonte.
 registros_corrig <- monitora_anotar_tipo_entrada(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
 
 # Quando mais de um tipo de fonte é fornecido na mesma execução, audita a equivalência
@@ -2701,7 +2719,8 @@ monitora_perf_checkpoint("auditoria_compatibilidade_fontes_v12_pre_dedup", "comp
 ### Auditoria de compatibilidade separada por fase, sempre exportada.
 
 ### Deduplicação semântica entre entradas brutas e entradas pós-tratamento aceitas.
-### Mantém produtos pós-tratamento quando houver sobreposição com brutos, pois eles podem conter validações/correções manuais.
+### Mantém produtos pós-tratamento quando houver sobreposição com brutos, pois eles podem conter
+### validações/correções manuais.
 registros_corrig <- monitora_deduplicar_registros_amostrais(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
 registros_corrig <- monitora_drop_legacy_technical_columns(registros_corrig, "pos_deduplicacao")
 monitora_controlar_recursos("deduplicacao_semantica", risco = "alto", objeto = registros_corrig, force_log = TRUE)
@@ -3329,7 +3348,8 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
   )
 
 
-### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por "|")
+### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por
+### "|")
 
 ## ponto amostral
 
@@ -4067,7 +4087,8 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco men
     )
   )
 
-# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))
+# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do
+# solo (D30))
 
 if (is.null(registros_corrig[['Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)']]))
   set(registros_corrig, j = 'Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)', value = NA_character_)
@@ -4778,8 +4799,10 @@ MONITORA_AUDITORIA_COMPLETUDE_101_PONTOS <- monitora_auditar_completude_101_pont
 monitora_perf_checkpoint("auditoria_datas_pontos", "auditoria de ANO plausível e completude de 101 pontos", registros_corrig)
 
 ### Tratamento robusto das coordenadas manipuladas em SISMONITORA/Excel/R.
-### A função preserva latitude/longitude quando há apenas 2 tokens e aceita 4 tokens quando altitude/acurácia existem.
-### Também detecta separador por registro e registra auditoria, evitando substituir vírgulas decimais cegamente.
+### A função preserva latitude/longitude quando há apenas 2 tokens e aceita 4 tokens quando
+### altitude/acurácia existem.
+### Também detecta separador por registro e registra auditoria, evitando substituir vírgulas
+### decimais cegamente.
 coord_cols <- c(
   "Coordenada inicial da amostragem (amostragem)",
   "Coordenada final da amostragem (amostragem)"
@@ -5183,7 +5206,8 @@ monitora_plot_sem_dados <- function(titulo = "Gráfico não gerado", mensagem = 
     ggplot2::theme_void()
 }
 
-## Converte nomes técnicos usados nos objetos analíticos em rótulos curtos para exibição nos gráficos.
+## Converte nomes técnicos usados nos objetos analíticos em rótulos curtos para exibição nos
+## gráficos.
 ## As colunas originais são preservadas para manter compatibilidade com as demais etapas do script.
 monitora_label_categoria_grafico <- function(x) {
   x_chr <- as.character(x)
@@ -6068,7 +6092,8 @@ monitora_perf_checkpoint("analise_herbaceas_lenhosas", "proporção/cobertura he
 ### Proporção relativa de plantas nativas, exóticas, secas ou mortas,
 ### material botânico em decomposição no solo e solo exposto ou rochas.
 
-## Gráficos de nativas, exóticas, seca/morta, material botânico em decomposição e solo exposto ou rochas.
+## Gráficos de nativas, exóticas, seca/morta, material botânico em decomposição e solo exposto ou
+## rochas.
 
 ## reg_corrig_stat_summarise_p2
 
@@ -8239,7 +8264,8 @@ monitora_stat_preparar_dados_linha_base_plot <- function(dados_plot, grupo_grafi
     out <- stat_lab[dados_lab, nomatch = 0L]
     out <- out[!is.na(simbolo_linha_base) & nzchar(simbolo_linha_base)]
   }
-  # Também nos gráficos densos a linha de base só mostra mudanças reais, então não há filtro adicional.
+  # Também nos gráficos densos a linha de base só mostra mudanças reais, então não há filtro
+  # adicional.
   out[]
 }
 
@@ -8329,7 +8355,8 @@ monitora_stat_anotar_grafico_linha_base <- function(plot_obj, grupo_grafico, tip
 
 
 monitora_stat_metadados_plot <- function(nome_plot) {
-  # Inferência padronizada do grupo, métrica e formação a partir do nome do objeto/arquivo do gráfico.
+  # Inferência padronizada do grupo, métrica e formação a partir do nome do objeto/arquivo do
+  # gráfico.
   # Esta função é usada imediatamente antes do ggsave(), garantindo que os símbolos
   # sejam aplicados ao objeto efetivamente exportado.
   nome_plot <- as.character(nome_plot)
@@ -8366,7 +8393,8 @@ monitora_stat_contar_simbolos_plot <- function(plot_obj, grupo_grafico, tipo_met
 
 monitora_stat_anotar_plot_exportacao <- function(plot_obj, nome_plot) {
   # Camada final de segurança: anota símbolos no momento da exportação.
-  # Para evitar duplicidade editorial, símbolos estatísticos só são desenhados em gráficos com rótulos.
+  # Para evitar duplicidade editorial, símbolos estatísticos só são desenhados em gráficos com
+  # rótulos.
   if (!inherits(plot_obj, "ggplot")) return(plot_obj)
   meta <- monitora_stat_metadados_plot(nome_plot)
   if (is.null(meta)) return(plot_obj)
@@ -9190,7 +9218,8 @@ monitora_ggsave_publicavel <- function(filename, plot, width = 11, height = 7, d
   if (!is.null(nome_plot)) {
     plot <- monitora_stat_anotar_plot_exportacao(plot, nome_plot)
   }
-  # Gráficos com rótulos estatísticos precisam de pequena folga vertical para a legenda metodológica.
+  # Gráficos com rótulos estatísticos precisam de pequena folga vertical para a legenda
+  # metodológica.
   if (isTRUE(tem_rotulo)) height <- max(height, 7.60)
   ggplot2::ggsave(
     filename = filename,

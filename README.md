@@ -4,7 +4,7 @@ Scripts de tratamento, auditoria, análise estatística e visualização de dado
 
 ## Versão pública atual
 
-**v2.0.1** — Consolidação estatística, auditoria e relatório textual.
+**v2.0.2** — Revisão editorial para publicação, com manutenção da consolidação estatística, auditoria e relatório textual.
 
 A partir desta versão, o repositório passa a adotar versionamento público semântico.
 
@@ -24,11 +24,11 @@ A mesma versão também é mantida na estrutura interna do projeto:
 
 [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R)
 
-Uma cópia congelada da versão pública `v2.0.1` está disponível em:
+Uma cópia congelada da versão pública `v2.0.2` está disponível em:
 
-[`releases/v2.0.1/monitora_campsav_alvo_global_v2.0.1.R`](releases/v2.0.1/monitora_campsav_alvo_global_v2.0.1.R)
+[`releases/v2.0.2/monitora_campsav_alvo_global_v2.0.2.R`](releases/v2.0.2/monitora_campsav_alvo_global_v2.0.2.R)
 
-## Principais funcionalidades da v2.0.1
+## Principais funcionalidades da v2.0.2
 
 - Importação de múltiplos tipos de entrada: ZIPs do SISMONITORA, CSV/XLSX em lote e arquivos pós-tratamento.
 - Auditoria de arquivos candidatos à importação.
@@ -49,7 +49,7 @@ Uma cópia congelada da versão pública `v2.0.1` está disponível em:
 
 - `MONITORA_CAMPSAV_Alvo_Global.R`: script atual recomendado para uso.
 - `R/monitora_campsav_alvo_global.R`: cópia do script atual na estrutura interna do projeto.
-- `releases/v2.0.1/`: cópia congelada da versão pública `v2.0.1`.
+- `releases/v2.0.2/`: cópia congelada da versão pública `v2.0.2`.
 - `archive/versoes_historicas/`: versões históricas anteriores ao versionamento semântico.
 - `docs/`: documentação auxiliar.
 - `tools/`: ferramentas auxiliares de auditoria e revisão.
@@ -63,7 +63,7 @@ Os scripts `.R` datados foram movidos para:
 
 Esses arquivos representam versões históricas anteriores à adoção do versionamento público semântico. Foram preservados por rastreabilidade.
 
-Na revisão associada à publicação da `v2.0.1`, os comentários dos scripts históricos foram revisados editorialmente e padronizados majoritariamente em português, sem alteração do código ativo.
+Na revisão associada à publicação da `v2.0.0`, os comentários dos scripts históricos foram revisados editorialmente e padronizados majoritariamente em português, sem alteração do código ativo.
 
 A versão recomendada para uso atual é:
 
@@ -71,7 +71,7 @@ A versão recomendada para uso atual é:
 
 ## Uso auxiliar de IA
 
-Na fase de consolidação publicada como `v2.0.1`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração e organização do versionamento público.
+Na fase de consolidação publicada como `v2.0.0`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração e organização do versionamento público.
 
 O uso de IA teve caráter auxiliar. As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados e responsabilidade técnica pelo script permanecem sob responsabilidade do autor.
 
@@ -81,7 +81,7 @@ Mais detalhes em:
 
 ## Backup pré-revisão
 
-O estado do repositório antes da revisão editorial, adoção do versionamento semântico e publicação da `v2.0.1` foi preservado em:
+O estado do repositório antes da revisão editorial, adoção do versionamento semântico e publicação da `v2.0.0` foi preservado em:
 
 - branch: `backup/pre-revisao-editorial-20260610`
 - tag: `pre-revisao-editorial-20260610`
