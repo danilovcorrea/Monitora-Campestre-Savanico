@@ -1,8 +1,32 @@
 # Monitora Campestre-Savânico — Alvo Global
 
-Scripts de tratamento, auditoria, deduplicação, análise estatística e geração de produtos gráficos para dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
+Scripts de tratamento, auditoria, deduplicação, análise estatística e geração de produtos gráficos para dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do **Programa Monitora**.
 
-Versão pública atual: **v2.1.0**.
+Versão pública atual: **v2.1.0** — gráficos editoriais, coortes e consolidação de layout.
+
+A partir da série pública `v2.0.x`, o repositório adota versionamento público semântico.
+
+Consulte também:
+
+- [`VERSION`](VERSION)
+- [`CHANGELOG.md`](CHANGELOG.md)
+- [`docs/versionamento.md`](docs/versionamento.md)
+- [`docs/uso_de_ia.md`](docs/uso_de_ia.md)
+
+## Script recomendado para uso
+
+O script atual recomendado está disponível diretamente na raiz do repositório:
+
+- [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R)
+
+A mesma versão também é mantida nas demais cópias públicas do projeto para compatibilidade e rastreabilidade:
+
+- [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
+- [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R)
+- [`monitora_campsav_alvo_global_v2.1.0.R`](monitora_campsav_alvo_global_v2.1.0.R)
+- [`releases/v2.1.0/monitora_campsav_alvo_global_v2.1.0.R`](releases/v2.1.0/monitora_campsav_alvo_global_v2.1.0.R)
+
+Na publicação da `v2.1.0`, essas cinco cópias públicas do script foram mantidas com conteúdo idêntico e hash SHA256 comum registrado em [`SHA256SUMS.txt`](SHA256SUMS.txt).
 
 ## Finalidade
 
@@ -51,6 +75,73 @@ Em `log/`:
 - Auditoria ampliada de entrada, deduplicação, completude, coordenadas, performance, memória, símbolos estatísticos e layout de rótulos.
 - Motor editorial de rótulos, conectores, símbolos estatísticos, margens e legendas inferiores dos gráficos.
 - Aceitação defensiva de `registros_corrig*.csv` como entrada válida, sem reprocessar automaticamente produtos de `output/` e `log/`.
+
+## Recursos consolidados desde a v2.0.0
+
+A série pública `v2.0.x` consolidou o núcleo de tratamento, auditoria e análise estatística. A versão `v2.1.0` mantém esses recursos e amplia a camada editorial e temporal dos produtos.
+
+Funcionalidades preservadas e ampliadas:
+
+- importação de múltiplos tipos de entrada: ZIPs do SISMONITORA, CSV/XLSX em lote e arquivos pós-tratamento;
+- auditoria de arquivos candidatos à importação;
+- deduplicação semântica de registros equivalentes;
+- verificação de integridade dos dados;
+- tratamento defensivo de colunas, datas, coordenadas e aliases;
+- controle de performance, memória e recursos computacionais;
+- análise estatística inferencial pareada por unidade amostral;
+- comparações ano a ano e contra linha de base acumulada;
+- teste de permutação pareado;
+- intervalo de confiança por bootstrap;
+- correção de múltiplas comparações por FDR;
+- análise de mudança na composição geral com distância de Bray-Curtis;
+- geração de gráficos com rótulos, símbolos estatísticos e legendas explicativas;
+- geração de relatório textual estatístico e ecológico.
+
+## Estrutura do repositório
+
+- `MONITORA_CAMPSAV_Alvo_Global.R`: script atual recomendado para uso.
+- `monitora_campsav_alvo_global.R`: cópia pública equivalente do script atual.
+- `R/monitora_campsav_alvo_global.R`: cópia do script atual na estrutura interna do projeto.
+- `monitora_campsav_alvo_global_v2.1.0.R`: cópia versionada da versão pública atual.
+- `releases/v2.1.0/`: cópia congelada da versão pública `v2.1.0`.
+- `releases/v2.0.0/`, `releases/v2.0.1/`, `releases/v2.0.2/`: versões públicas anteriores preservadas por rastreabilidade.
+- `archive/versoes_historicas/`: versões históricas anteriores ao versionamento público semântico.
+- `docs/`: documentação auxiliar, incluindo versionamento e uso de IA.
+- `tools/`: ferramentas auxiliares de auditoria e revisão, quando presentes.
+- `.github/workflows/`: automações do GitHub Actions, quando presentes.
+
+## Scripts históricos
+
+Os scripts `.R` datados ou anteriores à adoção do versionamento público semântico foram movidos para:
+
+- [`archive/versoes_historicas/`](archive/versoes_historicas/)
+
+Esses arquivos representam versões históricas preservadas por rastreabilidade. Na revisão associada à publicação da `v2.0.0`, os comentários dos scripts históricos foram revisados editorialmente e padronizados majoritariamente em português, sem alteração do código ativo.
+
+A versão recomendada para uso atual é:
+
+- [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R)
+
+## Uso auxiliar de IA generativa
+
+Este projeto teve uma fase inicial de desenvolvimento baseada em edição manual, consulta a documentação técnica, exemplos de código e fontes abertas de referência, incluindo fóruns técnicos e materiais de apoio.
+
+A partir da fase de consolidação publicada como `v2.0.0`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração e organização do versionamento público. O uso de IA teve caráter auxiliar.
+
+As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados e responsabilidade técnica pelo script permanecem sob responsabilidade do autor.
+
+Versões anteriores à adoção do versionamento semântico foram preservadas por rastreabilidade histórica e podem refletir diferentes fases de desenvolvimento, inclusive fases sem evidência clara de apoio direto de IA.
+
+Mais detalhes em:
+
+- [`docs/uso_de_ia.md`](docs/uso_de_ia.md)
+
+## Backup pré-revisão
+
+O estado do repositório antes da revisão editorial, adoção do versionamento semântico e publicação da `v2.0.0` foi preservado em:
+
+- branch: `backup/pre-revisao-editorial-20260610`
+- tag: `pre-revisao-editorial-20260610`
 
 ## Requisitos de R
 
@@ -146,7 +237,13 @@ grep -Rni "Versão pública" \
 cat VERSION
 ```
 
-Critério de liberação: os cinco scripts devem ter o mesmo hash, `VERSION` deve conter `2.1.0` e os gráficos de validação devem ter sido conferidos visualmente.
+Critério de liberação: os cinco scripts devem ter o mesmo hash, `VERSION` deve conter a versão pública atual e os gráficos de validação devem ter sido conferidos visualmente.
+
+## Licença
+
+Este projeto está licenciado sob a licença GPL-3.0. Consulte:
+
+- [`LICENSE`](LICENSE)
 
 ## Citação
 
