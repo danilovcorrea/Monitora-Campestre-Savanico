@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.1.1
+### Versão pública: v2.1.2
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -26,7 +26,7 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.1.1:
+### Destaques da versão pública v2.1.2:
 ###   - consolidação dos gráficos temporais editoriais com escopo amostral explícito;
 ###   - inclusão de painéis para amostra total, UAs pareadas em todos os anos e períodos
 ###     consecutivos pareados;

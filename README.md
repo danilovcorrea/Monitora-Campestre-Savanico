@@ -4,9 +4,11 @@ Scripts de tratamento, auditoria, deduplicação, análise estatística e geraç
 
 ## Versão pública atual
 
-**v2.1.1**
+**v2.1.2**
 
-A versão `v2.1.1` é uma revisão editorial e documental da série `v2.1.x`, com padronização dos produtos gráficos, atualização do relatório textual estatístico e substituição pública do termo “coorte” por **painel amostral por ano inicial**.
+A versão `v2.1.2` é uma revisão de refatoração nominal interna e documentação editorial da série `v2.1.x`. Ela padroniza nomes internos de funções, objetos auxiliares, recursos, auditoria, gráficos, layout, estatística e relatório textual, sem alteração esperada nos produtos analíticos principais.
+
+A terminologia pública vigente adota **painéis amostrais por ano inicial** para os subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento. Essa formulação substitui termos anteriores menos precisos e evita ambiguidade ecológica.
 
 ## Consulte também
 
@@ -18,18 +20,22 @@ A versão `v2.1.1` é uma revisão editorial e documental da série `v2.1.x`, co
 
 ## Script recomendado para uso
 
-O script atual recomendado está disponível diretamente na raiz do repositório:
+Use preferencialmente:
 
-- [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R)
+```text
+monitora_campsav_alvo_global.R
+```
 
 A mesma versão também é mantida nas demais cópias públicas do projeto para compatibilidade e rastreabilidade:
 
-- [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R)
-- [`monitora_campsav_alvo_global_v2.1.1.R`](monitora_campsav_alvo_global_v2.1.1.R)
-- [`releases/v2.1.1/monitora_campsav_alvo_global_v2.1.1.R`](releases/v2.1.1/monitora_campsav_alvo_global_v2.1.1.R)
+```text
+MONITORA_CAMPSAV_Alvo_Global.R
+R/monitora_campsav_alvo_global.R
+monitora_campsav_alvo_global_v2.1.2.R
+releases/v2.1.2/monitora_campsav_alvo_global_v2.1.2.R
+```
 
-Na publicação da `v2.1.1`, essas cinco cópias públicas do script foram mantidas com conteúdo idêntico.
+Na publicação da `v2.1.2`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
 
 ## Finalidade
 
@@ -73,28 +79,19 @@ Em `log/`:
 - auditorias de arquivos, tipos de entrada, duplicidades, compatibilidade entre fontes, completude e coordenadas;
 - relatórios de performance, memória e controle de recursos.
 
-## Principais recursos da v2.1.1
+## Principais recursos da v2.1.2
 
-- Revisão editorial da nomenclatura pública dos produtos.
-- Substituição pública de “coortes” por **painéis amostrais por ano inicial**.
-- Explicitação de que esses painéis são subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento, e não coortes ecológicas de indivíduos.
-- Geração de 156 gráficos PNG seriados como `fig_001_...png` a `fig_156_...png`.
-- Consolidação de um índice mestre de gráficos em `output/indice_graficos.csv`.
-- Relatório textual estatístico ampliado e gerado ao final da execução, incorporando:
-  - amostra total;
-  - série pareada total;
-  - comparações pareadas por período editorial;
-  - painéis amostrais por ano inicial;
-  - mudanças por categoria;
-  - composição geral;
-  - comparações contra medição anterior e linha de base acumulada.
-- Inclusão das saídas estatísticas:
+- Refatoração nominal interna de funções utilitárias, objetos globais, controle de recursos, auditoria, gráficos, layout, estatística e relatório textual.
+- Manutenção dos nomes públicos de arquivos, colunas exportadas, variáveis de ambiente e produtos analíticos.
+- Preservação dos hashes dos produtos principais `output/registros_corrig.csv` e `output/registros_corrig_stat.csv` em relação ao baseline de refatoração.
+- Consolidação da nomenclatura pública baseada em **painéis amostrais por ano inicial**.
+- Manutenção dos gráficos publicáveis seriados em `output/plots_png/`.
+- Manutenção do relatório textual estatístico ampliado em `output/relatorio_textual_estatistico.txt`.
+- Manutenção das tabelas estatísticas dos painéis amostrais por ano inicial:
   - `estatisticas_mudanca_ano_a_ano_paineis_ano_inicial.csv`;
   - `estatisticas_mudanca_linha_base_paineis_ano_inicial.csv`;
   - `estatisticas_composicao_geral_ano_a_ano_paineis_ano_inicial.csv`;
   - `estatisticas_composicao_linha_base_paineis_ano_inicial.csv`.
-- Correção da classificação pública da `fig_036` como gráfico de cobertura.
-- Manutenção da rastreabilidade entre nomes públicos seriados e nomes internos legados por meio do índice mestre.
 
 ## Recursos consolidados desde a v2.0.0
 
@@ -123,8 +120,8 @@ Desde a primeira versão pública com versionamento semântico, o projeto consol
 - `MONITORA_CAMPSAV_Alvo_Global.R`: script atual recomendado para uso.
 - `monitora_campsav_alvo_global.R`: cópia pública equivalente do script atual.
 - `R/monitora_campsav_alvo_global.R`: cópia do script atual na estrutura interna do projeto.
-- `monitora_campsav_alvo_global_v2.1.1.R`: cópia versionada da versão pública atual.
-- `releases/v2.1.1/`: cópia congelada da versão pública `v2.1.1`.
+- `monitora_campsav_alvo_global_v2.1.2.R`: cópia versionada da versão pública atual.
+- `releases/v2.1.2/`: cópia congelada da versão pública `v2.1.2`.
 - `releases/v2.1.0/`, `releases/v2.0.0/`, `releases/v2.0.1/`, `releases/v2.0.2/`: versões públicas anteriores preservadas por rastreabilidade.
 - `archive/versoes_historicas/`: versões históricas anteriores ao versionamento público semântico.
 - `docs/`: documentação auxiliar, incluindo versionamento e uso de IA, quando presente.
@@ -151,13 +148,11 @@ Este projeto teve uma fase inicial de desenvolvimento baseada em edição manual
 
 A partir da fase de consolidação publicada como `v2.0.0`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração, organização do versionamento público, análise de logs, padronização de nomenclatura e proposição de testes.
 
-O uso de IA teve caráter auxiliar.
+O uso de IA teve caráter auxiliar. As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados e responsabilidade técnica pelo script permanecem sob responsabilidade do autor.
 
-As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados, execução local e responsabilidade técnica pelo script permanecem sob responsabilidade humana do autor/mantenedor.
+Ferramentas de IA não substituem a validação humana, a execução local do script, a inspeção dos produtos, a comparação de hashes, a auditoria dos logs e a responsabilidade técnica sobre a publicação.
 
-Versões anteriores à adoção do versionamento semântico foram preservadas por rastreabilidade histórica e podem refletir diferentes fases de desenvolvimento, inclusive fases sem evidência clara de apoio direto de IA.
-
-Mais detalhes, quando disponível, em:
+Mais detalhes em:
 
 - [`docs/uso_de_ia.md`](docs/uso_de_ia.md)
 
@@ -202,7 +197,7 @@ Rscript MONITORA_CAMPSAV_Alvo_Global.R
 Também é possível executar a versão pública específica:
 
 ```bash
-Rscript monitora_campsav_alvo_global_v2.1.1.R
+Rscript monitora_campsav_alvo_global_v2.1.2.R
 ```
 
 ## Parâmetros por variáveis de ambiente
@@ -268,22 +263,22 @@ Em gráficos com muitas categorias, a versão sem rótulos pode ser a principal 
 
 ## Painéis amostrais por ano inicial
 
-A v2.1.1 usa a expressão **painéis amostrais por ano inicial** para se referir a subconjuntos longitudinais de UAs agrupadas pelo primeiro ano em que passam a compor uma série de acompanhamento.
+A versão `v2.1.2` usa a expressão **painéis amostrais por ano inicial** para se referir a subconjuntos longitudinais de UAs agrupadas pelo primeiro ano em que passam a compor uma série de acompanhamento.
 
-Esses painéis **não representam coortes ecológicas de indivíduos**. O termo “coorte” foi preservado apenas em nomes internos legados quando necessário para rastreabilidade do código, mas foi substituído nos produtos públicos.
+Esses painéis são subconjuntos amostrais de acompanhamento temporal. Eles não representam grupos ecológicos de indivíduos acompanhados individualmente, mas sim conjuntos de unidades amostrais comparáveis dentro do desenho analítico adotado.
 
 ## Relatório textual estatístico
 
 O relatório `output/relatorio_textual_estatistico.txt` sintetiza os principais achados estatísticos e descreve resultados por UC, formação vegetacional, ano, linha de base, grupo, categoria e escopo amostral.
 
-Na v2.1.1, o relatório passou a incorporar os produtos editoriais e os painéis amostrais por ano inicial, incluindo mudanças por categoria e mudanças de composição geral.
+Na `v2.1.2`, o relatório mantém os produtos editoriais e os painéis amostrais por ano inicial, incluindo mudanças por categoria e mudanças de composição geral.
 
 ## Auditoria antes de publicar uma versão
 
 Antes de subir uma nova versão, conferir:
 
 ```bash
-VERSAO="2.1.1"
+VERSAO="2.1.2"
 TAG="v${VERSAO}"
 
 sha256sum \

@@ -2,6 +2,20 @@
 
 Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 
+## v2.1.2 - Refatoração nominal interna e revisão editorial da documentação
+
+### Alterado
+- Padronização de nomes internos de funções utilitárias, objetos globais, rotinas de recursos, auditoria, gráficos, layout, estatística e relatório textual.
+- Consolidação da nomenclatura pública baseada em **painéis amostrais por ano inicial**, evitando a reintrodução de terminologia ambígua em contexto ecológico.
+- Atualização editorial do `README.md`, com recuperação e revisão das informações sobre uso auxiliar de IA presentes em READMEs das versões públicas desde `v2.0.0`.
+- Preservação dos nomes públicos de arquivos, colunas exportadas, variáveis de ambiente e produtos analíticos.
+
+### Validação
+- `output/registros_corrig.csv` preservado com hash idêntico ao baseline de refatoração.
+- `output/registros_corrig_stat.csv` preservado com hash idêntico ao baseline de refatoração.
+- Scripts principais sincronizados e validados por parse.
+- Refatoração nominal sem alteração esperada nos produtos analíticos principais.
+
 ## [v2.1.1] - 2026-06-12
 
 ### Destaques
