@@ -100,7 +100,7 @@ library("sf")
 ### Por isso, a resolução abaixo tenta múltiplas fontes e só chama setwd()
 ### quando o diretório existe. Caso contrário, mantém getwd() e registra aviso.
 
-monitora_resolver_base_dir <- function() {
+monitora_io_resolver_diretorio_base <- function() {
   candidatos <- character(0)
 
   if (requireNamespace("rstudioapi", quietly = TRUE)) {
@@ -149,7 +149,7 @@ monitora_resolver_base_dir <- function() {
   normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 }
 
-MONITORA_BASE_DIR <- monitora_resolver_base_dir()
+MONITORA_BASE_DIR <- monitora_io_resolver_diretorio_base()
 
 if (!dir.exists(MONITORA_BASE_DIR)) {
   stop("MONITORA_BASE_DIR não existe: ", MONITORA_BASE_DIR)
@@ -196,7 +196,7 @@ MONITORA_REPORT <- data.table(
   acao = character()
 )
 
-monitora_log <- function(etapa, severidade = "INFO", arquivo = NA_character_, detalhe = NA_character_, acao = NA_character_) {
+monitora_log_registrar_evento <- function(etapa, severidade = "INFO", arquivo = NA_character_, detalhe = NA_character_, acao = NA_character_) {
   # Mantém o log de execução em estrutura data.table, usando rbindlist() para reduzir sobrecarga
   # em relação a rbind() incremental.
   MONITORA_REPORT <<- data.table::rbindlist(
@@ -216,7 +216,7 @@ monitora_log <- function(etapa, severidade = "INFO", arquivo = NA_character_, de
   invisible(TRUE)
 }
 
-monitora_as_dt_ref <- function(x) {
+monitora_dt_referenciar <- function(x) {
   # Converte para data.table por referência sempre que possível.
   # Evita cópias desnecessárias de objetos grandes.
   if (!data.table::is.data.table(x)) data.table::setDT(x)
@@ -242,7 +242,7 @@ monitora_join_padronizar_chaves <- function(x, y, by) {
 monitora_dt_unique_por_chaves <- function(dt, by, contexto = "join") {
   # Garante uma linha por chave antes das junções de anotação ou estatística.
   # Evita explosões muitos-para-muitos em data.table sem usar allow.cartesian=TRUE.
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   by <- by[by %in% names(dt)]
   if (length(by) == 0 || nrow(dt) == 0) return(dt)
   dup <- dt[, .N, by = by][N > 1L]
@@ -262,8 +262,8 @@ monitora_dt_unique_por_chaves <- function(dt, by, contexto = "join") {
 monitora_dt_left_join <- function(x, y, by) {
   # Junção à esquerda com chaves data.table, preservando a ordem original de x.
   # Evita o merge() genérico e reduz cópias em junções frequentes.
-  x <- monitora_as_dt_ref(x)
-  y <- monitora_as_dt_ref(y)
+  x <- monitora_dt_referenciar(x)
+  y <- monitora_dt_referenciar(y)
   by <- by[by %in% names(x) & by %in% names(y)]
   if (length(by) == 0) return(x)
   ord_col <- ".MONITORA_ORDEM_JOIN_TMP"
@@ -285,7 +285,7 @@ monitora_dt_full_join_list <- function(lst, by) {
   # depois anexa cada tabela por junção à esquerda chaveada. Evita Reduce()+merge().
   lst <- Filter(function(z) !is.null(z) && nrow(z) > 0, lst)
   if (length(lst) == 0) return(data.table::data.table())
-  lst <- lapply(lst, monitora_as_dt_ref)
+  lst <- lapply(lst, monitora_dt_referenciar)
   by <- by[Reduce(`&`, lapply(lst, function(z) by %in% names(z)))]
   if (length(by) == 0) return(data.table::rbindlist(lst, fill = TRUE, use.names = TRUE))
   keys <- data.table::rbindlist(lapply(lst, function(z) unique(z[, ..by])), fill = TRUE, use.names = TRUE)
@@ -304,7 +304,7 @@ monitora_dt_full_join_list <- function(lst, by) {
   out[]
 }
 
-monitora_move_before <- function(dt, cols, before) {
+monitora_dt_mover_colunas_antes <- function(dt, cols, before) {
   # Reposiciona colunas por referência, sem copiar objetos grandes.
   if (!data.table::is.data.table(dt)) data.table::setDT(dt)
   cols <- cols[cols %in% names(dt)]
@@ -317,7 +317,7 @@ monitora_move_before <- function(dt, cols, before) {
   invisible(dt)
 }
 
-monitora_sum_cols_dt <- function(dt, cols) {
+monitora_dt_somar_colunas <- function(dt, cols) {
   # Soma colunas por linha usando .SD; em geral é usado em registros_corrig_stat,
   # que é menor que registros_corrig, mas ainda deve evitar cópias desnecessárias.
   if (!data.table::is.data.table(dt)) data.table::setDT(dt)
@@ -326,7 +326,7 @@ monitora_sum_cols_dt <- function(dt, cols) {
   dt[, rowSums(.SD, na.rm = TRUE), .SDcols = cols]
 }
 
-monitora_split_coord_cols_dt <- function(dt, col, novos) {
+monitora_geo_separar_colunas_coordenadas <- function(dt, col, novos) {
   # Divide coordenadas já normalizadas por espaço, sem depender de objetos intermediários grandes.
   if (!data.table::is.data.table(dt)) data.table::setDT(dt)
   if (!(col %in% names(dt))) {
@@ -348,21 +348,21 @@ monitora_split_coord_cols_dt <- function(dt, col, novos) {
 ### MONITORA_PERFIL_EXECUCAO = "auto" (padrão: equilíbrio adaptativo)
 ### MONITORA_PERFIL_EXECUCAO = "rapido" (maior performance; exige RAM folgada)
 ### MONITORA_PERFIL_EXECUCAO = "economico" (menor pico de RAM; pode ser mais lento)
-monitora_env_bool <- function(nome, default = FALSE) {
+monitora_cfg_env_bool <- function(nome, default = FALSE) {
   val <- Sys.getenv(nome, unset = ifelse(default, "true", "false"))
   tolower(trimws(val)) %in% c("1", "true", "t", "sim", "s", "yes", "y")
 }
-monitora_env_int <- function(nome, default) {
+monitora_cfg_env_int <- function(nome, default) {
   val <- suppressWarnings(as.integer(Sys.getenv(nome, unset = as.character(default))))
   ifelse(is.na(val) || val < 1L, as.integer(default), val)
 }
-monitora_env_chr <- function(nome, default) {
+monitora_cfg_env_chr <- function(nome, default) {
   val <- Sys.getenv(nome, unset = default)
   val <- tolower(trimws(val))
   if (!nzchar(val)) default else val
 }
 
-MONITORA_PERFIL_EXECUCAO <- monitora_env_chr("MONITORA_PERFIL_EXECUCAO", "auto")
+MONITORA_PERFIL_EXECUCAO <- monitora_cfg_env_chr("MONITORA_PERFIL_EXECUCAO", "auto")
 if (!(MONITORA_PERFIL_EXECUCAO %in% c("auto", "rapido", "economico", "conservador"))) {
   MONITORA_PERFIL_EXECUCAO <- "auto"
 }
@@ -381,25 +381,25 @@ default_threads <- if (perfil_rapido) {
   min(4L, max(1L, parallel::detectCores(logical = FALSE)))
 }
 
-MONITORA_BATCH_SIZE_CSV <- monitora_env_int("MONITORA_BATCH_SIZE_CSV", default_batch)
-MONITORA_AUDITORIA_COORDENADAS_COMPLETA <- monitora_env_bool("MONITORA_AUDITORIA_COORDENADAS_COMPLETA", FALSE)
-MONITORA_EXPORTAR_GRAFICOS <- monitora_env_bool("MONITORA_EXPORTAR_GRAFICOS", !perfil_economico)
-MONITORA_EXPORTAR_KML <- monitora_env_bool("MONITORA_EXPORTAR_KML", !perfil_economico)
-MONITORA_MAX_LINHAS_GRAFICOS_AUTO <- monitora_env_int("MONITORA_MAX_LINHAS_GRAFICOS_AUTO", if (perfil_rapido) 500000L else 250000L)
-MONITORA_MAX_UAS_KML_AUTO <- monitora_env_int("MONITORA_MAX_UAS_KML_AUTO", if (perfil_rapido) 10000L else 5000L)
-MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA <- monitora_env_int("MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA", if (perfil_economico) 50000L else 100000L)
+MONITORA_BATCH_SIZE_CSV <- monitora_cfg_env_int("MONITORA_BATCH_SIZE_CSV", default_batch)
+MONITORA_AUDITORIA_COORDENADAS_COMPLETA <- monitora_cfg_env_bool("MONITORA_AUDITORIA_COORDENADAS_COMPLETA", FALSE)
+MONITORA_EXPORTAR_GRAFICOS <- monitora_cfg_env_bool("MONITORA_EXPORTAR_GRAFICOS", !perfil_economico)
+MONITORA_EXPORTAR_KML <- monitora_cfg_env_bool("MONITORA_EXPORTAR_KML", !perfil_economico)
+MONITORA_MAX_LINHAS_GRAFICOS_AUTO <- monitora_cfg_env_int("MONITORA_MAX_LINHAS_GRAFICOS_AUTO", if (perfil_rapido) 500000L else 250000L)
+MONITORA_MAX_UAS_KML_AUTO <- monitora_cfg_env_int("MONITORA_MAX_UAS_KML_AUTO", if (perfil_rapido) 10000L else 5000L)
+MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA <- monitora_cfg_env_int("MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA", if (perfil_economico) 50000L else 100000L)
 
 # Coleta de lixo: "auto" preserva desempenho e executa gc() apenas quando a memória disponível fica
 # baixa.
 # "agressivo" força gc() nos pontos instrumentados; "desligado" evita gc() manual.
-MONITORA_GC_MODO <- monitora_env_chr("MONITORA_GC_MODO", if (perfil_economico) "auto" else "auto")
+MONITORA_GC_MODO <- monitora_cfg_env_chr("MONITORA_GC_MODO", if (perfil_economico) "auto" else "auto")
 if (!(MONITORA_GC_MODO %in% c("auto", "agressivo", "desligado", "false", "true"))) MONITORA_GC_MODO <- "auto"
 if (identical(MONITORA_GC_MODO, "true")) MONITORA_GC_MODO <- "agressivo"
 if (identical(MONITORA_GC_MODO, "false")) MONITORA_GC_MODO <- "desligado"
 MONITORA_GC_AGRESSIVO <- identical(MONITORA_GC_MODO, "agressivo")
-MONITORA_GC_AUTO_MIN_MEM_MB <- monitora_env_int("MONITORA_GC_AUTO_MIN_MEM_MB", if (perfil_economico) 6000L else 4000L)
+MONITORA_GC_AUTO_MIN_MEM_MB <- monitora_cfg_env_int("MONITORA_GC_AUTO_MIN_MEM_MB", if (perfil_economico) 6000L else 4000L)
 
-MONITORA_DT_THREADS <- monitora_env_int("MONITORA_DT_THREADS", default_threads)
+MONITORA_DT_THREADS <- monitora_cfg_env_int("MONITORA_DT_THREADS", default_threads)
 tryCatch(data.table::setDTthreads(MONITORA_DT_THREADS), error = function(e) NULL)
 
 ### Usa subdiretório de extração por execução, evitando que resquícios de execuções anteriores
@@ -407,7 +407,7 @@ tryCatch(data.table::setDTthreads(MONITORA_DT_THREADS), error = function(e) NULL
 MONITORA_EXTRACT_BASE_DIR <- MONITORA_EXTRACT_DIR
 MONITORA_EXTRACT_DIR <- file.path(MONITORA_EXTRACT_BASE_DIR, paste0("exec_", MONITORA_EXEC_ID))
 dir.create(MONITORA_EXTRACT_DIR, showWarnings = FALSE, recursive = TRUE)
-monitora_log("configuracao_execucao", "INFO", NA_character_, paste0("perfil=", MONITORA_PERFIL_EXECUCAO, "; batch_csv=", MONITORA_BATCH_SIZE_CSV, "; dt_threads=", MONITORA_DT_THREADS, "; gc_modo=", MONITORA_GC_MODO, "; gc_auto_min_mem_mb=", MONITORA_GC_AUTO_MIN_MEM_MB, "; auditoria_coord_completa=", MONITORA_AUDITORIA_COORDENADAS_COMPLETA, "; exportar_graficos=", MONITORA_EXPORTAR_GRAFICOS, "; exportar_kml=", MONITORA_EXPORTAR_KML), "configuracoes adaptativas de performance/RAM e controlador dinamico")
+monitora_log_registrar_evento("configuracao_execucao", "INFO", NA_character_, paste0("perfil=", MONITORA_PERFIL_EXECUCAO, "; batch_csv=", MONITORA_BATCH_SIZE_CSV, "; dt_threads=", MONITORA_DT_THREADS, "; gc_modo=", MONITORA_GC_MODO, "; gc_auto_min_mem_mb=", MONITORA_GC_AUTO_MIN_MEM_MB, "; auditoria_coord_completa=", MONITORA_AUDITORIA_COORDENADAS_COMPLETA, "; exportar_graficos=", MONITORA_EXPORTAR_GRAFICOS, "; exportar_kml=", MONITORA_EXPORTAR_KML), "configuracoes adaptativas de performance/RAM e controlador dinamico")
 
 monitora_memoria_rss_mb <- function() {
   status_file <- "/proc/self/status"
@@ -448,7 +448,7 @@ monitora_gc <- function(etapa = NA_character_, force = FALSE) {
   gc_executado <- isTRUE(force) || monitora_deve_gc()
   if (gc_executado) invisible(gc(verbose = FALSE))
   ms <- monitora_memoria_sistema()
-  monitora_log(
+  monitora_log_registrar_evento(
     "memoria_gc", "INFO", NA_character_,
     paste0("RSS_MB=", monitora_memoria_rss_mb(), "; mem_available_mb=", ms$mem_available_mb[1], "; gc_executado=", gc_executado),
     paste0("apos=", etapa)
@@ -470,7 +470,7 @@ MONITORA_HARDWARE <- cbind(
 )
 fwrite(MONITORA_HARDWARE, file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")))
 fwrite(MONITORA_HARDWARE, file.path(MONITORA_OUTPUT_DIR, "hardware_memoria_ultima_execucao.csv"))
-monitora_log("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_HARDWARE$swap_total_mb), "usar para diagnosticar estouro de RAM")
+monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_HARDWARE$swap_total_mb), "usar para diagnosticar estouro de RAM")
 
 
 ### Controlador dinâmico de recursos
@@ -496,7 +496,7 @@ MONITORA_RESOURCE_CONTROL <- data.table(
   motivo = character()
 )
 
-monitora_env_num <- function(nome, default) {
+monitora_cfg_env_num <- function(nome, default) {
   val <- suppressWarnings(as.numeric(Sys.getenv(nome, unset = as.character(default))))
   ifelse(is.na(val) || val < 0, as.numeric(default), val)
 }
@@ -508,16 +508,16 @@ monitora_env_num <- function(nome, default) {
 # Reserva padrão: pelo menos 6 GB para sistema/Firefox/RStudio, ou ~18% da RAM se isso for maior.
 # Pode ser ajustada: MONITORA_RAM_RESERVA_USUARIO_MB=8192, por exemplo.
 .default_reserva_mb <- if (is.na(.MONITORA_MEM_TOTAL_INICIAL)) 6144 else max(6144, round(.MONITORA_MEM_TOTAL_INICIAL * 0.18))
-MONITORA_RAM_RESERVA_USUARIO_MB <- monitora_env_int("MONITORA_RAM_RESERVA_USUARIO_MB", .default_reserva_mb)
-MONITORA_RAM_HISTERese_MB <- monitora_env_int("MONITORA_RAM_HISTERESE_MB", 1024L)
-MONITORA_THREADS_RESERVA_SISTEMA <- monitora_env_int("MONITORA_THREADS_RESERVA_SISTEMA", 2L)
-MONITORA_DT_THREADS_MAX <- monitora_env_int("MONITORA_DT_THREADS_MAX", max(1L, .MONITORA_CPU_THREADS_LOGICOS - MONITORA_THREADS_RESERVA_SISTEMA))
-MONITORA_DT_THREADS_MIN <- monitora_env_int("MONITORA_DT_THREADS_MIN", 1L)
-MONITORA_BATCH_CSV_RAPIDO <- monitora_env_int("MONITORA_BATCH_CSV_RAPIDO", max(MONITORA_BATCH_SIZE_CSV, 100L))
-MONITORA_BATCH_CSV_EQUILIBRADO <- monitora_env_int("MONITORA_BATCH_CSV_EQUILIBRADO", max(25L, min(MONITORA_BATCH_CSV_RAPIDO, 50L)))
-MONITORA_BATCH_CSV_ECONOMICO <- monitora_env_int("MONITORA_BATCH_CSV_ECONOMICO", 10L)
-MONITORA_BATCH_CSV_CRITICO <- monitora_env_int("MONITORA_BATCH_CSV_CRITICO", 5L)
-MONITORA_CONTROLE_RECURSOS_GRAVAR_AO_VIVO <- monitora_env_bool("MONITORA_CONTROLE_RECURSOS_GRAVAR_AO_VIVO", TRUE)
+MONITORA_RAM_RESERVA_USUARIO_MB <- monitora_cfg_env_int("MONITORA_RAM_RESERVA_USUARIO_MB", .default_reserva_mb)
+MONITORA_RAM_HISTERese_MB <- monitora_cfg_env_int("MONITORA_RAM_HISTERESE_MB", 1024L)
+MONITORA_THREADS_RESERVA_SISTEMA <- monitora_cfg_env_int("MONITORA_THREADS_RESERVA_SISTEMA", 2L)
+MONITORA_DT_THREADS_MAX <- monitora_cfg_env_int("MONITORA_DT_THREADS_MAX", max(1L, .MONITORA_CPU_THREADS_LOGICOS - MONITORA_THREADS_RESERVA_SISTEMA))
+MONITORA_DT_THREADS_MIN <- monitora_cfg_env_int("MONITORA_DT_THREADS_MIN", 1L)
+MONITORA_BATCH_CSV_RAPIDO <- monitora_cfg_env_int("MONITORA_BATCH_CSV_RAPIDO", max(MONITORA_BATCH_SIZE_CSV, 100L))
+MONITORA_BATCH_CSV_EQUILIBRADO <- monitora_cfg_env_int("MONITORA_BATCH_CSV_EQUILIBRADO", max(25L, min(MONITORA_BATCH_CSV_RAPIDO, 50L)))
+MONITORA_BATCH_CSV_ECONOMICO <- monitora_cfg_env_int("MONITORA_BATCH_CSV_ECONOMICO", 10L)
+MONITORA_BATCH_CSV_CRITICO <- monitora_cfg_env_int("MONITORA_BATCH_CSV_CRITICO", 5L)
+MONITORA_CONTROLE_RECURSOS_GRAVAR_AO_VIVO <- monitora_cfg_env_bool("MONITORA_CONTROLE_RECURSOS_GRAVAR_AO_VIVO", TRUE)
 
 MONITORA_RECURSOS_MODO_ATUAL <- "inicial"
 MONITORA_BATCH_SIZE_CSV_ATUAL <- MONITORA_BATCH_SIZE_CSV
@@ -650,7 +650,7 @@ monitora_controlar_recursos <- function(etapa = NA_character_, risco = "normal",
         fwrite(MONITORA_RESOURCE_CONTROL, file.path(MONITORA_OUTPUT_DIR, "controle_recursos_ultima_execucao.csv"))
       }, error = function(e) NULL)
     }
-    monitora_log(
+    monitora_log_registrar_evento(
       "controle_recursos", "INFO", NA_character_,
       paste0("etapa=", etapa, "; modo=", modo, "; threads=", MONITORA_DT_THREADS_ATUAL,
              "; batch_csv=", MONITORA_BATCH_SIZE_CSV_ATUAL, "; MemAvailable_MB=", mem_avail,
@@ -756,14 +756,14 @@ monitora_perf_write <- function() {
   invisible(TRUE)
 }
 
-monitora_norm_empty <- function(x) {
+monitora_txt_normalizar_vazio <- function(x) {
   x <- as.character(x)
   x <- stringr::str_squish(x)
   x[x %in% c("", "NA", "Na", "na", "N/A", "n/a", "NULL", "null", "NaN", "nan")] <- NA_character_
   x
 }
 
-monitora_base_colname <- function(x) {
+monitora_txt_nome_coluna_base <- function(x) {
   x <- as.character(x)
   x <- stringr::str_replace_all(x, '\\"{4}', '\\"\\"')
   x <- stringr::str_squish(x)
@@ -773,21 +773,21 @@ monitora_base_colname <- function(x) {
   x
 }
 
-monitora_coalesce_vec <- function(...) {
+monitora_vetor_coalesce <- function(...) {
   vals <- list(...)
   if (length(vals) == 0) return(character())
   n <- max(vapply(vals, length, integer(1)))
   vals <- lapply(vals, function(v) rep_len(as.character(v), n))
   out <- rep(NA_character_, n)
   for (v in vals) {
-    v <- monitora_norm_empty(v)
+    v <- monitora_txt_normalizar_vazio(v)
     idx <- is.na(out) & !is.na(v)
     out[idx] <- v[idx]
   }
   out
 }
 
-monitora_merge_duplicate_columns <- function(dt) {
+monitora_dt_consolidar_colunas_duplicadas <- function(dt) {
   # Consolidação adaptativa de colunas duplicadas.
   #
   # Em bases muito grandes, a consolidação completa de todas as colunas duplicadas pode
@@ -801,7 +801,7 @@ monitora_merge_duplicate_columns <- function(dt) {
   #   3) por padrão não concatena valores conflitantes com "__CONFLITO__" em bases
   #      grandes, pois isso pode multiplicar strings e RAM; os conflitos ficam em
   #      auditoria.
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
 
   # Tratamento de cabeçalhos duplicados: alguns CSVs do SISMONITORA podem chegar com nomes de
   # colunas exatamente repetidos no próprio cabeçalho. data.table permite esse
@@ -820,7 +820,7 @@ monitora_merge_duplicate_columns <- function(dt) {
     data.table::setnames(dt, original_names)
   }
 
-  base_names <- monitora_base_colname(original_names_raw)
+  base_names <- monitora_txt_nome_coluna_base(original_names_raw)
 
   protected <- grepl("^MONITORA_", original_names_raw) | original_names_raw %in% c(".id")
   base_names[protected] <- original_names[protected]
@@ -864,7 +864,7 @@ monitora_merge_duplicate_columns <- function(dt) {
     "especie", "espécie", "nome_cientifico", "nome científico",
     "seca_morta", "seca/morta", "nativa", "exotica", "exótica"
   )
-  critical_canon <- unique(monitora_canonical_col(critical_aliases))
+  critical_canon <- unique(monitora_txt_canonicalizar_coluna(critical_aliases))
 
   groups <- split(original_names, base_names)
   audit_list <- vector("list", length(groups))
@@ -904,7 +904,7 @@ monitora_merge_duplicate_columns <- function(dt) {
       # Em modo seletivo e tabela grande, evita renomear colunas não críticas
       # apenas para remover sufixo ...N; isso reduz risco de colisões e mantém
       # rastreabilidade do cabeçalho original.
-      base_can <- monitora_canonical_col(safe_col)
+      base_can <- monitora_txt_canonicalizar_coluna(safe_col)
       if (!isTRUE(seletivo) || base_can %in% critical_canon || grepl("^MONITORA_", current_col) || current_col %in% c(".id")) {
         new_name <- make_safe_name(safe_col, current_col)
         if (!identical(current_col, new_name)) data.table::setnames(dt, current_col, new_name)
@@ -912,8 +912,8 @@ monitora_merge_duplicate_columns <- function(dt) {
       next
     }
 
-    base_can <- monitora_canonical_col(safe_col)
-    cols_can <- unique(monitora_canonical_col(cols))
+    base_can <- monitora_txt_canonicalizar_coluna(safe_col)
+    cols_can <- unique(monitora_txt_canonicalizar_coluna(cols))
     grupo_critico <- base_can %in% critical_canon || any(cols_can %in% critical_canon)
 
     if (isTRUE(seletivo) && !isTRUE(grupo_critico)) {
@@ -940,9 +940,9 @@ monitora_merge_duplicate_columns <- function(dt) {
     # Tabelas pequenas/médias: caminho vetorial mais rápido.
     usar_chunk <- isTRUE(seletivo) || (!is.na(objeto_mb) && objeto_mb >= limite_obj_mb)
     if (!usar_chunk) {
-      merged <- monitora_norm_empty(as.character(dt[[primary]]))
+      merged <- monitora_txt_normalizar_vazio(as.character(dt[[primary]]))
       for (col in dup_cols) {
-        v <- monitora_norm_empty(as.character(dt[[col]]))
+        v <- monitora_txt_normalizar_vazio(as.character(dt[[col]]))
         fill_idx <- is.na(merged) & !is.na(v)
         if (any(fill_idx)) merged[fill_idx] <- v[fill_idx]
         conflito <- !is.na(merged) & !is.na(v) & merged != v
@@ -969,8 +969,8 @@ monitora_merge_duplicate_columns <- function(dt) {
         for (st in seq_starts) {
           en <- min(st + chunk_n - 1L, n_linhas_dt)
           ii <- st:en
-          p <- monitora_norm_empty(dt[[primary]][ii])
-          v <- monitora_norm_empty(dt[[col]][ii])
+          p <- monitora_txt_normalizar_vazio(dt[[primary]][ii])
+          v <- monitora_txt_normalizar_vazio(dt[[col]][ii])
 
           fill_idx <- is.na(p) & !is.na(v)
           if (any(fill_idx)) {
@@ -1027,15 +1027,15 @@ monitora_merge_duplicate_columns <- function(dt) {
 }
 
 
-monitora_drop_legacy_technical_columns <- function(dt, momento = "importacao") {
-  dt <- monitora_as_dt_ref(dt)
+monitora_dt_remover_colunas_tecnicas_legadas <- function(dt, momento = "importacao") {
+  dt <- monitora_dt_referenciar(dt)
   # Arquivos pós-tratamento usados como entrada podem trazer colunas técnicas
   # de execuções anteriores, como .id.1, .id.2 etc. Elas não representam
   # dados do protocolo nem a origem da execucao atual. A coluna .id da execucao
   # atual é preservada/reconstruida separadamente.
   legacy_cols <- grep("^\\.id\\.[0-9]+$", names(dt), value = TRUE)
   if (length(legacy_cols) > 0) {
-    monitora_log(
+    monitora_log_registrar_evento(
       "limpeza_colunas_tecnicas_legadas",
       "INFO",
       NA_character_,
@@ -1048,27 +1048,27 @@ monitora_drop_legacy_technical_columns <- function(dt, momento = "importacao") {
 }
 
 
-monitora_strip_accents <- function(x) {
+monitora_txt_remover_acentos <- function(x) {
   y <- iconv(x, from = "", to = "ASCII//TRANSLIT")
   y[is.na(y)] <- x[is.na(y)]
   y
 }
 
-monitora_canonical_col <- function(x) {
-  y <- monitora_base_colname(x)
-  y <- tolower(monitora_strip_accents(y))
+monitora_txt_canonicalizar_coluna <- function(x) {
+  y <- monitora_txt_nome_coluna_base(x)
+  y <- tolower(monitora_txt_remover_acentos(y))
   y <- stringr::str_replace_all(y, "[[:space:]]+", " ")
   y <- stringr::str_squish(y)
   y
 }
 
-monitora_consolidate_aliases <- function(dt) {
+monitora_dt_consolidar_aliases_colunas <- function(dt) {
   # Consolidação de aliases com menor uso de memória.
   # Evita materializar várias colunas grandes ao mesmo tempo durante a consolidação.
   # A consolidação é feita par a par, com remoção imediata das colunas auxiliares.
   # Isso reduz o pico de memória em bases grandes.
-  dt <- monitora_as_dt_ref(dt)
-  canon <- monitora_canonical_col(names(dt))
+  dt <- monitora_dt_referenciar(dt)
+  canon <- monitora_txt_canonicalizar_coluna(names(dt))
   alias_map <- list(
     "UC" = c("uc", "unidade de conservacao", "unidade de conservação"),
     "UA" = c("ua", "unidade amostral", "amostragem/unidade_amostral"),
@@ -1091,7 +1091,7 @@ monitora_consolidate_aliases <- function(dt) {
   for (target in names(alias_map)) {
     alias_i <- alias_i + 1L
     monitora_controlar_recursos(paste0("consolidate_aliases_", alias_i, "_", target), risco = "alto", objeto = dt, force_log = FALSE)
-    idx <- which(canon %in% monitora_canonical_col(alias_map[[target]]))
+    idx <- which(canon %in% monitora_txt_canonicalizar_coluna(alias_map[[target]]))
     if (length(idx) == 0) next
     alias_cols <- names(dt)[idx]
     alias_cols <- alias_cols[alias_cols %in% names(dt)]
@@ -1112,19 +1112,19 @@ monitora_consolidate_aliases <- function(dt) {
 
     for (col in alias_cols) {
       if (!(col %in% names(dt)) || identical(col, target)) next
-      alvo <- monitora_norm_empty(as.character(dt[[target]]))
-      aux <- monitora_norm_empty(as.character(dt[[col]]))
+      alvo <- monitora_txt_normalizar_vazio(as.character(dt[[target]]))
+      aux <- monitora_txt_normalizar_vazio(as.character(dt[[col]]))
       fill_idx <- is.na(alvo) & !is.na(aux)
       if (any(fill_idx)) alvo[fill_idx] <- aux[fill_idx]
       data.table::set(dt, j = target, value = alvo)
       dt[, (col) := NULL]
-      monitora_log("consolidacao_aliases", "INFO", NA_character_, paste0(target, " consolidado de: ", col), "coluna auxiliar removida apos coalesce")
+      monitora_log_registrar_evento("consolidacao_aliases", "INFO", NA_character_, paste0(target, " consolidado de: ", col), "coluna auxiliar removida apos coalesce")
       rm(alvo, aux, fill_idx)
       if (monitora_deve_gc()) gc(verbose = FALSE)
     }
 
     # Recalcula nomes canônicos porque colunas podem ter sido removidas/renomeadas.
-    canon <- monitora_canonical_col(names(dt))
+    canon <- monitora_txt_canonicalizar_coluna(names(dt))
   }
   dt
 }
@@ -1136,13 +1136,13 @@ monitora_consolidate_aliases <- function(dt) {
 ### Detecção formal do tipo de entrada por nome de arquivo e cabeçalho.
 ### O objetivo é distinguir: exportação individual do SISMONITORA, exportação em lote
 ### de exportação em lote e arquivos pós-tratamento registros_corrig*.csv usados como entrada.
-monitora_detectar_tipo_csv <- function(path) {
+monitora_io_detectar_tipo_csv <- function(path) {
   base <- basename(path)
   header <- tryCatch(
     names(fread(path, nrows = 0, encoding = "UTF-8", check.names = FALSE, showProgress = FALSE)),
     error = function(e) character()
   )
-  header_canon <- monitora_canonical_col(header)
+  header_canon <- monitora_txt_canonicalizar_coluna(header)
 
   if (grepl("registros[._-]?corrig|corrigido|corrigida|pos[._-]?trat|p[oó]s[._-]?trat|registros_corrig", base, ignore.case = TRUE) ||
       any(header %in% c("MONITORA_TIPO_ENTRADA", "MONITORA_ARQUIVO_ENTRADA", "MONITORA_ARQUIVO_ORIGEM_EXECUCAO"))) {
@@ -1167,7 +1167,7 @@ monitora_detectar_tipo_csv <- function(path) {
   "desconhecido"
 }
 
-monitora_resumir_fontes_por_tipo <- function(csv_audit) {
+monitora_io_resumir_fontes_por_tipo <- function(csv_audit) {
   if (is.null(csv_audit) || nrow(csv_audit) == 0 || !"tipo_entrada" %in% names(csv_audit)) return(invisible(NULL))
   resumo <- csv_audit[, .(
     n_arquivos = .N,
@@ -1179,14 +1179,14 @@ monitora_resumir_fontes_por_tipo <- function(csv_audit) {
   resumo[is.infinite(n_colunas_min), n_colunas_min := NA_integer_]
   resumo[is.infinite(n_colunas_max), n_colunas_max := NA_integer_]
   fwrite(resumo, file.path(MONITORA_LOG_DIR, paste0("auditoria_tipos_entrada_", MONITORA_EXEC_ID, ".csv")))
-  monitora_log("tipos_entrada", "INFO", NA_character_, paste(paste0(resumo$tipo_entrada, ": ", resumo$n_arquivos, " arquivo(s)"), collapse = " | "), "ver auditoria_tipos_entrada")
+  monitora_log_registrar_evento("tipos_entrada", "INFO", NA_character_, paste(paste0(resumo$tipo_entrada, ": ", resumo$n_arquivos, " arquivo(s)"), collapse = " | "), "ver auditoria_tipos_entrada")
   invisible(resumo)
 }
 
 
 # Normaliza nomes públicos dos tipos de entrada, preservando compatibilidade com
 # arquivos tratados por edições anteriores do script.
-monitora_normalizar_tipo_entrada <- function(tipo) {
+monitora_io_normalizar_tipo_entrada <- function(tipo) {
   tipo <- as.character(tipo)
   tipo[tipo == paste0("bruto_lote_sismonitora", "_", "d", "ev")] <- "bruto_lote_sismonitora"
   tipo
@@ -1195,10 +1195,10 @@ monitora_normalizar_tipo_entrada <- function(tipo) {
 # Anota o tipo de entrada antes da deduplicação, permitindo auditoria pré-deduplicação real.
 # A coluna MONITORA_TIPO_ENTRADA precisa existir antes das auditorias de compatibilidade.
 # Sem essa coluna, a auditoria pré-deduplicação ficaria limitada.
-monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
-  dt <- monitora_as_dt_ref(dt)
+monitora_io_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
+  dt <- monitora_dt_referenciar(dt)
   if ("MONITORA_TIPO_ENTRADA" %in% names(dt) && any(!is.na(dt$MONITORA_TIPO_ENTRADA))) {
-    data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = monitora_normalizar_tipo_entrada(dt$MONITORA_TIPO_ENTRADA))
+    data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = monitora_io_normalizar_tipo_entrada(dt$MONITORA_TIPO_ENTRADA))
     return(dt)
   }
   source_col <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
@@ -1212,7 +1212,7 @@ monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
     # Evita cópia rasa de data.table ao adicionar coluna em objeto já copiado pelo R.
     data.table::setalloccol(dt, ncol(dt) + 8L)
     data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = rep("desconhecido", nrow(dt)))
-    monitora_log("tipos_entrada", "AVISO", NA_character_, "Coluna de proveniência ausente; MONITORA_TIPO_ENTRADA definido como desconhecido", "auditoria pre_dedup limitada")
+    monitora_log_registrar_evento("tipos_entrada", "AVISO", NA_character_, "Coluna de proveniência ausente; MONITORA_TIPO_ENTRADA definido como desconhecido", "auditoria pre_dedup limitada")
     return(dt)
   }
   id_chr <- basename(as.character(dt[[source_col]]))
@@ -1222,7 +1222,7 @@ monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
     idx <- match(id_chr, names(tipo_map))
     tipo[!is.na(idx)] <- tipo_map[idx[!is.na(idx)]]
   }
-  tipo <- monitora_normalizar_tipo_entrada(tipo)
+  tipo <- monitora_io_normalizar_tipo_entrada(tipo)
   # setalloccol() + set() reduz o risco de cópia rasa ao adicionar colunas em data.table.
   data.table::setalloccol(dt, ncol(dt) + 8L)
   data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = tipo)
@@ -1231,7 +1231,7 @@ monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
 
 
 monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   fase <- as.character(fase)[1]
   if (is.na(fase) || fase == "") fase <- "sem_fase"
   fase_segura <- gsub("[^A-Za-z0-9_]+", "_", fase)
@@ -1243,7 +1243,7 @@ monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
       n_registros_total = nrow(dt)
     )
     fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Coluna MONITORA_TIPO_ENTRADA ausente; auditoria limitada", paste0("fase=", fase))
+    monitora_log_registrar_evento("compatibilidade_fontes", "AVISO", NA_character_, "Coluna MONITORA_TIPO_ENTRADA ausente; auditoria limitada", paste0("fase=", fase))
     return(invisible(aud))
   }
 
@@ -1283,11 +1283,11 @@ monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
       n_registros_total = nrow(dt)
     )
     fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Colunas mínimas ausentes; auditoria de compatibilidade limitada", paste0("fase=", fase))
+    monitora_log_registrar_evento("compatibilidade_fontes", "AVISO", NA_character_, "Colunas mínimas ausentes; auditoria de compatibilidade limitada", paste0("fase=", fase))
     return(invisible(aud))
   }
 
-  norm_key <- function(x) stringr::str_squish(toupper(as.character(monitora_norm_empty(x))))
+  norm_key <- function(x) stringr::str_squish(toupper(as.character(monitora_txt_normalizar_vazio(x))))
   tmp <- data.table(
     UC = norm_key(get_col(uc_col)),
     CICLO = norm_key(get_col(ciclo_col)),
@@ -1306,7 +1306,7 @@ monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
       n_registros_total = nrow(dt)
     )
     fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Nenhum registro válido para auditoria de compatibilidade", paste0("fase=", fase))
+    monitora_log_registrar_evento("compatibilidade_fontes", "AVISO", NA_character_, "Nenhum registro válido para auditoria de compatibilidade", paste0("fase=", fase))
     return(invisible(aud))
   }
 
@@ -1354,7 +1354,7 @@ monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
 
   saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
   fwrite(aud_wide, saida)
-  monitora_log("compatibilidade_fontes", "INFO", NA_character_, paste0(nrow(aud_wide), " grupos UC+CICLO+CAMPANHA+UA auditados; fase=", fase), basename(saida))
+  monitora_log_registrar_evento("compatibilidade_fontes", "INFO", NA_character_, paste0(nrow(aud_wide), " grupos UC+CICLO+CAMPANHA+UA auditados; fase=", fase), basename(saida))
   invisible(aud_wide)
 }
 
@@ -1607,7 +1607,7 @@ monitora_criar_resumo_achados_validacao <- function() {
   saida_out <- file.path(MONITORA_OUTPUT_DIR, "auditoria_resumo_achados_relevantes_ultima_execucao.csv")
   fwrite(resumo, saida_log)
   fwrite(resumo, saida_out)
-  monitora_log("resumo_achados_validacao", "INFO", saida_log, paste0(nrow(resumo), " achado(s) consolidado(s) para verificação/validação"), "também exportado em output/auditoria_resumo_achados_relevantes_ultima_execucao.csv")
+  monitora_log_registrar_evento("resumo_achados_validacao", "INFO", saida_log, paste0(nrow(resumo), " achado(s) consolidado(s) para verificação/validação"), "também exportado em output/auditoria_resumo_achados_relevantes_ultima_execucao.csv")
   invisible(resumo)
 }
 
@@ -1615,7 +1615,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
   # Deduplicação semântica com tabela auxiliar estreita.
   # A tabela auxiliar contém apenas colunas necessárias para ordenar e selecionar registros.
   # Isso evita copiar todas as colunas durante a deduplicação.
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   source_col <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
     "MONITORA_ARQUIVO_ENTRADA"
   } else if (".id" %in% names(dt)) {
@@ -1624,7 +1624,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     NA_character_
   }
   if (is.na(source_col)) {
-    monitora_log("deduplicacao_semantica", "AVISO", NA_character_, "Coluna de proveniência ausente; deduplicacao semantica por arquivo nao executada", "mantido sem alteracao")
+    monitora_log_registrar_evento("deduplicacao_semantica", "AVISO", NA_character_, "Coluna de proveniência ausente; deduplicacao semantica por arquivo nao executada", "mantido sem alteracao")
     return(dt)
   }
 
@@ -1634,11 +1634,11 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     tipo_map <- setNames(as.character(arquivos_entrada$tipo_entrada), as.character(arquivos_entrada$basename))
     tipo[!is.na(tipo_map[id_chr])] <- tipo_map[id_chr[!is.na(tipo_map[id_chr])]]
   }
-  tipo <- monitora_normalizar_tipo_entrada(tipo)
+  tipo <- monitora_io_normalizar_tipo_entrada(tipo)
   data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = tipo)
 
   norm_key <- function(x) {
-    x <- monitora_norm_empty(x)
+    x <- monitora_txt_normalizar_vazio(x)
     x <- stringr::str_squish(toupper(as.character(x)))
     x
   }
@@ -1652,13 +1652,13 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     NA_character_
   }
 
-  uuid_registro <- monitora_norm_empty(monitora_coalesce_vec(
+  uuid_registro <- monitora_txt_normalizar_vazio(monitora_vetor_coalesce(
     get_col("uuid (amostragem/registro)"),
     get_col("amostragem/registro/uuid")
   ))
-  uuid_fallback <- monitora_norm_empty(monitora_coalesce_vec(get_col("UUID"), get_col("uuid")))
+  uuid_fallback <- monitora_txt_normalizar_vazio(monitora_vetor_coalesce(get_col("UUID"), get_col("uuid")))
   uuid_fallback[as.character(dt$MONITORA_TIPO_ENTRADA) == "bruto_lote_sismonitora"] <- NA_character_
-  uuid_reg <- monitora_norm_empty(monitora_coalesce_vec(uuid_registro, uuid_fallback))
+  uuid_reg <- monitora_txt_normalizar_vazio(monitora_vetor_coalesce(uuid_registro, uuid_fallback))
   key_uuid <- ifelse(!is.na(uuid_reg), paste0("UUID_REGISTRO::", uuid_reg), NA_character_)
   rm(uuid_registro, uuid_fallback, uuid_reg); monitora_gc("dedup_chave_uuid")
 
@@ -1691,7 +1691,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
 
   cand <- aux[!is.na(MONITORA_CHAVE_DEDUP)]
   if (nrow(cand) == 0) {
-    monitora_log("deduplicacao_semantica", "AVISO", NA_character_, "Nenhuma chave amostral confiavel encontrada para deduplicacao semantica", "mantido sem alteracao")
+    monitora_log_registrar_evento("deduplicacao_semantica", "AVISO", NA_character_, "Nenhuma chave amostral confiavel encontrada para deduplicacao semantica", "mantido sem alteracao")
     rm(aux, cand); monitora_gc("dedup_sem_chaves")
     return(dt)
   }
@@ -1718,9 +1718,9 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     detalhes[, n_chaves_duplicadas_exportadas := nrow(detalhes)]
     fwrite(detalhes, file.path(MONITORA_LOG_DIR, paste0("auditoria_duplicidades_semanticas_", MONITORA_EXEC_ID, ".csv")))
     if (n_dup_total > MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA) {
-      monitora_log("deduplicacao_semantica", "AVISO", NA_character_, paste0("Auditoria de duplicidades semânticas truncada: ", n_dup_total, " chaves duplicadas no total; ", nrow(detalhes), " exportadas"), "aumentar MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA se precisar do detalhe completo")
+      monitora_log_registrar_evento("deduplicacao_semantica", "AVISO", NA_character_, paste0("Auditoria de duplicidades semânticas truncada: ", n_dup_total, " chaves duplicadas no total; ", nrow(detalhes), " exportadas"), "aumentar MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA se precisar do detalhe completo")
     }
-    monitora_log(
+    monitora_log_registrar_evento(
       "deduplicacao_semantica",
       "AVISO",
       NA_character_,
@@ -1734,7 +1734,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
   keep <- sort(unique(c(sem_chave, manter_ordem)))
   removidas_n <- nrow(dt) - length(keep)
   if (removidas_n > 0) {
-    monitora_log("deduplicacao_semantica", "INFO", NA_character_, paste0(removidas_n, " linhas removidas por duplicidade semantica"), "linhas sem chave confiavel foram mantidas")
+    monitora_log_registrar_evento("deduplicacao_semantica", "INFO", NA_character_, paste0(removidas_n, " linhas removidas por duplicidade semantica"), "linhas sem chave confiavel foram mantidas")
   }
   rm(aux, cand, duplicadas, sem_chave, manter_ordem); monitora_gc("dedup_antes_subconjunto_final")
   out <- dt[keep]
@@ -1753,7 +1753,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   # quando arquivos pós-tratamento são combinados com brutos individuais/lote.
   # A deduplicação inicial ocorre antes de algumas padronizações e pode deixar
   # passar sobreposições raras; esta etapa usa os campos já normalizados e ANO.
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
 
   ponto_col <- if ("ponto_amostral (amostragem/registro)" %in% names(dt)) {
     "ponto_amostral (amostragem/registro)"
@@ -1766,7 +1766,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   by_cols <- c("UC", "CICLO", "CAMPANHA", "UA", "ANO")
   by_cols <- by_cols[by_cols %in% names(dt)]
   if (is.na(ponto_col) || length(by_cols) < 4L) {
-    monitora_log(
+    monitora_log_registrar_evento(
       "deduplicacao_final_ponto_ano",
       "AVISO",
       NA_character_,
@@ -1777,7 +1777,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   }
 
   norm_key <- function(x) {
-    x <- monitora_norm_empty(x)
+    x <- monitora_txt_normalizar_vazio(x)
     stringr::str_squish(toupper(as.character(x)))
   }
 
@@ -1794,7 +1794,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
     aux[ok, MONITORA_CHAVE_FINAL := do.call(paste, c(.SD, sep = "||")), .SDcols = campos_chave]
   }
 
-  tipo <- if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) monitora_normalizar_tipo_entrada(dt[["MONITORA_TIPO_ENTRADA"]]) else rep("desconhecido", nrow(dt))
+  tipo <- if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) monitora_io_normalizar_tipo_entrada(dt[["MONITORA_TIPO_ENTRADA"]]) else rep("desconhecido", nrow(dt))
   fonte <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
     as.character(dt[["MONITORA_ARQUIVO_ENTRADA"]])
   } else if (".id" %in% names(dt)) {
@@ -1814,14 +1814,14 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
 
   cand <- aux[!is.na(MONITORA_CHAVE_FINAL)]
   if (nrow(cand) == 0) {
-    monitora_log("deduplicacao_final_ponto_ano", "AVISO", NA_character_, "Nenhuma chave final UC/CICLO/CAMPANHA/UA/ANO/ponto confiável encontrada", "mantido sem alteração")
+    monitora_log_registrar_evento("deduplicacao_final_ponto_ano", "AVISO", NA_character_, "Nenhuma chave final UC/CICLO/CAMPANHA/UA/ANO/ponto confiável encontrada", "mantido sem alteração")
     rm(aux, cand); monitora_gc("dedup_final_sem_chaves")
     return(dt)
   }
 
   duplicadas <- cand[, .N, by = MONITORA_CHAVE_FINAL][N > 1L]
   if (nrow(duplicadas) == 0) {
-    monitora_log("deduplicacao_final_ponto_ano", "INFO", NA_character_, "Nenhuma duplicidade final UC/CICLO/CAMPANHA/UA/ANO/ponto encontrada", "sem remoção")
+    monitora_log_registrar_evento("deduplicacao_final_ponto_ano", "INFO", NA_character_, "Nenhuma duplicidade final UC/CICLO/CAMPANHA/UA/ANO/ponto encontrada", "sem remoção")
     rm(aux, cand, duplicadas); monitora_gc("dedup_final_sem_duplicidade")
     return(dt)
   }
@@ -1853,7 +1853,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   fwrite(detalhes, file.path(MONITORA_OUTPUT_DIR, "auditoria_deduplicacao_final_ponto_ano_ultima_execucao.csv"))
 
   removidas_n <- nrow(dt) - length(keep)
-  monitora_log(
+  monitora_log_registrar_evento(
     "deduplicacao_final_ponto_ano",
     "AVISO",
     saida,
@@ -1866,8 +1866,8 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   out[]
 }
 
-monitora_parse_date <- function(x) {
-  x0 <- monitora_norm_empty(x)
+monitora_data_parsear <- function(x) {
+  x0 <- monitora_txt_normalizar_vazio(x)
   x1 <- stringr::str_squish(x0)
   x1 <- stringr::str_replace(x1, "T", " ")
   x1 <- stringr::str_replace(x1, "Z$", "")
@@ -1896,7 +1896,7 @@ monitora_parse_date <- function(x) {
     ok_us <- monitora_data_ano_plausivel(d_us)
     amb <- ok_br & ok_us & d_br != d_us
     if (any(amb, na.rm = TRUE)) {
-      monitora_log(
+      monitora_log_registrar_evento(
         "datas", "AVISO", NA_character_,
         paste0(sum(amb), " datas ambiguas dd/mm/yyyy vs mm/dd/yyyy; adotado dd/mm/yyyy por padrão brasileiro"),
         "verificar registros se o arquivo tiver sido exportado/configurado em locale norte-americano"
@@ -1941,13 +1941,13 @@ monitora_parse_date <- function(x) {
 
   n_fail <- sum(is.na(out) & !is.na(x1))
   if (n_fail > 0) {
-    monitora_log("datas", "AVISO", NA_character_, paste0(n_fail, " datas nao convertidas ou com ano fora da faixa plausivel"), "ANO ficará NA nesses registros; ver auditoria_anos_invalidos")
+    monitora_log_registrar_evento("datas", "AVISO", NA_character_, paste0(n_fail, " datas nao convertidas ou com ano fora da faixa plausivel"), "ANO ficará NA nesses registros; ver auditoria_anos_invalidos")
   }
   out
 }
 
-monitora_normalize_coord <- function(x) {
-  x0 <- monitora_norm_empty(x)
+monitora_geo_normalizar_coordenada <- function(x) {
+  x0 <- monitora_txt_normalizar_vazio(x)
   out <- rep(NA_character_, length(x0))
   sep_type <- rep(NA_character_, length(x0))
   token_count <- rep(NA_integer_, length(x0))
@@ -1971,7 +1971,7 @@ monitora_normalize_coord <- function(x) {
   out
 }
 
-monitora_extract_recursive_zips <- function(source_dirs, extract_dir) {
+monitora_io_extrair_zips_recursivos <- function(source_dirs, extract_dir) {
   if (dir.exists(extract_dir)) unlink(extract_dir, recursive = TRUE, force = TRUE)
   dir.create(extract_dir, recursive = TRUE, showWarnings = FALSE)
   seen <- character()
@@ -1987,8 +1987,8 @@ monitora_extract_recursive_zips <- function(source_dirs, extract_dir) {
     for (zf in todo) {
       dest <- file.path(extract_dir, tools::file_path_sans_ext(basename(zf)))
       dir.create(dest, recursive = TRUE, showWarnings = FALSE)
-      ok <- tryCatch({ unzip(zf, exdir = dest); TRUE }, error = function(e) { monitora_log("extracao_zip", "ERRO", zf, conditionMessage(e), "arquivo ignorado"); FALSE })
-      if (ok) monitora_log("extracao_zip", "INFO", zf, paste0("extraido em ", dest), "OK")
+      ok <- tryCatch({ unzip(zf, exdir = dest); TRUE }, error = function(e) { monitora_log_registrar_evento("extracao_zip", "ERRO", zf, conditionMessage(e), "arquivo ignorado"); FALSE })
+      if (ok) monitora_log_registrar_evento("extracao_zip", "INFO", zf, paste0("extraido em ", dest), "OK")
       seen <- c(seen, zf)
     }
   }
@@ -1998,7 +1998,7 @@ monitora_extract_recursive_zips <- function(source_dirs, extract_dir) {
 # Identifica a cadeia de origem de cada CSV, incluindo ZIP externo e ZIP interno quando houver.
 # Isso facilita a conferência operacional: o relatório mostra tanto o CSV interno quanto o ZIP
 # baixado pelo usuário.
-monitora_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_DIRS, extract_dir = MONITORA_EXTRACT_DIR) {
+monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_DIRS, extract_dir = MONITORA_EXTRACT_DIR) {
   paths_norm <- normalizePath(paths, winslash = "/", mustWork = FALSE)
   extract_norm <- normalizePath(extract_dir, winslash = "/", mustWork = FALSE)
 
@@ -2189,11 +2189,11 @@ monitora_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_
 ### script.
 input_has_files <- dir.exists(MONITORA_INPUT_DIR) && length(list.files(MONITORA_INPUT_DIR, recursive = TRUE, all.files = FALSE, no.. = TRUE)) > 0
 MONITORA_SOURCE_DIRS <- if (input_has_files) MONITORA_INPUT_DIR else MONITORA_BASE_DIR
-monitora_log("configuracao", "INFO", MONITORA_SOURCE_DIRS, "diretorio de origem selecionado", ifelse(input_has_files, "input/", "diretorio do script"))
+monitora_log_registrar_evento("configuracao", "INFO", MONITORA_SOURCE_DIRS, "diretorio de origem selecionado", ifelse(input_has_files, "input/", "diretorio do script"))
 monitora_perf_checkpoint("configuracao_inicial", paste0("origem: ", paste(MONITORA_SOURCE_DIRS, collapse = " | ")))
 
 ### Extração recursiva de ZIPs, incluindo ZIPs internos dentro de ZIPs.
-monitora_extract_recursive_zips(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR)
+monitora_io_extrair_zips_recursivos(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR)
 monitora_controlar_recursos("apos_extracao_recursiva_zips", risco = "normal", force_log = TRUE)
 monitora_perf_checkpoint("extracao_recursiva_zips", "extração de ZIPs externos e internos")
 
@@ -2205,9 +2205,9 @@ for (xlsx_file in xlsx_files) {
   if (!file.exists(csv_file)) {
     data <- read_excel(xlsx_file)
     write.csv(data, file = csv_file, row.names = FALSE, na = "")
-    monitora_log("conversao_xlsx", "INFO", xlsx_file, paste0("convertido para ", csv_file), "OK")
+    monitora_log_registrar_evento("conversao_xlsx", "INFO", xlsx_file, paste0("convertido para ", csv_file), "OK")
   } else {
-    monitora_log("conversao_xlsx", "INFO", xlsx_file, paste0("CSV ja existente: ", csv_file), "mantido")
+    monitora_log_registrar_evento("conversao_xlsx", "INFO", xlsx_file, paste0("CSV ja existente: ", csv_file), "mantido")
   }
 }
 if (exists("data")) rm(data)
@@ -2253,7 +2253,7 @@ if (length(csvfiles_excluidos) > 0) {
     ),
     file.path(MONITORA_LOG_DIR, paste0("arquivos_csv_excluidos_da_importacao_", MONITORA_EXEC_ID, ".csv"))
   )
-  monitora_log(
+  monitora_log_registrar_evento(
     "filtro_csv_entrada",
     "INFO",
     NA_character_,
@@ -2268,10 +2268,10 @@ monitora_perf_checkpoint("filtro_csv_entrada", paste0(length(csvfiles), " CSV(s)
 
 # Classificação formal de origem por nome de arquivo e cabeçalho.
 # Essa informação será usada na auditoria e na deduplicação semântica, não para excluir o arquivo.
-csvfiles_tipo_entrada <- vapply(csvfiles, monitora_detectar_tipo_csv, character(1))
+csvfiles_tipo_entrada <- vapply(csvfiles, monitora_io_detectar_tipo_csv, character(1))
 
 if (any(csvfiles_tipo_entrada == "pos_tratamento_script")) {
-  monitora_log(
+  monitora_log_registrar_evento(
     "csv_pos_tratamento_entrada",
     "INFO",
     paste(csvfiles[csvfiles_tipo_entrada == "pos_tratamento_script"], collapse = " | "),
@@ -2280,7 +2280,7 @@ if (any(csvfiles_tipo_entrada == "pos_tratamento_script")) {
   )
 }
 if (any(csvfiles_tipo_entrada == "bruto_lote_sismonitora")) {
-  monitora_log(
+  monitora_log_registrar_evento(
     "csv_lote_sismonitora_entrada",
     "INFO",
     paste(csvfiles[csvfiles_tipo_entrada == "bruto_lote_sismonitora"], collapse = " | "),
@@ -2289,7 +2289,7 @@ if (any(csvfiles_tipo_entrada == "bruto_lote_sismonitora")) {
   )
 }
 if (any(csvfiles_tipo_entrada == "bruto_individual_sismonitora")) {
-  monitora_log(
+  monitora_log_registrar_evento(
     "csv_individual_sismonitora_entrada",
     "INFO",
     paste(utils::head(csvfiles[csvfiles_tipo_entrada == "bruto_individual_sismonitora"], 20), collapse = " | "),
@@ -2300,7 +2300,7 @@ if (any(csvfiles_tipo_entrada == "bruto_individual_sismonitora")) {
 
 if (length(csvfiles) == 0) stop("Nenhum CSV de entrada encontrado. Coloque os ZIP/CSV/XLSX do SISMONITORA ou registros_corrig*.csv no diretório do script ou em input/.")
 
-csv_origem_audit <- monitora_mapear_origem_arquivo(csvfiles)
+csv_origem_audit <- monitora_io_mapear_origem_arquivo(csvfiles)
 csv_audit <- data.table(
   arquivo = csvfiles,
   basename = basename(csvfiles),
@@ -2320,7 +2320,7 @@ csv_keep <- rep(TRUE, length(csvfiles))
 # Duplicidade confiável: mesmo hash MD5 e mesmo tamanho em bytes. Nesses casos, mantém o primeiro
 # arquivo.
 # Registra CSV interno, ZIP externo e ZIP interno para facilitar a conferência operacional.
-monitora_peek_metadados_csv <- function(path) {
+monitora_io_ler_metadados_csv <- function(path) {
   dt0 <- tryCatch(fread(path, nrows = 1, colClasses = "character", encoding = "UTF-8", na.strings = c("", "NA", "N/A", "NULL"), showProgress = FALSE), error = function(e) NULL)
   if (is.null(dt0) || nrow(dt0) == 0) {
     return(data.table(UC = NA_character_, CICLO = NA_character_, CAMPANHA = NA_character_, UA = NA_character_, COLETA = NA_character_, n_linhas = NA_integer_))
@@ -2344,7 +2344,7 @@ dup_groups <- split(seq_along(csvfiles), paste(csv_audit$md5, csv_audit$tamanho_
 for (g in dup_groups) {
   if (length(g) > 1 && !is.na(csv_audit$md5[g[1]])) {
     csv_keep[g[-1]] <- FALSE
-    meta <- monitora_peek_metadados_csv(csvfiles[g[1]])
+    meta <- monitora_io_ler_metadados_csv(csvfiles[g[1]])
     for (excl in g[-1]) {
       MONITORA_DUPLICIDADES_ARQUIVO_I <- MONITORA_DUPLICIDADES_ARQUIVO_I + 1L
       MONITORA_DUPLICIDADES_ARQUIVO_LIST[[MONITORA_DUPLICIDADES_ARQUIVO_I]] <- cbind(
@@ -2374,7 +2374,7 @@ for (g in dup_groups) {
         meta
       )
     }
-    monitora_log(
+    monitora_log_registrar_evento(
       "duplicidade_arquivo",
       "AVISO",
       paste(csvfiles[g], collapse = " | "),
@@ -2399,7 +2399,7 @@ registros_batches <- list()
 batch_lista <- list()
 batch_n <- 0L
 batch_id <- 0L
-flush_batch <- function(force = FALSE) {
+monitora_io_descarregar_lote_csv <- function(force = FALSE) {
   if (length(batch_lista) == 0) return(invisible(FALSE))
   if (!force && length(batch_lista) < monitora_batch_size_csv()) return(invisible(FALSE))
   batch_id <<- batch_id + 1L
@@ -2420,19 +2420,19 @@ for (i in seq_along(csvfiles_lidos)) {
     x
   }, error = function(e) {
     csv_audit[arquivo == f, status_leitura = paste("ERRO:", conditionMessage(e))]
-    monitora_log("leitura_csv", "ERRO", f, conditionMessage(e), "arquivo ignorado")
+    monitora_log_registrar_evento("leitura_csv", "ERRO", f, conditionMessage(e), "arquivo ignorado")
     NULL
   })
   if (!is.null(dt)) {
     batch_n <- batch_n + 1L
     batch_lista[[batch_n]] <- dt
     if (length(batch_lista) >= monitora_batch_size_csv()) {
-      flush_batch(force = TRUE)
+      monitora_io_descarregar_lote_csv(force = TRUE)
       batch_n <- 0L
     }
   }
 }
-flush_batch(force = TRUE)
+monitora_io_descarregar_lote_csv(force = TRUE)
 rm(batch_lista); monitora_gc("leitura_csv_pos_batches")
 if (length(registros_batches) == 0) stop("Nenhum CSV pôde ser lido com sucesso.")
 monitora_perf_checkpoint("leitura_csv", paste0(length(csvfiles_sucesso), " CSV(s) lidos com sucesso em ", length(registros_batches), " lote(s)"))
@@ -2452,7 +2452,7 @@ monitora_controlar_recursos("concatenacao_rbindlist_pos", risco = "normal", obje
 data.table::setalloccol(registros, ncol(registros) + 8L)
 data.table::set(registros, j = "MONITORA_ARQUIVO_ENTRADA", value = as.character(registros[["MONITORA_ARQUIVO_ORIGEM_EXECUCAO"]]))
 data.table::set(registros, j = ".id", value = registros[["MONITORA_ARQUIVO_ENTRADA"]])
-registros <- monitora_drop_legacy_technical_columns(registros, "apos_concatenacao")
+registros <- monitora_dt_remover_colunas_tecnicas_legadas(registros, "apos_concatenacao")
 monitora_perf_checkpoint("limpeza_colunas_tecnicas_legadas", "remoção de colunas técnicas legadas de execuções anteriores", registros)
 monitora_perf_checkpoint("concatenacao_rbindlist", "concatenação dos CSVs lidos por lotes", registros)
 MONITORA_ARQUIVOS_ENTRADA <- csv_audit[arquivo %in% csvfiles_sucesso, .(arquivo, basename, tipo_entrada, md5, tamanho_bytes, n_linhas, n_colunas, arquivo_entrada_externo, nome_arquivo_entrada_externo, arquivo_zip_externo, nome_zip_externo, arquivo_zip_interno, nome_zip_interno, caminho_relativo_extraido)]
@@ -2461,21 +2461,21 @@ MONITORA_ARQUIVOS_ENTRADA <- csv_audit[arquivo %in% csvfiles_sucesso, .(arquivo,
 # renomeações específicas do formulário.
 monitora_controlar_recursos("pre_merge_duplicate_columns_importacao", risco = "muito_alto", objeto = registros, force_log = TRUE)
 monitora_perf_checkpoint("pre_merge_duplicate_columns_importacao", "antes do merge econômico de colunas duplicadas/sufixadas", registros)
-registros <- monitora_merge_duplicate_columns(registros)
+registros <- monitora_dt_consolidar_colunas_duplicadas(registros)
 monitora_controlar_recursos("pos_merge_duplicate_columns_importacao", risco = "normal", objeto = registros, force_log = TRUE)
 monitora_gc("pos_merge_duplicate_columns_importacao")
 monitora_perf_checkpoint("normalizacao_colunas_importacao", "merge de colunas duplicadas/sufixadas antes das renomeações", registros)
 col_audit_import <- attr(registros, "audit_duplicate_columns")
 if (!is.null(col_audit_import) && nrow(col_audit_import) > 0) {
   fwrite(col_audit_import, file.path(MONITORA_LOG_DIR, paste0("auditoria_colunas_duplicadas_importacao_", MONITORA_EXEC_ID, ".csv")))
-  monitora_log("colunas_duplicadas", "INFO", NA_character_, paste0(nrow(col_audit_import), " nomes de colunas duplicados/sufixados tratados na importacao"), "ver auditoria_colunas_duplicadas_importacao")
+  monitora_log_registrar_evento("colunas_duplicadas", "INFO", NA_character_, paste0(nrow(col_audit_import), " nomes de colunas duplicados/sufixados tratados na importacao"), "ver auditoria_colunas_duplicadas_importacao")
 }
-registros <- monitora_consolidate_aliases(registros)
+registros <- monitora_dt_consolidar_aliases_colunas(registros)
 monitora_controlar_recursos("consolidacao_aliases_importacao", risco = "alto", objeto = registros, force_log = TRUE)
 monitora_perf_checkpoint("consolidacao_aliases_importacao", "coalesce de aliases críticos antes da criação de registros_corrig", registros)
 
 fwrite(csv_audit, file.path(MONITORA_LOG_DIR, paste0("auditoria_arquivos_csv_", MONITORA_EXEC_ID, ".csv")))
-monitora_resumir_fontes_por_tipo(csv_audit)
+monitora_io_resumir_fontes_por_tipo(csv_audit)
 
 rm(all_csvfiles, all_csvfiles_norm, exclude_dirs, exclude_outputs, csv_keep, csvfiles_lidos, csvfiles_sucesso, registros_lista, dup_groups, csvfiles_tipo_entrada)
 
@@ -2497,7 +2497,7 @@ names(registros_corrig) <- str_replace_all(names(registros_corrig), '\\"{4}', '\
 # e remove a coluna antiga. Isso evita colnames<- criar duplicatas, que pode zerar
 # colunas analíticas na junção posterior e gerar gráficos em branco.
 monitora_renomear_ou_consolidar_coluna <- function(dt, old, new, etapa = "renomeacao_colunas_protocolo") {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   if (!(old %in% names(dt))) return(invisible(dt))
   if (identical(old, new)) return(invisible(dt))
 
@@ -2516,8 +2516,8 @@ monitora_renomear_ou_consolidar_coluna <- function(dt, old, new, etapa = "renome
   for (st in seq_starts) {
     en <- min(st + chunk_n - 1L, n)
     ii <- st:en
-    alvo <- monitora_norm_empty(dt[[new]][ii])
-    aux <- monitora_norm_empty(dt[[old]][ii])
+    alvo <- monitora_txt_normalizar_vazio(dt[[new]][ii])
+    aux <- monitora_txt_normalizar_vazio(dt[[old]][ii])
 
     fill_idx <- is.na(alvo) & !is.na(aux)
     if (any(fill_idx)) {
@@ -2531,7 +2531,7 @@ monitora_renomear_ou_consolidar_coluna <- function(dt, old, new, etapa = "renome
   }
 
   dt[, (old) := NULL]
-  monitora_log(
+  monitora_log_registrar_evento(
     etapa,
     if (conflito_total > 0L) "AVISO" else "INFO",
     NA_character_,
@@ -2857,22 +2857,22 @@ if ("uuid" %in% colnames(registros_corrig)) {
 
 monitora_controlar_recursos("pre_merge_duplicate_columns_pos_renomeacao", risco = "muito_alto", objeto = registros_corrig, force_log = TRUE)
 monitora_perf_checkpoint("pre_merge_duplicate_columns_pos_renomeacao", "antes do merge econômico de colunas duplicadas/sufixadas pós-renomeação", registros_corrig)
-registros_corrig <- monitora_merge_duplicate_columns(registros_corrig)
+registros_corrig <- monitora_dt_consolidar_colunas_duplicadas(registros_corrig)
 monitora_controlar_recursos("pos_merge_duplicate_columns_pos_renomeacao", risco = "normal", objeto = registros_corrig, force_log = TRUE)
 monitora_gc("pos_merge_duplicate_columns_pos_renomeacao")
 monitora_perf_checkpoint("normalizacao_colunas_pos_renomeacao", "merge de colunas duplicadas/sufixadas após renomeações", registros_corrig)
 col_audit_corrig <- attr(registros_corrig, "audit_duplicate_columns")
 if (!is.null(col_audit_corrig) && nrow(col_audit_corrig) > 0) {
   fwrite(col_audit_corrig, file.path(MONITORA_LOG_DIR, paste0("auditoria_colunas_duplicadas_pos_renomeacao_", MONITORA_EXEC_ID, ".csv")))
-  monitora_log("colunas_duplicadas", "INFO", NA_character_, paste0(nrow(col_audit_corrig), " nomes de colunas duplicados/sufixados tratados apos renomeacao"), "ver auditoria_colunas_duplicadas_pos_renomeacao")
+  monitora_log_registrar_evento("colunas_duplicadas", "INFO", NA_character_, paste0(nrow(col_audit_corrig), " nomes de colunas duplicados/sufixados tratados apos renomeacao"), "ver auditoria_colunas_duplicadas_pos_renomeacao")
 }
-registros_corrig <- monitora_consolidate_aliases(registros_corrig)
+registros_corrig <- monitora_dt_consolidar_aliases_colunas(registros_corrig)
 monitora_perf_checkpoint("consolidacao_aliases_pos_renomeacao", "coalesce de aliases críticos após renomeações", registros_corrig)
 
 # Anota o tipo de entrada antes da auditoria pré-deduplicação.
 # Isso permite auditar a equivalência individual x lote antes de a deduplicação aplicar a
 # preferência de fonte.
-registros_corrig <- monitora_anotar_tipo_entrada(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
+registros_corrig <- monitora_io_anotar_tipo_entrada(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
 
 # Quando mais de um tipo de fonte é fornecido na mesma execução, audita a equivalência
 # antes da deduplicação semântica, evitando que a preferência de fonte esconda divergências.
@@ -2885,7 +2885,7 @@ monitora_perf_checkpoint("auditoria_compatibilidade_fontes_pre_dedup", "compara�
 ### Mantém produtos pós-tratamento quando houver sobreposição com brutos, pois eles podem conter
 ### validações/correções manuais.
 registros_corrig <- monitora_deduplicar_registros_amostrais(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
-registros_corrig <- monitora_drop_legacy_technical_columns(registros_corrig, "pos_deduplicacao")
+registros_corrig <- monitora_dt_remover_colunas_tecnicas_legadas(registros_corrig, "pos_deduplicacao")
 monitora_controlar_recursos("deduplicacao_semantica", risco = "alto", objeto = registros_corrig, force_log = TRUE)
 monitora_perf_checkpoint("deduplicacao_semantica", "deduplicação por UUID ou UC+CICLO+UA+ponto, com preferência por pós-tratamento, lote SISMONITORA e exportação individual", registros_corrig)
 MONITORA_AUDITORIA_COMPAT_POST <- monitora_auditar_compatibilidade_fontes(registros_corrig, fase = "pos_dedup")
@@ -2895,7 +2895,7 @@ monitora_perf_checkpoint("auditoria_compatibilidade_fontes_pos_dedup", "compara�
 # quando UUIDs são diferentes. Não remove automaticamente porque pode indicar erro de numeração
 # ou edição manual que exige validação de campanha.
 monitora_auditar_pontos_duplicados <- function(dt) {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   ponto_col <- if ("ponto_amostral (amostragem/registro)" %in% names(dt)) {
     "ponto_amostral (amostragem/registro)"
   } else if ("ponto_metro (amostragem/registro)" %in% names(dt)) {
@@ -2909,14 +2909,14 @@ monitora_auditar_pontos_duplicados <- function(dt) {
   if (nrow(aud) > 0) {
     setnames(aud, ponto_col, "ponto")
     fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_pontos_duplicados_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("pontos_duplicados", "AVISO", NA_character_, paste0(nrow(aud), " pontos duplicados dentro de UC+CICLO+UA+ANO"), "ver auditoria_pontos_duplicados; nao removido automaticamente")
+    monitora_log_registrar_evento("pontos_duplicados", "AVISO", NA_character_, paste0(nrow(aud), " pontos duplicados dentro de UC+CICLO+UA+ANO"), "ver auditoria_pontos_duplicados; nao removido automaticamente")
   }
   invisible(aud)
 }
 monitora_auditar_pontos_duplicados(registros_corrig)
 
 monitora_auditar_anos_invalidos <- function(dt) {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   if (!"ANO" %in% names(dt)) return(invisible(data.table()))
   ano_num <- suppressWarnings(as.integer(dt[["ANO"]]))
   ano_min <- 2000L
@@ -2934,12 +2934,12 @@ monitora_auditar_anos_invalidos <- function(dt) {
   saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_anos_invalidos_", MONITORA_EXEC_ID, ".csv"))
   fwrite(aud, saida)
   fwrite(aud, file.path(MONITORA_OUTPUT_DIR, "auditoria_anos_invalidos_ultima_execucao.csv"))
-  monitora_log("anos_invalidos", "AVISO", saida, paste0(nrow(aud), " combinações com ANO inválido/NA ou fora da faixa plausível"), "ver auditoria_anos_invalidos")
+  monitora_log_registrar_evento("anos_invalidos", "AVISO", saida, paste0(nrow(aud), " combinações com ANO inválido/NA ou fora da faixa plausível"), "ver auditoria_anos_invalidos")
   invisible(aud)
 }
 
 monitora_auditar_completude_101_pontos <- function(dt) {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   ponto_col <- if ("ponto_amostral (amostragem/registro)" %in% names(dt)) {
     "ponto_amostral (amostragem/registro)"
   } else if ("ponto_metro (amostragem/registro)" %in% names(dt)) {
@@ -2983,7 +2983,7 @@ monitora_auditar_completude_101_pontos <- function(dt) {
     saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_completude_101_pontos_", MONITORA_EXEC_ID, ".csv"))
     fwrite(aud, saida)
     fwrite(aud, file.path(MONITORA_OUTPUT_DIR, "auditoria_completude_101_pontos_ultima_execucao.csv"))
-    monitora_log("completude_101_pontos", "AVISO", saida, paste0(nrow(aud), " grupos UC+CICLO+CAMPANHA+UA+ANO com n_registros/n_pontos diferente de 101, duplicidade ou lacuna"), "ver auditoria_completude_101_pontos")
+    monitora_log_registrar_evento("completude_101_pontos", "AVISO", saida, paste0(nrow(aud), " grupos UC+CICLO+CAMPANHA+UA+ANO com n_registros/n_pontos diferente de 101, duplicidade ou lacuna"), "ver auditoria_completude_101_pontos")
   }
   invisible(aud)
 }
@@ -4951,16 +4951,16 @@ registros_corrig$`Outra espécie de samambaia exótica: (amostragem/registro)` <
 ### a seguir faz a coerção dos formatos identificados
 
 if ("Data (data_hora)" %in% names(registros_corrig)) {
-  registros_corrig[, DATA_MONITORA_PARSEADA := monitora_parse_date(`Data (data_hora)`)]
+  registros_corrig[, DATA_MONITORA_PARSEADA := monitora_data_parsear(`Data (data_hora)`)]
   registros_corrig[, ANO := as.character(lubridate::year(DATA_MONITORA_PARSEADA))]
 } else {
   registros_corrig[, ANO := NA_character_]
-  monitora_log("datas", "ERRO", NA_character_, "Coluna Data (data_hora) ausente", "ANO criado como NA")
+  monitora_log_registrar_evento("datas", "ERRO", NA_character_, "Coluna Data (data_hora) ausente", "ANO criado como NA")
 }
 # Deduplicação final: após ANO estar calculado e antes das auditorias/estatísticas,
 # remove sobreposições residuais por UC+CICLO+CAMPANHA+UA+ANO+ponto.
 registros_corrig <- monitora_deduplicar_final_por_ponto_ano(registros_corrig)
-registros_corrig <- monitora_drop_legacy_technical_columns(registros_corrig, "pos_deduplicacao_final_ponto_ano")
+registros_corrig <- monitora_dt_remover_colunas_tecnicas_legadas(registros_corrig, "pos_deduplicacao_final_ponto_ano")
 monitora_controlar_recursos("deduplicacao_final_ponto_ano", risco = "alto", objeto = registros_corrig, force_log = TRUE)
 monitora_perf_checkpoint("deduplicacao_final_ponto_ano", "trava final por UC+CICLO+CAMPANHA+UA+ANO+ponto antes das estatísticas", registros_corrig)
 
@@ -4983,7 +4983,7 @@ coord_audit_summary_list <- list()
 coord_audit_summary_i <- 0L
 for (cc in coord_cols) {
   if (cc %in% names(registros_corrig)) {
-    normalizada <- monitora_normalize_coord(registros_corrig[[cc]])
+    normalizada <- monitora_geo_normalizar_coordenada(registros_corrig[[cc]])
     ca <- attr(normalizada, "coord_audit")
     ca[, coluna := cc]
     if (isTRUE(MONITORA_AUDITORIA_COORDENADAS_COMPLETA)) {
@@ -4996,7 +4996,7 @@ for (cc in coord_cols) {
     registros_corrig[[cc]] <- normalizada
     rm(ca, normalizada); monitora_gc(paste0("coordenadas_", cc))
   } else {
-    monitora_log("coordenadas", "AVISO", NA_character_, paste0("Coluna ausente: ", cc), "mantida ausente")
+    monitora_log_registrar_evento("coordenadas", "AVISO", NA_character_, paste0("Coluna ausente: ", cc), "mantida ausente")
   }
 }
 coord_audit_all <- if (isTRUE(MONITORA_AUDITORIA_COORDENADAS_COMPLETA) && coord_audit_all_i > 0L) {
@@ -5008,11 +5008,11 @@ coord_audit_summary <- if (coord_audit_summary_i > 0L) {
 rm(coord_audit_all_list, coord_audit_summary_list, coord_audit_all_i, coord_audit_summary_i)
 if (nrow(coord_audit_summary) > 0) {
   fwrite(coord_audit_summary, file.path(MONITORA_LOG_DIR, paste0("auditoria_coordenadas_resumo_", MONITORA_EXEC_ID, ".csv")))
-  monitora_log("coordenadas", "INFO", NA_character_, paste0(nrow(coord_audit_summary), " linhas de resumo de auditoria de coordenadas geradas"), "ver auditoria_coordenadas_resumo")
+  monitora_log_registrar_evento("coordenadas", "INFO", NA_character_, paste0(nrow(coord_audit_summary), " linhas de resumo de auditoria de coordenadas geradas"), "ver auditoria_coordenadas_resumo")
 }
 if (isTRUE(MONITORA_AUDITORIA_COORDENADAS_COMPLETA) && !is.null(coord_audit_all) && nrow(coord_audit_all) > 0) {
   fwrite(coord_audit_all, file.path(MONITORA_LOG_DIR, paste0("auditoria_coordenadas_", MONITORA_EXEC_ID, ".csv")))
-  monitora_log("coordenadas", "INFO", NA_character_, paste0(nrow(coord_audit_all), " registros de auditoria completa de coordenadas gerados"), "ver auditoria_coordenadas; para lotes grandes, manter MONITORA_AUDITORIA_COORDENADAS_COMPLETA=false")
+  monitora_log_registrar_evento("coordenadas", "INFO", NA_character_, paste0(nrow(coord_audit_all), " registros de auditoria completa de coordenadas gerados"), "ver auditoria_coordenadas; para lotes grandes, manter MONITORA_AUDITORIA_COORDENADAS_COMPLETA=false")
 }
 rm(coord_cols, coord_audit_all, coord_audit_summary); monitora_gc("coordenadas_fim")
 
@@ -5033,12 +5033,12 @@ monitora_grupo_stat_cols <- c(
 )
 
 monitora_sum_tokens_by_group <- function(dt, token_col, prefix = NULL) {
-  dt <- monitora_as_dt_ref(dt)
+  dt <- monitora_dt_referenciar(dt)
   grupo_cols <- monitora_grupo_stat_cols[monitora_grupo_stat_cols %in% names(dt)]
   if (length(grupo_cols) == 0) return(data.table())
   base <- unique(dt[, ..grupo_cols])
   if (!(token_col %in% names(dt))) {
-    monitora_log("preparacao_registros_corrig_stat", "AVISO", NA_character_, paste0("Coluna ausente para sumarização: ", token_col), "tabela vazia mantida")
+    monitora_log_registrar_evento("preparacao_registros_corrig_stat", "AVISO", NA_character_, paste0("Coluna ausente para sumarização: ", token_col), "tabela vazia mantida")
     return(base)
   }
   ## Usa base R para reduzir dependências e cópias temporárias nesta etapa.
@@ -5153,13 +5153,13 @@ monitora_gc("preparacao_stat_merge_sumarios")
 ### Divide coordenadas com data.table::tstrsplit()
 ### e usa atribuições por referência para evitar cópias desnecessárias.
 
-registros_corrig_stat <- monitora_as_dt_ref(registros_corrig_stat)
-monitora_split_coord_cols_dt(
+registros_corrig_stat <- monitora_dt_referenciar(registros_corrig_stat)
+monitora_geo_separar_colunas_coordenadas(
   registros_corrig_stat,
   "Coordenada inicial da amostragem (amostragem)",
   c("lat_ini", "long_ini", "alt_ini", "acc_ini")
 )
-monitora_split_coord_cols_dt(
+monitora_geo_separar_colunas_coordenadas(
   registros_corrig_stat,
   "Coordenada final da amostragem (amostragem)",
   c("lat_fin", "long_fin", "alt_fin", "acc_fin")
@@ -5186,9 +5186,9 @@ exot_cols <- nms_stat[grepl("exot_", nms_stat) & !grepl("^exot_serrapilheira", n
 seca_morta_cols <- nms_stat[grepl("seca_morta_", nms_stat) & !grepl("^seca_morta_serrapilheira", nms_stat)]
 mat_bot_cols <- nms_stat[grepl("^mat_bot_", nms_stat)]
 
-data.table::set(registros_corrig_stat, j = "sum_nativa", value = monitora_sum_cols_dt(registros_corrig_stat, nativa_cols))
-data.table::set(registros_corrig_stat, j = "sum_exotica", value = monitora_sum_cols_dt(registros_corrig_stat, exot_cols))
-data.table::set(registros_corrig_stat, j = "sum_seca_morta", value = monitora_sum_cols_dt(registros_corrig_stat, seca_morta_cols))
+data.table::set(registros_corrig_stat, j = "sum_nativa", value = monitora_dt_somar_colunas(registros_corrig_stat, nativa_cols))
+data.table::set(registros_corrig_stat, j = "sum_exotica", value = monitora_dt_somar_colunas(registros_corrig_stat, exot_cols))
+data.table::set(registros_corrig_stat, j = "sum_seca_morta", value = monitora_dt_somar_colunas(registros_corrig_stat, seca_morta_cols))
 
 if ("serrapilheira" %in% names(registros_corrig_stat)) {
   data.table::set(registros_corrig_stat, j = "material_botanico", value = registros_corrig_stat[["serrapilheira"]])
@@ -5197,15 +5197,15 @@ if ("serrapilheira" %in% names(registros_corrig_stat)) {
 }
 ## Mantém o nome histórico por compatibilidade com produtos e análises anteriores.
 data.table::set(registros_corrig_stat, j = "serrapilheira", value = registros_corrig_stat[["material_botanico"]])
-data.table::set(registros_corrig_stat, j = "sum_material_botanico_tipo", value = monitora_sum_cols_dt(registros_corrig_stat, mat_bot_cols))
+data.table::set(registros_corrig_stat, j = "sum_material_botanico_tipo", value = monitora_dt_somar_colunas(registros_corrig_stat, mat_bot_cols))
 
 herb_sum_cols <- nms_stat[grepl("_graminoide|_bromelioide|_cactacea|_orquidea|_samambaia|_canela_de_ema", nms_stat)]
 lenh_sum_cols <- nms_stat[grepl("_arbusto_abaixo|_arbusto_acima|_arvore_abaixo|_arvore_acima|_lianas|_palmeira|_passarinho|_bambu", nms_stat)]
-data.table::set(registros_corrig_stat, j = "sum_herbacea", value = monitora_sum_cols_dt(registros_corrig_stat, herb_sum_cols))
-data.table::set(registros_corrig_stat, j = "sum_lenhosa", value = monitora_sum_cols_dt(registros_corrig_stat, lenh_sum_cols))
+data.table::set(registros_corrig_stat, j = "sum_herbacea", value = monitora_dt_somar_colunas(registros_corrig_stat, herb_sum_cols))
+data.table::set(registros_corrig_stat, j = "sum_lenhosa", value = monitora_dt_somar_colunas(registros_corrig_stat, lenh_sum_cols))
 
 # Ordem aproximada das colunas antes controlada por dplyr::relocate().
-monitora_move_before(registros_corrig_stat, c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "serrapilheira", "sum_material_botanico_tipo", "sum_herbacea", "sum_lenhosa"), "form_veg")
+monitora_dt_mover_colunas_antes(registros_corrig_stat, c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "serrapilheira", "sum_material_botanico_tipo", "sum_herbacea", "sum_lenhosa"), "form_veg")
 
 ### Criação presença herbácea e lenhosa
 
@@ -5269,12 +5269,12 @@ lenh_summary <- data.table(
 rm(herb_presence, lenh_presence); monitora_gc("presence_herb_lenh")
 
 # Junção com registros_corrig_stat usando data.table.
-registros_corrig_stat <- monitora_as_dt_ref(registros_corrig_stat)
-herb_summary <- monitora_as_dt_ref(herb_summary)
-lenh_summary <- monitora_as_dt_ref(lenh_summary)
+registros_corrig_stat <- monitora_dt_referenciar(registros_corrig_stat)
+herb_summary <- monitora_dt_referenciar(herb_summary)
+lenh_summary <- monitora_dt_referenciar(lenh_summary)
 registros_corrig_stat <- monitora_dt_left_join(registros_corrig_stat, herb_summary, by = c("UC", "UA", "ANO"))
 registros_corrig_stat <- monitora_dt_left_join(registros_corrig_stat, lenh_summary, by = c("UC", "UA", "ANO"))
-monitora_move_before(registros_corrig_stat, c("sum_presence_herb", "sum_presence_lenh"), "sum_herbacea")
+monitora_dt_mover_colunas_antes(registros_corrig_stat, c("sum_presence_herb", "sum_presence_lenh"), "sum_herbacea")
 
 # Coluna que registra as categorias que encostam na vareta.
 encostam_vareta_col <- colnames(registros_corrig)[
@@ -5299,13 +5299,13 @@ if (!is.na(encostam_vareta_col) && length(encostam_vareta_col) > 0) {
   ), by = .(UC, UA, ANO)]
   rm(enc_vec); monitora_gc("presence_nat_exot_seca")
 } else {
-  encostam_vareta_summary <- unique(monitora_as_dt_ref(registros_corrig)[, .(UC, UA, ANO)])
+  encostam_vareta_summary <- unique(monitora_dt_referenciar(registros_corrig)[, .(UC, UA, ANO)])
   encostam_vareta_summary[, `:=`(sum_presence_nativa = NA_integer_, sum_presence_exotica = NA_integer_, sum_presence_seca_morta = NA_integer_)]
-  monitora_log("preparacao_registros_corrig_stat", "AVISO", NA_character_, "Coluna Encostam na vareta ausente para presença nativa/exótica/seca_morta", "sum_presence_* criado como NA")
+  monitora_log_registrar_evento("preparacao_registros_corrig_stat", "AVISO", NA_character_, "Coluna Encostam na vareta ausente para presença nativa/exótica/seca_morta", "sum_presence_* criado como NA")
 }
 
 registros_corrig_stat <- monitora_dt_left_join(registros_corrig_stat, encostam_vareta_summary, by = c("UC", "UA", "ANO"))
-monitora_move_before(
+monitora_dt_mover_colunas_antes(
   registros_corrig_stat,
   c("sum_presence_nativa", "sum_presence_exotica", "sum_presence_seca_morta", "material_botanico", "serrapilheira", "solo_nu"),
   "sum_herbacea"
@@ -10072,7 +10072,7 @@ if (exists("registros_corrig_stat")) {
   monitora_stat_msg("comparações contra linha de base concluídas: ", nrow(MONITORA_STAT_MUDANCA_LINHA_BASE), " linhas")
   monitora_stat_msg("comparações de composição geral concluídas: ", nrow(MONITORA_STAT_COMPOSICAO_GERAL), " linhas")
   monitora_stat_msg("comparações de composição geral contra linha de base concluídas: ", nrow(MONITORA_STAT_COMPOSICAO_LINHA_BASE), " linhas")
-  monitora_log(
+  monitora_log_registrar_evento(
     "estatistica_mudanca_ano_a_ano",
     "INFO",
     NA_character_,
@@ -11044,7 +11044,7 @@ if (exists("registros_corrig")) {
     dup_logico <- registros_corrig[, .N, by = key_cols][N > 1]
     if (nrow(dup_logico) > 0) {
       fwrite(dup_logico, file.path(MONITORA_LOG_DIR, paste0("duplicidades_logicas_pos_normalizacao_", MONITORA_EXEC_ID, ".csv")))
-      monitora_log("duplicidade_logica", "AVISO", NA_character_, paste0(nrow(dup_logico), " combinações de chave com N > 1 após normalização"), "não removido automaticamente; ver duplicidades_logicas_pos_normalizacao")
+      monitora_log_registrar_evento("duplicidade_logica", "AVISO", NA_character_, paste0(nrow(dup_logico), " combinações de chave com N > 1 após normalização"), "não removido automaticamente; ver duplicidades_logicas_pos_normalizacao")
     }
   }
 }
@@ -12593,7 +12593,7 @@ if (isTRUE(MONITORA_EXPORTAR_GRAFICOS) && (!exists("registros_corrig") || nrow(r
   monitora_perf_checkpoint("exportacao_graficos_png", "gravação dos gráficos PNG")
 } else {
   motivo <- if (!isTRUE(MONITORA_EXPORTAR_GRAFICOS)) "MONITORA_EXPORTAR_GRAFICOS=false" else paste0("nrow(registros_corrig)>MONITORA_MAX_LINHAS_GRAFICOS_AUTO=", MONITORA_MAX_LINHAS_GRAFICOS_AUTO)
-  monitora_log("exportacao_graficos_png", "AVISO", NA_character_, paste0("Exportação de gráficos PNG ignorada: ", motivo), "para forçar, ajustar variáveis de ambiente")
+  monitora_log_registrar_evento("exportacao_graficos_png", "AVISO", NA_character_, paste0("Exportação de gráficos PNG ignorada: ", motivo), "para forçar, ajustar variáveis de ambiente")
   monitora_perf_checkpoint("exportacao_graficos_png_ignorada", motivo)
 }
 
@@ -12724,7 +12724,7 @@ monitora_gc("exportacao_kml")
 
 } else {
   motivo_kml <- if (!isTRUE(MONITORA_EXPORTAR_KML)) "MONITORA_EXPORTAR_KML=false" else paste0("nrow(registros_corrig_stat)>MONITORA_MAX_UAS_KML_AUTO=", MONITORA_MAX_UAS_KML_AUTO)
-  monitora_log("exportacao_kml", "AVISO", NA_character_, paste0("Exportação KML ignorada: ", motivo_kml), "para forçar, ajustar variáveis de ambiente")
+  monitora_log_registrar_evento("exportacao_kml", "AVISO", NA_character_, paste0("Exportação KML ignorada: ", motivo_kml), "para forçar, ajustar variáveis de ambiente")
 }
 
 ### Relatório de performance da execução
@@ -12732,7 +12732,7 @@ monitora_gc("exportacao_kml")
 monitora_perf_checkpoint("exportacao_kml", "exportação dos arquivos KML, quando coordenadas suficientes existirem", if (exists("registros_corrig_stat")) registros_corrig_stat else NULL)
 monitora_resource_control_write()
 monitora_perf_write()
-monitora_log("performance", "INFO", file.path(MONITORA_LOG_DIR, paste0("performance_execucao_", MONITORA_EXEC_ID, ".csv")), "relatório de performance gerado", "usar para identificar gargalos por duração_seg")
+monitora_log_registrar_evento("performance", "INFO", file.path(MONITORA_LOG_DIR, paste0("performance_execucao_", MONITORA_EXEC_ID, ".csv")), "relatório de performance gerado", "usar para identificar gargalos por duração_seg")
 MONITORA_RESUMO_ACHADOS_RELEVANTES <- monitora_criar_resumo_achados_validacao()
 fwrite(MONITORA_REPORT, file.path(MONITORA_LOG_DIR, paste0("relatorio_execucao_", MONITORA_EXEC_ID, ".csv")))
 fwrite(MONITORA_REPORT, file.path(MONITORA_OUTPUT_DIR, "relatorio_execucao_ultima_execucao.csv"))
