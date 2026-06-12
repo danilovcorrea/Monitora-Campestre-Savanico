@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.1.0
+### Versão pública: v2.1.1
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -26,11 +26,11 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.1.0:
+### Destaques da versão pública v2.1.1:
 ###   - consolidação dos gráficos temporais editoriais com escopo amostral explícito;
 ###   - inclusão de painéis para amostra total, UAs pareadas em todos os anos e períodos
 ###     consecutivos pareados;
-###   - incorporação de análise de coortes por ano inicial;
+###   - incorporação de painéis amostrais por ano inicial;
 ###   - geração de relatório textual estatístico com síntese dos principais achados;
 ###   - ampliação das auditorias de entrada, deduplicação, completude, coordenadas,
 ###     performance, memória, símbolos estatísticos e layout de rótulos;
@@ -3085,11 +3085,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3106,9 +3106,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3125,9 +3125,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3144,9 +3144,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3163,13 +3163,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3187,9 +3187,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -3235,11 +3235,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3256,9 +3256,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3275,9 +3275,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3294,9 +3294,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3313,13 +3313,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3337,9 +3337,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -3385,11 +3385,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3406,9 +3406,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3425,9 +3425,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3444,9 +3444,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3463,13 +3463,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3487,9 +3487,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -4210,7 +4210,7 @@ if (is.null(registros_corrig[['Espécie ou nome popular (Árvore abaixo de 5cm 
 if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
   set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
+registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <- 
   fcase(
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
     fcase(
@@ -6412,7 +6412,7 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
 
       ## Todos os rótulos externos usam conector em cotovelo, com a linha horizontal
       ## deslocada do centro da barra. Isso evita que a guia atravesse rótulos
-      ## internos, sobretudo em gráficos de coorte densos.
+      ## internos, sobretudo em gráficos de painéis amostrais densos.
       if (lado_i == "esquerda") {
         y_offsets <- 0.14 + (seq_len(n_bloco) - 1L) * 0.08
       } else {
@@ -6917,7 +6917,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p1 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p1, complexo = FALSE)
-
+  
   plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -6931,7 +6931,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   dados_p1_camp_rotulos <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Campestre") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.001)
@@ -6949,7 +6949,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p1_camp_rotulos) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -6963,7 +6963,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   dados_p1_sav_rotulos <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Savânica") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.001)
@@ -7011,18 +7011,18 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       ci_upper = round((p + 1.96 * se / 100) * 100, 1)
     ) %>%
     select(-p, -total_points)
-
-
+  
+  
   reg_corrig_stat_summarise_p1_presence <- monitora_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_p1_presence, complexo = FALSE)
-
+  
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-
+  
   # Calcular limite do eixo x
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-
+  
   # Gráfico COM rótulos
   plot_p1.3.1_veg_cover_herb_lenh_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>%
+    reg_corrig_stat_summarise_p1_presence %>% 
       filter(form_veg %in% c("Campestre", "Savânica")),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
@@ -7054,10 +7054,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-
+  
   # Gráfico SEM rótulos
   plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>%
+    reg_corrig_stat_summarise_p1_presence %>% 
       filter(form_veg %in% c("Campestre", "Savânica")),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
@@ -7085,12 +7085,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-
+  
   rm(x_max)
-
-  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo,
-       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo,
-       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo,
+  
+  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo, 
+       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo, 
+       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo, 
        plot_p1.2.2_prop_rel_herb_lenh_sav_com_rotulo,
        plot_p1.3.1_veg_cover_herb_lenh_com_rotulo,
        plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo)
@@ -7139,10 +7139,10 @@ reg_corrig_stat_summarise_p2 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_s
 
 reg_corrig_stat_summarise_p2_presence <- registros_corrig_stat %>%
   select(any_of(c(
-    "UC",
-    "UA",
-    "ANO",
-    "form_veg",
+    "UC", 
+    "UA", 
+    "ANO", 
+    "form_veg", 
     "sum_presence_nativa",
     "sum_presence_exotica",
     "sum_presence_seca_morta",
@@ -7195,21 +7195,21 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-
+    
     geom_errorbarh(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
       height = 0.2,
       color = "black"
     ) +
-
+    
     monitora_camadas_rotulos_cobertura_externos(
       complexo = FALSE,
       tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
-
+    
     facet_wrap(~form_veg) +
-
+    
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -7217,33 +7217,33 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-
+    
     scale_fill_brewer(palette = "Set2") +
-
+    
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-
+    
     coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
-
+  
   # Gráfico sem rótulos
   plot_p2.3.2_veg_cover_categ_sem_rotulo <- ggplot(
     p2_presence_form_veg,
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-
+    
     geom_errorbarh(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
       height = 0.2,
       color = "black"
     ) +
-
+    
     facet_wrap(~form_veg) +
-
+    
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -7251,15 +7251,15 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-
+    
     scale_fill_brewer(palette = "Set2") +
-
+    
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-
+    
     coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
 } else {
   plot_p2.3.1_veg_cover_categ_com_rotulo <- monitora_plot_sem_dados(
@@ -7339,7 +7339,7 @@ if (length(mat_bot_stat_cols) > 0) {
     filter(n > 0)
 
   reg_corrig_stat_summarise_material_botanico_presence <- monitora_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_material_botanico_presence, complexo = FALSE)
-
+  
   x_max_mat <- monitora_safe_xmax(reg_corrig_stat_summarise_material_botanico_presence$veg_cover, mult = 1.15, fallback = 1)
 
   plot_p2m.1.1_prop_rel_material_botanico_camp_sem_rotulo <- reg_corrig_stat_summarise_material_botanico %>%
@@ -7533,9 +7533,9 @@ em formações savânicas",
     monitora_scale_x_prop_obrigatorios(dados_p2_sav_rotulos) +
     monitora_theme_prop_publicavel()
 
-list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo,
-     plot_p2.1.2_prop_rel_categ_camp_com_rotulo,
-     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo,
+list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo, 
+     plot_p2.1.2_prop_rel_categ_camp_com_rotulo, 
+     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo, 
      plot_p2.2.2_prop_rel_categ_sav_com_rotulo,
      plot_p2.3.1_veg_cover_categ_com_rotulo,
      plot_p2.3.2_veg_cover_categ_sem_rotulo)
@@ -7566,9 +7566,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p3 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p3, complexo = TRUE)
-
+  
   ## Presença de formas de vida nativas.
-
+  
   reg_corrig_stat_summarise_p3_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
@@ -7596,12 +7596,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p3_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p3_presence)
-
+  
     # Limite X dinâmico
   x_max3 <- monitora_safe_xmax(reg_corrig_stat_summarise_p3_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
 # Gráfico com rótulos
-
+  
   plot_p3.3.1_veg_cover_nat_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p3_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7634,7 +7634,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   plot_p3.3.2_veg_cover_nat_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p3_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7662,9 +7662,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
 # Gráfico sem rótulos
-
+  
   plot_p3.1.1_prop_rel_nat_camp_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7678,7 +7678,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   dados_p3_camp_rotulos <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Campestre") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.10)
@@ -7696,7 +7696,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p3_camp_rotulos) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p3.2.1_prop_rel_nat_sav_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7710,7 +7710,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   dados_p3_sav_rotulos <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Savânica") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.10)
@@ -7728,10 +7728,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p3_sav_rotulos) +
     monitora_theme_prop_publicavel()
-
-  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo,
-       plot_p3.1.2_prop_rel_nat_camp_com_rotulo,
-       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo,
+  
+  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo, 
+       plot_p3.1.2_prop_rel_nat_camp_com_rotulo, 
+       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo, 
        plot_p3.2.2_prop_rel_nat_sav_com_rotulo,
        plot_p3.3.1_veg_cover_nat_com_rotulo,
        plot_p3.3.2_veg_cover_nat_sem_rotulo)
@@ -7764,9 +7764,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p4 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p4, complexo = TRUE)
-
+  
   ## Presença de formas de vida exóticas.
-
+  
   reg_corrig_stat_summarise_p4_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
@@ -7794,11 +7794,11 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p4_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p4_presence)
-
-
+  
+  
   # Limite X dinâmico
   x_max4 <- monitora_safe_xmax(reg_corrig_stat_summarise_p4_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
   # Gráfico com rótulos
   plot_p4.3.1_veg_cover_exot_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p4_presence %>%
@@ -7832,7 +7832,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   plot_p4.3.2_veg_cover_exot_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p4_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7860,9 +7860,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   # Gráfico sem rótulos
-
+  
   plot_p4.1.1_prop_rel_exot_camp_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7876,8 +7876,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
-
+  
+  
   plot_p4.1.2_prop_rel_exot_camp_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7897,8 +7897,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
-
+  
+  
   plot_p4.2.1_prop_rel_exot_sav_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7912,7 +7912,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p4.2.2_prop_rel_exot_sav_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7932,9 +7932,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   rm(x_max4)
-
+  
   list(plot_p4.1.1_prop_rel_exot_camp_sem_rotulo,
        plot_p4.1.2_prop_rel_exot_camp_com_rotulo,
        plot_p4.2.1_prop_rel_exot_sav_sem_rotulo,
@@ -7969,9 +7969,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p5 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p5, complexo = TRUE)
-
+  
   ## Presença de formas de vida secas ou mortas.
-
+  
   reg_corrig_stat_summarise_p5_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
@@ -7999,11 +7999,11 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p5_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p5_presence)
-
-
+  
+  
   # Limite X dinâmico
   x_max5 <- monitora_safe_xmax(reg_corrig_stat_summarise_p5_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
   # Gráfico com rótulos
   plot_p5.3.1_veg_cover_seca_morta_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p5_presence %>%
@@ -8037,7 +8037,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   # Gráfico sem rótulos
   plot_p5.3.2_seca_morta_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p5_presence %>%
@@ -8081,7 +8081,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -8100,7 +8100,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -8113,7 +8113,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -8132,16 +8132,16 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-
+  
   rm(x_max5)
-
-  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo,
-       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo,
-       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo,
+  
+  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo, 
+       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo, 
+       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo, 
        plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo,
        plot_p5.3.1_veg_cover_seca_morta_com_rotulo,
        plot_p5.3.2_seca_morta_sem_rotulo)
-
+  
 }
 
 ### remoção de objetos não mais necessários:
@@ -10309,6 +10309,288 @@ monitora_relatorio_principais_composicao <- function(dt, linha_base = FALSE, n_t
   }
 }
 
+
+monitora_relatorio_coluna_ano_inicial_painel <- function(dt) {
+  if (is.null(dt) || !is.data.frame(dt)) return(NA_character_)
+  if ("ano_inicial_painel" %in% names(dt)) return("ano_inicial_painel")
+  if ("coorte_ano_inicial" %in% names(dt)) return("coorte_ano_inicial")
+  NA_character_
+}
+
+monitora_relatorio_resumo_produto <- function(nome_arquivo, objeto_nome) {
+  if (!exists(objeto_nome, envir = .GlobalEnv)) {
+    return(paste0("- ", nome_arquivo, ": não gerado nesta execução."))
+  }
+  obj <- get(objeto_nome, envir = .GlobalEnv)
+  if (!is.data.frame(obj)) {
+    return(paste0("- ", nome_arquivo, ": objeto disponível, mas não tabular."))
+  }
+  paste0("- ", nome_arquivo, ": ", nrow(obj), " linhas e ", ncol(obj), " colunas.")
+}
+
+monitora_relatorio_resumo_escopos_editoriais <- function(dt) {
+  if (is.null(dt) || !is.data.frame(dt) || !nrow(dt) || !all(c("escopo", "grupo_grafico", "tipo_metrica", "form_veg", "ANO") %in% names(dt))) {
+    return("- Dados agregados dos gráficos temporais editoriais não disponíveis.")
+  }
+  d <- data.table::as.data.table(data.table::copy(dt))
+  resumo <- d[, .(
+    n_linhas = .N,
+    n_anos = data.table::uniqueN(ANO),
+    anos = paste(sort(unique(as.character(ANO))), collapse = ", "),
+    n_formacoes = data.table::uniqueN(form_veg),
+    n_categorias = data.table::uniqueN(categoria)
+  ), by = .(escopo, grupo_grafico, tipo_metrica)]
+  data.table::setorder(resumo, escopo, grupo_grafico, tipo_metrica)
+  resumo[, paste0(
+    "- escopo ", escopo,
+    " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+    " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+    " | anos: ", anos,
+    " | formações: ", n_formacoes,
+    " | categorias: ", n_categorias,
+    " | linhas agregadas: ", n_linhas
+  )]
+}
+
+monitora_relatorio_resumo_paineis_ano_inicial <- function(dt) {
+  ano_col <- monitora_relatorio_coluna_ano_inicial_painel(dt)
+  if (is.na(ano_col) || is.null(dt) || !is.data.frame(dt) || !nrow(dt)) {
+    return("- Painéis amostrais por ano inicial não disponíveis nesta execução.")
+  }
+  d <- data.table::as.data.table(data.table::copy(dt))
+  resumo <- d[, .(
+    n_linhas = .N,
+    n_grupos = data.table::uniqueN(grupo_grafico),
+    n_metricas = data.table::uniqueN(tipo_metrica),
+    n_formacoes = data.table::uniqueN(form_veg),
+    anos_alvo = paste(sort(unique(as.character(ano_2))), collapse = ", ")
+  ), by = ano_col]
+  data.table::setnames(resumo, ano_col, "ano_inicial_painel")
+  data.table::setorder(resumo, ano_inicial_painel)
+  resumo[, paste0(
+    "- painel ", ano_inicial_painel,
+    " | anos-alvo: ", anos_alvo,
+    " | grupos: ", n_grupos,
+    " | métricas: ", n_metricas,
+    " | formações: ", n_formacoes,
+    " | linhas estatísticas: ", n_linhas
+  )]
+}
+
+monitora_relatorio_principais_categoria_periodo_editorial <- function(dt, n_top = 12L) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  d <- data.table::as.data.table(data.table::copy(dt))
+  d <- d[classe_mudanca %in% c("aumento", "reducao")]
+  if (!nrow(d)) return("- Nenhuma mudança direcional sustentada foi detectada nos painéis pareados por período.")
+  d[, abs_dif := abs(suppressWarnings(as.numeric(diferenca_pp)))]
+  data.table::setorder(d, -abs_dif, grupo_grafico, tipo_metrica, form_veg, periodo_pareado, categoria_label)
+  d <- d[seq_len(min(n_top, .N))]
+  d[, paste0(
+    "- período ", periodo_pareado,
+    " | ", form_veg,
+    " | ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+    " | ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+    " | ", categoria_label,
+    ": ", monitora_relatorio_classe_pt(classe_mudanca),
+    " de ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+    " (n=", n_UA_pareadas,
+    "; p adj.=", monitora_relatorio_fmt_p(p_ajustado_fdr), ")"
+  )]
+}
+
+monitora_relatorio_linha_categoria_periodo_editorial <- function(dt, uc_txt = NA_character_) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  d <- data.table::as.data.table(data.table::copy(dt))
+  data.table::setorder(d, grupo_grafico, tipo_metrica, form_veg, periodo_pareado, categoria_label)
+  d[, paste0(
+    "- UC: ", uc_txt,
+    " | escopo: pareado por período editorial",
+    " | período: ", periodo_pareado,
+    " | formação: ", form_veg,
+    " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+    " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+    " | categoria: ", categoria_label,
+    " | comparação: ", ano_1, " → ", ano_2,
+    " | n UAs pareadas: ", n_UA_pareadas,
+    " | média referência: ", monitora_relatorio_fmt_num(media_ano_1 * 100, 1), "%",
+    " | média do ano: ", monitora_relatorio_fmt_num(media_ano_2 * 100, 1), "%",
+    " | diferença: ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+    " | IC95%: ", monitora_relatorio_fmt_pp(ci95_lower_pp, 1), " a ", monitora_relatorio_fmt_pp(ci95_upper_pp, 1),
+    " | p ajustado FDR-BH: ", monitora_relatorio_fmt_p(p_ajustado_fdr),
+    " | interpretação: ", monitora_relatorio_classe_pt(classe_mudanca)
+  )]
+}
+
+monitora_relatorio_principais_categoria_painel <- function(dt, linha_base = FALSE, n_top = 12L) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  ano_col <- monitora_relatorio_coluna_ano_inicial_painel(dt)
+  d <- data.table::as.data.table(data.table::copy(dt))
+  if (is.na(ano_col)) d[, ano_inicial_painel := NA_integer_] else data.table::setnames(d, ano_col, "ano_inicial_painel")
+  d <- d[classe_mudanca %in% c("aumento", "reducao")]
+  if (!nrow(d)) return("- Nenhuma mudança direcional sustentada foi detectada nos painéis amostrais por ano inicial.")
+  d[, abs_dif := abs(suppressWarnings(as.numeric(diferenca_pp)))]
+  data.table::setorder(d, -abs_dif, ano_inicial_painel, grupo_grafico, tipo_metrica, form_veg, ano_2)
+  d <- d[seq_len(min(n_top, .N))]
+  if (isTRUE(linha_base)) {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | ", form_veg,
+      " | ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | ", categoria_label,
+      " | ", ano_2, " vs linha de base ", anos_linha_base,
+      ": ", monitora_relatorio_classe_pt(classe_mudanca),
+      " de ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+      " (n=", n_UA_pareadas,
+      "; p adj.=", monitora_relatorio_fmt_p(p_ajustado_fdr_linha_base), ")"
+    )]
+  } else {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | ", form_veg,
+      " | ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | ", categoria_label,
+      " | ", ano_1, "→", ano_2,
+      ": ", monitora_relatorio_classe_pt(classe_mudanca),
+      " de ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+      " (n=", n_UA_pareadas,
+      "; p adj.=", monitora_relatorio_fmt_p(p_ajustado_fdr), ")"
+    )]
+  }
+}
+
+monitora_relatorio_linha_categoria_painel <- function(dt, linha_base = FALSE, uc_txt = NA_character_) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  ano_col <- monitora_relatorio_coluna_ano_inicial_painel(dt)
+  d <- data.table::as.data.table(data.table::copy(dt))
+  if (is.na(ano_col)) d[, ano_inicial_painel := NA_integer_] else data.table::setnames(d, ano_col, "ano_inicial_painel")
+  data.table::setorder(d, ano_inicial_painel, grupo_grafico, tipo_metrica, form_veg, ano_2, categoria_label)
+  if (isTRUE(linha_base)) {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | UC: ", uc_txt,
+      " | formação: ", form_veg,
+      " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | categoria: ", categoria_label,
+      " | ano: ", ano_2,
+      " | linha de base: ", anos_linha_base,
+      " (", n_anos_linha_base, " ano(s))",
+      " | n UAs pareadas: ", n_UA_pareadas,
+      " | média linha de base: ", monitora_relatorio_fmt_num(media_linha_base * 100, 1), "%",
+      " | média do ano: ", monitora_relatorio_fmt_num(media_ano_2 * 100, 1), "%",
+      " | diferença: ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+      " | IC95%: ", monitora_relatorio_fmt_pp(ci95_lower_pp, 1), " a ", monitora_relatorio_fmt_pp(ci95_upper_pp, 1),
+      " | p ajustado FDR-BH: ", monitora_relatorio_fmt_p(p_ajustado_fdr_linha_base),
+      " | interpretação: ", monitora_relatorio_classe_pt(classe_mudanca)
+    )]
+  } else {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | UC: ", uc_txt,
+      " | formação: ", form_veg,
+      " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | categoria: ", categoria_label,
+      " | comparação: ", ano_1, " → ", ano_2,
+      ifelse(!is.na(anos_referencia) & nzchar(as.character(anos_referencia)), paste0(" (referência real: ", anos_referencia, ")"), ""),
+      " | n UAs pareadas: ", n_UA_pareadas,
+      " | média referência: ", monitora_relatorio_fmt_num(media_ano_1 * 100, 1), "%",
+      " | média do ano: ", monitora_relatorio_fmt_num(media_ano_2 * 100, 1), "%",
+      " | diferença: ", monitora_relatorio_fmt_pp(diferenca_pp, 1),
+      " | IC95%: ", monitora_relatorio_fmt_pp(ci95_lower_pp, 1), " a ", monitora_relatorio_fmt_pp(ci95_upper_pp, 1),
+      " | p ajustado FDR-BH: ", monitora_relatorio_fmt_p(p_ajustado_fdr),
+      " | interpretação: ", monitora_relatorio_classe_pt(classe_mudanca)
+    )]
+  }
+}
+
+
+monitora_relatorio_principais_composicao_painel <- function(dt, linha_base = FALSE, n_top = 10L) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  ano_col <- monitora_relatorio_coluna_ano_inicial_painel(dt)
+  d <- data.table::as.data.table(data.table::copy(dt))
+  if (is.na(ano_col)) d[, ano_inicial_painel := NA_integer_] else data.table::setnames(d, ano_col, "ano_inicial_painel")
+  classe_col <- if (isTRUE(linha_base)) "classe_mudanca_composicao_linha_base" else "classe_mudanca_composicao"
+  p_col <- if (isTRUE(linha_base)) "p_ajustado_fdr_composicao_linha_base" else "p_ajustado_fdr_composicao"
+  if (!classe_col %in% names(d)) return("- Tabela de composição do painel não contém coluna de interpretação esperada.")
+  d <- d[get(classe_col) == "mudanca_composicao"]
+  if (!nrow(d)) return("- Nenhuma mudança sustentada da composição geral foi detectada nos painéis amostrais por ano inicial.")
+  data.table::setorder(d, -distancia_centroide_hellinger, ano_inicial_painel, grupo_grafico, tipo_metrica, form_veg, ano_2)
+  d <- d[seq_len(min(n_top, .N))]
+  if (isTRUE(linha_base)) {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | ", form_veg,
+      " | ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | ", ano_2, " vs linha de base ", anos_linha_base,
+      ": mudança de composição; distância Hellinger=", monitora_relatorio_fmt_num(distancia_centroide_hellinger, 3),
+      "; Bray-Curtis médio=", monitora_relatorio_fmt_num(bray_curtis_medio_pareado, 3),
+      "; n=", n_UA_pareadas,
+      "; p adj.=", monitora_relatorio_fmt_p(get(p_col))
+    )]
+  } else {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | ", form_veg,
+      " | ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | ", ano_1, "→", ano_2,
+      ": mudança de composição; distância Hellinger=", monitora_relatorio_fmt_num(distancia_centroide_hellinger, 3),
+      "; Bray-Curtis médio=", monitora_relatorio_fmt_num(bray_curtis_medio_pareado, 3),
+      "; n=", n_UA_pareadas,
+      "; p adj.=", monitora_relatorio_fmt_p(get(p_col))
+    )]
+  }
+}
+
+monitora_relatorio_linha_composicao_painel <- function(dt, linha_base = FALSE, uc_txt = NA_character_) {
+  if (is.null(dt) || !nrow(dt)) return(character())
+  ano_col <- monitora_relatorio_coluna_ano_inicial_painel(dt)
+  d <- data.table::as.data.table(data.table::copy(dt))
+  if (is.na(ano_col)) d[, ano_inicial_painel := NA_integer_] else data.table::setnames(d, ano_col, "ano_inicial_painel")
+  data.table::setorder(d, ano_inicial_painel, grupo_grafico, tipo_metrica, form_veg, ano_2)
+  if (isTRUE(linha_base)) {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | UC: ", uc_txt,
+      " | formação: ", form_veg,
+      " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | ano: ", ano_2,
+      " | linha de base: ", anos_linha_base,
+      " (", n_anos_linha_base, " ano(s))",
+      " | n UAs pareadas: ", n_UA_pareadas,
+      " | categorias incluídas: ", n_categorias,
+      " | distância Hellinger do centróide: ", monitora_relatorio_fmt_num(distancia_centroide_hellinger, 3),
+      " | Bray-Curtis médio pareado: ", monitora_relatorio_fmt_num(bray_curtis_medio_pareado, 3),
+      " | p ajustado FDR-BH: ", monitora_relatorio_fmt_p(p_ajustado_fdr_composicao_linha_base),
+      " | interpretação: ", monitora_relatorio_classe_pt(classe_mudanca_composicao_linha_base),
+      " | categorias: ", categorias_incluidas
+    )]
+  } else {
+    d[, paste0(
+      "- painel ", ano_inicial_painel,
+      " | UC: ", uc_txt,
+      " | formação: ", form_veg,
+      " | grupo: ", monitora_relatorio_rotulo_grupo(grupo_grafico),
+      " | métrica: ", monitora_relatorio_rotulo_metrica(tipo_metrica),
+      " | comparação: ", ano_1, " → ", ano_2,
+      ifelse(!is.na(anos_referencia) & nzchar(as.character(anos_referencia)), paste0(" (referência real: ", anos_referencia, ")"), ""),
+      " | n UAs pareadas: ", n_UA_pareadas,
+      " | categorias incluídas: ", n_categorias,
+      " | distância Hellinger do centróide: ", monitora_relatorio_fmt_num(distancia_centroide_hellinger, 3),
+      " | Bray-Curtis médio pareado: ", monitora_relatorio_fmt_num(bray_curtis_medio_pareado, 3),
+      " | p ajustado FDR-BH: ", monitora_relatorio_fmt_p(p_ajustado_fdr_composicao),
+      " | interpretação: ", monitora_relatorio_classe_pt(classe_mudanca_composicao),
+      " | categorias: ", categorias_incluidas
+    )]
+  }
+}
+
+
 monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt")) {
   linhas <- character()
 
@@ -10339,6 +10621,23 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
       "da mesma UC/UA, exigindo pelo menos ", MONITORA_STAT_BASELINE_MIN_ANOS, " anos de referência e ",
       MONITORA_STAT_MIN_PARES, " UAs pareadas."
     ),
+    paste0(
+      "- Os painéis amostrais por ano inicial não são coortes ecológicas de indivíduos; ",
+      "são subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento no painel."
+    ),
+    "",
+    "PRODUTOS ESTATÍSTICOS CONSIDERADOS",
+    monitora_relatorio_resumo_produto("estatisticas_mudanca_ano_a_ano.csv", "MONITORA_STAT_MUDANCA_ANO_A_ANO"),
+    monitora_relatorio_resumo_produto("estatisticas_mudanca_linha_base.csv", "MONITORA_STAT_MUDANCA_LINHA_BASE"),
+    monitora_relatorio_resumo_produto("estatisticas_composicao_geral_ano_a_ano.csv", "MONITORA_STAT_COMPOSICAO_GERAL"),
+    monitora_relatorio_resumo_produto("estatisticas_composicao_linha_base.csv", "MONITORA_STAT_COMPOSICAO_LINHA_BASE"),
+    monitora_relatorio_resumo_produto("estatistica_pareada_periodo_editorial.csv", "MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL"),
+    monitora_relatorio_resumo_produto("graficos_temporais_editoriais_dados.csv", "MONITORA_GRAFICOS_TEMPORAIS_EDITORIAIS_DADOS"),
+    monitora_relatorio_resumo_produto("estatisticas_mudanca_ano_a_ano_paineis_ano_inicial.csv", "MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL"),
+    monitora_relatorio_resumo_produto("estatisticas_mudanca_linha_base_paineis_ano_inicial.csv", "MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL"),
+    monitora_relatorio_resumo_produto("estatisticas_composicao_geral_ano_a_ano_paineis_ano_inicial.csv", "MONITORA_STAT_COMPOSICAO_GERAL_PAINEL"),
+    monitora_relatorio_resumo_produto("estatisticas_composicao_linha_base_paineis_ano_inicial.csv", "MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL"),
+    monitora_relatorio_resumo_produto("indice_graficos.csv", "MONITORA_INDICE_GRAFICOS"),
     "",
     "PRINCIPAIS ACHADOS",
     ""
@@ -10353,6 +10652,28 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
         linhas,
         "Esforço amostral por UC, ano e formação:",
         paste0("- ", amostra$UC, " | ", amostra$ANO, " | ", amostra$form_veg, ": ", amostra$n_UA, " UAs"),
+        ""
+      )
+    }
+  }
+
+  if (exists("MONITORA_GRAFICOS_TEMPORAIS_EDITORIAIS_DADOS")) {
+    linhas <- c(
+      linhas,
+      "Escopos amostrais dos gráficos temporais editoriais:",
+      monitora_relatorio_resumo_escopos_editoriais(MONITORA_GRAFICOS_TEMPORAIS_EDITORIAIS_DADOS),
+      ""
+    )
+  }
+
+  if (exists("MONITORA_AUDITORIA_ESFORCO_AMOSTRAL_TEMPORAL")) {
+    aud <- data.table::as.data.table(data.table::copy(MONITORA_AUDITORIA_ESFORCO_AMOSTRAL_TEMPORAL))
+    if (nrow(aud)) {
+      data.table::setorder(aud, classificacao_variacao_esforco, grupo_grafico, tipo_metrica, form_veg)
+      linhas <- c(
+        linhas,
+        "Variação do esforço amostral nos gráficos temporais:",
+        aud[, paste0("- ", form_veg, " | ", monitora_relatorio_rotulo_grupo(grupo_grafico), " | ", monitora_relatorio_rotulo_metrica(tipo_metrica), ": ", classificacao_variacao_esforco, " (", n_UA_por_ano, ")")],
         ""
       )
     }
@@ -10382,6 +10703,18 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
     )
   }
 
+  if (exists("MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL")) {
+    linhas <- c(
+      linhas,
+      "Resumo das mudanças nos painéis editoriais pareados por período:",
+      monitora_relatorio_resumo_classe(MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL, "classe_mudanca"),
+      "",
+      "Principais mudanças nos painéis editoriais pareados por período:",
+      monitora_relatorio_principais_categoria_periodo_editorial(MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL),
+      ""
+    )
+  }
+
   if (exists("MONITORA_STAT_COMPOSICAO_GERAL")) {
     linhas <- c(
       linhas,
@@ -10406,18 +10739,90 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
     )
   }
 
+  if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL")) {
+    linhas <- c(
+      linhas,
+      "Resumo dos painéis amostrais por ano inicial:",
+      monitora_relatorio_resumo_paineis_ano_inicial(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL),
+      "",
+      "Resumo das mudanças por categoria nos painéis amostrais por ano inicial vs. medição anterior:",
+      monitora_relatorio_resumo_classe(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL, "classe_mudanca"),
+      "",
+      "Principais mudanças por categoria nos painéis amostrais por ano inicial vs. medição anterior:",
+      monitora_relatorio_principais_categoria_painel(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL, linha_base = FALSE),
+      ""
+    )
+  }
+
+  if (exists("MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL")) {
+    linhas <- c(
+      linhas,
+      "Resumo das mudanças por categoria nos painéis amostrais por ano inicial vs. linha de base acumulada anterior:",
+      monitora_relatorio_resumo_classe(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL, "classe_mudanca"),
+      "",
+      "Principais mudanças por categoria nos painéis amostrais por ano inicial vs. linha de base acumulada anterior:",
+      monitora_relatorio_principais_categoria_painel(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL, linha_base = TRUE),
+      ""
+    )
+  }
+
+  if (exists("MONITORA_STAT_COMPOSICAO_GERAL_PAINEL")) {
+    linhas <- c(
+      linhas,
+      "Resumo da composição geral nos painéis amostrais por ano inicial vs. medição anterior:",
+      monitora_relatorio_resumo_classe(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL, "classe_mudanca_composicao"),
+      "",
+      "Principais mudanças da composição geral nos painéis amostrais por ano inicial vs. medição anterior:",
+      monitora_relatorio_principais_composicao_painel(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL, linha_base = FALSE),
+      ""
+    )
+  }
+
+  if (exists("MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL")) {
+    linhas <- c(
+      linhas,
+      "Resumo da composição geral nos painéis amostrais por ano inicial vs. linha de base acumulada anterior:",
+      monitora_relatorio_resumo_classe(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL, "classe_mudanca_composicao_linha_base"),
+      "",
+      "Principais mudanças da composição geral nos painéis amostrais por ano inicial vs. linha de base acumulada anterior:",
+      monitora_relatorio_principais_composicao_painel(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL, linha_base = TRUE),
+      ""
+    )
+  }
+
   linhas <- c(linhas, "DETALHAMENTO POR CATEGORIA - MEDIÇÃO ANTERIOR", "")
   if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO")) {
     linhas <- c(linhas, monitora_relatorio_linha_categoria(MONITORA_STAT_MUDANCA_ANO_A_ANO, linha_base = FALSE, uc_txt = uc_txt), "")
   } else {
-    linhas <- c(linhas, "- Tabela estatistica de medição anterior não disponível.", "")
+    linhas <- c(linhas, "- Tabela estatística de medição anterior não disponível.", "")
   }
 
   linhas <- c(linhas, "DETALHAMENTO POR CATEGORIA - LINHA DE BASE ACUMULADA ANTERIOR", "")
   if (exists("MONITORA_STAT_MUDANCA_LINHA_BASE")) {
     linhas <- c(linhas, monitora_relatorio_linha_categoria(MONITORA_STAT_MUDANCA_LINHA_BASE, linha_base = TRUE, uc_txt = uc_txt), "")
   } else {
-    linhas <- c(linhas, "- Tabela estatistica de linha de base não disponível.", "")
+    linhas <- c(linhas, "- Tabela estatística de linha de base não disponível.", "")
+  }
+
+  linhas <- c(linhas, "DETALHAMENTO POR CATEGORIA - PAINÉIS EDITORIAIS PAREADOS POR PERÍODO", "")
+  if (exists("MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL")) {
+    linhas <- c(linhas, monitora_relatorio_linha_categoria_periodo_editorial(MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL, uc_txt = uc_txt), "")
+  } else {
+    linhas <- c(linhas, "- Tabela pareada por período editorial não disponível.", "")
+  }
+
+  linhas <- c(linhas, "DETALHAMENTO POR CATEGORIA - PAINÉIS AMOSTRAIS POR ANO INICIAL VS. MEDIÇÃO ANTERIOR", "")
+  if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL")) {
+    linhas <- c(linhas, monitora_relatorio_linha_categoria_painel(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL, linha_base = FALSE, uc_txt = uc_txt), "")
+  } else {
+    linhas <- c(linhas, "- Tabela dos painéis amostrais por ano inicial vs. medição anterior não disponível.", "")
+  }
+
+  linhas <- c(linhas, "DETALHAMENTO POR CATEGORIA - PAINÉIS AMOSTRAIS POR ANO INICIAL VS. LINHA DE BASE", "")
+  if (exists("MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL")) {
+    linhas <- c(linhas, monitora_relatorio_linha_categoria_painel(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL, linha_base = TRUE, uc_txt = uc_txt), "")
+  } else {
+    linhas <- c(linhas, "- Tabela dos painéis amostrais por ano inicial vs. linha de base não disponível.", "")
   }
 
   linhas <- c(linhas, "DETALHAMENTO DA COMPOSIÇÃO GERAL - MEDIÇÃO ANTERIOR", "")
@@ -10434,13 +10839,44 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
     linhas <- c(linhas, "- Tabela de composição geral vs. linha de base não disponível.", "")
   }
 
+  linhas <- c(linhas, "DETALHAMENTO DA COMPOSIÇÃO GERAL - PAINÉIS AMOSTRAIS POR ANO INICIAL VS. MEDIÇÃO ANTERIOR", "")
+  if (exists("MONITORA_STAT_COMPOSICAO_GERAL_PAINEL")) {
+    linhas <- c(linhas, monitora_relatorio_linha_composicao_painel(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL, linha_base = FALSE, uc_txt = uc_txt), "")
+  } else {
+    linhas <- c(linhas, "- Tabela de composição geral dos painéis amostrais por ano inicial vs. medição anterior não disponível.", "")
+  }
+
+  linhas <- c(linhas, "DETALHAMENTO DA COMPOSIÇÃO GERAL - PAINÉIS AMOSTRAIS POR ANO INICIAL VS. LINHA DE BASE", "")
+  if (exists("MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL")) {
+    linhas <- c(linhas, monitora_relatorio_linha_composicao_painel(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL, linha_base = TRUE, uc_txt = uc_txt), "")
+  } else {
+    linhas <- c(linhas, "- Tabela de composição geral dos painéis amostrais por ano inicial vs. linha de base não disponível.", "")
+  }
+
+  if (exists("MONITORA_INDICE_GRAFICOS")) {
+    idx <- data.table::as.data.table(data.table::copy(MONITORA_INDICE_GRAFICOS))
+    if (nrow(idx)) {
+      resumo_idx <- idx[, .N, by = .(bloco, escopo)]
+      data.table::setorder(resumo_idx, bloco, escopo)
+      linhas <- c(
+        linhas,
+        "ÍNDICE MESTRE DOS GRÁFICOS",
+        paste0("- Total de gráficos indexados: ", nrow(idx)),
+        resumo_idx[, paste0("- ", bloco, " | ", escopo, ": ", N, " gráfico(s)")],
+        "- Consultar indice_graficos.csv para a correspondência entre nome público, nome interno legado e metadados analíticos.",
+        ""
+      )
+    }
+  }
+
   linhas <- c(
     linhas,
     "Legenda interpretativa:",
     paste0("- aumento/redução: mudança sustentada por teste pareado, p ajustado FDR-BH ≤ ", MONITORA_STAT_ALPHA, " e efeito mínimo ≥ ", MONITORA_STAT_MIN_EFEITO_PP, " p.p."),
     paste0("- estabilidade/equivalência: IC95% dentro da margem ecológica de ±", MONITORA_STAT_MARGEM_PP, " p.p."),
     paste0("- pares insuficientes: menos de ", MONITORA_STAT_MIN_PARES, " UAs pareadas válidas."),
-    "- inconclusivo: amostra testável, mas sem evidência suficiente para afirmar mudança ou estabilidade/equivalência."
+    "- inconclusivo: amostra testável, mas sem evidência suficiente para afirmar mudança ou estabilidade/equivalência.",
+    "- painel amostral por ano inicial: subconjunto longitudinal de UAs presentes no primeiro ano do painel; não representa coorte ecológica de indivíduos."
   )
 
   linhas <- linhas[!is.na(linhas)]
@@ -10450,6 +10886,7 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
   }
   invisible(caminho)
 }
+
 
 
 ### Exportação das tabelas estatísticas em CSV.
@@ -10585,14 +11022,13 @@ if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO")) {
     file.path("estatisticas_mudanca_config.csv"),
     row.names = FALSE
   )
-  monitora_gerar_relatorio_textual_estatistico(file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt"))
+  ## O relatório textual estatístico é gerado ao final, após os gráficos temporais
+  ## editoriais, os painéis amostrais por ano inicial e o índice mestre de gráficos.
 }
 
-fwrite(
-  monitora_criar_indice_graficos_auxiliares(),
-  file.path("indice_graficos_auxiliares.csv"),
-  row.names = FALSE
-)
+## O índice de gráficos foi unificado em indice_graficos.csv.
+## A função monitora_criar_indice_graficos_auxiliares() é mantida apenas para
+## compatibilidade interna e eventual auditoria de nomes legados.
 
 
 monitora_controlar_recursos("exportacao_tabelas_csv", risco = "normal", force_log = TRUE)
@@ -11146,7 +11582,7 @@ monitora_editorial_plot <- function(dados, grupo_grafico, tipo_metrica, escopo) 
 
     if ("periodo_pareado" %in% names(dados_prop)) {
       dados_prop[, form_veg_original := as.character(form_veg)]
-      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")]
+      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")] 
     }
 
     dados_prop <- monitora_preparar_rotulos_prop_obrigatorios(
@@ -11412,13 +11848,13 @@ monitora_editorial_gerar_graficos_temporais <- function(series_dt) {
   dados_exportar_dt <- data.table::rbindlist(dados_exportar, fill = TRUE, use.names = TRUE)
   indice_dt <- data.table::rbindlist(indice, fill = TRUE, use.names = TRUE)
   auditoria_dt <- monitora_editorial_avaliar_variacao_esforco(series_dt)
+  assign("MONITORA_GRAFICOS_TEMPORAIS_EDITORIAIS_DADOS", dados_exportar_dt, envir = .GlobalEnv)
+  assign("MONITORA_INDICE_GRAFICOS_TEMPORAIS_EDITORIAIS_INTERNO", indice_dt, envir = .GlobalEnv)
+  assign("MONITORA_AUDITORIA_ESFORCO_AMOSTRAL_TEMPORAL", auditoria_dt, envir = .GlobalEnv)
 
   if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
     if (nrow(dados_exportar_dt)) {
       data.table::fwrite(dados_exportar_dt, file.path(MONITORA_OUTPUT_DIR, "graficos_temporais_editoriais_dados.csv"), row.names = FALSE)
-    }
-    if (nrow(indice_dt)) {
-      data.table::fwrite(indice_dt, file.path(MONITORA_OUTPUT_DIR, "indice_graficos_temporais_editoriais.csv"), row.names = FALSE)
     }
     if (nrow(auditoria_dt)) {
       data.table::fwrite(auditoria_dt, file.path(MONITORA_OUTPUT_DIR, "auditoria_esforco_amostral_temporal.csv"), row.names = FALSE)
@@ -11494,7 +11930,7 @@ monitora_coorte_texto <- function(grupo_grafico, tipo_metrica, ano_inicio, form_
   list(
     titulo = titulo_base,
     subtitulo = subt,
-    caption = "Símbolos estatísticos (UA/transecto pareada) e regras editoriais idênticas às dos gráficos originais; coorte anual restrita às UAs presentes no ano inicial indicado."
+    caption = "Símbolos estatísticos (UA/transecto pareada) e regras editoriais idênticas às dos gráficos originais; painel amostral restrito às UAs presentes no ano inicial indicado."
   )
 }
 
@@ -11513,7 +11949,7 @@ monitora_coorte_plot_prop <- function(dados, grupo_grafico, form_veg_alvo, com_r
     dados,
     prop_min_interno = if (grupo_grafico %in% c("herbaceas_lenhosas")) 0.001 else 0.10
   )
-  dados_rot <- monitora_editorial_compactar_rotulos_prop(dados_rot, grupo_grafico = grupo_grafico, escopo = "coorte")
+  dados_rot <- monitora_editorial_compactar_rotulos_prop(dados_rot, grupo_grafico = grupo_grafico, escopo = "painel_ano_inicial")
   ## ANO_label_rotulo já é rótulo de exibição calculado sem afetar a chave interna
   ## de posicionamento. Não sobrescrever aqui, para preservar n UA quando disponível.
   p <- ggplot2::ggplot(data = dados_rot) +
@@ -11558,7 +11994,7 @@ monitora_coorte_plot_cob <- function(dados, grupo_grafico, com_rotulo = TRUE) {
   if (isTRUE(complexo)) {
     dados <- monitora_adicionar_rotulo_cobertura_complexa(dados)
   }
-  dados <- monitora_editorial_compactar_rotulos_cobertura(dados, grupo_grafico = grupo_grafico, escopo = "coorte")
+  dados <- monitora_editorial_compactar_rotulos_cobertura(dados, grupo_grafico = grupo_grafico, escopo = "painel_ano_inicial")
   dados <- monitora_preparar_layout_rotulos_cobertura(
     dados,
     complexo = complexo,
@@ -11676,11 +12112,22 @@ monitora_coorte_gerar_graficos <- function(series_coorte) {
   unique(nomes)
 }
 
+
+monitora_exportar_tabela_painel_ano_inicial <- function(dt, arquivo) {
+  if (is.null(dt) || !is.data.frame(dt) || !nrow(dt)) return(invisible(FALSE))
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if ("coorte_ano_inicial" %in% names(out) && !"ano_inicial_painel" %in% names(out)) {
+    data.table::setnames(out, "coorte_ano_inicial", "ano_inicial_painel")
+  }
+  data.table::fwrite(out, file.path(MONITORA_OUTPUT_DIR, arquivo), row.names = FALSE)
+  invisible(TRUE)
+}
+
 monitora_coorte_plot_names <- character(0)
 if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
   MONITORA_STAT_SERIES_UA_ANO_COORTE <- monitora_coorte_filtrar_series(MONITORA_STAT_SERIES_UA_ANO)
   if (nrow(MONITORA_STAT_SERIES_UA_ANO_COORTE)) {
-    monitora_stat_msg("rodando estatísticas para gráficos de coortes anuais iniciais")
+    monitora_stat_msg("rodando estatísticas para gráficos de painéis amostrais por ano inicial")
     partes_coorte <- split(MONITORA_STAT_SERIES_UA_ANO_COORTE, MONITORA_STAT_SERIES_UA_ANO_COORTE$coorte_ano_inicial)
     MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
       d <- partes_coorte[[k]]
@@ -11707,12 +12154,17 @@ if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_
       out
     }), fill = TRUE, use.names = TRUE)
     if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
-      if (nrow(MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE)) data.table::fwrite(MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_mudanca_ano_a_ano_coortes_iniciais.csv"), row.names = FALSE)
-      if (nrow(MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE)) data.table::fwrite(MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_mudanca_linha_base_coortes_iniciais.csv"), row.names = FALSE)
-      if (nrow(MONITORA_STAT_COMPOSICAO_GERAL_COORTE)) data.table::fwrite(MONITORA_STAT_COMPOSICAO_GERAL_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_composicao_geral_ano_a_ano_coortes_iniciais.csv"), row.names = FALSE)
+      MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL <- MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE
+      MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL <- MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE
+      MONITORA_STAT_COMPOSICAO_GERAL_PAINEL <- MONITORA_STAT_COMPOSICAO_GERAL_COORTE
+      MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL <- MONITORA_STAT_COMPOSICAO_LINHA_BASE_COORTE
+      if (nrow(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL, "estatisticas_mudanca_ano_a_ano_paineis_ano_inicial.csv")
+      if (nrow(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL, "estatisticas_mudanca_linha_base_paineis_ano_inicial.csv")
+      if (nrow(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL, "estatisticas_composicao_geral_ano_a_ano_paineis_ano_inicial.csv")
+      if (nrow(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL, "estatisticas_composicao_linha_base_paineis_ano_inicial.csv")
     }
     monitora_coorte_plot_names <- monitora_coorte_gerar_graficos(MONITORA_STAT_SERIES_UA_ANO_COORTE)
-    monitora_stat_msg("gráficos de coortes anuais iniciais preparados: ", length(monitora_coorte_plot_names))
+    monitora_stat_msg("gráficos de painéis amostrais por ano inicial preparados: ", length(monitora_coorte_plot_names))
   }
 }
 
@@ -11760,6 +12212,160 @@ if (exists("monitora_editorial_plot_names") && length(monitora_editorial_plot_na
 }
 if (exists("monitora_coorte_plot_names") && length(monitora_coorte_plot_names) > 0L) {
   plot_list_names <- unique(c(plot_list_names, monitora_coorte_plot_names))
+}
+
+monitora_grafico_detectar_tema <- function(nome_plot) {
+  data.table::fcase(
+    grepl("herb_lenh", nome_plot), "herbaceas_lenhosas",
+    grepl("material_botanico", nome_plot), "material_botanico",
+    grepl("categ", nome_plot), "categorias_gerais",
+    grepl("nat", nome_plot), "formas_vida_nativas",
+    grepl("exot", nome_plot), "formas_vida_exoticas",
+    grepl("seca_morta", nome_plot), "formas_vida_secas_mortas",
+    default = "nao_classificado"
+  )
+}
+
+monitora_grafico_detectar_metrica <- function(nome_plot) {
+  data.table::fcase(
+    nome_plot == "plot_p5.3.2_seca_morta_sem_rotulo", "cobertura",
+    grepl("prop_rel", nome_plot), "proporcao_relativa",
+    grepl("veg_cover", nome_plot), "cobertura",
+    default = "nao_classificada"
+  )
+}
+
+monitora_grafico_detectar_formacao <- function(nome_plot) {
+  data.table::fcase(
+    grepl("_camp_", nome_plot), "campestre",
+    grepl("_sav_", nome_plot), "savanica",
+    default = "campestre_savanica"
+  )
+}
+
+monitora_grafico_detectar_rotulo <- function(nome_plot) {
+  data.table::fcase(
+    grepl("_sem_rotulo$", nome_plot), "sem_rotulo",
+    grepl("_com_rotulo$", nome_plot), "com_rotulo",
+    grepl("^plot_ed_", nome_plot), "com_rotulo",
+    default = "nao_aplicavel"
+  )
+}
+
+monitora_grafico_detectar_escopo <- function(nome_plot) {
+  if (grepl("^plot_ed_", nome_plot)) {
+    return(data.table::fcase(
+      grepl("_amostra_total$", nome_plot), "amostra_total",
+      grepl("_pareado_total$", nome_plot), "pareado_total",
+      grepl("_pareado_periodo$", nome_plot), "pareado_periodo",
+      default = "temporal"
+    ))
+  }
+  if (grepl("_coorte_[0-9]{4}", nome_plot)) {
+    ano <- sub(".*_coorte_([0-9]{4}).*", "\\1", nome_plot)
+    return(paste0("ano_inicial_", ano))
+  }
+  "amostra_total"
+}
+
+monitora_grafico_detectar_bloco <- function(nome_plot) {
+  data.table::fcase(
+    grepl("^plot_ed_", nome_plot), "temporal",
+    grepl("_coorte_[0-9]{4}", nome_plot), "painel_ano_inicial",
+    default = "sintese"
+  )
+}
+
+monitora_grafico_detectar_ano_painel <- function(nome_plot) {
+  if (!grepl("_coorte_[0-9]{4}", nome_plot)) return(NA_integer_)
+  suppressWarnings(as.integer(sub(".*_coorte_([0-9]{4}).*", "\\1", nome_plot)))
+}
+
+monitora_grafico_arquivo_dados <- function(metrica, tema, bloco) {
+  if (identical(bloco, "temporal")) return("graficos_temporais_editoriais_dados.csv")
+  if (identical(bloco, "painel_ano_inicial")) {
+    return("estatisticas_mudanca_ano_a_ano_paineis_ano_inicial.csv; estatisticas_mudanca_linha_base_paineis_ano_inicial.csv; estatisticas_composicao_geral_ano_a_ano_paineis_ano_inicial.csv; estatisticas_composicao_linha_base_paineis_ano_inicial.csv")
+  }
+  if (identical(metrica, "proporcao_relativa")) {
+    return(data.table::fcase(
+      tema == "herbaceas_lenhosas", "prop_rel_herb_lenh.csv",
+      tema == "categorias_gerais", "prop_rel_categ.csv",
+      tema == "material_botanico", "prop_rel_material_botanico.csv",
+      tema == "formas_vida_nativas", "prop_rel_form_vida_nat.csv",
+      tema == "formas_vida_exoticas", "prop_rel_form_vida_exot.csv",
+      tema == "formas_vida_secas_mortas", "prop_rel_form_vida_seca_morta.csv",
+      default = NA_character_
+    ))
+  }
+  data.table::fcase(
+    tema == "herbaceas_lenhosas", "cob_veg_herb_lenh.csv",
+    tema == "categorias_gerais", "cob_veg_categ.csv",
+    tema == "material_botanico", "cob_veg_material_botanico.csv",
+    tema == "formas_vida_nativas", "cob_veg_form_vida_nat.csv",
+    tema == "formas_vida_exoticas", "cob_veg_form_vida_exot.csv",
+    tema == "formas_vida_secas_mortas", "cob_veg_form_vida_seca_morta.csv",
+    default = NA_character_
+  )
+}
+
+monitora_grafico_titulo_publico <- function(bloco, escopo, metrica, tema, formacao, ano_inicial = NA_integer_) {
+  pref <- data.table::fcase(
+    bloco == "sintese", "Síntese descritiva",
+    bloco == "temporal", "Série temporal",
+    bloco == "painel_ano_inicial", paste0("Painel amostral ", ano_inicial),
+    default = "Gráfico"
+  )
+  paste0(
+    pref, " — ", monitora_relatorio_rotulo_metrica(metrica),
+    " — ", monitora_relatorio_rotulo_grupo(tema),
+    " — ", gsub("_", "/", formacao),
+    if (!is.na(escopo) && nzchar(escopo) && !identical(bloco, "painel_ano_inicial")) paste0(" — ", escopo) else ""
+  )
+}
+
+monitora_grafico_nome_publico <- function(serial, bloco, escopo, metrica, tema, formacao, rotulo, ano_inicial = NA_integer_) {
+  serial_txt <- sprintf("%03d", as.integer(serial))
+  if (identical(bloco, "painel_ano_inicial")) {
+    return(paste0("fig_", serial_txt, "_painel_", ano_inicial, "_", metrica, "_", tema, "_", formacao, "_", rotulo, ".png"))
+  }
+  paste0("fig_", serial_txt, "_", bloco, "_", escopo, "_", metrica, "_", tema, "_", formacao, "_", rotulo, ".png")
+}
+
+monitora_criar_indice_graficos_publicos <- function(nomes_plot) {
+  nomes_plot <- unique(as.character(nomes_plot))
+  nomes_plot <- nomes_plot[nzchar(nomes_plot)]
+  if (!length(nomes_plot)) return(data.table::data.table())
+  idx <- data.table::data.table(nome_plot = nomes_plot)
+  idx[, bloco := vapply(nome_plot, monitora_grafico_detectar_bloco, character(1))]
+  idx[, ordem_bloco := data.table::fcase(bloco == "sintese", 1L, bloco == "temporal", 2L, bloco == "painel_ano_inicial", 3L, default = 9L)]
+  idx[, ordem_original := seq_len(.N)]
+  data.table::setorder(idx, ordem_bloco, ordem_original)
+  idx[, serial := seq_len(.N)]
+  idx[, arquivo_png_anterior := paste0(nome_plot, ".png")]
+  idx[, tema := vapply(nome_plot, monitora_grafico_detectar_tema, character(1))]
+  idx[, metrica := vapply(nome_plot, monitora_grafico_detectar_metrica, character(1))]
+  idx[, formacao := vapply(nome_plot, monitora_grafico_detectar_formacao, character(1))]
+  idx[, rotulo := vapply(nome_plot, monitora_grafico_detectar_rotulo, character(1))]
+  idx[, escopo := vapply(nome_plot, monitora_grafico_detectar_escopo, character(1))]
+  idx[, ano_inicial := vapply(nome_plot, monitora_grafico_detectar_ano_painel, integer(1))]
+  idx[, arquivo_png := mapply(monitora_grafico_nome_publico, serial, bloco, escopo, metrica, tema, formacao, rotulo, ano_inicial, USE.NAMES = FALSE)]
+  idx[, arquivo_dados := mapply(monitora_grafico_arquivo_dados, metrica, tema, bloco, USE.NAMES = FALSE)]
+  idx[, titulo := mapply(monitora_grafico_titulo_publico, bloco, escopo, metrica, tema, formacao, ano_inicial, USE.NAMES = FALSE)]
+  idx[, uso_recomendado := data.table::fcase(
+    bloco == "temporal", "principal_publicacao",
+    rotulo == "com_rotulo", "principal_publicacao_ou_validacao",
+    rotulo == "sem_rotulo", "apoio_visual_sem_rotulos",
+    default = "apoio"
+  )]
+  idx[, observacao := data.table::fcase(
+    bloco == "sintese", "Gráfico de síntese descritiva herdado do bloco histórico, exportado com nomenclatura pública seriada.",
+    bloco == "temporal", "Gráfico temporal editorial com escopo amostral explícito.",
+    bloco == "painel_ano_inicial", "Gráfico de painel amostral por ano inicial; não representa coorte ecológica de indivíduos.",
+    default = "Gráfico indexado."
+  )]
+  idx[, c("ordem_bloco", "ordem_original") := NULL]
+  data.table::setcolorder(idx, c("serial", "arquivo_png", "nome_plot", "arquivo_png_anterior", "bloco", "escopo", "ano_inicial", "metrica", "tema", "formacao", "rotulo", "uso_recomendado", "arquivo_dados", "titulo", "observacao"))
+  idx[]
 }
 
 
@@ -11942,13 +12548,24 @@ monitora_ggsave_publicavel <- function(filename, plot, width = 11, height = 7, d
 # Objetos de gráfico existentes.
 if (isTRUE(MONITORA_EXPORTAR_GRAFICOS) && (!exists("registros_corrig") || nrow(registros_corrig) <= MONITORA_MAX_LINHAS_GRAFICOS_AUTO)) {
   existing_plots <- plot_list_names[plot_list_names %in% ls()]
+  MONITORA_INDICE_GRAFICOS <- monitora_criar_indice_graficos_publicos(existing_plots)
+  if (nrow(MONITORA_INDICE_GRAFICOS)) {
+    data.table::fwrite(
+      MONITORA_INDICE_GRAFICOS,
+      file.path(MONITORA_OUTPUT_DIR, "indice_graficos.csv"),
+      row.names = FALSE
+    )
+  }
+  monitora_gerar_relatorio_textual_estatistico(file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt"))
+  MONITORA_RELATORIO_TEXTUAL_GERADO <- TRUE
   plot_list <- mget(existing_plots)
   dir.create("plots_png", showWarnings = FALSE)
+  mapa_arquivo_png <- stats::setNames(MONITORA_INDICE_GRAFICOS$arquivo_png, MONITORA_INDICE_GRAFICOS$nome_plot)
   walk2(
     .x = plot_list,
     .y = existing_plots,
     .f = ~monitora_ggsave_publicavel(
-      filename = file.path("plots_png", paste0(.y, ".png")),
+      filename = file.path("plots_png", ifelse(.y %in% names(mapa_arquivo_png), mapa_arquivo_png[[.y]], paste0(.y, ".png"))),
       plot = .x,
       width = 11,
       height = 7,
@@ -11978,6 +12595,23 @@ if (isTRUE(MONITORA_EXPORTAR_GRAFICOS) && (!exists("registros_corrig") || nrow(r
   motivo <- if (!isTRUE(MONITORA_EXPORTAR_GRAFICOS)) "MONITORA_EXPORTAR_GRAFICOS=false" else paste0("nrow(registros_corrig)>MONITORA_MAX_LINHAS_GRAFICOS_AUTO=", MONITORA_MAX_LINHAS_GRAFICOS_AUTO)
   monitora_log("exportacao_graficos_png", "AVISO", NA_character_, paste0("Exportação de gráficos PNG ignorada: ", motivo), "para forçar, ajustar variáveis de ambiente")
   monitora_perf_checkpoint("exportacao_graficos_png_ignorada", motivo)
+}
+
+
+if (!exists("MONITORA_INDICE_GRAFICOS") && exists("plot_list_names")) {
+  existing_plots_relatorio <- plot_list_names[plot_list_names %in% ls()]
+  MONITORA_INDICE_GRAFICOS <- monitora_criar_indice_graficos_publicos(existing_plots_relatorio)
+  if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR) && nrow(MONITORA_INDICE_GRAFICOS)) {
+    data.table::fwrite(
+      MONITORA_INDICE_GRAFICOS,
+      file.path(MONITORA_OUTPUT_DIR, "indice_graficos.csv"),
+      row.names = FALSE
+    )
+  }
+}
+if (!exists("MONITORA_RELATORIO_TEXTUAL_GERADO") && exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
+  monitora_gerar_relatorio_textual_estatistico(file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt"))
+  MONITORA_RELATORIO_TEXTUAL_GERADO <- TRUE
 }
 
 ### Exportação dos arquivos KML.
@@ -12061,22 +12695,22 @@ combined_sf_object <- st_set_crs(combined_sf_object, 4326)
 st_write(combined_sf_object, "UAs_registros_corrig_stat.kml", driver = "KML", delete_dsn=TRUE)
 
 # Exporta o arquivo KML, sobrescrevendo arquivo anterior se existir.
-st_write(subset(combined_sf_object %>% select(c(".id",
-                                                "PROTOCOLO",
-                                                "UC",
-                                                "UA",
-                                                "ANO",
-                                                "lat_ini",
-                                                "long_ini",
-                                                "alt_ini",
-                                                "acc_ini",
-                                                "lat_fin",
-                                                "long_fin",
-                                                "alt_fin",
-                                                "acc_fin",
-                                                "name",
-                                                "geometry",
-                                                "point_type"))),
+st_write(subset(combined_sf_object %>% select(c(".id", 
+                                                "PROTOCOLO", 
+                                                "UC", 
+                                                "UA", 
+                                                "ANO", 
+                                                "lat_ini", 
+                                                "long_ini", 
+                                                "alt_ini", 
+                                                "acc_ini", 
+                                                "lat_fin", 
+                                                "long_fin", 
+                                                "alt_fin", 
+                                                "acc_fin", 
+                                                "name", 
+                                                "geometry", 
+                                                "point_type"))), 
          "UAs_verg_ini_verg_fin.kml", driver = "KML", delete_dsn=TRUE)
 
 # Remove objetos temporários.
