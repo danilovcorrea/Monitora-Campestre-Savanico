@@ -2,6 +2,12 @@
 
 Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 
+## v2.1.3 - Correção de rótulos obrigatórios em subconjuntos vazios
+
+- Corrige erro em gráficos obrigatórios quando uma formação vegetacional está ausente no conjunto de dados analisado.
+- Garante que `prop_num_rotulo_obrig` e demais colunas técnicas de rótulo sejam criadas mesmo em subconjuntos vazios.
+- Substitui `label.size` por `linewidth` em `geom_label()`, removendo aviso de depreciação do ggplot2 3.5.0.
+- Não altera cálculos estatísticos, CSVs analíticos, regras de permutação, bootstrap, FDR ou deduplicação.
 ## v2.1.2 - Refatoração nominal interna e revisão editorial da documentação
 
 ### Alterado

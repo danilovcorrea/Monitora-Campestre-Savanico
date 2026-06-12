@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.1.2
+### Versão pública: v2.1.3
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -26,7 +26,7 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.1.2:
+### Destaques da versão pública v2.1.3:
 ###   - consolidação dos gráficos temporais editoriais com escopo amostral explícito;
 ###   - inclusão de painéis para amostra total, UAs pareadas em todos os anos e períodos
 ###     consecutivos pareados;
@@ -6184,11 +6184,41 @@ monitora_plot_preparar_rotulos_proporcao_obrigatorios <- function(dt, prop_min_i
 
   out <- data.table::as.data.table(data.table::copy(dt))
   if (!nrow(out) || !all(c("ANO", "form_veg", "prop", "n") %in% names(out))) {
-    out[, rotulo_prop_plot := character()]
-    out[, rotulo_prop_interno := character()]
-    out[, rotulo_prop_externo := character()]
-    out[, ANO_label_rotulo := character()]
-    out[, ANO_factor_rotulo := numeric()]
+    ## Mesmo quando o subconjunto está vazio (ex.: execução com apenas formação
+    ## campestre ou apenas savânica), a função deve devolver todas as colunas
+    ## técnicas usadas pelas camadas de plotagem. Sem isso, data.table falha em
+    ## geom_rect()/geom_label() com "Object 'prop_num_rotulo_obrig' not found".
+    if ("prop" %in% names(out)) {
+      out[, prop_num_rotulo_obrig := suppressWarnings(as.numeric(prop))]
+    } else {
+      out[, prop_num_rotulo_obrig := rep(NA_real_, .N)]
+    }
+    if ("n" %in% names(out)) {
+      out[, n_num_rotulo_obrig := suppressWarnings(as.numeric(n))]
+    } else {
+      out[, n_num_rotulo_obrig := rep(NA_real_, .N)]
+    }
+    out[, rotulo_prop_plot := rep("", .N)]
+    out[, rotulo_prop_interno := rep("", .N)]
+    out[, rotulo_prop_externo := rep("", .N)]
+    out[, ANO_label_rotulo := rep("", .N)]
+    out[, ANO_factor_rotulo := rep(NA_real_, .N)]
+    out[, `:=`(
+      x_inicio_plot = rep(NA_real_, .N),
+      x_fim_plot = rep(NA_real_, .N),
+      x_meio_plot = rep(NA_real_, .N),
+      x_barra_min_plot = rep(NA_real_, .N),
+      x_barra_max_plot = rep(NA_real_, .N),
+      x_alvo_rotulo = rep(NA_real_, .N),
+      y_alvo_rotulo = rep(NA_real_, .N),
+      hjust_rotulo = rep(0.5, .N),
+      n_rotulos_externos_ano = rep(NA_integer_, .N),
+      tamanho_rotulo_externo = rep(MONITORA_FONTE_ROTULO_PROP, .N),
+      x_cotovelo_rotulo = rep(NA_real_, .N),
+      x_conector_rotulo = rep(NA_real_, .N),
+      y_via_rotulo = rep(NA_real_, .N),
+      usar_cotovelo_rotulo = rep(FALSE, .N)
+    )]
     return(out)
   }
 
@@ -6573,7 +6603,7 @@ monitora_plot_camadas_rotulos_proporcao_obrigatorios <- function(dados_rotulos) 
     inherit.aes = FALSE,
     size = MONITORA_FONTE_ROTULO_PROP,
     lineheight = MONITORA_LINEHEIGHT_ROTULO,
-    label.size = NA,
+    linewidth = 0,
     label.padding = grid::unit(0.035, "lines"),
     fill = "white",
     alpha = 1,
@@ -6830,7 +6860,7 @@ monitora_plot_camadas_rotulos_cobertura_externos <- function(complexo = FALSE, t
       hjust = 0,
       color = "black",
       fill = "white",
-      label.size = NA,
+      linewidth = 0,
       label.padding = grid::unit(0.030, "lines"),
       size = tamanho,
       lineheight = MONITORA_LINEHEIGHT_ROTULO,
@@ -12034,7 +12064,7 @@ monitora_plot_painel_ano_inicial_cobertura <- function(dados, grupo_grafico, com
         hjust = 0,
         size = if (isTRUE(complexo)) MONITORA_FONTE_ROTULO_COB * 0.62 else MONITORA_FONTE_ROTULO_COB * 0.82,
         lineheight = MONITORA_LINEHEIGHT_ROTULO,
-        label.size = NA,
+        linewidth = 0,
         label.padding = grid::unit(0.030, "lines"),
         fill = "white",
         color = "black",
