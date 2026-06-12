@@ -188,7 +188,7 @@ dir.create(MONITORA_OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(MONITORA_LOG_DIR, showWarnings = FALSE, recursive = TRUE)
 
 MONITORA_EXEC_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
-MONITORA_REPORT <- data.table(
+MONITORA_LOG_EXECUCAO <- data.table(
   etapa = character(),
   severidade = character(),
   arquivo = character(),
@@ -199,9 +199,9 @@ MONITORA_REPORT <- data.table(
 monitora_log_registrar_evento <- function(etapa, severidade = "INFO", arquivo = NA_character_, detalhe = NA_character_, acao = NA_character_) {
   # Mantém o log de execução em estrutura data.table, usando rbindlist() para reduzir sobrecarga
   # em relação a rbind() incremental.
-  MONITORA_REPORT <<- data.table::rbindlist(
+  MONITORA_LOG_EXECUCAO <<- data.table::rbindlist(
     list(
-      MONITORA_REPORT,
+      MONITORA_LOG_EXECUCAO,
       data.table::data.table(
         etapa = as.character(etapa),
         severidade = as.character(severidade),
@@ -456,7 +456,7 @@ monitora_recurso_gc <- function(etapa = NA_character_, force = FALSE) {
   invisible(TRUE)
 }
 
-MONITORA_HARDWARE <- cbind(
+MONITORA_RECURSO_HARDWARE <- cbind(
   data.table(
     exec_id = MONITORA_EXEC_ID,
     sysname = Sys.info()[["sysname"]],
@@ -468,16 +468,16 @@ MONITORA_HARDWARE <- cbind(
   ),
   monitora_recurso_memoria_sistema()
 )
-fwrite(MONITORA_HARDWARE, file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")))
-fwrite(MONITORA_HARDWARE, file.path(MONITORA_OUTPUT_DIR, "hardware_memoria_ultima_execucao.csv"))
-monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_HARDWARE$swap_total_mb), "usar para diagnosticar estouro de RAM")
+fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")))
+fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_OUTPUT_DIR, "hardware_memoria_ultima_execucao.csv"))
+monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_RECURSO_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_RECURSO_HARDWARE$swap_total_mb), "usar para diagnosticar estouro de RAM")
 
 
 ### Controlador dinâmico de recursos
 ### Objetivo: usar o máximo de CPU, processamento paralelo e lotes grandes quando há RAM disponível,
 ### mas preservar uma reserva para sistema, Firefox/RStudio e evitar falta de memória. Quando a RAM
 ### volta a ficar disponível, o controlador sobe novamente o nível de paralelismo.
-MONITORA_RESOURCE_CONTROL <- data.table(
+MONITORA_RECURSO_CONTROLE <- data.table(
   ordem = integer(),
   timestamp = character(),
   etapa = character(),
@@ -501,7 +501,7 @@ monitora_cfg_env_num <- function(nome, default) {
   ifelse(is.na(val) || val < 0, as.numeric(default), val)
 }
 
-.MONITORA_MEM_TOTAL_INICIAL <- suppressWarnings(as.numeric(MONITORA_HARDWARE$mem_total_mb[1]))
+.MONITORA_MEM_TOTAL_INICIAL <- suppressWarnings(as.numeric(MONITORA_RECURSO_HARDWARE$mem_total_mb[1]))
 .MONITORA_CPU_THREADS_LOGICOS <- max(1L, suppressWarnings(as.integer(parallel::detectCores(logical = TRUE))))
 .MONITORA_CPU_CORES_FISICOS <- max(1L, suppressWarnings(as.integer(parallel::detectCores(logical = FALSE))))
 
@@ -621,10 +621,10 @@ monitora_recurso_controlar <- function(etapa = NA_character_, risco = "normal", 
   mudou <- !identical(modo_prev, modo) || !identical(threads_prev, threads_new) || !identical(batch_prev, batch_new)
   if (isTRUE(force_log) || mudou || gc_executado) {
     motivo <- paste0("objeto_mb=", objeto_mb, "; perfil=", MONITORA_PERFIL_EXECUCAO)
-    MONITORA_RESOURCE_CONTROL <<- data.table::rbindlist(
-      list(MONITORA_RESOURCE_CONTROL,
+    MONITORA_RECURSO_CONTROLE <<- data.table::rbindlist(
+      list(MONITORA_RECURSO_CONTROLE,
       data.table::data.table(
-        ordem = nrow(MONITORA_RESOURCE_CONTROL) + 1L,
+        ordem = nrow(MONITORA_RECURSO_CONTROLE) + 1L,
         timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
         etapa = as.character(etapa),
         risco = as.character(risco),
@@ -646,8 +646,8 @@ monitora_recurso_controlar <- function(etapa = NA_character_, risco = "normal", 
     )
     if (isTRUE(MONITORA_CONTROLE_RECURSOS_GRAVAR_AO_VIVO)) {
       tryCatch({
-        fwrite(MONITORA_RESOURCE_CONTROL, file.path(MONITORA_LOG_DIR, paste0("controle_recursos_", MONITORA_EXEC_ID, ".csv")))
-        fwrite(MONITORA_RESOURCE_CONTROL, file.path(MONITORA_OUTPUT_DIR, "controle_recursos_ultima_execucao.csv"))
+        fwrite(MONITORA_RECURSO_CONTROLE, file.path(MONITORA_LOG_DIR, paste0("controle_recursos_", MONITORA_EXEC_ID, ".csv")))
+        fwrite(MONITORA_RECURSO_CONTROLE, file.path(MONITORA_OUTPUT_DIR, "controle_recursos_ultima_execucao.csv"))
       }, error = function(e) NULL)
     }
     monitora_log_registrar_evento(
@@ -663,12 +663,12 @@ monitora_recurso_controlar <- function(etapa = NA_character_, risco = "normal", 
 }
 
 monitora_recurso_gravar_controle <- function() {
-  if (!exists("MONITORA_RESOURCE_CONTROL", inherits = TRUE)) return(invisible(FALSE))
-  if (nrow(MONITORA_RESOURCE_CONTROL) == 0) {
+  if (!exists("MONITORA_RECURSO_CONTROLE", inherits = TRUE)) return(invisible(FALSE))
+  if (nrow(MONITORA_RECURSO_CONTROLE) == 0) {
     monitora_recurso_controlar("fim_execucao", force_log = TRUE)
   }
-  fwrite(MONITORA_RESOURCE_CONTROL, file.path(MONITORA_LOG_DIR, paste0("controle_recursos_", MONITORA_EXEC_ID, ".csv")))
-  fwrite(MONITORA_RESOURCE_CONTROL, file.path(MONITORA_OUTPUT_DIR, "controle_recursos_ultima_execucao.csv"))
+  fwrite(MONITORA_RECURSO_CONTROLE, file.path(MONITORA_LOG_DIR, paste0("controle_recursos_", MONITORA_EXEC_ID, ".csv")))
+  fwrite(MONITORA_RECURSO_CONTROLE, file.path(MONITORA_OUTPUT_DIR, "controle_recursos_ultima_execucao.csv"))
   invisible(TRUE)
 }
 
@@ -683,7 +683,7 @@ monitora_recurso_controlar("inicio_controlador_recursos", force_log = TRUE)
 MONITORA_PERF_ENABLED <- TRUE
 MONITORA_PERF_START_TIME <- Sys.time()
 MONITORA_PERF_LAST_TIME <- MONITORA_PERF_START_TIME
-MONITORA_PERFORMANCE <- data.table(
+MONITORA_PERF_EXECUCAO <- data.table(
   ordem = integer(),
   etapa = character(),
   inicio = character(),
@@ -723,10 +723,10 @@ monitora_perf_registrar_checkpoint <- function(etapa, detalhe = NA_character_, o
     objeto_mb <- tryCatch(round(as.numeric(object.size(obj)) / 1024^2, 3), error = function(e) NA_real_)
   }
 
-  MONITORA_PERFORMANCE <<- data.table::rbindlist(
-    list(MONITORA_PERFORMANCE,
+  MONITORA_PERF_EXECUCAO <<- data.table::rbindlist(
+    list(MONITORA_PERF_EXECUCAO,
     data.table::data.table(
-      ordem = nrow(MONITORA_PERFORMANCE) + 1L,
+      ordem = nrow(MONITORA_PERF_EXECUCAO) + 1L,
       etapa = as.character(etapa),
       inicio = format(inicio, "%Y-%m-%d %H:%M:%S"),
       fim = format(now, "%Y-%m-%d %H:%M:%S"),
@@ -751,8 +751,8 @@ monitora_perf_registrar_checkpoint <- function(etapa, detalhe = NA_character_, o
 monitora_perf_gravar_relatorio <- function() {
   if (!isTRUE(MONITORA_PERF_ENABLED)) return(invisible(TRUE))
   monitora_perf_registrar_checkpoint("fim_execucao", "checkpoint final antes da gravação do relatório de performance")
-  fwrite(MONITORA_PERFORMANCE, file.path(MONITORA_LOG_DIR, paste0("performance_execucao_", MONITORA_EXEC_ID, ".csv")))
-  fwrite(MONITORA_PERFORMANCE, file.path(MONITORA_OUTPUT_DIR, "performance_execucao_ultima_execucao.csv"))
+  fwrite(MONITORA_PERF_EXECUCAO, file.path(MONITORA_LOG_DIR, paste0("performance_execucao_", MONITORA_EXEC_ID, ".csv")))
+  fwrite(MONITORA_PERF_EXECUCAO, file.path(MONITORA_OUTPUT_DIR, "performance_execucao_ultima_execucao.csv"))
   invisible(TRUE)
 }
 
@@ -1444,9 +1444,9 @@ monitora_auditoria_criar_resumo_achados <- function() {
     }
   }
 
-  if (exists("MONITORA_DUPLICIDADES_ARQUIVO") && is.data.table(MONITORA_DUPLICIDADES_ARQUIVO) && nrow(MONITORA_DUPLICIDADES_ARQUIVO) > 0) {
-    for (i in seq_len(nrow(MONITORA_DUPLICIDADES_ARQUIVO))) {
-      d <- MONITORA_DUPLICIDADES_ARQUIVO[i]
+  if (exists("MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO") && is.data.table(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO) && nrow(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO) > 0) {
+    for (i in seq_len(nrow(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO))) {
+      d <- MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO[i]
       rows[[length(rows) + 1]] <- add_row(
         categoria = "csv_duplicado_exato",
         severidade = "AVISO",
@@ -1519,9 +1519,9 @@ monitora_auditoria_criar_resumo_achados <- function() {
     }
     rbindlist(out, fill = TRUE)
   }
-  comp_pre <- processa_compat("MONITORA_AUDITORIA_COMPAT_PRE", "pre_dedup")
+  comp_pre <- processa_compat("MONITORA_AUDITORIA_COMPATIBILIDADE_FONTES_PRE", "pre_dedup")
   if (!is.null(comp_pre)) rows[[length(rows) + 1]] <- comp_pre
-  comp_pos <- processa_compat("MONITORA_AUDITORIA_COMPAT_POST", "pos_dedup")
+  comp_pos <- processa_compat("MONITORA_AUDITORIA_COMPATIBILIDADE_FONTES_POST", "pos_dedup")
   if (!is.null(comp_pos)) rows[[length(rows) + 1]] <- comp_pos
 
   if (exists("MONITORA_DUPLICIDADES_SEMANTICAS_RESUMO") && is.data.table(MONITORA_DUPLICIDADES_SEMANTICAS_RESUMO) && nrow(MONITORA_DUPLICIDADES_SEMANTICAS_RESUMO) > 0) {
@@ -1571,8 +1571,8 @@ monitora_auditoria_criar_resumo_achados <- function() {
     }
   }
 
-  if (exists("MONITORA_REPORT") && is.data.table(MONITORA_REPORT) && nrow(MONITORA_REPORT) > 0 && all(c("severidade", "etapa") %in% names(MONITORA_REPORT))) {
-    avisos <- MONITORA_REPORT[severidade %in% c("AVISO", "ERRO") & !etapa %in% c("duplicidade_arquivo", "deduplicacao_semantica")]
+  if (exists("MONITORA_LOG_EXECUCAO") && is.data.table(MONITORA_LOG_EXECUCAO) && nrow(MONITORA_LOG_EXECUCAO) > 0 && all(c("severidade", "etapa") %in% names(MONITORA_LOG_EXECUCAO))) {
+    avisos <- MONITORA_LOG_EXECUCAO[severidade %in% c("AVISO", "ERRO") & !etapa %in% c("duplicidade_arquivo", "deduplicacao_semantica")]
     if (nrow(avisos) > 0) {
       for (i in seq_len(nrow(avisos))) {
         rows[[length(rows) + 1]] <- add_row(
@@ -1998,7 +1998,7 @@ monitora_io_extrair_zips_recursivos <- function(source_dirs, extract_dir) {
 # Identifica a cadeia de origem de cada CSV, incluindo ZIP externo e ZIP interno quando houver.
 # Isso facilita a conferência operacional: o relatório mostra tanto o CSV interno quanto o ZIP
 # baixado pelo usuário.
-monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_DIRS, extract_dir = MONITORA_EXTRACT_DIR) {
+monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_IO_DIRETORIOS_FONTE, extract_dir = MONITORA_EXTRACT_DIR) {
   paths_norm <- normalizePath(paths, winslash = "/", mustWork = FALSE)
   extract_norm <- normalizePath(extract_dir, winslash = "/", mustWork = FALSE)
 
@@ -2188,17 +2188,17 @@ monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOUR
 ### Origem dos dados: se input/ tiver arquivos, usa input/. Caso contrário, usa o diretório do
 ### script.
 input_has_files <- dir.exists(MONITORA_INPUT_DIR) && length(list.files(MONITORA_INPUT_DIR, recursive = TRUE, all.files = FALSE, no.. = TRUE)) > 0
-MONITORA_SOURCE_DIRS <- if (input_has_files) MONITORA_INPUT_DIR else MONITORA_BASE_DIR
-monitora_log_registrar_evento("configuracao", "INFO", MONITORA_SOURCE_DIRS, "diretorio de origem selecionado", ifelse(input_has_files, "input/", "diretorio do script"))
-monitora_perf_registrar_checkpoint("configuracao_inicial", paste0("origem: ", paste(MONITORA_SOURCE_DIRS, collapse = " | ")))
+MONITORA_IO_DIRETORIOS_FONTE <- if (input_has_files) MONITORA_INPUT_DIR else MONITORA_BASE_DIR
+monitora_log_registrar_evento("configuracao", "INFO", MONITORA_IO_DIRETORIOS_FONTE, "diretorio de origem selecionado", ifelse(input_has_files, "input/", "diretorio do script"))
+monitora_perf_registrar_checkpoint("configuracao_inicial", paste0("origem: ", paste(MONITORA_IO_DIRETORIOS_FONTE, collapse = " | ")))
 
 ### Extração recursiva de ZIPs, incluindo ZIPs internos dentro de ZIPs.
-monitora_io_extrair_zips_recursivos(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR)
+monitora_io_extrair_zips_recursivos(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRACT_DIR)
 monitora_recurso_controlar("apos_extracao_recursiva_zips", risco = "normal", force_log = TRUE)
 monitora_perf_registrar_checkpoint("extracao_recursiva_zips", "extração de ZIPs externos e internos")
 
 ### Conversão defensiva de XLSX para CSV apenas nas áreas de entrada/extração, não em output/log.
-xlsx_files <- list.files(c(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR), pattern = "\\.xlsx$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+xlsx_files <- list.files(c(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRACT_DIR), pattern = "\\.xlsx$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
 xlsx_files <- xlsx_files[!grepl("/(output|log)/", normalizePath(xlsx_files, winslash = "/", mustWork = FALSE))]
 for (xlsx_file in xlsx_files) {
   csv_file <- sub("\\.xlsx$", ".csv", xlsx_file, ignore.case = TRUE)
@@ -2221,12 +2221,12 @@ monitora_perf_registrar_checkpoint("conversao_xlsx", "conversão defensiva de XL
 ### input/
 ### ou na pasta-base, pois é comum usar produtos pós-tratamento como base para nova rodada.
 ### Apenas output/, log/ e produtos analíticos/relatórios são excluídos automaticamente.
-all_csvfiles <- list.files(c(MONITORA_SOURCE_DIRS, MONITORA_EXTRACT_DIR), pattern = "\\.csv$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+all_csvfiles <- list.files(c(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRACT_DIR), pattern = "\\.csv$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
 all_csvfiles_norm <- normalizePath(all_csvfiles, winslash = "/", mustWork = FALSE)
 all_csvfiles_base <- basename(all_csvfiles_norm)
 
 # Exclusões de diretórios gerenciados pelo próprio script.
-# Importante: quando MONITORA_SOURCE_DIRS = MONITORA_BASE_DIR, list.files(recursive=TRUE)
+# Importante: quando MONITORA_IO_DIRETORIOS_FONTE = MONITORA_BASE_DIR, list.files(recursive=TRUE)
 # também encontraria produtos antigos em output/, log/ e extrações antigas.
 exclude_dirs <- grepl("/(output|log|plots_png)/", all_csvfiles_norm)
 
@@ -2338,16 +2338,16 @@ monitora_io_ler_metadados_csv <- function(path) {
     n_linhas = tryCatch(nrow(fread(path, select = 1, colClasses = "character", encoding = "UTF-8", showProgress = FALSE)), error = function(e) NA_integer_)
   )
 }
-MONITORA_DUPLICIDADES_ARQUIVO_LIST <- list()
-MONITORA_DUPLICIDADES_ARQUIVO_I <- 0L
+MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_LISTA <- list()
+MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I <- 0L
 dup_groups <- split(seq_along(csvfiles), paste(csv_audit$md5, csv_audit$tamanho_bytes, sep = "::"))
 for (g in dup_groups) {
   if (length(g) > 1 && !is.na(csv_audit$md5[g[1]])) {
     csv_keep[g[-1]] <- FALSE
     meta <- monitora_io_ler_metadados_csv(csvfiles[g[1]])
     for (excl in g[-1]) {
-      MONITORA_DUPLICIDADES_ARQUIVO_I <- MONITORA_DUPLICIDADES_ARQUIVO_I + 1L
-      MONITORA_DUPLICIDADES_ARQUIVO_LIST[[MONITORA_DUPLICIDADES_ARQUIVO_I]] <- cbind(
+      MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I <- MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I + 1L
+      MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_LISTA[[MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I]] <- cbind(
         data.table::data.table(
           md5 = csv_audit$md5[g[1]],
           tamanho_bytes = csv_audit$tamanho_bytes[g[1]],
@@ -2383,14 +2383,14 @@ for (g in dup_groups) {
     )
   }
 }
-MONITORA_DUPLICIDADES_ARQUIVO <- if (MONITORA_DUPLICIDADES_ARQUIVO_I > 0L) {
-  data.table::rbindlist(MONITORA_DUPLICIDADES_ARQUIVO_LIST[seq_len(MONITORA_DUPLICIDADES_ARQUIVO_I)], fill = TRUE, use.names = TRUE)
+MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO <- if (MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I > 0L) {
+  data.table::rbindlist(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_LISTA[seq_len(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I)], fill = TRUE, use.names = TRUE)
 } else {
   data.table::data.table()
 }
-rm(MONITORA_DUPLICIDADES_ARQUIVO_LIST, MONITORA_DUPLICIDADES_ARQUIVO_I)
-if (nrow(MONITORA_DUPLICIDADES_ARQUIVO) > 0) {
-  fwrite(MONITORA_DUPLICIDADES_ARQUIVO, file.path(MONITORA_LOG_DIR, paste0("auditoria_arquivos_csv_duplicados_exatos_", MONITORA_EXEC_ID, ".csv")))
+rm(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_LISTA, MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO_I)
+if (nrow(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO) > 0) {
+  fwrite(MONITORA_AUDITORIA_DUPLICIDADES_ARQUIVO, file.path(MONITORA_LOG_DIR, paste0("auditoria_arquivos_csv_duplicados_exatos_", MONITORA_EXEC_ID, ".csv")))
 }
 
 csvfiles_lidos <- csvfiles[csv_keep]
@@ -2455,7 +2455,7 @@ data.table::set(registros, j = ".id", value = registros[["MONITORA_ARQUIVO_ENTRA
 registros <- monitora_dt_remover_colunas_tecnicas_legadas(registros, "apos_concatenacao")
 monitora_perf_registrar_checkpoint("limpeza_colunas_tecnicas_legadas", "remoção de colunas técnicas legadas de execuções anteriores", registros)
 monitora_perf_registrar_checkpoint("concatenacao_rbindlist", "concatenação dos CSVs lidos por lotes", registros)
-MONITORA_ARQUIVOS_ENTRADA <- csv_audit[arquivo %in% csvfiles_sucesso, .(arquivo, basename, tipo_entrada, md5, tamanho_bytes, n_linhas, n_colunas, arquivo_entrada_externo, nome_arquivo_entrada_externo, arquivo_zip_externo, nome_zip_externo, arquivo_zip_interno, nome_zip_interno, caminho_relativo_extraido)]
+MONITORA_IO_ARQUIVOS_ENTRADA <- csv_audit[arquivo %in% csvfiles_sucesso, .(arquivo, basename, tipo_entrada, md5, tamanho_bytes, n_linhas, n_colunas, arquivo_entrada_externo, nome_arquivo_entrada_externo, arquivo_zip_externo, nome_zip_externo, arquivo_zip_interno, nome_zip_interno, caminho_relativo_extraido)]
 
 # Normaliza sufixos artificiais tipo ...5 e consolida colunas duplicadas/aliases antes das
 # renomeações específicas do formulário.
@@ -2872,11 +2872,11 @@ monitora_perf_registrar_checkpoint("consolidacao_aliases_pos_renomeacao", "coale
 # Anota o tipo de entrada antes da auditoria pré-deduplicação.
 # Isso permite auditar a equivalência individual x lote antes de a deduplicação aplicar a
 # preferência de fonte.
-registros_corrig <- monitora_io_anotar_tipo_entrada(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
+registros_corrig <- monitora_io_anotar_tipo_entrada(registros_corrig, MONITORA_IO_ARQUIVOS_ENTRADA)
 
 # Quando mais de um tipo de fonte é fornecido na mesma execução, audita a equivalência
 # antes da deduplicação semântica, evitando que a preferência de fonte esconda divergências.
-MONITORA_AUDITORIA_COMPAT_PRE <- monitora_auditoria_compatibilidade_fontes(registros_corrig, fase = "pre_dedup")
+MONITORA_AUDITORIA_COMPATIBILIDADE_FONTES_PRE <- monitora_auditoria_compatibilidade_fontes(registros_corrig, fase = "pre_dedup")
 monitora_perf_registrar_checkpoint("auditoria_compatibilidade_fontes_pre_dedup", "comparação entre tipos de entrada antes da deduplicação", registros_corrig)
 
 ### Auditoria de compatibilidade separada por fase, sempre exportada.
@@ -2884,11 +2884,11 @@ monitora_perf_registrar_checkpoint("auditoria_compatibilidade_fontes_pre_dedup",
 ### Deduplicação semântica entre entradas brutas e entradas pós-tratamento aceitas.
 ### Mantém produtos pós-tratamento quando houver sobreposição com brutos, pois eles podem conter
 ### validações/correções manuais.
-registros_corrig <- monitora_deduplicar_registros_amostrais(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
+registros_corrig <- monitora_deduplicar_registros_amostrais(registros_corrig, MONITORA_IO_ARQUIVOS_ENTRADA)
 registros_corrig <- monitora_dt_remover_colunas_tecnicas_legadas(registros_corrig, "pos_deduplicacao")
 monitora_recurso_controlar("deduplicacao_semantica", risco = "alto", objeto = registros_corrig, force_log = TRUE)
 monitora_perf_registrar_checkpoint("deduplicacao_semantica", "deduplicação por UUID ou UC+CICLO+UA+ponto, com preferência por pós-tratamento, lote SISMONITORA e exportação individual", registros_corrig)
-MONITORA_AUDITORIA_COMPAT_POST <- monitora_auditoria_compatibilidade_fontes(registros_corrig, fase = "pos_dedup")
+MONITORA_AUDITORIA_COMPATIBILIDADE_FONTES_POST <- monitora_auditoria_compatibilidade_fontes(registros_corrig, fase = "pos_dedup")
 monitora_perf_registrar_checkpoint("auditoria_compatibilidade_fontes_pos_dedup", "comparação entre tipos de entrada quando há fontes sobrepostas", registros_corrig)
 
 # Auditoria complementar: identifica duplicidade de ponto dentro de UC+CICLO+UA+ANO mesmo
@@ -11049,9 +11049,9 @@ if (exists("registros_corrig")) {
   }
 }
 
-MONITORA_RESUMO_ACHADOS_RELEVANTES <- monitora_auditoria_criar_resumo_achados()
-fwrite(MONITORA_REPORT, file.path(MONITORA_LOG_DIR, paste0("relatorio_execucao_", MONITORA_EXEC_ID, ".csv")))
-fwrite(MONITORA_REPORT, file.path(MONITORA_OUTPUT_DIR, "relatorio_execucao_ultima_execucao.csv"))
+MONITORA_AUDITORIA_RESUMO_ACHADOS_RELEVANTES <- monitora_auditoria_criar_resumo_achados()
+fwrite(MONITORA_LOG_EXECUCAO, file.path(MONITORA_LOG_DIR, paste0("relatorio_execucao_", MONITORA_EXEC_ID, ".csv")))
+fwrite(MONITORA_LOG_EXECUCAO, file.path(MONITORA_OUTPUT_DIR, "relatorio_execucao_ultima_execucao.csv"))
 
 monitora_perf_registrar_checkpoint("relatorios_auditoria", "gravação dos relatórios de auditoria")
 
@@ -12733,9 +12733,9 @@ monitora_perf_registrar_checkpoint("exportacao_kml", "exportação dos arquivos 
 monitora_recurso_gravar_controle()
 monitora_perf_gravar_relatorio()
 monitora_log_registrar_evento("performance", "INFO", file.path(MONITORA_LOG_DIR, paste0("performance_execucao_", MONITORA_EXEC_ID, ".csv")), "relatório de performance gerado", "usar para identificar gargalos por duração_seg")
-MONITORA_RESUMO_ACHADOS_RELEVANTES <- monitora_auditoria_criar_resumo_achados()
-fwrite(MONITORA_REPORT, file.path(MONITORA_LOG_DIR, paste0("relatorio_execucao_", MONITORA_EXEC_ID, ".csv")))
-fwrite(MONITORA_REPORT, file.path(MONITORA_OUTPUT_DIR, "relatorio_execucao_ultima_execucao.csv"))
+MONITORA_AUDITORIA_RESUMO_ACHADOS_RELEVANTES <- monitora_auditoria_criar_resumo_achados()
+fwrite(MONITORA_LOG_EXECUCAO, file.path(MONITORA_LOG_DIR, paste0("relatorio_execucao_", MONITORA_EXEC_ID, ".csv")))
+fwrite(MONITORA_LOG_EXECUCAO, file.path(MONITORA_OUTPUT_DIR, "relatorio_execucao_ultima_execucao.csv"))
 
 monitora_limpar_ambiente_temporario()
 monitora_recurso_gc("limpeza_final_ambiente")
