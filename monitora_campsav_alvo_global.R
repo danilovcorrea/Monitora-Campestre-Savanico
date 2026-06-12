@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.0.2
+### Versão pública: v2.1.0
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -10,25 +10,42 @@
 ###   - arquivos ZIP exportados individualmente pelo SISMONITORA;
 ###   - arquivos ZIP/CSV/XLSX de exportação em lote;
 ###   - arquivos registros_corrig*.csv gerados por execuções anteriores, quando usados como nova
-###   entrada.
+###     entrada.
 ###
 ### Saídas principais:
 ###   - registros_corrig.csv: registros padronizados, deduplicados e auditáveis;
 ###   - registros_corrig_stat.csv: tabela estatística por UC, UA e ano;
-###   - output/: tabelas analíticas, gráficos e arquivos geográficos, quando habilitados;
+###   - output/: tabelas analíticas, gráficos, relatório textual, auditorias e arquivos
+###     geográficos, quando habilitados;
 ###   - log/: relatórios de execução, auditorias, performance, memória e rastreabilidade de
-###   arquivos.
+###     arquivos.
 ###
 ### Uso básico:
 ###   1. Coloque este script no diretório de trabalho do projeto.
 ###   2. Coloque os arquivos de entrada no subdiretório input/ ou no mesmo diretório do script.
-###   3. Execute o script completo no RStudio.
+###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
+###
+### Destaques da versão pública v2.1.0:
+###   - consolidação dos gráficos temporais editoriais com escopo amostral explícito;
+###   - inclusão de painéis para amostra total, UAs pareadas em todos os anos e períodos
+###     consecutivos pareados;
+###   - incorporação de análise de coortes por ano inicial;
+###   - geração de relatório textual estatístico com síntese dos principais achados;
+###   - ampliação das auditorias de entrada, deduplicação, completude, coordenadas,
+###     performance, memória, símbolos estatísticos e layout de rótulos;
+###   - refinamento dos rótulos, conectores, símbolos estatísticos, margens, facetas e
+###     legendas inferiores dos gráficos publicáveis;
+###   - aceitação de arquivos registros_corrig*.csv como insumos de novas rodadas de
+###     tratamento, sem reprocessar produtos de output/ e log/.
 ###
 ### Observações:
 ###   - Não é necessário extrair manualmente os arquivos ZIP.
 ###   - O script usa controle de origem para evitar reprocessar output/, log/ e extrações antigas.
 ###   - Parâmetros de performance e memória podem ser ajustados por variáveis de ambiente.
+###   - Gráficos de muitas categorias podem gerar versões com e sem rótulos; a versão sem
+###     rótulos é indicada como produto principal quando a densidade visual comprometer a
+###     leitura, e a versão com rótulos permanece como apoio de diagnóstico e validação.
 ###
 ### Citação:
 ###   CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global Plantas
@@ -390,7 +407,7 @@ tryCatch(data.table::setDTthreads(MONITORA_DT_THREADS), error = function(e) NULL
 MONITORA_EXTRACT_BASE_DIR <- MONITORA_EXTRACT_DIR
 MONITORA_EXTRACT_DIR <- file.path(MONITORA_EXTRACT_BASE_DIR, paste0("exec_", MONITORA_EXEC_ID))
 dir.create(MONITORA_EXTRACT_DIR, showWarnings = FALSE, recursive = TRUE)
-monitora_log("configuracao_v19", "INFO", NA_character_, paste0("perfil=", MONITORA_PERFIL_EXECUCAO, "; batch_csv=", MONITORA_BATCH_SIZE_CSV, "; dt_threads=", MONITORA_DT_THREADS, "; gc_modo=", MONITORA_GC_MODO, "; gc_auto_min_mem_mb=", MONITORA_GC_AUTO_MIN_MEM_MB, "; auditoria_coord_completa=", MONITORA_AUDITORIA_COORDENADAS_COMPLETA, "; exportar_graficos=", MONITORA_EXPORTAR_GRAFICOS, "; exportar_kml=", MONITORA_EXPORTAR_KML), "configuracoes adaptativas de performance/RAM; v19 adiciona controlador dinamico")
+monitora_log("configuracao_execucao", "INFO", NA_character_, paste0("perfil=", MONITORA_PERFIL_EXECUCAO, "; batch_csv=", MONITORA_BATCH_SIZE_CSV, "; dt_threads=", MONITORA_DT_THREADS, "; gc_modo=", MONITORA_GC_MODO, "; gc_auto_min_mem_mb=", MONITORA_GC_AUTO_MIN_MEM_MB, "; auditoria_coord_completa=", MONITORA_AUDITORIA_COORDENADAS_COMPLETA, "; exportar_graficos=", MONITORA_EXPORTAR_GRAFICOS, "; exportar_kml=", MONITORA_EXPORTAR_KML), "configuracoes adaptativas de performance/RAM e controlador dinamico")
 
 monitora_memoria_rss_mb <- function() {
   status_file <- "/proc/self/status"
@@ -634,7 +651,7 @@ monitora_controlar_recursos <- function(etapa = NA_character_, risco = "normal",
       }, error = function(e) NULL)
     }
     monitora_log(
-      "controle_recursos_v19", "INFO", NA_character_,
+      "controle_recursos", "INFO", NA_character_,
       paste0("etapa=", etapa, "; modo=", modo, "; threads=", MONITORA_DT_THREADS_ATUAL,
              "; batch_csv=", MONITORA_BATCH_SIZE_CSV_ATUAL, "; MemAvailable_MB=", mem_avail,
              "; RSS_MB=", rss, "; reserva_usuario_mb=", MONITORA_RAM_RESERVA_USUARIO_MB,
@@ -656,7 +673,7 @@ monitora_resource_control_write <- function() {
 }
 
 # Primeira decisão dinâmica após ler o hardware real.
-monitora_controlar_recursos("inicio_controlador_v19", force_log = TRUE)
+monitora_controlar_recursos("inicio_controlador_recursos", force_log = TRUE)
 
 ### Instrumentação de performance
 ### Registra a duração incremental e acumulada das principais etapas do script.
@@ -1136,7 +1153,7 @@ monitora_detectar_tipo_csv <- function(path) {
   # do formulário e colunas com sufixos de nomes repetidos, como uc...5.
   if (any(header %in% c("amostragem/registro/ponto_amostral", "amostragem/registro/ponto_metro", "amostragem/registro/uuid", "coleta_uuid", "data_do_registro")) ||
       any(grepl("^uc\\.\\.\\.[0-9]+$", header))) {
-    return("bruto_lote_sismonitora_dev")
+    return("bruto_lote_sismonitora")
   }
 
   # Exportação individual tradicional: CSVs de uma coleta, frequentemente extraídos de ZIPs
@@ -1167,12 +1184,21 @@ monitora_resumir_fontes_por_tipo <- function(csv_audit) {
 }
 
 
+# Normaliza nomes públicos dos tipos de entrada, preservando compatibilidade com
+# arquivos tratados por edições anteriores do script.
+monitora_normalizar_tipo_entrada <- function(tipo) {
+  tipo <- as.character(tipo)
+  tipo[tipo == paste0("bruto_lote_sismonitora", "_", "d", "ev")] <- "bruto_lote_sismonitora"
+  tipo
+}
+
 # Anota o tipo de entrada antes da deduplicação, permitindo auditoria pré-deduplicação real.
 # A coluna MONITORA_TIPO_ENTRADA precisa existir antes das auditorias de compatibilidade.
 # Sem essa coluna, a auditoria pré-deduplicação ficaria limitada.
 monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
   dt <- monitora_as_dt_ref(dt)
   if ("MONITORA_TIPO_ENTRADA" %in% names(dt) && any(!is.na(dt$MONITORA_TIPO_ENTRADA))) {
+    data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = monitora_normalizar_tipo_entrada(dt$MONITORA_TIPO_ENTRADA))
     return(dt)
   }
   source_col <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
@@ -1196,6 +1222,7 @@ monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
     idx <- match(id_chr, names(tipo_map))
     tipo[!is.na(idx)] <- tipo_map[idx[!is.na(idx)]]
   }
+  tipo <- monitora_normalizar_tipo_entrada(tipo)
   # setalloccol() + set() reduz o risco de cópia rasa ao adicionar colunas em data.table.
   data.table::setalloccol(dt, ncol(dt) + 8L)
   data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = tipo)
@@ -1203,7 +1230,7 @@ monitora_anotar_tipo_entrada <- function(dt, arquivos_entrada = NULL) {
 }
 
 
-monitora_auditar_compatibilidade_fontes_v12 <- function(dt, fase = "pre_dedup") {
+monitora_auditar_compatibilidade_fontes <- function(dt, fase = "pre_dedup") {
   dt <- monitora_as_dt_ref(dt)
   fase <- as.character(fase)[1]
   if (is.na(fase) || fase == "") fase <- "sem_fase"
@@ -1215,8 +1242,8 @@ monitora_auditar_compatibilidade_fontes_v12 <- function(dt, fase = "pre_dedup") 
       status_global = "sem_coluna_MONITORA_TIPO_ENTRADA",
       n_registros_total = nrow(dt)
     )
-    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_v12_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes_v12", "AVISO", NA_character_, "Coluna MONITORA_TIPO_ENTRADA ausente; auditoria limitada", paste0("fase=", fase))
+    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
+    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Coluna MONITORA_TIPO_ENTRADA ausente; auditoria limitada", paste0("fase=", fase))
     return(invisible(aud))
   }
 
@@ -1255,8 +1282,8 @@ monitora_auditar_compatibilidade_fontes_v12 <- function(dt, fase = "pre_dedup") 
       tipos_entrada = paste(tipos, collapse = " | "),
       n_registros_total = nrow(dt)
     )
-    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_v12_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes_v12", "AVISO", NA_character_, "Colunas mínimas ausentes; auditoria de compatibilidade limitada", paste0("fase=", fase))
+    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
+    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Colunas mínimas ausentes; auditoria de compatibilidade limitada", paste0("fase=", fase))
     return(invisible(aud))
   }
 
@@ -1278,8 +1305,8 @@ monitora_auditar_compatibilidade_fontes_v12 <- function(dt, fase = "pre_dedup") 
       tipos_entrada = paste(tipos, collapse = " | "),
       n_registros_total = nrow(dt)
     )
-    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_v12_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
-    monitora_log("compatibilidade_fontes_v12", "AVISO", NA_character_, "Nenhum registro válido para auditoria de compatibilidade", paste0("fase=", fase))
+    fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv")))
+    monitora_log("compatibilidade_fontes", "AVISO", NA_character_, "Nenhum registro válido para auditoria de compatibilidade", paste0("fase=", fase))
     return(invisible(aud))
   }
 
@@ -1325,9 +1352,9 @@ monitora_auditar_compatibilidade_fontes_v12 <- function(dt, fase = "pre_dedup") 
     }
   }
 
-  saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_v12_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
+  saida <- file.path(MONITORA_LOG_DIR, paste0("auditoria_compatibilidade_fontes_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
   fwrite(aud_wide, saida)
-  monitora_log("compatibilidade_fontes_v12", "INFO", NA_character_, paste0(nrow(aud_wide), " grupos UC+CICLO+CAMPANHA+UA auditados; fase=", fase), basename(saida))
+  monitora_log("compatibilidade_fontes", "INFO", NA_character_, paste0(nrow(aud_wide), " grupos UC+CICLO+CAMPANHA+UA auditados; fase=", fase), basename(saida))
   invisible(aud_wide)
 }
 
@@ -1452,7 +1479,7 @@ monitora_criar_resumo_achados_validacao <- function() {
     aud <- get(obj_name, inherits = TRUE)
     if (!data.table::is.data.table(aud)) data.table::setDT(aud)
     if (nrow(aud) == 0 || !"status" %in% names(aud)) return(NULL)
-    origem <- paste0("auditoria_compatibilidade_fontes_v12_", fase_nome, "_", MONITORA_EXEC_ID, ".csv")
+    origem <- paste0("auditoria_compatibilidade_fontes_", fase_nome, "_", MONITORA_EXEC_ID, ".csv")
     problem <- aud[!is.na(status) & !status %in% c("presente_em_todas_as_fontes", "fonte_unica_apos_filtro_ou_deduplicacao")]
     if (nrow(problem) == 0) {
       return(add_row(
@@ -1607,6 +1634,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     tipo_map <- setNames(as.character(arquivos_entrada$tipo_entrada), as.character(arquivos_entrada$basename))
     tipo[!is.na(tipo_map[id_chr])] <- tipo_map[id_chr[!is.na(tipo_map[id_chr])]]
   }
+  tipo <- monitora_normalizar_tipo_entrada(tipo)
   data.table::set(dt, j = "MONITORA_TIPO_ENTRADA", value = tipo)
 
   norm_key <- function(x) {
@@ -1629,7 +1657,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
     get_col("amostragem/registro/uuid")
   ))
   uuid_fallback <- monitora_norm_empty(monitora_coalesce_vec(get_col("UUID"), get_col("uuid")))
-  uuid_fallback[as.character(dt$MONITORA_TIPO_ENTRADA) == "bruto_lote_sismonitora_dev"] <- NA_character_
+  uuid_fallback[as.character(dt$MONITORA_TIPO_ENTRADA) == "bruto_lote_sismonitora"] <- NA_character_
   uuid_reg <- monitora_norm_empty(monitora_coalesce_vec(uuid_registro, uuid_fallback))
   key_uuid <- ifelse(!is.na(uuid_reg), paste0("UUID_REGISTRO::", uuid_reg), NA_character_)
   rm(uuid_registro, uuid_fallback, uuid_reg); monitora_gc("dedup_chave_uuid")
@@ -1645,12 +1673,12 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
   # Para deduplicar corretamente exportações em lote e exportações individuais, a chave semântica
   # UC+CICLO+CAMPANHA+UA+ponto deve ter prioridade quando disponível nas duas fontes.
   # O UUID do registro pode ser diferente/ausente entre formatos e, se usado primeiro,
-  # impede reconhecer sobreposição real entre exportação individual e lote dev.
+  # impede reconhecer sobreposição real entre exportação individual e lote SISMONITORA.
   key <- ifelse(!is.na(key_campos), paste0("UC_CICLO_CAMPANHA_UA_PONTO::", key_campos), ifelse(!is.na(key_uuid), key_uuid, NA_character_))
   rm(key_uuid, key_uc, key_ciclo, key_campanha, key_ua, key_ponto, key_campos_ok, key_campos); monitora_gc("dedup_chave_campos")
 
   prioridade <- data.table::fifelse(tipo == "pos_tratamento_script", 1L,
-                                    data.table::fifelse(tipo == "bruto_lote_sismonitora_dev", 2L,
+                                    data.table::fifelse(tipo == "bruto_lote_sismonitora", 2L,
                                                         data.table::fifelse(tipo == "bruto_individual_sismonitora", 3L, 9L)))
   aux <- data.table::data.table(
     MONITORA_ORDEM_ORIGINAL = seq_len(nrow(dt)),
@@ -1697,7 +1725,7 @@ monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL)
       "AVISO",
       NA_character_,
       paste0(n_dup_total, " chaves amostrais duplicadas detectadas; ", nrow(detalhes), " exportadas na auditoria; mantida uma linha por chave"),
-      "preferencia v11: pos_tratamento_script > bruto_lote_sismonitora_dev > bruto_individual_sismonitora > desconhecido; ver auditoria_duplicidades_semanticas"
+      "preferência: pos_tratamento_script > bruto_lote_sismonitora > bruto_individual_sismonitora > desconhecido; ver auditoria_duplicidades_semanticas"
     )
     rm(detalhes); monitora_gc("auditoria_duplicidades_semanticas")
   }
@@ -1766,7 +1794,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
     aux[ok, MONITORA_CHAVE_FINAL := do.call(paste, c(.SD, sep = "||")), .SDcols = campos_chave]
   }
 
-  tipo <- if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_TIPO_ENTRADA"]]) else rep("desconhecido", nrow(dt))
+  tipo <- if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) monitora_normalizar_tipo_entrada(dt[["MONITORA_TIPO_ENTRADA"]]) else rep("desconhecido", nrow(dt))
   fonte <- if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) {
     as.character(dt[["MONITORA_ARQUIVO_ENTRADA"]])
   } else if (".id" %in% names(dt)) {
@@ -1776,7 +1804,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
   }
 
   prioridade <- data.table::fifelse(tipo == "pos_tratamento_script", 1L,
-    data.table::fifelse(tipo == "bruto_lote_sismonitora_dev", 2L,
+    data.table::fifelse(tipo == "bruto_lote_sismonitora", 2L,
       data.table::fifelse(tipo == "bruto_individual_sismonitora", 3L, 9L)
     )
   )
@@ -1830,7 +1858,7 @@ monitora_deduplicar_final_por_ponto_ano <- function(dt) {
     "AVISO",
     saida,
     paste0(nrow(duplicadas), " chaves UC/CICLO/CAMPANHA/UA/ANO/ponto duplicadas detectadas; ", removidas_n, " linha(s) removida(s) antes de registros_corrig_stat"),
-    "preferência final: pos_tratamento_script > bruto_lote_sismonitora_dev > bruto_individual_sismonitora > desconhecido"
+    "preferência final: pos_tratamento_script > bruto_lote_sismonitora > bruto_individual_sismonitora > desconhecido"
   )
 
   rm(aux, cand, duplicadas, detalhes, manter_ordem, sem_chave); monitora_gc("dedup_final_antes_subconjunto")
@@ -2132,7 +2160,7 @@ monitora_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_SOURCE_
       inn <- inner_zip_from_rel_parts(parts, out$nome_zip_externo[i])
       if (!is.na(inn$nome) && nzchar(inn$nome)) {
         # Não registrar o pacote externo como ZIP interno quando o CSV está
-        # diretamente no pacote externo, como no lote dev.
+        # diretamente no pacote externo, como no lote SISMONITORA.
         if (is.na(out$nome_zip_externo[i]) || !identical(inn$nome, out$nome_zip_externo[i])) {
           out$nome_zip_interno[i] <- inn$nome
           out$arquivo_zip_interno[i] <- inn$arquivo
@@ -2251,12 +2279,12 @@ if (any(csvfiles_tipo_entrada == "pos_tratamento_script")) {
     "serao deduplicados semanticamente contra registros brutos/novos quando houver sobreposicao"
   )
 }
-if (any(csvfiles_tipo_entrada == "bruto_lote_sismonitora_dev")) {
+if (any(csvfiles_tipo_entrada == "bruto_lote_sismonitora")) {
   monitora_log(
-    "csv_lote_dev_entrada",
+    "csv_lote_sismonitora_entrada",
     "INFO",
-    paste(csvfiles[csvfiles_tipo_entrada == "bruto_lote_sismonitora_dev"], collapse = " | "),
-    paste0(sum(csvfiles_tipo_entrada == "bruto_lote_sismonitora_dev"), " CSV(s) consolidado(s) da ferramenta dev detectado(s)"),
+    paste(csvfiles[csvfiles_tipo_entrada == "bruto_lote_sismonitora"], collapse = " | "),
+    paste0(sum(csvfiles_tipo_entrada == "bruto_lote_sismonitora"), " CSV(s) consolidado(s) por exportação em lote detectado(s)"),
     "CSV consolidado usado como fonte principal; XLSX acompanhante nao e somado quando houver CSV equivalente"
   )
 }
@@ -2848,8 +2876,8 @@ registros_corrig <- monitora_anotar_tipo_entrada(registros_corrig, MONITORA_ARQU
 
 # Quando mais de um tipo de fonte é fornecido na mesma execução, audita a equivalência
 # antes da deduplicação semântica, evitando que a preferência de fonte esconda divergências.
-MONITORA_AUDITORIA_COMPAT_PRE <- monitora_auditar_compatibilidade_fontes_v12(registros_corrig, fase = "pre_dedup")
-monitora_perf_checkpoint("auditoria_compatibilidade_fontes_v12_pre_dedup", "comparação entre tipos de entrada antes da deduplicação", registros_corrig)
+MONITORA_AUDITORIA_COMPAT_PRE <- monitora_auditar_compatibilidade_fontes(registros_corrig, fase = "pre_dedup")
+monitora_perf_checkpoint("auditoria_compatibilidade_fontes_pre_dedup", "comparação entre tipos de entrada antes da deduplicação", registros_corrig)
 
 ### Auditoria de compatibilidade separada por fase, sempre exportada.
 
@@ -2859,9 +2887,9 @@ monitora_perf_checkpoint("auditoria_compatibilidade_fontes_v12_pre_dedup", "comp
 registros_corrig <- monitora_deduplicar_registros_amostrais(registros_corrig, MONITORA_ARQUIVOS_ENTRADA)
 registros_corrig <- monitora_drop_legacy_technical_columns(registros_corrig, "pos_deduplicacao")
 monitora_controlar_recursos("deduplicacao_semantica", risco = "alto", objeto = registros_corrig, force_log = TRUE)
-monitora_perf_checkpoint("deduplicacao_semantica", "deduplicação por UUID ou UC+CICLO+UA+ponto, com preferência v12 por pós-tratamento/lote-dev/individual", registros_corrig)
-MONITORA_AUDITORIA_COMPAT_POST <- monitora_auditar_compatibilidade_fontes_v12(registros_corrig, fase = "pos_dedup")
-monitora_perf_checkpoint("auditoria_compatibilidade_fontes_v12_pos_dedup", "comparação entre tipos de entrada quando há fontes sobrepostas", registros_corrig)
+monitora_perf_checkpoint("deduplicacao_semantica", "deduplicação por UUID ou UC+CICLO+UA+ponto, com preferência por pós-tratamento, lote SISMONITORA e exportação individual", registros_corrig)
+MONITORA_AUDITORIA_COMPAT_POST <- monitora_auditar_compatibilidade_fontes(registros_corrig, fase = "pos_dedup")
+monitora_perf_checkpoint("auditoria_compatibilidade_fontes_pos_dedup", "comparação entre tipos de entrada quando há fontes sobrepostas", registros_corrig)
 
 # Auditoria complementar: identifica duplicidade de ponto dentro de UC+CICLO+UA+ANO mesmo
 # quando UUIDs são diferentes. Não remove automaticamente porque pode indicar erro de numeração
@@ -3057,11 +3085,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3078,9 +3106,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3097,9 +3125,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3116,9 +3144,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3135,13 +3163,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3159,9 +3187,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -3207,11 +3235,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3228,9 +3256,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3247,9 +3275,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3266,9 +3294,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3285,13 +3313,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3309,9 +3337,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -3357,11 +3385,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -3378,9 +3406,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -3397,9 +3425,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -3416,9 +3444,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
+
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -3435,13 +3463,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -3459,9 +3487,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -4182,7 +4210,7 @@ if (is.null(registros_corrig[['Espécie ou nome popular (Árvore abaixo de 5cm 
 if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
   set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <- 
+registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
   fcase(
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
     fcase(
@@ -5046,7 +5074,7 @@ monitora_sum_tokens_by_group <- function(dt, token_col, prefix = NULL) {
 }
 
 monitora_controlar_recursos("preparacao_stat_inicio", risco = "alto", objeto = registros_corrig, force_log = TRUE)
-monitora_perf_checkpoint("preparacao_stat_inicio", "início da preparação estatística v17/data.table", registros_corrig)
+monitora_perf_checkpoint("preparacao_stat_inicio", "início da preparação estatística com data.table", registros_corrig)
 
 ## somatório de categorias por UC, UA, ANO
 sum_categ_by_UC_UA_ANO <- monitora_sum_tokens_by_group(
@@ -5238,7 +5266,7 @@ lenh_summary <- data.table(
   lenh_presence = lenh_presence
 )[, .(sum_presence_lenh = sum(lenh_presence, na.rm = TRUE)), by = .(UC, UA, ANO)]
 
-rm(herb_presence, lenh_presence); monitora_gc("presence_herb_lenh_v17")
+rm(herb_presence, lenh_presence); monitora_gc("presence_herb_lenh")
 
 # Junção com registros_corrig_stat usando data.table.
 registros_corrig_stat <- monitora_as_dt_ref(registros_corrig_stat)
@@ -5269,7 +5297,7 @@ if (!is.na(encostam_vareta_col) && length(encostam_vareta_col) > 0) {
     sum_presence_exotica = sum(presence_exotica, na.rm = TRUE),
     sum_presence_seca_morta = sum(presence_seca_morta, na.rm = TRUE)
   ), by = .(UC, UA, ANO)]
-  rm(enc_vec); monitora_gc("presence_nat_exot_seca_v21")
+  rm(enc_vec); monitora_gc("presence_nat_exot_seca")
 } else {
   encostam_vareta_summary <- unique(monitora_as_dt_ref(registros_corrig)[, .(UC, UA, ANO)])
   encostam_vareta_summary[, `:=`(sum_presence_nativa = NA_integer_, sum_presence_exotica = NA_integer_, sum_presence_seca_morta = NA_integer_)]
@@ -5736,7 +5764,7 @@ monitora_criar_indice_graficos_auxiliares <- function() {
   idx[, uso_recomendado := data.table::fifelse(
     tipo_versao == "sem_rotulo" & grupo_complexidade == "muitas_categorias", "principal_publicacao_e_apoio_bolsista",
     data.table::fifelse(tipo_versao == "sem_rotulo", "apoio_bolsista",
-            data.table::fifelse(grupo_complexidade == "muitas_categorias", "apoio_tecnico", "principal_publicacao"))
+            data.table::fifelse(grupo_complexidade == "muitas_categorias", "apoio_diagnostico_validacao", "principal_publicacao"))
   )]
   data.table::setcolorder(idx, c("arquivo_csv", "plot_png", "tipo_grafico", "grupo_grafico", "grupo_complexidade", "tipo_versao", "uso_recomendado", "form_veg", "usar_coluna_valor", "usar_coluna_categoria", "usar_coluna_ordem", "usar_coluna_rotulo", "observacao_excel"))
   idx
@@ -5829,6 +5857,8 @@ monitora_theme_prop_publicavel <- function() {
       panel.grid.minor = ggplot2::element_blank(),
       plot.caption = monitora_elemento_caption_publicavel(size = 8.5),
       plot.caption.position = "panel",
+      panel.spacing.x = grid::unit(2.2, "lines"),
+      panel.spacing.y = grid::unit(0.75, "lines"),
       plot.margin = ggplot2::margin(18, 24, 18, 24)
     )
 }
@@ -5852,10 +5882,10 @@ monitora_theme_cobertura_publicavel <- function() {
 }
 
 ## Parâmetros de rótulos: mantêm legibilidade e consistência editorial.
-MONITORA_FONTE_ROTULO_PROP <- 3.25
+MONITORA_FONTE_ROTULO_PROP <- 3.35
 MONITORA_REDUCAO_ROTULO_EXTERNO_MULTIPLO_PT <- 0
 MONITORA_REDUCAO_ROTULO_EXTERNO_MULTIPLO <- MONITORA_REDUCAO_ROTULO_EXTERNO_MULTIPLO_PT / ggplot2::.pt
-MONITORA_FONTE_ROTULO_COB <- 3.5
+MONITORA_FONTE_ROTULO_COB <- 3.58
 MONITORA_LINEHEIGHT_ROTULO <- 0.86
 MONITORA_LIMIAR_ROTULO_PROP <- 0.03
 MONITORA_LIMIAR_ROTULO_PROP_COMPLEXO <- 0.05
@@ -5865,6 +5895,173 @@ MONITORA_N_CATEGORIAS_ROTULO_COMPLEXO <- 8L
 MONITORA_N_CATEGORIAS_ROTULO_MUITO_DENSO <- 12L
 MONITORA_LIMIAR_ROTULO_COB <- 2
 MONITORA_LIMIAR_ROTULO_COB_COMPLEXO <- 2
+
+monitora_rotulo_ano_esforco <- function(ano, n_UA, compacto = TRUE) {
+  ## O eixo Y continua sendo um eixo de ANO. O esforço amostral aparece como
+  ## informação secundária entre parênteses, preferencialmente em linha separada.
+  ano_chr <- as.character(ano)
+  n_num <- suppressWarnings(as.integer(n_UA))
+  sem_n <- is.na(n_num) | !is.finite(n_num)
+  out <- ifelse(
+    sem_n,
+    ano_chr,
+    paste0(ano_chr, "\n", "(n UA = ", n_num, ")")
+  )
+  out[is.na(out) | !nzchar(out)] <- ano_chr[is.na(out) | !nzchar(out)]
+  out
+}
+
+
+monitora_stat_extrair_simbolos_linha <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  # Símbolos de composição/linha usados no projeto. Mantém lista restrita para
+  # não capturar símbolos de categorias dentro dos rótulos das barras.
+  m <- regmatches(x, gregexpr("[◆◇·?]", x, perl = TRUE))
+  vapply(m, function(z) paste(unique(z[nzchar(z)]), collapse = " "), character(1))
+}
+
+monitora_stat_limpar_simbolos_inicio_linha <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  gsub("^\\s*[◆◇·?]+\\s*", "", x, perl = TRUE)
+}
+
+monitora_stat_normalizar_rotulo_linha_ano <- function(texto, simbolo_extra = "") {
+  ## Padronização editorial dos rótulos de linha:
+  ##   ANO
+  ##   (n UA = x; símbolo)
+  texto <- as.character(texto)
+  simbolo_extra <- as.character(simbolo_extra)
+  texto[is.na(texto)] <- ""
+  simbolo_extra[is.na(simbolo_extra)] <- ""
+  if (length(simbolo_extra) != length(texto)) simbolo_extra <- rep_len(simbolo_extra, length(texto))
+
+  out <- texto
+  for (i in seq_along(texto)) {
+    txt_i <- texto[[i]]
+    if (!nzchar(txt_i)) next
+    linhas <- strsplit(txt_i, "\n", fixed = TRUE)[[1]]
+    linhas <- trimws(linhas)
+    linhas <- linhas[nzchar(linhas)]
+    if (!length(linhas)) next
+
+    simbolos_prefixo <- monitora_stat_extrair_simbolos_linha(linhas[[1]])
+    ano_linha <- monitora_stat_limpar_simbolos_inicio_linha(linhas[[1]])
+    ano_linha <- trimws(ano_linha)
+
+    info <- character()
+    if (length(linhas) > 1L) {
+      info_txt <- paste(linhas[-1L], collapse = "; ")
+      info_txt <- gsub("^\\((.*)\\)$", "\\1", info_txt, perl = TRUE)
+      info_txt <- gsub("\\bn\\s*UA\\s*=\\s*", "n UA = ", info_txt, perl = TRUE)
+      info_txt <- gsub("\\s*;\\s*", "; ", info_txt, perl = TRUE)
+      info <- unlist(strsplit(info_txt, ";", fixed = TRUE), use.names = FALSE)
+      info <- trimws(info)
+      info <- info[nzchar(info)]
+    }
+
+    simbolos <- paste(c(simbolos_prefixo, simbolo_extra[[i]]), collapse = " ")
+    simbolos <- monitora_stat_extrair_simbolos_linha(simbolos)
+    if (nzchar(simbolos)) {
+      for (s in strsplit(simbolos, "\\s+")[[1]]) {
+        if (nzchar(s) && !any(info == s)) info <- c(info, s)
+      }
+    }
+
+    if (length(info)) {
+      out[[i]] <- paste0(ano_linha, "\n(", paste(info, collapse = "; "), ")")
+    } else {
+      out[[i]] <- ano_linha
+    }
+  }
+  out
+}
+
+monitora_stat_compactar_rotulo_eixo_cobertura <- function(texto) {
+  ## Em gráficos de cobertura, a informação secundária do eixo Y pode ser quebrada
+  ## em uma linha adicional quando inclui símbolos, reduzindo a largura ocupada e
+  ## evitando sobreposição com as barras.
+  txt <- as.character(texto)
+  txt[is.na(txt)] <- ""
+  out <- txt
+  for (i in seq_along(txt)) {
+    if (!nzchar(txt[[i]])) next
+    linhas <- strsplit(txt[[i]], "\n", fixed = TRUE)[[1]]
+    linhas <- linhas[nzchar(trimws(linhas))]
+    if (length(linhas) < 2L) {
+      out[[i]] <- txt[[i]]
+      next
+    }
+    ano_linha <- linhas[[1]]
+    info_linha <- paste(linhas[-1L], collapse = " ")
+    info_linha <- trimws(info_linha)
+    conteudo <- sub("^\\((.*)\\)$", "\\1", info_linha, perl = TRUE)
+    partes <- trimws(unlist(strsplit(conteudo, ";", fixed = TRUE), use.names = FALSE))
+    partes <- partes[nzchar(partes)]
+    if (length(partes) >= 2L) {
+      out[[i]] <- paste0(ano_linha, "\n(", partes[[1]], ")\n(", paste(partes[-1L], collapse = "; "), ")")
+    } else {
+      out[[i]] <- paste0(ano_linha, "\n(", conteudo, ")")
+    }
+  }
+  out
+}
+
+monitora_coluna_nua_preferencial <- function(dt) {
+  cols <- intersect(c("n_UA_ano", "n_UA", "n_UA_pareadas"), names(dt))
+  if (length(cols)) cols[[1]] else NA_character_
+}
+
+monitora_resumo_esforco_painel <- function(dados, painel_cols = c("form_veg"), prefixo = "n UA") {
+  if (is.null(dados) || !NROW(dados)) return(data.table::data.table())
+  dt <- data.table::as.data.table(data.table::copy(dados))
+  if (!"ANO" %in% names(dt)) return(data.table::data.table())
+  ncol <- monitora_coluna_nua_preferencial(dt)
+  if (is.na(ncol) || !ncol %in% names(dt)) return(data.table::data.table())
+  painel_cols <- intersect(painel_cols, names(dt))
+  if (!length(painel_cols)) painel_cols <- character(0)
+  data.table::setnames(dt, ncol, "n_UA_esforco_tmp")
+  dt[, n_UA_esforco_tmp := suppressWarnings(as.integer(n_UA_esforco_tmp))]
+  dt <- unique(dt[is.finite(n_UA_esforco_tmp), c(painel_cols, "ANO", "n_UA_esforco_tmp"), with = FALSE])
+  if (!nrow(dt)) return(data.table::data.table())
+  by_cols <- painel_cols
+  out <- dt[, .(
+    n_UA_min = min(n_UA_esforco_tmp, na.rm = TRUE),
+    n_UA_max = max(n_UA_esforco_tmp, na.rm = TRUE),
+    n_UA_por_ano = paste(paste0(ANO, "=", n_UA_esforco_tmp), collapse = "; ")
+  ), by = by_cols]
+  out[, n_UA_constante := is.finite(n_UA_min) & is.finite(n_UA_max) & n_UA_min == n_UA_max]
+  out[, rotulo_esforco := data.table::fifelse(
+    n_UA_constante,
+    paste0(prefixo, " = ", n_UA_min),
+    paste0(prefixo, ": ", n_UA_por_ano)
+  )]
+  out[]
+}
+
+monitora_definir_rotulo_ano_exibicao <- function(dt, compacto = TRUE) {
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if (!nrow(out) || !"ANO" %in% names(out)) {
+    out[, ANO_rotulo_exibicao := character()]
+    return(out)
+  }
+  if ("ANO_rotulo_exibicao" %in% names(out)) {
+    out[, ANO_rotulo_exibicao := as.character(ANO_rotulo_exibicao)]
+    out[is.na(ANO_rotulo_exibicao) | !nzchar(ANO_rotulo_exibicao), ANO_rotulo_exibicao := as.character(ANO)]
+    return(out)
+  }
+  ncol <- monitora_coluna_nua_preferencial(out)
+  if (!is.na(ncol) && ncol %in% names(out)) {
+    out[, ANO_rotulo_exibicao := monitora_rotulo_ano_esforco(ANO, get(ncol), compacto = compacto)]
+  } else if ("ANO_label_rotulo" %in% names(out)) {
+    out[, ANO_rotulo_exibicao := as.character(ANO_label_rotulo)]
+    out[is.na(ANO_rotulo_exibicao) | !nzchar(ANO_rotulo_exibicao), ANO_rotulo_exibicao := as.character(ANO)]
+  } else {
+    out[, ANO_rotulo_exibicao := as.character(ANO)]
+  }
+  out[]
+}
 
 monitora_rotulo_prop_plot <- function(prop, n, complexo = FALSE, forcar = FALSE) {
   prop_num <- suppressWarnings(as.numeric(prop))
@@ -5999,17 +6196,50 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
     out[, ordem_categoria := data.table::frank(categoria_label, ties.method = "dense")]
   }
 
+  # Entradas editoriais novas podem chegar com ANO_factor_rotulo já calculado.
+  # A função recalcula essa coluna a partir da chave interna ANO_chave_rotulo;
+  # por isso a coluna pré-existente é removida para evitar sufixos .x/.y no
+  # merge e ausência de ANO_factor_rotulo no setorder().
+  if ("ANO_factor_rotulo" %in% names(out)) {
+    out[, ANO_factor_rotulo := NULL]
+  }
+
   out[, prop_num_rotulo_obrig := suppressWarnings(as.numeric(prop))]
   out[, n_num_rotulo_obrig := suppressWarnings(as.numeric(n))]
-  out[, ANO_label_rotulo := as.character(ANO)]
 
+  ## chave interna e rótulo exibido ficam separados.
+  ## A inconsistência da ocorreu porque rótulos editoriais compostos
+  ## ("2025\nn UA=144") foram usados como chave de merge/rankeamento. A chave
+  ## de posicionamento volta a ser somente o ano, enquanto ANO_label_rotulo é
+  ## reservado para exibição na escala/anotação.
+  out <- monitora_definir_rotulo_ano_exibicao(out, compacto = TRUE)
+  out[, ANO_chave_rotulo := as.character(ANO)]
+
+  ## O ranqueamento do ano é feito dentro de cada form_veg/painel, sempre usando
+  ## ANO_chave_rotulo, nunca o rótulo exibido.
+  out[, form_veg_rank_aux := as.character(form_veg)]
   anos_rotulo <- unique(out[, .(
-    ANO_label_rotulo = as.character(ANO),
+    form_veg_rank_aux,
+    ANO_chave_rotulo,
     ANO_num_ordem_rotulo = suppressWarnings(as.numeric(as.character(ANO)))
   )])
-  data.table::setorder(anos_rotulo, ANO_num_ordem_rotulo, ANO_label_rotulo)
-  anos_rotulo[, ANO_factor_rotulo := seq_len(.N)]
-  out <- merge(out, anos_rotulo[, .(ANO_label_rotulo, ANO_factor_rotulo)], by = "ANO_label_rotulo", all.x = TRUE, sort = FALSE)
+  data.table::setorder(anos_rotulo, form_veg_rank_aux, ANO_num_ordem_rotulo, ANO_chave_rotulo)
+  anos_rotulo[, ANO_factor_rotulo := seq_len(.N), by = form_veg_rank_aux]
+  out <- merge(
+    out,
+    anos_rotulo[, .(form_veg_rank_aux, ANO_chave_rotulo, ANO_factor_rotulo)],
+    by = c("form_veg_rank_aux", "ANO_chave_rotulo"), all.x = TRUE, sort = FALSE
+  )
+  out[, ANO_label_rotulo := as.character(ANO_rotulo_exibicao)]
+  out[is.na(ANO_label_rotulo) | !nzchar(ANO_label_rotulo), ANO_label_rotulo := ANO_chave_rotulo]
+  if (any(is.na(out$ANO_factor_rotulo))) {
+    out[is.na(ANO_factor_rotulo), ANO_factor_rotulo := data.table::frank(
+      suppressWarnings(as.numeric(as.character(ANO))),
+      ties.method = "dense",
+      na.last = "keep"
+    ), by = form_veg]
+  }
+  out[, form_veg_rank_aux := NULL]
 
   ## O ggplot2 empilha categorias em sentido inverso ao da legenda em barras horizontais.
   ## As posições de rótulo seguem essa ordem para ancorar cada texto no segmento correto.
@@ -6072,9 +6302,13 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
   )]
 
   usar_faixa_branca_rotulo <- any(out$rotulo_prop_externo != "", na.rm = TRUE)
+  tem_rotulo_externo_esquerda <- any(out$rotulo_prop_externo != "" & out$x_meio_rotulo < 0.5, na.rm = TRUE)
+  tem_rotulo_externo_direita <- any(out$rotulo_prop_externo != "" & out$x_meio_rotulo >= 0.5, na.rm = TRUE)
   if (isTRUE(usar_faixa_branca_rotulo)) {
-    x_barra_min_prop <- 0.14
-    x_barra_max_prop <- 0.86
+    ## A barra só é encurtada no(s) lado(s) que precisam de faixa branca para
+    ## rótulos externos, reduzindo espaços vazios desnecessários.
+    x_barra_min_prop <- if (isTRUE(tem_rotulo_externo_esquerda)) 0.10 else 0.03
+    x_barra_max_prop <- if (isTRUE(tem_rotulo_externo_direita)) 0.90 else 0.97
   } else {
     x_barra_min_prop <- 0.00
     x_barra_max_prop <- 1.00
@@ -6085,6 +6319,23 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
   out[, x_meio_plot := x_barra_min_prop + x_meio_rotulo * x_barra_largura_prop]
   out[, x_barra_min_plot := x_barra_min_prop]
   out[, x_barra_max_plot := x_barra_max_prop]
+
+  ## Além do limiar percentual, verifica se a barra comporta o texto. Se couber,
+  ## o rótulo permanece interno e evita conector desnecessário.
+  out[, largura_barra_plot := pmax(0, x_fim_plot - x_inicio_plot)]
+  out[, largura_rotulo_prop_est := monitora_largura_rotulo_x_est(
+    rotulo_prop_plot,
+    unidade = "prop",
+    minimo = 0.022,
+    maximo = 0.080
+  )]
+  out[, cabe_rotulo_interno_por_largura := rotulo_prop_plot != "" &
+        is.finite(largura_barra_plot) & is.finite(largura_rotulo_prop_est) &
+        largura_barra_plot >= pmax(largura_rotulo_prop_est * 1.12, 0.024)]
+  out[cabe_rotulo_interno_por_largura == TRUE, `:=`(
+    rotulo_prop_interno = rotulo_prop_plot,
+    rotulo_prop_externo = ""
+  )]
 
   out[, lado_rotulo_prop := data.table::fifelse(x_meio_rotulo < 0.5, "esquerda", "direita")]
   out[, y_base_rotulo := as.numeric(ANO_factor_rotulo)]
@@ -6159,21 +6410,17 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
         bloco[, x_conector_rotulo := x_alvo_rotulo - meia_largura_rotulo_est - margem_conector_rotulo]
       }
 
-      if (n_bloco > 1L) {
-        ## O rótulo mais próximo da barra recebe ligação simples. Os demais
-        ## mantêm o mesmo alinhamento vertical do ano e usam cotovelo a partir
-        ## do próprio rótulo, descendo antes de seguir horizontalmente até a
-        ## barra. Com isso, a leitura humana do pareamento rótulo-barra fica
-        ## mais imediata e as linhas chegam à barra em alturas distintas.
-        y_offsets <- c(0, -0.18 - (seq_len(n_bloco - 1L) - 1L) * 0.08)
-        bloco[, y_alvo_rotulo := y_base_rotulo]
-        bloco[, y_via_rotulo := y_base_rotulo + y_offsets]
-        bloco[, usar_cotovelo_rotulo := seq_len(.N) > 1L]
+      ## Todos os rótulos externos usam conector em cotovelo, com a linha horizontal
+      ## deslocada do centro da barra. Isso evita que a guia atravesse rótulos
+      ## internos, sobretudo em gráficos de coorte densos.
+      if (lado_i == "esquerda") {
+        y_offsets <- 0.14 + (seq_len(n_bloco) - 1L) * 0.08
       } else {
-        bloco[, y_alvo_rotulo := y_base_rotulo]
-        bloco[, y_via_rotulo := y_base_rotulo]
-        bloco[, usar_cotovelo_rotulo := FALSE]
+        y_offsets <- -0.14 - (seq_len(n_bloco) - 1L) * 0.08
       }
+      bloco[, y_alvo_rotulo := y_base_rotulo]
+      bloco[, y_via_rotulo := y_base_rotulo + y_offsets]
+      bloco[, usar_cotovelo_rotulo := TRUE]
 
       externos[idx] <- bloco
     }
@@ -6212,12 +6459,17 @@ monitora_preparar_rotulos_prop_obrigatorios <- function(dt, prop_min_interno = 0
     pmin(x_alvo_rotulo + 0.028, x_barra_min_plot - 0.006),
     pmax(x_alvo_rotulo - 0.028, x_barra_max_plot + 0.006)
   )]
-  out[, c("prop_stack_rotulo", "n_categorias_positivas_ano", "prop_min_exibir_rotulo", "prop_min_interno_efetivo") := NULL]
+  out[, c("prop_stack_rotulo", "n_categorias_positivas_ano", "prop_min_exibir_rotulo", "prop_min_interno_efetivo", "largura_barra_plot", "largura_rotulo_prop_est", "cabe_rotulo_interno_por_largura") := NULL]
   out[]
 }
 
 
-monitora_scale_x_prop_obrigatorios <- function(dados_rotulos = NULL) {
+monitora_scale_x_prop_obrigatorios <- function(dados_rotulos = NULL, inset_esquerdo = 0) {
+  ## Os limites do eixo X consideram barras, rótulos externos, conectores e a
+  ## faixa interna de ano + n UA.
+  ## Isso evita que scale_x_continuous() censure dados antes do desenho.
+  inset_esquerdo <- max(0, suppressWarnings(as.numeric(inset_esquerdo)[1]))
+  if (!is.finite(inset_esquerdo)) inset_esquerdo <- 0
   escala_barra_min <- 0.14
   escala_barra_max <- 0.86
   if (!is.null(dados_rotulos) && NROW(dados_rotulos)) {
@@ -6228,17 +6480,18 @@ monitora_scale_x_prop_obrigatorios <- function(dados_rotulos = NULL) {
     if (length(max_vals) == 1L) escala_barra_max <- max_vals[[1]]
   }
   escala_breaks_reais <- seq(0, 1, 0.25)
+  lims <- monitora_calcular_limites_x_prop_rotulos(dados_rotulos, inset_esquerdo = inset_esquerdo)
   ggplot2::scale_x_continuous(
     breaks = escala_barra_min + escala_breaks_reais * (escala_barra_max - escala_barra_min),
     labels = scales::percent(escala_breaks_reais, accuracy = 1, decimal.mark = ","),
-    limits = c(0, 1),
+    limits = lims,
     expand = ggplot2::expansion(mult = c(0, 0))
   )
 }
 
 monitora_camada_barras_prop_obrigatorios <- function(dados_rotulos) {
   ggplot2::geom_rect(
-    data = data.table::as.data.table(dados_rotulos)[prop_num_rotulo_obrig > 0],
+    data = data.table::as.data.table(dados_rotulos)[prop_num_rotulo_obrig > 0 & is.finite(ANO_factor_rotulo)],
     ggplot2::aes(
       xmin = x_inicio_plot,
       xmax = x_fim_plot,
@@ -6255,8 +6508,8 @@ monitora_camada_barras_prop_obrigatorios <- function(dados_rotulos) {
 
 monitora_camadas_rotulos_prop_obrigatorios <- function(dados_rotulos) {
   dados_rotulos <- data.table::as.data.table(dados_rotulos)
-  dados_internos <- dados_rotulos[rotulo_prop_interno != ""]
-  dados_externos <- dados_rotulos[rotulo_prop_externo != ""]
+  dados_internos <- dados_rotulos[rotulo_prop_interno != "" & is.finite(ANO_factor_rotulo)]
+  dados_externos <- dados_rotulos[rotulo_prop_externo != "" & is.finite(ANO_factor_rotulo)]
 
   camada_interna <- ggplot2::geom_text(
     data = dados_internos,
@@ -6341,7 +6594,7 @@ monitora_camadas_rotulos_prop_obrigatorios <- function(dados_rotulos) {
       labels = escala_anos$ANO_label_rotulo,
       expand = ggplot2::expansion(mult = c(0.10, 0.12))
     ),
-    ggplot2::coord_cartesian(xlim = c(0, 1), clip = "on"),
+    monitora_coord_x_prop_obrigatorios(dados_rotulos, inset_esquerdo = 0, clip = "on"),
     ggplot2::theme(plot.margin = ggplot2::margin(14, 24, 14, 24))
   )
 }
@@ -6360,6 +6613,16 @@ monitora_rotulo_cobertura_plot <- function(veg_cover, complexo = FALSE) {
   ifelse(!is.na(valor) & valor >= limiar, monitora_formatar_percentual_rotulo(valor, digits = 1), "")
 }
 
+monitora_adicionar_rotulo_cobertura_layout <- function(dt, complexo = FALSE) {
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if (!nrow(out) || !"veg_cover" %in% names(out)) {
+    out[, rotulo_cobertura_plot := character()]
+    return(out)
+  }
+  out[, rotulo_cobertura_plot := monitora_rotulo_cobertura_plot(veg_cover, complexo = complexo)]
+  out[]
+}
+
 monitora_adicionar_rotulo_cobertura_complexa <- function(dt) {
   out <- data.table::as.data.table(dt)
   if (!nrow(out) || !all(c("ANO", "form_veg", "veg_cover") %in% names(out))) {
@@ -6372,6 +6635,256 @@ monitora_adicionar_rotulo_cobertura_complexa <- function(dt) {
     ""
   )]
   out
+}
+
+
+## Motor editorial de layout de rótulos ---------------------------------------
+## As funções abaixo centralizam a estimativa de espaço necessário para rótulos.
+## A regra prática é: calcular primeiro as posições/limites e só depois desenhar
+## as camadas. Assim, evitamos corrigir extravasamento com ajustes isolados de
+## hjust/nudge/clip em cada gráfico.
+
+MONITORA_LAYOUT_MARGEM_X_PROP <- 0.018
+MONITORA_LAYOUT_FATOR_SEGURANCA_TEXTO <- 1.45
+MONITORA_LAYOUT_LIMITE_MAX_COBERTURA <- 132
+
+monitora_passo_eixo_x_cobertura <- function(x_max) {
+  x <- suppressWarnings(as.numeric(x_max)[1])
+  if (!is.finite(x) || x <= 0) return(1)
+  if (x <= 2) return(0.5)
+  if (x <= 5) return(1)
+  if (x <= 10) return(2)
+  if (x <= 20) return(5)
+  if (x <= 40) return(10)
+  if (x <= 80) return(20)
+  25
+}
+
+monitora_limite_eixo_x_cobertura <- function(x_max, margem = 0.08, minimo = 2, maximo = 100) {
+  x <- suppressWarnings(as.numeric(x_max)[1])
+  if (!is.finite(x) || x <= 0) x <- minimo
+  alvo <- max(minimo, x * (1 + margem))
+  passo <- monitora_passo_eixo_x_cobertura(alvo)
+  lim <- ceiling(alvo / passo) * passo
+  lim <- max(passo, lim)
+  min(maximo, lim)
+}
+
+monitora_breaks_eixo_x_cobertura <- function(x_lim) {
+  lim <- suppressWarnings(as.numeric(x_lim)[1])
+  if (!is.finite(lim) || lim <= 0) lim <- 5
+  passo <- monitora_passo_eixo_x_cobertura(lim)
+  seq(0, lim, by = passo)
+}
+
+monitora_calcular_inset_rotulo_eixo_cobertura <- function(rotulos, x_lim, fator = 0.18, padding = 1.2, minimo = 4) {
+  rot <- as.character(rotulos)
+  rot[is.na(rot)] <- ""
+  rot <- rot[nzchar(rot)]
+  lim <- suppressWarnings(as.numeric(x_lim)[1])
+  if (!is.finite(lim) || lim <= 0) lim <- minimo
+  base <- lim * fator
+  if (!length(rot)) return(max(minimo, base))
+  larg <- monitora_largura_rotulo_x_est(rot, unidade = "cobertura", minimo = 3.5, maximo = 18)
+  max(max(larg, na.rm = TRUE) + padding, base, minimo)
+}
+
+monitora_posicao_x_rotulo_eixo_cobertura <- function(inset, padding = 0.6) {
+  ins <- suppressWarnings(as.numeric(inset)[1])
+  if (!is.finite(ins) || ins <= 0) ins <- 4
+  -ins + min(max(padding, ins * 0.08), ins * 0.35)
+}
+
+monitora_largura_rotulo_x_est <- function(rotulos, unidade = c("prop", "cobertura"), minimo = NULL, maximo = NULL) {
+  unidade <- match.arg(unidade)
+  rotulos <- as.character(rotulos)
+  rotulos[is.na(rotulos)] <- ""
+  linha_maior <- vapply(strsplit(rotulos, "\\n", fixed = FALSE), function(x) {
+    if (!length(x)) return(0L)
+    max(nchar(x, type = "width"), na.rm = TRUE)
+  }, integer(1))
+  if (unidade == "prop") {
+    largura <- linha_maior * 0.0029 * MONITORA_LAYOUT_FATOR_SEGURANCA_TEXTO
+    minimo <- if (is.null(minimo)) 0.026 else minimo
+    maximo <- if (is.null(maximo)) 0.085 else maximo
+  } else {
+    largura <- linha_maior * 0.42 * MONITORA_LAYOUT_FATOR_SEGURANCA_TEXTO
+    minimo <- if (is.null(minimo)) 3.2 else minimo
+    maximo <- if (is.null(maximo)) 12 else maximo
+  }
+  pmin(maximo, pmax(minimo, largura))
+}
+
+monitora_calcular_limites_x_prop_rotulos <- function(dados_rotulos = NULL, inset_esquerdo = 0, margem = MONITORA_LAYOUT_MARGEM_X_PROP) {
+  inset_esquerdo <- max(0, suppressWarnings(as.numeric(inset_esquerdo)[1]))
+  if (!is.finite(inset_esquerdo)) inset_esquerdo <- 0
+  x_min <- -inset_esquerdo
+  x_max <- 1
+  if (is.null(dados_rotulos) || !NROW(dados_rotulos)) {
+    return(c(x_min, x_max))
+  }
+  d <- data.table::as.data.table(dados_rotulos)
+  cols_x <- intersect(c(
+    "x_inicio_plot", "x_fim_plot", "x_meio_plot", "x_barra_min_plot", "x_barra_max_plot",
+    "x_alvo_rotulo", "x_conector_rotulo", "x_cotovelo_rotulo", "x_eixo_anno"
+  ), names(d))
+  if (length(cols_x)) {
+    vals <- unlist(d[, cols_x, with = FALSE], use.names = FALSE)
+    vals <- suppressWarnings(as.numeric(vals))
+    vals <- vals[is.finite(vals)]
+    if (length(vals)) {
+      x_min <- min(x_min, vals, na.rm = TRUE)
+      x_max <- max(x_max, vals, na.rm = TRUE)
+    }
+  }
+  if (all(c("x_alvo_rotulo", "rotulo_prop_externo") %in% names(d))) {
+    ext <- d[!is.na(rotulo_prop_externo) & nzchar(rotulo_prop_externo) & is.finite(x_alvo_rotulo)]
+    if (nrow(ext)) {
+      largura <- monitora_largura_rotulo_x_est(ext$rotulo_prop_externo, unidade = "prop")
+      if ("meia_largura_rotulo_est" %in% names(ext)) {
+        largura <- pmax(largura, suppressWarnings(as.numeric(ext$meia_largura_rotulo_est)) * 1.35, na.rm = TRUE)
+      }
+      x_min <- min(x_min, ext$x_alvo_rotulo - largura, na.rm = TRUE)
+      x_max <- max(x_max, ext$x_alvo_rotulo + largura, na.rm = TRUE)
+    }
+  }
+  if (all(c("x_meio_plot", "rotulo_prop_interno") %in% names(d))) {
+    ints <- d[!is.na(rotulo_prop_interno) & nzchar(rotulo_prop_interno) & is.finite(x_meio_plot)]
+    if (nrow(ints)) {
+      largura <- monitora_largura_rotulo_x_est(ints$rotulo_prop_interno, unidade = "prop", maximo = 0.075)
+      x_min <- min(x_min, ints$x_meio_plot - largura, na.rm = TRUE)
+      x_max <- max(x_max, ints$x_meio_plot + largura, na.rm = TRUE)
+    }
+  }
+  c(min(x_min - margem, -inset_esquerdo), max(x_max + margem, 1))
+}
+
+monitora_coord_x_prop_obrigatorios <- function(dados_rotulos = NULL, inset_esquerdo = 0, clip = "on") {
+  lims <- monitora_calcular_limites_x_prop_rotulos(dados_rotulos, inset_esquerdo = inset_esquerdo)
+  ggplot2::coord_cartesian(xlim = lims, clip = clip)
+}
+
+monitora_preparar_layout_rotulos_cobertura <- function(dt, complexo = FALSE, max_rotulos_complexo = 4L) {
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if (!nrow(out) || !"veg_cover" %in% names(out)) return(out)
+  if (!"rotulo_cobertura_plot" %in% names(out)) {
+    out[, rotulo_cobertura_plot := monitora_rotulo_cobertura_plot(veg_cover, complexo = complexo)]
+  }
+  if (isTRUE(complexo) && all(c("ANO", "form_veg") %in% names(out))) {
+    out[, rank_cobertura_rotulo_layout := data.table::frank(-veg_cover, ties.method = "first", na.last = "keep"), by = .(ANO, form_veg)]
+    out[rank_cobertura_rotulo_layout > max_rotulos_complexo & veg_cover < 20, rotulo_cobertura_plot := ""]
+    out[, rank_cobertura_rotulo_layout := NULL]
+  }
+  out[, x_base_rotulo := suppressWarnings(pmax(veg_cover, ci_upper, na.rm = TRUE))]
+  out[!is.finite(x_base_rotulo), x_base_rotulo := veg_cover]
+  x_base_max <- suppressWarnings(max(out$x_base_rotulo, na.rm = TRUE))
+  if (!is.finite(x_base_max) || x_base_max <= 0) x_base_max <- suppressWarnings(max(out$veg_cover, na.rm = TRUE))
+  if (!is.finite(x_base_max) || x_base_max <= 0) x_base_max <- 1
+  ## para os gráficos de cobertura, os conectores externos foram
+  ## removidos porque em vários casos ficavam flutuando sem guiar a leitura.
+  ## Os rótulos passam a ficar mais próximos da ponta da barra/IC.
+  offset <- max(x_base_max * 0.007, 0.35)
+  out[, `:=`(
+    x_seg_fim = x_base_rotulo,
+    x_rotulo = x_base_rotulo + offset
+  )]
+  out[]
+}
+
+monitora_calcular_xmax_cobertura_rotulos <- function(dt, fallback = 10, margem = 1.5) {
+  d <- data.table::as.data.table(dt)
+  vals <- c()
+  for (cc in intersect(c("veg_cover", "ci_upper", "x_base_rotulo", "x_seg_fim", "x_rotulo"), names(d))) {
+    vals <- c(vals, suppressWarnings(as.numeric(d[[cc]])))
+  }
+  vals <- vals[is.finite(vals)]
+  x_max <- if (length(vals)) max(vals, na.rm = TRUE) else fallback
+  if (!is.finite(x_max) || x_max <= 0) x_max <- fallback
+  if (all(c("x_rotulo", "rotulo_cobertura_plot") %in% names(d))) {
+    lab <- d[!is.na(rotulo_cobertura_plot) & nzchar(rotulo_cobertura_plot) & is.finite(x_rotulo)]
+    if (nrow(lab)) {
+      largura <- monitora_largura_rotulo_x_est(lab$rotulo_cobertura_plot, unidade = "cobertura")
+      x_max <- max(x_max, lab$x_rotulo + largura + margem, na.rm = TRUE)
+    }
+  }
+  min(max(x_max, fallback), MONITORA_LAYOUT_LIMITE_MAX_COBERTURA)
+}
+
+monitora_expandir_xmax_rotulos_cobertura <- function(x_max, fallback = 10) {
+  x <- suppressWarnings(as.numeric(x_max)[1])
+  if (!is.finite(x) || x <= 0) x <- fallback
+  min(monitora_limite_eixo_x_cobertura(x, margem = 0.10), MONITORA_LAYOUT_LIMITE_MAX_COBERTURA)
+}
+
+monitora_camadas_rotulos_cobertura_externos <- function(complexo = FALSE, tamanho = MONITORA_FONTE_ROTULO_COB, max_rotulos_complexo = 4L) {
+  pos <- ggplot2::position_dodge(width = 0.7)
+  list(
+    ggplot2::geom_label(
+      data = function(d) {
+        dd <- monitora_preparar_layout_rotulos_cobertura(d, complexo = complexo, max_rotulos_complexo = max_rotulos_complexo)
+        dd[!is.na(dd$rotulo_cobertura_plot) & dd$rotulo_cobertura_plot != "", , drop = FALSE]
+      },
+      ggplot2::aes(x = x_rotulo, y = factor(ANO), label = rotulo_cobertura_plot, group = categoria_label),
+      inherit.aes = FALSE,
+      position = pos,
+      hjust = 0,
+      color = "black",
+      fill = "white",
+      label.size = NA,
+      label.padding = grid::unit(0.030, "lines"),
+      size = tamanho,
+      lineheight = MONITORA_LINEHEIGHT_ROTULO,
+      show.legend = FALSE
+    )
+  )
+}
+
+monitora_layout_coletar_auditoria_rotulos <- function(plot_obj, nome_plot = NA_character_) {
+  if (!inherits(plot_obj, "ggplot")) return(data.table::data.table())
+  partes <- list()
+  if (is.data.frame(plot_obj$data) && nrow(plot_obj$data)) partes[[length(partes) + 1L]] <- data.table::as.data.table(plot_obj$data)
+  if (length(plot_obj$layers)) {
+    for (ii in seq_along(plot_obj$layers)) {
+      ld <- plot_obj$layers[[ii]]$data
+      if (is.data.frame(ld) && nrow(ld)) partes[[length(partes) + 1L]] <- data.table::as.data.table(ld)
+    }
+  }
+  if (!length(partes)) return(data.table::data.table())
+  out <- data.table::rbindlist(lapply(partes, function(d) {
+    cols_rot <- intersect(c("rotulo_prop_plot", "rotulo_prop_interno", "rotulo_prop_externo", "rotulo_cobertura_plot", "rotulo_eixo_anno"), names(d))
+    if (!length(cols_rot)) return(data.table::data.table())
+    data.table::rbindlist(lapply(cols_rot, function(rc) {
+      keep <- !is.na(d[[rc]]) & nzchar(as.character(d[[rc]]))
+      if (!any(keep)) return(data.table::data.table())
+      data.table::data.table(
+        plot = as.character(nome_plot),
+        coluna_rotulo = rc,
+        n_rotulos = sum(keep),
+        n_linhas_distintas = length(unique(as.character(d[[rc]][keep]))),
+        x_min_observado = suppressWarnings(min(unlist(d[keep, intersect(c("x_inicio_plot", "x_fim_plot", "x_meio_plot", "x_alvo_rotulo", "x_rotulo", "x_eixo_anno"), names(d)), with = FALSE]), na.rm = TRUE)),
+        x_max_observado = suppressWarnings(max(unlist(d[keep, intersect(c("x_inicio_plot", "x_fim_plot", "x_meio_plot", "x_alvo_rotulo", "x_rotulo", "x_eixo_anno"), names(d)), with = FALSE]), na.rm = TRUE))
+      )
+    }), fill = TRUE)
+  }), fill = TRUE)
+  if (nrow(out)) {
+    out[!is.finite(x_min_observado), x_min_observado := NA_real_]
+    out[!is.finite(x_max_observado), x_max_observado := NA_real_]
+  }
+  out[]
+}
+
+monitora_layout_registrar_auditoria_plot <- function(plot_obj, nome_plot = NA_character_) {
+  aud <- monitora_layout_coletar_auditoria_rotulos(plot_obj, nome_plot = nome_plot)
+  if (!nrow(aud)) return(invisible(FALSE))
+  if (!exists("MONITORA_AUDITORIA_LAYOUT_ROTULOS", envir = .GlobalEnv, inherits = FALSE)) {
+    assign("MONITORA_AUDITORIA_LAYOUT_ROTULOS", data.table::data.table(), envir = .GlobalEnv)
+  }
+  assign(
+    "MONITORA_AUDITORIA_LAYOUT_ROTULOS",
+    data.table::rbindlist(list(get("MONITORA_AUDITORIA_LAYOUT_ROTULOS", envir = .GlobalEnv), aud), fill = TRUE),
+    envir = .GlobalEnv
+  )
+  invisible(TRUE)
 }
 
 ### Análises
@@ -6389,7 +6902,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     monitora_any_sum_cols_match(registros_corrig_stat, "sum_lenhosa")) {
   reg_corrig_stat_summarise_p1 <- registros_corrig_stat %>%
     dplyr::select(any_of(c(
-      "UC", "ANO", "form_veg", "sum_herbacea", "sum_lenhosa"
+      "UC", "UA", "ANO", "form_veg", "sum_herbacea", "sum_lenhosa"
     ))) %>%
     pivot_longer(
       names_to = "categoria",
@@ -6397,11 +6910,14 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
       cols = c(sum_herbacea, sum_lenhosa)
     ) %>%
     group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(n = sum(soma, na.rm = TRUE)) %>%
+    dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_"))
+    ) %>%
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p1 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p1, complexo = FALSE)
-  
+
   plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -6415,7 +6931,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   dados_p1_camp_rotulos <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Campestre") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.001)
@@ -6433,7 +6949,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p1_camp_rotulos) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -6447,7 +6963,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   dados_p1_sav_rotulos <- reg_corrig_stat_summarise_p1 %>%
     subset(., form_veg == "Savânica") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.001)
@@ -6495,16 +7011,18 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       ci_upper = round((p + 1.96 * se / 100) * 100, 1)
     ) %>%
     select(-p, -total_points)
-  
-  
+
+
+  reg_corrig_stat_summarise_p1_presence <- monitora_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_p1_presence, complexo = FALSE)
+
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-  
+
   # Calcular limite do eixo x
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-  
+
   # Gráfico COM rótulos
   plot_p1.3.1_veg_cover_herb_lenh_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>% 
+    reg_corrig_stat_summarise_p1_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
@@ -6514,14 +7032,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       position = position_dodge(width = 0.7),
       height = 0.2, color = "black"
     ) +
-    geom_label(
-      aes(label = monitora_rotulo_cobertura_plot(veg_cover, complexo = FALSE)),
-      position = position_dodge(width = 0.7),
-      color = "black",
-      fill = "white",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = FALSE,
+      tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
     facet_wrap(~form_veg) +
     labs(
@@ -6540,11 +7053,11 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       panel.grid.minor = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    coord_cartesian(xlim = c(0, x_max))
-  
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
+
   # Gráfico SEM rótulos
   plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>% 
+    reg_corrig_stat_summarise_p1_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
@@ -6571,13 +7084,13 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       panel.grid.minor = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    coord_cartesian(xlim = c(0, x_max))
-  
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
+
   rm(x_max)
-  
-  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo, 
-       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo, 
-       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo, 
+
+  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo,
+       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo,
+       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo,
        plot_p1.2.2_prop_rel_herb_lenh_sav_com_rotulo,
        plot_p1.3.1_veg_cover_herb_lenh_com_rotulo,
        plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo)
@@ -6597,6 +7110,7 @@ reg_corrig_stat_summarise_p2 <- registros_corrig_stat %>%
   dplyr::select(any_of(
     c(
       "UC",
+      "UA",
       "ANO",
       "form_veg",
       "sum_nativa",
@@ -6609,10 +7123,13 @@ reg_corrig_stat_summarise_p2 <- registros_corrig_stat %>%
   pivot_longer(
     names_to = "categoria",
     values_to = "soma",
-    cols = -c("UC", "ANO", "form_veg")
+    cols = -c("UC", "UA", "ANO", "form_veg")
   ) %>%
   group_by(ANO, form_veg, categoria) %>%
-  dplyr::summarise(n = sum(soma, na.rm = TRUE)) %>%
+  dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_"))
+    ) %>%
   dplyr::mutate(prop = prop.table(n)) %>%
   dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria)) %>%
   filter(n > 0)
@@ -6622,10 +7139,10 @@ reg_corrig_stat_summarise_p2 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_s
 
 reg_corrig_stat_summarise_p2_presence <- registros_corrig_stat %>%
   select(any_of(c(
-    "UC", 
-    "UA", 
-    "ANO", 
-    "form_veg", 
+    "UC",
+    "UA",
+    "ANO",
+    "form_veg",
     "sum_presence_nativa",
     "sum_presence_exotica",
     "sum_presence_seca_morta",
@@ -6662,6 +7179,8 @@ reg_corrig_stat_summarise_p2_presence <- registros_corrig_stat %>%
   select(-p, -total_points)
 
 
+reg_corrig_stat_summarise_p2_presence <- monitora_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_p2_presence, complexo = FALSE)
+
 # Calcular limite do eixo x dinamicamente com alternativa segura
 x_max2 <- monitora_safe_xmax(reg_corrig_stat_summarise_p2_presence$veg_cover, mult = 1.15, fallback = 1)
 
@@ -6676,26 +7195,21 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-    
+
     geom_errorbarh(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
       height = 0.2,
       color = "black"
     ) +
-    
-    geom_label(
-      aes(label = monitora_rotulo_cobertura_plot(veg_cover, complexo = FALSE)),
-      position = position_dodge(width = 0.7),
-      color = "black",
-      fill = "white",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = FALSE,
+      tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
-    
+
     facet_wrap(~form_veg) +
-    
+
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -6703,33 +7217,33 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-    
+
     scale_fill_brewer(palette = "Set2") +
-    
+
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    
-    coord_cartesian(xlim = c(0, x_max2))
-  
+
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
+
   # Gráfico sem rótulos
   plot_p2.3.2_veg_cover_categ_sem_rotulo <- ggplot(
     p2_presence_form_veg,
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-    
+
     geom_errorbarh(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
       height = 0.2,
       color = "black"
     ) +
-    
+
     facet_wrap(~form_veg) +
-    
+
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -6737,16 +7251,16 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-    
+
     scale_fill_brewer(palette = "Set2") +
-    
+
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    
-    coord_cartesian(xlim = c(0, x_max2))
+
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
 } else {
   plot_p2.3.1_veg_cover_categ_com_rotulo <- monitora_plot_sem_dados(
     "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
@@ -6761,7 +7275,7 @@ if (monitora_tem_linhas(p2_presence_form_veg)) {
 mat_bot_stat_cols <- grep("^mat_bot_", names(registros_corrig_stat), value = TRUE)
 if (length(mat_bot_stat_cols) > 0) {
   reg_corrig_stat_summarise_material_botanico <- registros_corrig_stat %>%
-    dplyr::select(any_of(c("UC", "ANO", "form_veg", mat_bot_stat_cols))) %>%
+    dplyr::select(any_of(c("UC", "UA", "ANO", "form_veg", mat_bot_stat_cols))) %>%
     pivot_longer(
       names_to = "categoria",
       values_to = "soma",
@@ -6777,7 +7291,11 @@ if (length(mat_bot_stat_cols) > 0) {
       )
     ) %>%
     group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(n = sum(soma, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_")),
+      .groups = "drop"
+    ) %>%
     group_by(ANO, form_veg) %>%
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria)) %>%
@@ -6819,6 +7337,8 @@ if (length(mat_bot_stat_cols) > 0) {
       ci_upper = round((cobertura + 1.96 * se / 100) * 100, 1)
     ) %>%
     filter(n > 0)
+
+  reg_corrig_stat_summarise_material_botanico_presence <- monitora_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_material_botanico_presence, complexo = FALSE)
 
   x_max_mat <- monitora_safe_xmax(reg_corrig_stat_summarise_material_botanico_presence$veg_cover, mult = 1.15, fallback = 1)
 
@@ -6894,14 +7414,9 @@ if (length(mat_bot_stat_cols) > 0) {
       height = 0.2,
       color = "black"
     ) +
-    geom_label(
-      aes(label = monitora_rotulo_cobertura_plot(veg_cover, complexo = FALSE)),
-      position = position_dodge(width = 0.7),
-      color = "black",
-      fill = "white",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = FALSE,
+      tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
     facet_wrap(~form_veg) +
     labs(
@@ -6917,7 +7432,7 @@ if (length(mat_bot_stat_cols) > 0) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    coord_cartesian(xlim = c(0, x_max_mat))
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max_mat)), clip = "on")
 
   plot_p2m.3.2_veg_cover_material_botanico_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_material_botanico_presence %>%
@@ -6945,7 +7460,7 @@ if (length(mat_bot_stat_cols) > 0) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    coord_cartesian(xlim = c(0, x_max_mat))
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max_mat)), clip = "on")
 }
 
 
@@ -7018,9 +7533,9 @@ em formações savânicas",
     monitora_scale_x_prop_obrigatorios(dados_p2_sav_rotulos) +
     monitora_theme_prop_publicavel()
 
-list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo, 
-     plot_p2.1.2_prop_rel_categ_camp_com_rotulo, 
-     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo, 
+list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo,
+     plot_p2.1.2_prop_rel_categ_camp_com_rotulo,
+     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo,
      plot_p2.2.2_prop_rel_categ_sav_com_rotulo,
      plot_p2.3.1_veg_cover_categ_com_rotulo,
      plot_p2.3.2_veg_cover_categ_sem_rotulo)
@@ -7035,22 +7550,25 @@ monitora_perf_checkpoint("analise_categorias_nativa_exotica_seca_material_botani
 
 if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
   reg_corrig_stat_summarise_p3 <- registros_corrig_stat %>%
-    dplyr::select(., UC, ANO, form_veg, which((
+    dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
     ))) %>%
     pivot_longer(
       names_to = "categoria",
       values_to = "soma",
-      cols = -c("UC", "ANO", "form_veg")
+      cols = -c("UC", "UA", "ANO", "form_veg")
     ) %>%
     group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(n = sum(soma, na.rm = TRUE)) %>%
+    dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_"))
+    ) %>%
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p3 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p3, complexo = TRUE)
-  
+
   ## Presença de formas de vida nativas.
-  
+
   reg_corrig_stat_summarise_p3_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
@@ -7078,12 +7596,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p3_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p3_presence)
-  
+
     # Limite X dinâmico
   x_max3 <- monitora_safe_xmax(reg_corrig_stat_summarise_p3_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
 # Gráfico com rótulos
-  
+
   plot_p3.3.1_veg_cover_nat_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p3_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7096,15 +7614,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       position = position_dodge(width = 0.7),
       color = "black"
     ) +
-    geom_label(
-      data = function(d) d[!is.na(d$rotulo_cobertura_plot) & d$rotulo_cobertura_plot != "", ],
-      aes(label = rotulo_cobertura_plot),
-      position = position_dodge(width = 0.7),
-      fill = "white",
-      color = "black",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = TRUE,
+      tamanho = MONITORA_FONTE_ROTULO_COB * 0.78,
+      max_rotulos_complexo = 4L
     ) +
     facet_wrap(~form_veg) +
     labs(
@@ -7115,13 +7628,13 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max3)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max3)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   plot_p3.3.2_veg_cover_nat_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p3_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7143,15 +7656,15 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max3)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max3)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
 # Gráfico sem rótulos
-  
+
   plot_p3.1.1_prop_rel_nat_camp_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7165,7 +7678,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   dados_p3_camp_rotulos <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Campestre") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.10)
@@ -7183,7 +7696,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p3_camp_rotulos) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p3.2.1_prop_rel_nat_sav_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7197,7 +7710,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   dados_p3_sav_rotulos <- reg_corrig_stat_summarise_p3 %>%
     subset(., form_veg == "Savânica") %>%
     monitora_preparar_rotulos_prop_obrigatorios(prop_min_interno = 0.10)
@@ -7215,10 +7728,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_scale_x_prop_obrigatorios(dados_p3_sav_rotulos) +
     monitora_theme_prop_publicavel()
-  
-  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo, 
-       plot_p3.1.2_prop_rel_nat_camp_com_rotulo, 
-       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo, 
+
+  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo,
+       plot_p3.1.2_prop_rel_nat_camp_com_rotulo,
+       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo,
        plot_p3.2.2_prop_rel_nat_sav_com_rotulo,
        plot_p3.3.1_veg_cover_nat_com_rotulo,
        plot_p3.3.2_veg_cover_nat_sem_rotulo)
@@ -7235,22 +7748,25 @@ monitora_perf_checkpoint("analise_formas_vida_nativas", "proporção/cobertura d
 
 if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
   reg_corrig_stat_summarise_p4 <- registros_corrig_stat %>%
-    dplyr::select(., UC, ANO, form_veg, which((
+    dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
     ))) %>%
     pivot_longer(
       names_to = "categoria",
       values_to = "soma",
-      cols = -c("UC", "ANO", "form_veg")
+      cols = -c("UC", "UA", "ANO", "form_veg")
     ) %>%
     group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(n = sum(soma, na.rm = TRUE)) %>%
+    dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_"))
+    ) %>%
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p4 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p4, complexo = TRUE)
-  
+
   ## Presença de formas de vida exóticas.
-  
+
   reg_corrig_stat_summarise_p4_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
@@ -7278,11 +7794,11 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p4_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p4_presence)
-  
-  
+
+
   # Limite X dinâmico
   x_max4 <- monitora_safe_xmax(reg_corrig_stat_summarise_p4_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
   # Gráfico com rótulos
   plot_p4.3.1_veg_cover_exot_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p4_presence %>%
@@ -7296,15 +7812,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       position = position_dodge(width = 0.7),
       color = "black"
     ) +
-    geom_label(
-      data = function(d) d[!is.na(d$rotulo_cobertura_plot) & d$rotulo_cobertura_plot != "", ],
-      aes(label = rotulo_cobertura_plot),
-      position = position_dodge(width = 0.7),
-      fill = "white",
-      color = "black",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = TRUE,
+      tamanho = MONITORA_FONTE_ROTULO_COB * 0.78,
+      max_rotulos_complexo = 4L
     ) +
     facet_wrap(~form_veg) +
     labs(
@@ -7315,13 +7826,13 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max4)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max4)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   plot_p4.3.2_veg_cover_exot_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p4_presence %>%
       filter(form_veg %in% c("Campestre", "Savânica")),
@@ -7343,15 +7854,15 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max4)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max4)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   # Gráfico sem rótulos
-  
+
   plot_p4.1.1_prop_rel_exot_camp_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7365,8 +7876,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
-  
+
+
   plot_p4.1.2_prop_rel_exot_camp_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7386,8 +7897,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
-  
+
+
   plot_p4.2.1_prop_rel_exot_sav_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7401,7 +7912,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p4.2.2_prop_rel_exot_sav_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7421,9 +7932,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   rm(x_max4)
-  
+
   list(plot_p4.1.1_prop_rel_exot_camp_sem_rotulo,
        plot_p4.1.2_prop_rel_exot_camp_com_rotulo,
        plot_p4.2.1_prop_rel_exot_sav_sem_rotulo,
@@ -7442,22 +7953,25 @@ monitora_perf_checkpoint("analise_formas_vida_exoticas", "proporção/cobertura 
 
 if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
   reg_corrig_stat_summarise_p5 <- registros_corrig_stat %>%
-    dplyr::select(., UC, ANO, form_veg, which((
+    dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
     ))) %>%
     pivot_longer(
       names_to = "categoria",
       values_to = "soma",
-      cols = -c("UC", "ANO", "form_veg")
+      cols = -c("UC", "UA", "ANO", "form_veg")
     ) %>%
     group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(n = sum(soma, na.rm = TRUE)) %>%
+    dplyr::summarise(
+      n = sum(soma, na.rm = TRUE),
+      n_UA = n_distinct(paste(UC, UA, sep = "_"))
+    ) %>%
     dplyr::mutate(prop = prop.table(n)) %>%
     dplyr::mutate(categoria_label = monitora_label_categoria_grafico(categoria))
   reg_corrig_stat_summarise_p5 <- monitora_adicionar_rotulo_prop_plot(reg_corrig_stat_summarise_p5, complexo = TRUE)
-  
+
   ## Presença de formas de vida secas ou mortas.
-  
+
   reg_corrig_stat_summarise_p5_presence <- registros_corrig_stat %>%
     dplyr::select(., UC, UA, ANO, form_veg, which((
       str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
@@ -7485,11 +7999,11 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) %>%
     select(-p, -total_points)
   reg_corrig_stat_summarise_p5_presence <- monitora_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p5_presence)
-  
-  
+
+
   # Limite X dinâmico
   x_max5 <- monitora_safe_xmax(reg_corrig_stat_summarise_p5_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
   # Gráfico com rótulos
   plot_p5.3.1_veg_cover_seca_morta_com_rotulo <- ggplot(
     reg_corrig_stat_summarise_p5_presence %>%
@@ -7503,15 +8017,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
       position = position_dodge(width = 0.7),
       color = "black"
     ) +
-    geom_label(
-      data = function(d) d[!is.na(d$rotulo_cobertura_plot) & d$rotulo_cobertura_plot != "", ],
-      aes(label = rotulo_cobertura_plot),
-      position = position_dodge(width = 0.7),
-      fill = "white",
-      color = "black",
-      label.size = NA,
-      size = MONITORA_FONTE_ROTULO_COB,
-      show.legend = FALSE
+    monitora_camadas_rotulos_cobertura_externos(
+      complexo = TRUE,
+      tamanho = MONITORA_FONTE_ROTULO_COB * 0.78,
+      max_rotulos_complexo = 4L
     ) +
     facet_wrap(~form_veg) +
     labs(
@@ -7522,13 +8031,13 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max5)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max5)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   # Gráfico sem rótulos
   plot_p5.3.2_seca_morta_sem_rotulo <- ggplot(
     reg_corrig_stat_summarise_p5_presence %>%
@@ -7551,7 +8060,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
     scale_fill_viridis_d(option = "turbo") +
-    coord_cartesian(xlim = c(0, x_max5)) +
+    coord_cartesian(xlim = c(0, monitora_expandir_xmax_rotulos_cobertura(x_max5)), clip = "on") +
     monitora_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
@@ -7572,7 +8081,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Campestre") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7591,7 +8100,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7604,7 +8113,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
     subset(., form_veg == "Savânica") %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
@@ -7623,16 +8132,16 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_theme_prop_publicavel()
-  
+
   rm(x_max5)
-  
-  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo, 
-       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo, 
-       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo, 
+
+  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo,
+       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo,
+       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo,
        plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo,
        plot_p5.3.1_veg_cover_seca_morta_com_rotulo,
        plot_p5.3.2_seca_morta_sem_rotulo)
-  
+
 }
 
 ### remoção de objetos não mais necessários:
@@ -8412,6 +8921,36 @@ monitora_stat_medir_texto_in <- function(texto, gp) {
   as.numeric(grid::convertWidth(grid::grobWidth(grob_txt), "in", valueOnly = TRUE))
 }
 
+monitora_stat_quebrar_segmento_por_largura_in <- function(segmento, largura_max_in, gp) {
+  # Quebra internamente blocos semânticos longos que, sozinhos, já excedem a
+  # largura útil da legenda inferior. Esse caso ocorria em parágrafos como
+  # "Valores expressam..." e "IC95%...", que não continham ponto e vírgula e
+  # por isso atravessavam a margem do painel mesmo com a largura reduzida.
+  segmento <- trimws(as.character(segmento))
+  if (!length(segmento) || !nzchar(segmento)) return(character())
+  largura_max_in <- max(as.numeric(largura_max_in), 0.1)
+  if (monitora_stat_medir_texto_in(segmento, gp) <= largura_max_in) return(segmento)
+
+  palavras <- unlist(strsplit(segmento, "\\s+", perl = TRUE), use.names = FALSE)
+  palavras <- trimws(palavras)
+  palavras <- palavras[nzchar(palavras)]
+  if (!length(palavras)) return(character())
+
+  linhas <- character()
+  linha_atual <- ""
+  for (palavra in palavras) {
+    candidato <- if (nzchar(linha_atual)) paste(linha_atual, palavra) else palavra
+    if (!nzchar(linha_atual) || monitora_stat_medir_texto_in(candidato, gp) <= largura_max_in) {
+      linha_atual <- candidato
+    } else {
+      linhas <- c(linhas, linha_atual)
+      linha_atual <- palavra
+    }
+  }
+  if (nzchar(linha_atual)) linhas <- c(linhas, linha_atual)
+  linhas[nzchar(trimws(linhas))]
+}
+
 monitora_stat_quebrar_tokens_por_largura_in <- function(tokens, largura_max_in, gp) {
   tokens <- trimws(as.character(tokens))
   tokens <- tokens[nzchar(tokens)]
@@ -8421,6 +8960,22 @@ monitora_stat_quebrar_tokens_por_largura_in <- function(tokens, largura_max_in, 
   linhas <- character()
   linha_atual <- ""
   for (tok in tokens) {
+    tok_linhas <- monitora_stat_quebrar_segmento_por_largura_in(tok, largura_max_in, gp)
+    if (!length(tok_linhas)) next
+
+    # Quando o próprio bloco precisou ser quebrado, encerra-se a linha em curso
+    # antes de anexar as partes, evitando recombinar texto já ajustado à largura.
+    if (length(tok_linhas) > 1L) {
+      if (nzchar(linha_atual)) {
+        linhas <- c(linhas, linha_atual)
+        linha_atual <- ""
+      }
+      linhas <- c(linhas, tok_linhas[-length(tok_linhas)])
+      linha_atual <- tok_linhas[length(tok_linhas)]
+      next
+    }
+
+    tok <- tok_linhas[1L]
     candidato <- if (nzchar(linha_atual)) paste(linha_atual, tok) else tok
     if (!nzchar(linha_atual) || monitora_stat_medir_texto_in(candidato, gp) <= largura_max_in) {
       linha_atual <- candidato
@@ -8430,7 +8985,7 @@ monitora_stat_quebrar_tokens_por_largura_in <- function(tokens, largura_max_in, 
     }
   }
   if (nzchar(linha_atual)) linhas <- c(linhas, linha_atual)
-  linhas
+  linhas[nzchar(trimws(linhas))]
 }
 
 monitora_stat_quebrar_caption_painel_in <- function(texto, largura_max_in, fontsize = 7.8, lineheight = 1.02) {
@@ -8475,7 +9030,7 @@ monitora_stat_caption_chave_mudancas <- function(plot_obj, incluir_categoria = T
     segmentos <- c(segmentos, "Categoria vs. linha de base acumulada: △ aumento; ▽ redução (só exibidos quando há mudança).")
   }
   if (isTRUE(incluir_composicao)) {
-    segmentos <- c(segmentos, "Composição geral vs. medição anterior, ao lado do ano: ◆ mudança; ◇ estabilidade; · inconclusivo; ? <5 UAs.")
+    segmentos <- c(segmentos, "Composição geral vs. medição anterior: símbolos registrados nas auditorias/CSVs; quando couber, acoplados ao rótulo de linha, nunca desenhados soltos no painel.")
   }
   if (length(segmentos) <= 1L) return(plot_obj)
   segmentos <- c(segmentos, "Testes: permutação pareada + IC95% bootstrap; p ajustado por FDR-BH.")
@@ -8492,7 +9047,10 @@ MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS <- c(
 
 monitora_stat_plot_com_rotulo <- function(nome_plot) {
   # As anotações estatísticas são editoriais e só devem aparecer nos gráficos com rótulos.
-  grepl("_com_rotulo", as.character(nome_plot), fixed = TRUE)
+  # Os gráficos editoriais plot_ed_* são sempre auto-informativos e, portanto, recebem
+  # símbolos estatísticos acoplados aos rótulos quando houver testes disponíveis.
+  nome_plot <- as.character(nome_plot)
+  grepl("_com_rotulo", nome_plot, fixed = TRUE) | grepl("^plot_ed_", nome_plot)
 }
 
 monitora_stat_grupo_muitas_categorias <- function(grupo_grafico) {
@@ -8506,21 +9064,44 @@ monitora_stat_filtrar_simbolos_editorial <- function(dados, grupo_grafico) {
   dados[]
 }
 
+
+monitora_stat_identificar_coorte_plot <- function(dados_plot) {
+  if (is.null(dados_plot) || !is.data.frame(dados_plot) || !"coorte_ano_inicial" %in% names(dados_plot)) return(NA_integer_)
+  vals <- unique(suppressWarnings(as.integer(as.character(dados_plot$coorte_ano_inicial))))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) return(NA_integer_)
+  vals[1]
+}
+
 monitora_stat_preparar_dados_composicao_plot <- function(dados_plot, grupo_grafico, tipo_metrica, form_veg = NULL) {
-  if (!exists("MONITORA_STAT_COMPOSICAO_GERAL") || is.null(dados_plot) || !is.data.frame(dados_plot)) {
+  if (is.null(dados_plot) || !is.data.frame(dados_plot)) {
     return(data.table::data.table())
   }
   dados <- data.table::as.data.table(data.table::copy(dados_plot))
   if (!nrow(dados) || !"ANO" %in% names(dados)) return(data.table::data.table())
+  # Para painéis pareados por período, a anotação composicional só deve ser usada
+  # quando houver teste multivariado específico para o mesmo par de anos. Evita-se,
+  # assim, reutilizar indevidamente o teste da medição anterior disponível.
+  if ("periodo_pareado" %in% names(dados)) return(data.table::data.table())
 
   anos_plot <- unique(as.character(dados$ANO))
   forms_plot <- if ("form_veg" %in% names(dados)) unique(as.character(dados$form_veg)) else character()
   if (!is.null(form_veg)) forms_plot <- as.character(form_veg)
 
-  comp <- MONITORA_STAT_COMPOSICAO_GERAL[
-    MONITORA_STAT_COMPOSICAO_GERAL[["grupo_grafico"]] == grupo_grafico &
-      MONITORA_STAT_COMPOSICAO_GERAL[["tipo_metrica"]] == tipo_metrica
-  ]
+  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
+  if (is.finite(coorte_plot) && exists("MONITORA_STAT_COMPOSICAO_GERAL_COORTE")) {
+    comp <- MONITORA_STAT_COMPOSICAO_GERAL_COORTE[
+      MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["coorte_ano_inicial"]] == coorte_plot &
+        MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["tipo_metrica"]] == tipo_metrica
+    ]
+  } else {
+    if (!exists("MONITORA_STAT_COMPOSICAO_GERAL")) return(data.table::data.table())
+    comp <- MONITORA_STAT_COMPOSICAO_GERAL[
+      MONITORA_STAT_COMPOSICAO_GERAL[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_COMPOSICAO_GERAL[["tipo_metrica"]] == tipo_metrica
+    ]
+  }
   if (length(forms_plot)) {
     comp <- comp[as.character(form_veg) %in% forms_plot]
   }
@@ -8539,56 +9120,108 @@ monitora_stat_preparar_dados_composicao_plot <- function(dados_plot, grupo_grafi
   comp[]
 }
 
-monitora_stat_adicionar_simbolos_composicao_prop <- function(plot_obj, grupo_grafico, tipo_metrica, form_veg = NULL) {
-  dados <- monitora_stat_preparar_dados_composicao_plot(plot_obj$data, grupo_grafico, tipo_metrica, form_veg)
-  if (!nrow(dados)) return(plot_obj)
-  if ("ANO_factor_rotulo" %in% names(plot_obj$data)) {
-    mapa_anos <- unique(data.table::as.data.table(plot_obj$data)[, .(ANO = as.character(ANO), ANO_factor_rotulo = ANO_factor_rotulo)])
-    dados[, ANO := as.character(ANO)]
-    dados <- merge(dados, mapa_anos, by = "ANO", all.x = TRUE)
-    if (is.numeric(mapa_anos$ANO_factor_rotulo)) {
-      dados[, y_simbolo_composicao := as.numeric(ANO_factor_rotulo)]
-    } else {
-      dados[, y_simbolo_composicao := factor(ANO_factor_rotulo, levels = unique(mapa_anos$ANO_factor_rotulo))]
+
+monitora_stat_prefixar_rotulo_linha_composicao <- function(texto, simbolo) {
+  ## Símbolos associados à linha compõem a informação secundária entre parênteses,
+  ## junto ao n UA quando houver, sem prefixar o ANO.
+  monitora_stat_normalizar_rotulo_linha_ano(texto, simbolo_extra = simbolo)
+}
+
+monitora_stat_acoplar_composicao_rotulos_linha <- function(plot_obj, grupo_grafico, tipo_metrica, form_veg = NULL) {
+  # Símbolos de composição geral são incorporados ao rótulo de linha quando
+  # disponível, evitando camadas independentes em x negativo e níveis extras no eixo Y.
+  # Quando não houver rótulo de linha explícito, a informação permanece registrada nos
+  # CSVs, auditorias e legenda metodológica.
+  if (!inherits(plot_obj, "ggplot") || is.null(plot_obj$data) || !is.data.frame(plot_obj$data)) return(plot_obj)
+  comp <- monitora_stat_preparar_dados_composicao_plot(plot_obj$data, grupo_grafico, tipo_metrica, form_veg)
+  if (!nrow(comp)) return(plot_obj)
+  comp <- unique(comp[, .(
+    ANO_JOIN = as.character(ANO),
+    form_veg_JOIN = as.character(form_veg),
+    simbolo_composicao_linha = as.character(simbolo_mudanca_composicao)
+  )])
+  comp <- comp[!is.na(simbolo_composicao_linha) & nzchar(simbolo_composicao_linha)]
+  if (!nrow(comp)) return(plot_obj)
+
+  prefixar_dt <- function(dados_layer) {
+    if (!is.data.frame(dados_layer) || !nrow(dados_layer)) return(dados_layer)
+    d <- data.table::as.data.table(data.table::copy(dados_layer))
+    ano_adicionado <- FALSE
+    form_adicionado <- FALSE
+    if (!"ANO" %in% names(d)) {
+      if ("rotulo_eixo_anno" %in% names(d)) {
+        d[, ANO := sub("^.*?([0-9]{4}).*$", "\\1", as.character(rotulo_eixo_anno), perl = TRUE)]
+        ano_adicionado <- TRUE
+      } else {
+        return(dados_layer)
+      }
     }
-  } else {
-    dados[, y_simbolo_composicao := factor(ANO, levels = unique(as.character(plot_obj$data$ANO)))]
+    if (!"form_veg" %in% names(d)) {
+      forms_comp <- unique(comp$form_veg_JOIN)
+      if (length(forms_comp) == 1L) {
+        d[, form_veg := forms_comp[[1]]]
+        form_adicionado <- TRUE
+      } else {
+        return(dados_layer)
+      }
+    }
+    d[, `:=`(ANO_JOIN = as.character(ANO), form_veg_JOIN = as.character(form_veg))]
+    comp_use <- unique(comp[, .(ANO_JOIN, form_veg_JOIN, simbolo_composicao_linha)])
+    data.table::setkeyv(d, c("ANO_JOIN", "form_veg_JOIN"))
+    data.table::setkeyv(comp_use, c("ANO_JOIN", "form_veg_JOIN"))
+    d <- comp_use[d]
+    cols_linha <- intersect(c("ANO_label_rotulo", "ano_rotulo", "rotulo_eixo_anno"), names(d))
+    for (cc in cols_linha) {
+      d[!is.na(simbolo_composicao_linha) & nzchar(simbolo_composicao_linha),
+        (cc) := monitora_stat_prefixar_rotulo_linha_composicao(get(cc), simbolo_composicao_linha)]
+    }
+    remover <- intersect(c("ANO_JOIN", "form_veg_JOIN", "simbolo_composicao_linha"), names(d))
+    d[, (remover) := NULL]
+    if (isTRUE(ano_adicionado)) d[, ANO := NULL]
+    if (isTRUE(form_adicionado)) d[, form_veg := NULL]
+    d[]
   }
-  dados[, x_simbolo_composicao := -0.018]
-  plot_obj +
-    ggplot2::geom_text(
-      data = dados,
-      ggplot2::aes(x = x_simbolo_composicao, y = y_simbolo_composicao, label = simbolo_mudanca_composicao),
-      inherit.aes = FALSE,
-      size = MONITORA_FONTE_ROTULO_PROP,
-      fontface = "bold",
-      color = "black",
-      hjust = 0.5,
-      show.legend = FALSE
-    ) +
-    ggplot2::coord_cartesian(xlim = c(-0.03, 1.02), clip = "off")
+
+  plot_obj$data <- prefixar_dt(plot_obj$data)
+  if (length(plot_obj$layers)) {
+    for (ii in seq_along(plot_obj$layers)) {
+      ld <- plot_obj$layers[[ii]]$data
+      if (is.data.frame(ld) && nrow(ld)) {
+        plot_obj$layers[[ii]]$data <- prefixar_dt(ld)
+      }
+    }
+  }
+
+  # Para gráficos de proporção com eixo Y contínuo baseado em ANO_factor_rotulo,
+  # a escala Y original guarda os rótulos calculados antes da exportação. Reaplicar
+  # a escala garante que o prefixo de composição também apareça no eixo quando ele
+  # estiver visível. Em gráficos editoriais, o eixo costuma estar oculto e o prefixo
+  # aparece no rótulo de linha desenhado por geom_text.
+  dbase <- tryCatch(data.table::as.data.table(plot_obj$data), error = function(e) data.table::data.table())
+  if (identical(tipo_metrica, "proporcao_relativa") && nrow(dbase) && all(c("ANO_factor_rotulo", "ANO_label_rotulo") %in% names(dbase))) {
+    escala <- unique(dbase[, .(
+      ANO_factor_rotulo = suppressWarnings(as.numeric(ANO_factor_rotulo)),
+      ANO_label_rotulo = as.character(ANO_label_rotulo)
+    )])
+    escala <- escala[is.finite(ANO_factor_rotulo) & !is.na(ANO_label_rotulo) & nzchar(ANO_label_rotulo)]
+    data.table::setorder(escala, ANO_factor_rotulo)
+    if (nrow(escala)) {
+      plot_obj <- plot_obj + ggplot2::scale_y_continuous(
+        breaks = escala$ANO_factor_rotulo,
+        labels = escala$ANO_label_rotulo,
+        expand = ggplot2::expansion(mult = c(0.10, 0.12))
+      )
+    }
+  }
+  plot_obj
+}
+
+monitora_stat_adicionar_simbolos_composicao_prop <- function(plot_obj, grupo_grafico, tipo_metrica, form_veg = NULL) {
+  monitora_stat_acoplar_composicao_rotulos_linha(plot_obj, grupo_grafico, tipo_metrica, form_veg)
 }
 
 monitora_stat_adicionar_simbolos_composicao_cobertura <- function(plot_obj, grupo_grafico, tipo_metrica, form_veg = NULL) {
-  dados <- monitora_stat_preparar_dados_composicao_plot(plot_obj$data, grupo_grafico, tipo_metrica, form_veg)
-  if (!nrow(dados)) return(plot_obj)
-  dados_base <- data.table::as.data.table(data.table::copy(plot_obj$data))
-  x_max <- suppressWarnings(max(as.numeric(dados_base$veg_cover), na.rm = TRUE))
-  if (!is.finite(x_max) || x_max <= 0) x_max <- 100
-  dados[, y_simbolo_composicao := factor(ANO)]
-  dados[, x_simbolo_composicao := -x_max * 0.035]
-  plot_obj +
-    ggplot2::geom_text(
-      data = dados,
-      ggplot2::aes(x = x_simbolo_composicao, y = y_simbolo_composicao, label = simbolo_mudanca_composicao),
-      inherit.aes = FALSE,
-      size = MONITORA_FONTE_ROTULO_COB * 0.78,
-      fontface = "bold",
-      color = "black",
-      hjust = 0.5,
-      show.legend = FALSE
-    ) +
-    ggplot2::coord_cartesian(xlim = c(-x_max * 0.06, x_max * 1.10), clip = "off")
+  monitora_stat_acoplar_composicao_rotulos_linha(plot_obj, grupo_grafico, tipo_metrica, form_veg)
 }
 
 monitora_stat_anotar_grafico_composicao <- function(plot_obj, grupo_grafico, tipo_metrica, form_veg = NULL) {
@@ -8602,7 +9235,7 @@ monitora_stat_anotar_grafico_composicao <- function(plot_obj, grupo_grafico, tip
 }
 
 monitora_stat_preparar_dados_simbolos_plot <- function(dados_plot, grupo_grafico, tipo_metrica, form_veg = NULL) {
-  if (!exists("MONITORA_STAT_MUDANCA_ANO_A_ANO") || is.null(dados_plot) || !is.data.frame(dados_plot)) {
+  if (is.null(dados_plot) || !is.data.frame(dados_plot)) {
     return(data.table::data.table())
   }
   dados <- data.table::as.data.table(data.table::copy(dados_plot))
@@ -8610,10 +9243,27 @@ monitora_stat_preparar_dados_simbolos_plot <- function(dados_plot, grupo_grafico
     return(data.table::data.table())
   }
 
-  stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO[
-    MONITORA_STAT_MUDANCA_ANO_A_ANO[["grupo_grafico"]] == grupo_grafico &
-      MONITORA_STAT_MUDANCA_ANO_A_ANO[["tipo_metrica"]] == tipo_metrica
-  ]
+  usar_periodo <- "periodo_pareado" %in% names(dados) && exists("MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL")
+  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
+  if (isTRUE(usar_periodo)) {
+    stat <- MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[
+      MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[["tipo_metrica"]] == tipo_metrica
+    ]
+  } else if (is.finite(coorte_plot) && exists("MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE")) {
+    stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[
+      MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["coorte_ano_inicial"]] == coorte_plot &
+        MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["tipo_metrica"]] == tipo_metrica
+    ]
+  } else if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO")) {
+    stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO[
+      MONITORA_STAT_MUDANCA_ANO_A_ANO[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_ANO_A_ANO[["tipo_metrica"]] == tipo_metrica
+    ]
+  } else {
+    return(data.table::data.table())
+  }
   if (nrow(stat) == 0) return(data.table::data.table())
 
   dados[, `:=`(
@@ -8621,20 +9271,35 @@ monitora_stat_preparar_dados_simbolos_plot <- function(dados_plot, grupo_grafico
     form_veg_JOIN = as.character(form_veg),
     categoria_JOIN = as.character(categoria)
   )]
-  stat_join <- stat[, .(
-    ANO_JOIN = as.character(ano_2),
-    form_veg_JOIN = as.character(form_veg),
-    categoria_JOIN = as.character(categoria),
-    categoria_label_stat = as.character(categoria_label),
-    simbolo_mudanca = as.character(simbolo_mudanca),
-    classe_mudanca = as.character(classe_mudanca),
-    legenda_mudanca = as.character(legenda_mudanca)
-  )]
+  if (isTRUE(usar_periodo)) {
+    dados[, periodo_JOIN := as.character(periodo_pareado)]
+    stat_join <- stat[, .(
+      ANO_JOIN = as.character(ano_2),
+      form_veg_JOIN = as.character(form_veg),
+      categoria_JOIN = as.character(categoria),
+      periodo_JOIN = as.character(periodo_pareado),
+      categoria_label_stat = as.character(categoria_label),
+      simbolo_mudanca = as.character(simbolo_mudanca),
+      classe_mudanca = as.character(classe_mudanca),
+      legenda_mudanca = as.character(legenda_mudanca)
+    )]
+    chaves_simbolo <- c("periodo_JOIN", "ANO_JOIN", "form_veg_JOIN", "categoria_JOIN")
+  } else {
+    stat_join <- stat[, .(
+      ANO_JOIN = as.character(ano_2),
+      form_veg_JOIN = as.character(form_veg),
+      categoria_JOIN = as.character(categoria),
+      categoria_label_stat = as.character(categoria_label),
+      simbolo_mudanca = as.character(simbolo_mudanca),
+      classe_mudanca = as.character(classe_mudanca),
+      legenda_mudanca = as.character(legenda_mudanca)
+    )]
+    chaves_simbolo <- c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN")
+  }
   if (!is.null(form_veg)) {
     dados <- dados[form_veg_JOIN == as.character(form_veg)]
     stat_join <- stat_join[form_veg_JOIN == as.character(form_veg)]
   }
-  chaves_simbolo <- c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN")
   dados <- monitora_dt_unique_por_chaves(dados, chaves_simbolo, contexto = "dados do grafico para simbolos")
   stat_join <- monitora_dt_unique_por_chaves(stat_join, chaves_simbolo, contexto = "estatistica por categoria para simbolos")
   data.table::setkeyv(dados, chaves_simbolo)
@@ -8647,7 +9312,11 @@ monitora_stat_preparar_dados_simbolos_plot <- function(dados_plot, grupo_grafico
     stat_lab <- data.table::copy(stat_join)
     dados_lab[, categoria_label_JOIN := as.character(categoria_label)]
     stat_lab[, categoria_label_JOIN := as.character(categoria_label_stat)]
-    chaves_lab <- c("ANO_JOIN", "form_veg_JOIN", "categoria_label_JOIN")
+    chaves_lab <- if (isTRUE(usar_periodo)) {
+      c("periodo_JOIN", "ANO_JOIN", "form_veg_JOIN", "categoria_label_JOIN")
+    } else {
+      c("ANO_JOIN", "form_veg_JOIN", "categoria_label_JOIN")
+    }
     dados_lab <- monitora_dt_unique_por_chaves(dados_lab, chaves_lab, contexto = "dados do grafico para simbolos por label")
     stat_lab <- monitora_dt_unique_por_chaves(stat_lab, chaves_lab, contexto = "estatistica para simbolos por label")
     data.table::setkeyv(dados_lab, chaves_lab)
@@ -8742,17 +9411,27 @@ monitora_stat_anotar_grafico_categoria <- function(plot_obj, grupo_grafico, tipo
 monitora_stat_preparar_dados_linha_base_plot <- function(dados_plot, grupo_grafico, tipo_metrica, form_veg = NULL) {
   # Símbolos de linha de base são editoriais e aparecem apenas quando há mudança
   # sustentada em relação à linha de base acumulada anterior.
-  if (!exists("MONITORA_STAT_MUDANCA_LINHA_BASE") || is.null(dados_plot) || !is.data.frame(dados_plot)) {
+  if (is.null(dados_plot) || !is.data.frame(dados_plot)) {
     return(data.table::data.table())
   }
   dados <- data.table::as.data.table(data.table::copy(dados_plot))
   if (nrow(dados) == 0 || !all(c("ANO", "form_veg", "categoria") %in% names(dados))) {
     return(data.table::data.table())
   }
-  stat <- MONITORA_STAT_MUDANCA_LINHA_BASE[
-    MONITORA_STAT_MUDANCA_LINHA_BASE[["grupo_grafico"]] == grupo_grafico &
-      MONITORA_STAT_MUDANCA_LINHA_BASE[["tipo_metrica"]] == tipo_metrica
-  ]
+  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
+  if (is.finite(coorte_plot) && exists("MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE")) {
+    stat <- MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[
+      MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["coorte_ano_inicial"]] == coorte_plot &
+        MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["tipo_metrica"]] == tipo_metrica
+    ]
+  } else {
+    if (!exists("MONITORA_STAT_MUDANCA_LINHA_BASE")) return(data.table::data.table())
+    stat <- MONITORA_STAT_MUDANCA_LINHA_BASE[
+      MONITORA_STAT_MUDANCA_LINHA_BASE[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_LINHA_BASE[["tipo_metrica"]] == tipo_metrica
+    ]
+  }
   if (nrow(stat) == 0) return(data.table::data.table())
   # Regra solicitada: explicitar símbolo de linha de base somente quando houver mudança.
   stat <- stat[classe_mudanca %in% c("aumento", "reducao")]
@@ -8893,6 +9572,45 @@ monitora_stat_metadados_plot <- function(nome_plot) {
   # Esta função é usada imediatamente antes do ggsave(), garantindo que os símbolos
   # sejam aplicados ao objeto efetivamente exportado.
   nome_plot <- as.character(nome_plot)
+
+  if (grepl("^plot_ed_", nome_plot)) {
+    mapa_ed <- data.table::data.table(
+      codigo = c(
+        "p1_prop_rel_herb_lenh", "p1_veg_cover_herb_lenh",
+        "p2_prop_rel_categ", "p2_veg_cover_categ",
+        "p2m_prop_rel_material_botanico", "p2m_veg_cover_material_botanico",
+        "p3_prop_rel_nat", "p3_veg_cover_nat",
+        "p4_prop_rel_exot", "p4_veg_cover_exot",
+        "p5_prop_rel_seca_morta", "p5_veg_cover_seca_morta"
+      ),
+      grupo_grafico = c(
+        "herbaceas_lenhosas", "herbaceas_lenhosas",
+        "categorias_gerais", "categorias_gerais",
+        "material_botanico", "material_botanico",
+        "formas_vida_nativas", "formas_vida_nativas",
+        "formas_vida_exoticas", "formas_vida_exoticas",
+        "formas_vida_secas_mortas", "formas_vida_secas_mortas"
+      ),
+      tipo_metrica = c(
+        "proporcao_relativa", "cobertura",
+        "proporcao_relativa", "cobertura",
+        "proporcao_relativa", "cobertura",
+        "proporcao_relativa", "cobertura",
+        "proporcao_relativa", "cobertura",
+        "proporcao_relativa", "cobertura"
+      )
+    )
+    mapa_ed <- mapa_ed[order(-nchar(codigo))]
+    hit_ed <- mapa_ed[vapply(codigo, function(cd) grepl(paste0("^plot_ed_", cd, "_"), nome_plot), logical(1))]
+    if (nrow(hit_ed)) {
+      return(list(
+        grupo_grafico = hit_ed$grupo_grafico[1],
+        tipo_metrica = hit_ed$tipo_metrica[1],
+        form_veg = NULL
+      ))
+    }
+  }
+
   mapa <- data.table::data.table(
     prefixo = c("plot_p1", "plot_p2m", "plot_p2", "plot_p3", "plot_p4", "plot_p5"),
     grupo_grafico = c("herbaceas_lenhosas", "material_botanico", "categorias_gerais", "formas_vida_nativas", "formas_vida_exoticas", "formas_vida_secas_mortas")
@@ -8936,25 +9654,46 @@ monitora_stat_mapa_prefixos_rotulos <- function(plot_data, grupo_grafico, tipo_m
   if (!nrow(dados_base)) return(data.table::data.table())
   if (!all(c("ANO", "form_veg", "categoria") %in% names(dados_base))) return(data.table::data.table())
 
-  mapa <- unique(dados_base[, .(
-    ANO_JOIN = as.character(ANO),
-    form_veg_JOIN = as.character(form_veg),
-    categoria_JOIN = as.character(categoria)
-  )])
-
-  simb_cat <- monitora_stat_preparar_dados_simbolos_plot(plot_data, grupo_grafico, tipo_metrica, form_veg)
-  if (nrow(simb_cat)) {
-    simb_cat <- unique(simb_cat[, .(
-      ANO_JOIN = as.character(ANO_JOIN),
-      form_veg_JOIN = as.character(form_veg_JOIN),
-      categoria_JOIN = as.character(categoria_JOIN),
-      simbolo_mudanca = as.character(simbolo_mudanca)
-    )])
-  } else {
-    simb_cat <- data.table::data.table(ANO_JOIN = character(), form_veg_JOIN = character(), categoria_JOIN = character(), simbolo_mudanca = character())
+  usar_periodo <- "periodo_pareado" %in% names(dados_base)
+  if (isTRUE(usar_periodo)) dados_base[, periodo_JOIN := as.character(periodo_pareado)]
+  mapa <- unique(dados_base[, c(
+    if (isTRUE(usar_periodo)) "periodo_JOIN" else character(0),
+    "ANO", "form_veg", "categoria"
+  ), with = FALSE])
+  data.table::setnames(mapa, c(
+    if (isTRUE(usar_periodo)) "periodo_JOIN" else character(0),
+    "ANO", "form_veg", "categoria"
+  ), c(
+    if (isTRUE(usar_periodo)) "periodo_JOIN" else character(0),
+    "ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"
+  ))
+  # As chaves usadas para incorporar símbolos aos rótulos precisam ter o mesmo tipo
+  # em todos os objetos. Nos gráficos editoriais, ANO chega como inteiro na base do
+  # gráfico e como texto nas tabelas estatísticas; a coerção explícita evita erro de
+  # bmerge em data.table durante a exportação.
+  mapa[, `:=`(
+    ANO_JOIN = as.character(ANO_JOIN),
+    form_veg_JOIN = as.character(form_veg_JOIN),
+    categoria_JOIN = as.character(categoria_JOIN)
+  )]
+  if (isTRUE(usar_periodo) && "periodo_JOIN" %in% names(mapa)) {
+    mapa[, periodo_JOIN := as.character(periodo_JOIN)]
   }
 
-  simb_lb <- monitora_stat_preparar_dados_linha_base_plot(plot_data, grupo_grafico, tipo_metrica, form_veg)
+  simb_cat <- monitora_stat_preparar_dados_simbolos_plot(plot_data, grupo_grafico, tipo_metrica, form_veg)
+  chaves <- c(if (isTRUE(usar_periodo)) "periodo_JOIN" else character(0), "ANO_JOIN", "form_veg_JOIN", "categoria_JOIN")
+  if (nrow(simb_cat)) {
+    cols_simb <- c(chaves, "simbolo_mudanca")
+    simb_cat <- unique(simb_cat[, cols_simb, with = FALSE])
+    for (cc in chaves) simb_cat[, (cc) := as.character(get(cc))]
+    simb_cat[, simbolo_mudanca := as.character(simbolo_mudanca)]
+  } else {
+    simb_cat <- data.table::data.table(simbolo_mudanca = character())
+    for (cc in rev(chaves)) simb_cat[, (cc) := character()]
+    data.table::setcolorder(simb_cat, c(chaves, "simbolo_mudanca"))
+  }
+
+  simb_lb <- if (isTRUE(usar_periodo)) data.table::data.table() else monitora_stat_preparar_dados_linha_base_plot(plot_data, grupo_grafico, tipo_metrica, form_veg)
   if (nrow(simb_lb)) {
     simb_lb <- unique(simb_lb[, .(
       ANO_JOIN = as.character(ANO_JOIN),
@@ -8966,8 +9705,12 @@ monitora_stat_mapa_prefixos_rotulos <- function(plot_data, grupo_grafico, tipo_m
     simb_lb <- data.table::data.table(ANO_JOIN = character(), form_veg_JOIN = character(), categoria_JOIN = character(), simbolo_linha_base = character())
   }
 
-  mapa <- merge(mapa, simb_cat, by = c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"), all.x = TRUE)
-  mapa <- merge(mapa, simb_lb, by = c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"), all.x = TRUE)
+  mapa <- merge(mapa, simb_cat, by = chaves, all.x = TRUE)
+  if (!isTRUE(usar_periodo)) {
+    mapa <- merge(mapa, simb_lb, by = c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"), all.x = TRUE)
+  } else {
+    mapa[, simbolo_linha_base := ""]
+  }
   mapa[, prefixo_rotulo_stat := mapply(monitora_stat_prefixo_rotulo, simbolo_mudanca, simbolo_linha_base, USE.NAMES = FALSE)]
   mapa[]
 }
@@ -8978,6 +9721,8 @@ monitora_stat_prefixar_colunas_rotulo <- function(dt, mapa_prefixos) {
   if (!all(c("ANO", "form_veg") %in% names(dados))) return(dados)
 
   dados[, `:=`(ANO_JOIN = as.character(ANO), form_veg_JOIN = as.character(form_veg))]
+  usar_periodo <- "periodo_pareado" %in% names(dados) && "periodo_JOIN" %in% names(mapa_prefixos)
+  if (isTRUE(usar_periodo)) dados[, periodo_JOIN := as.character(periodo_pareado)]
   if ("categoria" %in% names(dados)) {
     dados[, categoria_JOIN := as.character(categoria)]
   } else if ("categoria_label" %in% names(dados)) {
@@ -8986,9 +9731,12 @@ monitora_stat_prefixar_colunas_rotulo <- function(dt, mapa_prefixos) {
     return(dados)
   }
 
-  data.table::setkeyv(dados, c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"))
-  mapa_use <- unique(mapa_prefixos[, .(ANO_JOIN, form_veg_JOIN, categoria_JOIN, prefixo_rotulo_stat)])
-  data.table::setkeyv(mapa_use, c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN"))
+  chaves <- c(if (isTRUE(usar_periodo)) "periodo_JOIN" else character(0), "ANO_JOIN", "form_veg_JOIN", "categoria_JOIN")
+  for (cc in chaves) dados[, (cc) := as.character(get(cc))]
+  mapa_use <- unique(mapa_prefixos[, c(chaves, "prefixo_rotulo_stat"), with = FALSE])
+  for (cc in chaves) mapa_use[, (cc) := as.character(get(cc))]
+  data.table::setkeyv(dados, chaves)
+  data.table::setkeyv(mapa_use, chaves)
   dados <- mapa_use[dados]
 
   cols_rotulo <- intersect(c("rotulo_prop_plot", "rotulo_prop_interno", "rotulo_prop_externo", "rotulo_cobertura_plot"), names(dados))
@@ -9003,7 +9751,8 @@ monitora_stat_prefixar_colunas_rotulo <- function(dt, mapa_prefixos) {
     )]
   }
 
-  dados[, c("ANO_JOIN", "form_veg_JOIN", "categoria_JOIN", "prefixo_rotulo_stat") := NULL]
+  cols_remover <- intersect(c("periodo_JOIN", "ANO_JOIN", "form_veg_JOIN", "categoria_JOIN", "prefixo_rotulo_stat"), names(dados))
+  dados[, (cols_remover) := NULL]
   dados[]
 }
 
@@ -9022,6 +9771,67 @@ monitora_stat_incorporar_simbolos_rotulos_plot <- function(plot_obj, grupo_grafi
     }
   }
   plot_obj
+}
+
+
+monitora_stat_adicionar_rotulos_eixo_cobertura <- function(plot_obj, nome_plot = NULL) {
+  ## gráficos de cobertura com rótulo também passam a exibir o esforço
+  ## amostral no rótulo de linha, por faceta/formação quando necessário. A anotação
+  ## fica fora do painel, preservando ANO como informação principal.
+  if (!inherits(plot_obj, "ggplot") || is.null(plot_obj$data) || !is.data.frame(plot_obj$data)) return(plot_obj)
+  if (is.null(nome_plot) || !grepl("veg_cover", nome_plot)) return(plot_obj)
+  if (grepl("^plot_ed_", nome_plot)) return(plot_obj) # editoriais já usam anotação própria
+  if (!grepl("_com_rotulo", nome_plot)) return(plot_obj)
+
+  d <- data.table::as.data.table(data.table::copy(plot_obj$data))
+  if (!nrow(d) || !all(c("ANO", "veg_cover") %in% names(d))) return(plot_obj)
+  ncol <- monitora_coluna_nua_preferencial(d)
+  if (is.na(ncol) || !ncol %in% names(d)) return(plot_obj)
+  if (!"form_veg" %in% names(d)) d[, form_veg := NA_character_]
+  d[, n_UA_eixo_tmp := suppressWarnings(as.integer(get(ncol)))]
+  anno <- unique(d[is.finite(n_UA_eixo_tmp), .(ANO = as.character(ANO), form_veg = as.character(form_veg), n_UA_eixo_tmp)])
+  if (!nrow(anno)) return(plot_obj)
+  anno[, rotulo_eixo_anno := monitora_rotulo_ano_esforco(ANO, n_UA_eixo_tmp)]
+  anno[, rotulo_eixo_anno := monitora_stat_normalizar_rotulo_linha_ano(rotulo_eixo_anno)]
+  anno[, rotulo_eixo_anno := monitora_stat_compactar_rotulo_eixo_cobertura(rotulo_eixo_anno)]
+  anno[, y_eixo_anno := factor(ANO)]
+
+  x_ref <- suppressWarnings(max(pmax(
+    suppressWarnings(as.numeric(d$veg_cover)),
+    if ("ci_upper" %in% names(d)) suppressWarnings(as.numeric(d$ci_upper)) else NA_real_,
+    if ("x_rotulo" %in% names(d)) suppressWarnings(as.numeric(d$x_rotulo)) else NA_real_,
+    na.rm = TRUE
+  ), na.rm = TRUE))
+  if (!is.finite(x_ref) || x_ref <= 0) x_ref <- max(suppressWarnings(as.numeric(d$veg_cover)), na.rm = TRUE)
+  if (!is.finite(x_ref) || x_ref <= 0) x_ref <- 5
+  x_lim <- monitora_limite_eixo_x_cobertura(x_ref, margem = 0.10)
+  inset_eixo <- monitora_calcular_inset_rotulo_eixo_cobertura(
+    anno$rotulo_eixo_anno,
+    x_lim,
+    fator = 0.28,
+    padding = 2.1,
+    minimo = 9
+  )
+  anno[, x_eixo_anno := -0.8]
+
+  plot_obj +
+    ggplot2::geom_text(
+      data = anno,
+      ggplot2::aes(x = x_eixo_anno, y = y_eixo_anno, label = rotulo_eixo_anno),
+      inherit.aes = FALSE,
+      hjust = 1, vjust = 0.5,
+      size = 2.78,
+      lineheight = 0.88,
+      color = "black",
+      show.legend = FALSE
+    ) +
+    ggplot2::coord_cartesian(xlim = c(-inset_eixo, x_lim), clip = "on") +
+    ggplot2::theme(
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank(),
+      panel.spacing.x = grid::unit(2.35, "lines"),
+      plot.margin = ggplot2::margin(t = 18, r = 28, b = 22, l = 82)
+    )
 }
 
 monitora_stat_anotar_plot_exportacao <- function(plot_obj, nome_plot) {
@@ -9088,6 +9898,7 @@ monitora_stat_anotar_plot_exportacao <- function(plot_obj, nome_plot) {
         meta$form_veg
       )
     }
+    plot_out <- monitora_stat_adicionar_rotulos_eixo_cobertura(plot_out, nome_plot = nome_plot)
     plot_out <- monitora_stat_anotar_grafico_composicao(
       plot_out,
       meta$grupo_grafico,
@@ -9818,6 +10629,1093 @@ if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO") || exists("MONITORA_STAT_COMPOSICA
   monitora_stat_msg("símbolos estatísticos serão aplicados diretamente no objeto exportado por ggsave")
 }
 
+
+
+### Gráficos temporais editoriais com escopo amostral explícito
+###
+### Esta camada usa a mesma base UA-ano-categoria preparada para os testes estatísticos
+### pareados. Assim, os gráficos de amostra total, série pareada total e comparação pareada
+### por período ficam metodologicamente alinhados à inferência estatística e informam o
+### esforço amostral como: ano + quebra de linha + (n UA = x).
+
+monitora_editorial_rotulo_ano_nua <- function(ano, n_ua) {
+  ## Mantém o ANO em destaque e o esforço amostral como informação acessória.
+  paste0(as.character(ano), "\n(n UA = ", as.integer(n_ua), ")")
+}
+
+monitora_editorial_anotacao_eixo_ano_nua <- function(dados, y_continuo = TRUE, size = 2.7,
+                                                     x_pos = 0, hjust = 1) {
+  ## 12: desenha "ano + n UA" como rótulo de linha POR PAINEL, lido dos
+  ## próprios dados plotados, em vez de embutir essa informação no rótulo de uma
+  ## escala Y compartilhada entre facetas. Isso elimina (a) os rótulos embaralhados
+  ## quando o mesmo ano aparecia com n UA diferentes em painéis distintos e (b) as
+  ## linhas/rótulos duplicados ("fantasma") observados .
+  ##
+  ## o rótulo é posicionado em x = x_pos (tipicamente NEGATIVO, dentro de
+  ## uma faixa reservada à esquerda do painel) e o gráfico usa clip = "on" (padrão),
+  ## de modo que o texto fica CONTIDO no painel e não vaza para o painel vizinho nem
+  ## para a margem — corrigindo o vazamento da nos gráficos facetados. O
+  ## rótulo é compactado para "ano\nn UA=x" para caber na faixa reservada.
+  d <- data.table::as.data.table(data.table::copy(dados))
+  if (!nrow(d)) return(NULL)
+  cols_facet <- intersect(c("periodo_pareado", "form_veg"), names(d))
+  if (isTRUE(y_continuo)) {
+    if (!"ANO_factor_rotulo" %in% names(d)) return(NULL)
+    d[, y_eixo_anno := as.numeric(ANO_factor_rotulo)]
+    col_rotulo <- if ("ANO_label_rotulo" %in% names(d) && any(nzchar(d$ANO_label_rotulo), na.rm = TRUE)) {
+      "ANO_label_rotulo"
+    } else {
+      "ano_rotulo"
+    }
+  } else {
+    d[, y_eixo_anno := factor(ANO)]
+    col_rotulo <- if ("ano_rotulo" %in% names(d)) "ano_rotulo" else "ANO"
+  }
+  if (!col_rotulo %in% names(d)) return(NULL)
+  rot <- as.character(d[[col_rotulo]])
+  rot <- monitora_stat_normalizar_rotulo_linha_ano(rot)
+  d[, rotulo_eixo_anno := rot]
+  cols <- unique(c(cols_facet, "ANO", "y_eixo_anno", "rotulo_eixo_anno"))
+  anno <- unique(d[, ..cols])
+  anno <- anno[!is.na(rotulo_eixo_anno) & nzchar(rotulo_eixo_anno)]
+  if (!nrow(anno)) return(NULL)
+  anno[, x_eixo_anno := x_pos]
+  ggplot2::geom_text(
+    data = anno,
+    ggplot2::aes(x = x_eixo_anno, y = y_eixo_anno, label = rotulo_eixo_anno),
+    inherit.aes = FALSE, hjust = hjust, vjust = 0.5,
+    size = size, lineheight = 0.92, color = "black"
+  )
+}
+
+monitora_editorial_slug <- function(x) {
+  x <- as.character(x)
+  x <- stringr::str_replace_all(x, "[áàâãäÁÀÂÃÄ]", "a")
+  x <- stringr::str_replace_all(x, "[éèêëÉÈÊË]", "e")
+  x <- stringr::str_replace_all(x, "[íìîïÍÌÎÏ]", "i")
+  x <- stringr::str_replace_all(x, "[óòôõöÓÒÔÕÖ]", "o")
+  x <- stringr::str_replace_all(x, "[úùûüÚÙÛÜ]", "u")
+  x <- stringr::str_replace_all(x, "[çÇ]", "c")
+  x <- stringr::str_to_lower(x)
+  x <- stringr::str_replace_all(x, "[^a-z0-9]+", "_")
+  x <- stringr::str_replace_all(x, "^_|_$", "")
+  x
+}
+
+monitora_editorial_codigo_grupo <- function(grupo_grafico, tipo_metrica) {
+  mapa <- c(
+    "herbaceas_lenhosas_proporcao_relativa" = "p1_prop_rel_herb_lenh",
+    "herbaceas_lenhosas_cobertura" = "p1_veg_cover_herb_lenh",
+    "categorias_gerais_proporcao_relativa" = "p2_prop_rel_categ",
+    "categorias_gerais_cobertura" = "p2_veg_cover_categ",
+    "material_botanico_proporcao_relativa" = "p2m_prop_rel_material_botanico",
+    "material_botanico_cobertura" = "p2m_veg_cover_material_botanico",
+    "formas_vida_nativas_proporcao_relativa" = "p3_prop_rel_nat",
+    "formas_vida_nativas_cobertura" = "p3_veg_cover_nat",
+    "formas_vida_exoticas_proporcao_relativa" = "p4_prop_rel_exot",
+    "formas_vida_exoticas_cobertura" = "p4_veg_cover_exot",
+    "formas_vida_secas_mortas_proporcao_relativa" = "p5_prop_rel_seca_morta",
+    "formas_vida_secas_mortas_cobertura" = "p5_veg_cover_seca_morta"
+  )
+  chave <- paste(grupo_grafico, tipo_metrica, sep = "_")
+  out <- unname(mapa[chave])
+  ifelse(is.na(out), monitora_editorial_slug(chave), out)
+}
+
+monitora_editorial_titulo_base <- function(grupo_grafico, tipo_metrica) {
+  chave <- paste(grupo_grafico, tipo_metrica, sep = "_")
+  titulos <- c(
+    "herbaceas_lenhosas_proporcao_relativa" = "Proporção relativa de plantas herbáceas e lenhosas em formações campestres e savânicas",
+    "herbaceas_lenhosas_cobertura" = "Cobertura vegetal por plantas herbáceas e lenhosas em formações campestres e savânicas",
+    "categorias_gerais_proporcao_relativa" = "Proporção relativa de plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
+    "categorias_gerais_cobertura" = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
+    "material_botanico_proporcao_relativa" = "Proporção relativa dos tipos de material botânico em decomposição no solo em formações campestres e savânicas",
+    "material_botanico_cobertura" = "Cobertura por tipos de material botânico em decomposição no solo em formações campestres e savânicas",
+    "formas_vida_nativas_proporcao_relativa" = "Proporção relativa das formas de vida de plantas nativas em formações campestres e savânicas",
+    "formas_vida_nativas_cobertura" = "Cobertura vegetal por formas de vida de plantas nativas em formações campestres e savânicas",
+    "formas_vida_exoticas_proporcao_relativa" = "Proporção relativa das formas de vida de plantas exóticas em formações campestres e savânicas",
+    "formas_vida_exoticas_cobertura" = "Cobertura vegetal por formas de vida de plantas exóticas em formações campestres e savânicas",
+    "formas_vida_secas_mortas_proporcao_relativa" = "Proporção relativa das formas de vida de plantas secas ou mortas em formações campestres e savânicas",
+    "formas_vida_secas_mortas_cobertura" = "Cobertura vegetal por formas de vida de plantas secas ou mortas em formações campestres e savânicas"
+  )
+  out <- unname(titulos[chave])
+  ifelse(is.na(out), chave, out)
+}
+
+monitora_editorial_textos <- function(grupo_grafico, tipo_metrica, escopo) {
+  titulo_base <- monitora_editorial_titulo_base(grupo_grafico, tipo_metrica)
+  sufixo <- c(
+    amostra_total = " — amostra total por ano",
+    pareado_total = " — série temporal pareada total",
+    pareado_periodo = " — comparações pareadas entre períodos"
+  )[[escopo]]
+
+  subtitulo <- c(
+    amostra_total = "Escopo: todas as UAs amostradas em cada campanha anual.",
+    pareado_total = "Escopo: apenas UAs monitoradas em todos os anos do período analisado.",
+    pareado_periodo = "Escopo: cada painel inclui apenas UAs amostradas nos dois anos comparados."
+  )[[escopo]]
+
+  metrica <- if (identical(tipo_metrica, "cobertura")) {
+    "Valores expressam a cobertura média por UA (%). Barras de erro: IC95% da média entre UAs."
+  } else {
+    "Valores expressam a proporção relativa média por UA (%) em barras empilhadas."
+  }
+
+  cautela <- if (identical(escopo, "amostra_total")) {
+    " Diferenças entre anos podem refletir mudanças temporais e/ou alterações na composição amostral."
+  } else {
+    ""
+  }
+
+  list(
+    titulo = paste0(titulo_base, sufixo),
+    subtitulo = subtitulo,
+    eixo_x = if (identical(tipo_metrica, "cobertura")) "Cobertura média por UA (%)" else "Proporção relativa média por UA (%)",
+    rodape = paste0(metrica, " n UA = número de unidades amostrais incluídas no ano, série ou comparação. Símbolos estatísticos seguem as regras editoriais dos demais gráficos.", cautela)
+  )
+}
+
+monitora_editorial_pares_anos <- function(anos) {
+  anos <- sort(unique(as.integer(anos)))
+  anos <- anos[is.finite(anos)]
+  if (length(anos) < 2L) return(list())
+
+  todos_pares <- tolower(Sys.getenv("MONITORA_GRAFICOS_PAREADOS_TODOS_PARES", "false")) %in% c("1", "true", "sim", "yes")
+  if (isTRUE(todos_pares)) {
+    return(utils::combn(anos, 2, simplify = FALSE))
+  }
+
+  pares <- lapply(seq_len(length(anos) - 1L), function(i) c(anos[i], anos[i + 1L]))
+  if (length(anos) > 2L) {
+    par_total <- c(min(anos), max(anos))
+    if (!any(vapply(pares, function(z) identical(as.integer(z), as.integer(par_total)), logical(1)))) {
+      pares[[length(pares) + 1L]] <- par_total
+    }
+  }
+  pares
+}
+
+
+monitora_editorial_testar_pareado_periodo_categoria <- function(long_dt) {
+  # Testes pareados específicos para os painéis editoriais período a período.
+  # A comparação usa exatamente as UAs comuns aos dois anos do painel, garantindo
+  # que o símbolo estatístico represente o mesmo subconjunto mostrado no gráfico.
+  if (is.null(long_dt) || !nrow(long_dt)) return(data.table::data.table())
+  long_dt <- data.table::as.data.table(long_dt)
+  long_dt <- long_dt[!is.na(grupo_grafico) & !is.na(tipo_metrica) & !is.na(form_veg) & !is.na(categoria) & !is.na(ANO)]
+  if (!nrow(long_dt)) return(data.table::data.table())
+
+  pares <- monitora_editorial_pares_anos(long_dt$ANO)
+  if (!length(pares)) return(data.table::data.table())
+
+  out <- vector("list", 0)
+  idx <- 0L
+  grupos <- unique(long_dt[, .(grupo_grafico, tipo_metrica, form_veg, categoria, categoria_label)])
+  for (ii in seq_len(nrow(grupos))) {
+    g <- grupos[ii]
+    sub <- long_dt[
+      grupo_grafico == g$grupo_grafico &
+        tipo_metrica == g$tipo_metrica &
+        form_veg == g$form_veg &
+        categoria == g$categoria
+    ]
+    if (!nrow(sub)) next
+    for (par in pares) {
+      y1 <- as.integer(par[1])
+      y2 <- as.integer(par[2])
+      a <- sub[ANO == y1, .(UC, UA, valor_1 = valor)]
+      b <- sub[ANO == y2, .(UC, UA, valor_2 = valor)]
+      if (!nrow(a) || !nrow(b)) next
+      data.table::setkeyv(a, c("UC", "UA"))
+      data.table::setkeyv(b, c("UC", "UA"))
+      par_dt <- b[a, nomatch = 0L]
+      n_pares <- nrow(par_dt)
+      dif <- par_dt$valor_2 - par_dt$valor_1
+      efeito <- if (n_pares > 0) mean(dif, na.rm = TRUE) else NA_real_
+      ci <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_boot_ci(dif) else c(NA_real_, NA_real_)
+      p_val <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_p_permutacao_pareada(dif) else NA_real_
+      idx <- idx + 1L
+      out[[idx]] <- data.table::data.table(
+        grupo_grafico = g$grupo_grafico,
+        tipo_metrica = g$tipo_metrica,
+        form_veg = g$form_veg,
+        categoria = g$categoria,
+        categoria_label = g$categoria_label,
+        periodo_pareado = paste0(y1, "–", y2),
+        ano_1 = y1,
+        ano_2 = y2,
+        comparacao = "periodo_pareado_editorial",
+        n_UC_pareadas = data.table::uniqueN(par_dt$UC),
+        n_UA_pareadas = n_pares,
+        media_ano_1 = if (n_pares > 0) mean(par_dt$valor_1, na.rm = TRUE) else NA_real_,
+        media_ano_2 = if (n_pares > 0) mean(par_dt$valor_2, na.rm = TRUE) else NA_real_,
+        diferenca = efeito,
+        diferenca_pp = efeito * 100,
+        ci95_lower = ci[1],
+        ci95_upper = ci[2],
+        ci95_lower_pp = ci[1] * 100,
+        ci95_upper_pp = ci[2] * 100,
+        p_valor_perm_pareado = p_val
+      )
+    }
+  }
+  res <- data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+  if (!nrow(res)) return(res)
+  res[, p_ajustado_fdr := stats::p.adjust(p_valor_perm_pareado, method = "BH"), by = .(grupo_grafico, tipo_metrica, periodo_pareado)]
+  res <- monitora_stat_classificar_categoria(res, contexto = "ano_anterior")
+  data.table::setorder(res, grupo_grafico, tipo_metrica, form_veg, categoria, ano_1, ano_2)
+  res[]
+}
+
+monitora_editorial_filtrar_pareado_total <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return(dt)
+  anos <- sort(unique(dt$ANO))
+  if (length(anos) < 2L) return(dt[0])
+
+  uas_completas <- unique(dt[, .(grupo_grafico, tipo_metrica, form_veg, UC, UA, ANO)])
+  uas_completas <- uas_completas[, .(n_anos = data.table::uniqueN(ANO)), by = .(grupo_grafico, tipo_metrica, form_veg, UC, UA)]
+  uas_completas <- uas_completas[n_anos == length(anos), .(grupo_grafico, tipo_metrica, form_veg, UC, UA)]
+  if (!nrow(uas_completas)) return(dt[0])
+
+  data.table::setkeyv(dt, c("grupo_grafico", "tipo_metrica", "form_veg", "UC", "UA"))
+  data.table::setkeyv(uas_completas, c("grupo_grafico", "tipo_metrica", "form_veg", "UC", "UA"))
+  dt[uas_completas, nomatch = 0L]
+}
+
+monitora_editorial_criar_pareado_periodo <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return(dt[0])
+  pares <- monitora_editorial_pares_anos(dt$ANO)
+  if (!length(pares)) return(dt[0])
+
+  out <- vector("list", 0)
+  idx <- 0L
+  grupos_form <- unique(dt[, .(grupo_grafico, tipo_metrica, form_veg)])
+  for (ii in seq_len(nrow(grupos_form))) {
+    gf <- grupos_form[ii]
+    sub <- dt[grupo_grafico == gf$grupo_grafico & tipo_metrica == gf$tipo_metrica & form_veg == gf$form_veg]
+    if (!nrow(sub)) next
+    for (par in pares) {
+      y1 <- as.integer(par[1])
+      y2 <- as.integer(par[2])
+      ua_y1 <- unique(sub[ANO == y1, .(UC, UA)])
+      ua_y2 <- unique(sub[ANO == y2, .(UC, UA)])
+      data.table::setkeyv(ua_y1, c("UC", "UA"))
+      data.table::setkeyv(ua_y2, c("UC", "UA"))
+      uas <- ua_y1[ua_y2, nomatch = 0L]
+      if (!nrow(uas)) next
+      data.table::setkeyv(sub, c("UC", "UA"))
+      bloco <- sub[uas, nomatch = 0L][ANO %in% c(y1, y2)]
+      if (!nrow(bloco)) next
+      idx <- idx + 1L
+      bloco[, periodo_pareado := paste0(y1, "–", y2)]
+      bloco[, ordem_periodo_pareado := idx]
+      out[[idx]] <- bloco
+    }
+  }
+  data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+}
+
+monitora_editorial_agregar <- function(dt, escopo) {
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return(data.table::data.table())
+  dt <- data.table::copy(dt)
+  dt[, `:=`(
+    ANO = suppressWarnings(as.integer(ANO)),
+    valor_percent = suppressWarnings(as.numeric(valor)) * 100,
+    ua_id = paste(UC, UA, sep = "__")
+  )]
+  dt <- dt[is.finite(valor_percent) & !is.na(ANO) & !is.na(form_veg) & !is.na(categoria_label)]
+  if (!nrow(dt)) return(data.table::data.table())
+
+  chaves_painel <- c("grupo_grafico", "tipo_metrica", "form_veg")
+  if (identical(escopo, "pareado_periodo") && "periodo_pareado" %in% names(dt)) {
+    chaves_painel <- c("grupo_grafico", "tipo_metrica", "periodo_pareado", "ordem_periodo_pareado", "form_veg")
+  }
+
+  n_ano <- unique(dt[, c(chaves_painel, "ANO", "ua_id"), with = FALSE])
+  n_ano <- n_ano[, .(n_UA_ano = data.table::uniqueN(ua_id)), by = c(chaves_painel, "ANO")]
+
+  agg <- dt[, .(
+    valor_percent = mean(valor_percent, na.rm = TRUE),
+    sd_percent = stats::sd(valor_percent, na.rm = TRUE),
+    n_UA_categoria = data.table::uniqueN(ua_id),
+    n = sum(suppressWarnings(as.numeric(n_categoria)), na.rm = TRUE),
+    total_referencia = sum(suppressWarnings(as.numeric(total_referencia)), na.rm = TRUE)
+  ), by = c(chaves_painel, "ANO", "categoria", "categoria_label")]
+  agg[is.na(sd_percent), sd_percent := 0]
+  agg[, se_percent := data.table::fifelse(n_UA_categoria > 0, sd_percent / sqrt(n_UA_categoria), NA_real_)]
+  agg[, `:=`(
+    ci_lower = pmax(0, valor_percent - 1.96 * se_percent),
+    ci_upper = pmin(100, valor_percent + 1.96 * se_percent)
+  )]
+
+  data.table::setkeyv(agg, c(chaves_painel, "ANO"))
+  data.table::setkeyv(n_ano, c(chaves_painel, "ANO"))
+  agg <- n_ano[agg]
+  agg[, ano_rotulo := monitora_editorial_rotulo_ano_nua(ANO, n_UA_ano)]
+  agg[, ANO_factor_rotulo := ano_rotulo]
+  agg[, prop := valor_percent / 100]
+  agg[, veg_cover := valor_percent]
+
+  ## Os rótulos editoriais dos gráficos temporais devem preservar o mesmo padrão
+  ## dos gráficos consolidados anteriores: n na primeira linha e percentual na segunda,
+  ## com supressão automática de segmentos pequenos quando a figura ficaria densa.
+  agg[, n := data.table::fifelse(is.finite(n) & n > 0, n, n_UA_categoria)]
+  agg[, grupo_muitas_categorias_rotulo := grupo_grafico %in% MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS]
+  agg[, n_categorias_positivas_rotulo := sum(!is.na(prop) & prop > 0),
+      by = c(chaves_painel, "ANO")]
+  agg[, rank_prop_rotulo := data.table::frank(-prop, ties.method = "min", na.last = "keep"),
+      by = c(chaves_painel, "ANO")]
+  agg[, forcar_rotulo_prop := (
+    !is.na(prop) & prop > 0 &
+      (
+        grupo_grafico %in% c("herbaceas_lenhosas") |
+          (!identical(escopo, "pareado_periodo") & grupo_grafico %in% c("categorias_gerais", "material_botanico")) |
+          n_categorias_positivas_rotulo == 1L |
+          prop >= 0.50 |
+          rank_prop_rotulo == 1L
+      )
+  )]
+  agg[, rotulo_prop_plot := monitora_rotulo_prop_plot(
+    prop = prop,
+    n = n,
+    complexo = grupo_muitas_categorias_rotulo,
+    forcar = forcar_rotulo_prop
+  )]
+  agg[, rotulo_cobertura_plot := monitora_rotulo_cobertura_plot(
+    veg_cover = veg_cover,
+    complexo = grupo_grafico %in% c("categorias_gerais", MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS)
+  )]
+  agg[, c("grupo_muitas_categorias_rotulo", "n_categorias_positivas_rotulo",
+          "rank_prop_rotulo", "forcar_rotulo_prop") := NULL]
+  agg[, ano_rotulo := factor(ano_rotulo, levels = unique(agg[order(ANO)]$ano_rotulo))]
+  agg[, ANO_factor_rotulo := factor(ANO_factor_rotulo, levels = levels(ano_rotulo))]
+  agg[, categoria_label := factor(categoria_label, levels = unique(agg[order(categoria)]$categoria_label))]
+  agg[]
+}
+
+
+monitora_editorial_resumo_nua_pareado_total <- function(dados) {
+  if (is.null(dados) || !nrow(dados) || !all(c("form_veg", "ANO", "n_UA_ano") %in% names(dados))) return("")
+  dt <- data.table::as.data.table(data.table::copy(dados))
+  dt <- unique(dt[, .(form_veg = as.character(form_veg), ANO = as.integer(ANO), n_UA_ano = as.integer(n_UA_ano))])
+  dt <- dt[is.finite(ANO) & is.finite(n_UA_ano)]
+  if (!nrow(dt)) return("")
+  resumo <- dt[, .(n_UA = min(n_UA_ano, na.rm = TRUE), n_anos = data.table::uniqueN(ANO)), by = form_veg]
+  resumo <- resumo[is.finite(n_UA)]
+  if (!nrow(resumo)) return("")
+  data.table::setorder(resumo, form_veg)
+  paste0(
+    " UAs incluídas em todos os anos: ",
+    paste0(resumo$form_veg, " n UA = ", resumo$n_UA, collapse = "; "),
+    "."
+  )
+}
+
+monitora_editorial_compactar_rotulos_prop <- function(dt, grupo_grafico, escopo = "amostra_total") {
+  # Reduz a densidade dos rótulos nos novos gráficos multipainel. Os gráficos
+  # originais preservam suas regras próprias. Aqui a prioridade é impedir
+  # sobreposição em facetas com menor largura útil, mantendo as categorias
+  # dominantes e mudanças estatísticas visíveis.
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if (!nrow(out) || !"prop_num_rotulo_obrig" %in% names(out)) return(out)
+
+  # Regra editorial consolidada: os gráficos-base de p1 e p2 preservam rótulos
+  # completos. Nos gráficos editoriais pareados, porém, p2 pode ficar ilegível
+  # quando todos os rótulos são exibidos em múltiplos painéis. Assim, a série
+  # editorial compacta categorias gerais/material botânico apenas nos escopos
+  # pareados; a versão base continua sendo a figura de referência com rótulos
+  # completos.
+  if (grupo_grafico %in% c("herbaceas_lenhosas")) return(out)
+  if (grupo_grafico %in% c("categorias_gerais", "material_botanico") && !(escopo %in% c("pareado_total", "pareado_periodo"))) return(out)
+
+  painel_cols <- intersect(c("periodo_pareado", "form_veg"), names(out))
+  chaves <- c(painel_cols, "ANO")
+  chaves <- unique(chaves[nzchar(chaves)])
+  if (!length(chaves)) chaves <- "ANO"
+
+  out[, rank_prop_editorial := data.table::frank(-prop_num_rotulo_obrig, ties.method = "first", na.last = "keep"), by = chaves]
+  out[, n_pos_editorial := sum(is.finite(prop_num_rotulo_obrig) & prop_num_rotulo_obrig > 0), by = chaves]
+
+  limiar_min <- data.table::fcase(
+    escopo == "pareado_periodo" & grupo_grafico %in% c("categorias_gerais", "material_botanico"), 0.120,
+    escopo == "pareado_periodo", 0.095,
+    escopo == "pareado_total" & grupo_grafico %in% c("categorias_gerais", "material_botanico"), 0.060,
+    grupo_grafico %in% c("formas_vida_nativas", "formas_vida_secas_mortas"), 0.075,
+    grupo_grafico %in% c("formas_vida_exoticas"), 0.060,
+    default = 0.050
+  )
+  max_rotulos <- data.table::fcase(
+    escopo == "pareado_periodo" & grupo_grafico %in% c("categorias_gerais", "material_botanico"), 2L,
+    escopo == "pareado_periodo", 3L,
+    escopo == "pareado_total" & grupo_grafico %in% c("categorias_gerais", "material_botanico"), 3L,
+    grupo_grafico %in% c("formas_vida_nativas", "formas_vida_secas_mortas"), 5L,
+    default = 4L
+  )
+
+  manter <- !is.na(out$prop_num_rotulo_obrig) &
+    out$prop_num_rotulo_obrig > 0 &
+    (
+      out$prop_num_rotulo_obrig >= limiar_min |
+        out$rank_prop_editorial <= pmin(max_rotulos, out$n_pos_editorial)
+    )
+
+  # Em gráficos densos, rótulos externos muito pequenos são os principais focos
+  # de colisão visual. Mantêm-se apenas externos informativos o suficiente.
+  externo_pequeno <- out$rotulo_prop_externo != "" & out$prop_num_rotulo_obrig < max(limiar_min, 0.065)
+  manter <- manter & !externo_pequeno
+
+  out[!manter, `:=`(
+    rotulo_prop_plot = "",
+    rotulo_prop_interno = "",
+    rotulo_prop_externo = ""
+  )]
+
+  out[, c("rank_prop_editorial", "n_pos_editorial") := NULL]
+  out[]
+}
+
+
+monitora_editorial_compactar_rotulos_cobertura <- function(dt, grupo_grafico, escopo = "amostra_total") {
+  out <- data.table::as.data.table(data.table::copy(dt))
+  if (!nrow(out) || !"veg_cover" %in% names(out) || !"rotulo_cobertura_plot" %in% names(out)) return(out)
+  if (!grupo_grafico %in% c("categorias_gerais", MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS)) return(out)
+
+  painel_cols <- intersect(c("periodo_pareado", "form_veg"), names(out))
+  chaves <- c(painel_cols, "ANO")
+  chaves <- unique(chaves[nzchar(chaves)])
+  if (!length(chaves)) chaves <- "ANO"
+
+  out[, rank_cob_editorial := data.table::frank(-veg_cover, ties.method = "first", na.last = "keep"), by = chaves]
+  limiar <- data.table::fcase(
+    escopo == "pareado_periodo", 6.0,
+    grupo_grafico %in% c("formas_vida_secas_mortas", "formas_vida_exoticas"), 1.0,
+    grupo_grafico %in% c("formas_vida_nativas"), 3.0,
+    default = 4.0
+  )
+  max_rotulos <- data.table::fcase(
+    escopo == "pareado_periodo", 3L,
+    grupo_grafico %in% c("formas_vida_nativas", "formas_vida_secas_mortas"), 4L,
+    default = 3L
+  )
+  manter <- !is.na(out$veg_cover) & out$veg_cover >= limiar & out$rank_cob_editorial <= max_rotulos
+  # Para categorias gerais, preservar também as duas categorias estruturalmente dominantes.
+  if (grupo_grafico == "categorias_gerais") {
+    manter <- manter | (!is.na(out$veg_cover) & out$veg_cover >= 20 & out$rank_cob_editorial <= 4L)
+  }
+  out[!manter, rotulo_cobertura_plot := ""]
+  out[, rank_cob_editorial := NULL]
+  out[]
+}
+
+monitora_editorial_plot <- function(dados, grupo_grafico, tipo_metrica, escopo) {
+  if (is.null(dados) || !nrow(dados)) {
+    return(monitora_plot_sem_dados(
+      titulo = paste(monitora_editorial_titulo_base(grupo_grafico, tipo_metrica), escopo),
+      mensagem = "Sem UAs suficientes para o escopo solicitado"
+    ))
+  }
+
+  textos <- monitora_editorial_textos(grupo_grafico, tipo_metrica, escopo)
+  dados <- data.table::as.data.table(data.table::copy(dados))
+  if (identical(escopo, "pareado_total")) {
+    resumo_nua <- monitora_editorial_resumo_nua_pareado_total(dados)
+    if (nzchar(resumo_nua)) textos$subtitulo <- paste0(textos$subtitulo, resumo_nua)
+  }
+
+  if (identical(escopo, "pareado_periodo") && "periodo_pareado" %in% names(dados)) {
+    dados[, periodo_pareado := factor(periodo_pareado, levels = unique(dados[order(ordem_periodo_pareado)]$periodo_pareado))]
+    ## os painéis pareados por período deixam de usar facet_wrap com
+    ## múltiplas colunas estreitas. facet_grid(periodo ~ formação) preserva duas
+    ## colunas largas e empilha os períodos em linhas, reduzindo colisões entre
+    ## rótulo de ano+n UA, rótulos externos e divisas entre painéis.
+    facet_layer <- ggplot2::facet_grid(
+      rows = ggplot2::vars(periodo_pareado),
+      cols = ggplot2::vars(form_veg),
+      scales = "free_y"
+    )
+  } else {
+    facet_layer <- ggplot2::facet_wrap(ggplot2::vars(form_veg), scales = "free_y")
+  }
+
+  if (identical(tipo_metrica, "proporcao_relativa")) {
+    dados_prop <- data.table::copy(dados)
+
+    if ("periodo_pareado" %in% names(dados_prop)) {
+      dados_prop[, form_veg_original := as.character(form_veg)]
+      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")]
+    }
+
+    dados_prop <- monitora_preparar_rotulos_prop_obrigatorios(
+      dados_prop,
+      prop_min_interno = if (grupo_grafico %in% c("herbaceas_lenhosas")) 0.001 else 0.10
+    )
+    dados_prop <- monitora_editorial_compactar_rotulos_prop(dados_prop, grupo_grafico = grupo_grafico, escopo = escopo)
+
+    if ("form_veg_original" %in% names(dados_prop)) {
+      dados_prop[, form_veg := form_veg_original]
+      dados_prop[, form_veg_original := NULL]
+    }
+
+    ## O mesmo ano pode aparecer em mais de um painel/formação/período, com n UA
+    ## diferente. Portanto, a associação do rótulo ano + n UA não pode usar apenas
+    ## ANO como chave, pois isso gera junção cartesiana em data.table. Usamos uma
+    ## chave textual completa do painel e aplicamos o rótulo por vetor nomeado.
+    if ("periodo_pareado" %in% names(dados)) {
+      dados[, chave_rotulo_ano_editorial := paste(as.character(periodo_pareado), as.character(form_veg), as.character(ANO), sep = "||")]
+    } else {
+      dados[, chave_rotulo_ano_editorial := paste(as.character(form_veg), as.character(ANO), sep = "||")]
+    }
+    if ("periodo_pareado" %in% names(dados_prop)) {
+      dados_prop[, chave_rotulo_ano_editorial := paste(as.character(periodo_pareado), as.character(form_veg), as.character(ANO), sep = "||")]
+    } else {
+      dados_prop[, chave_rotulo_ano_editorial := paste(as.character(form_veg), as.character(ANO), sep = "||")]
+    }
+    mapa_ano_rotulo <- unique(dados[, .(chave_rotulo_ano_editorial, ano_rotulo)])
+    mapa_ano_rotulo <- mapa_ano_rotulo[!duplicated(chave_rotulo_ano_editorial)]
+    vetor_ano_rotulo <- stats::setNames(as.character(mapa_ano_rotulo$ano_rotulo), mapa_ano_rotulo$chave_rotulo_ano_editorial)
+    dados_prop[, ANO_label_rotulo := vetor_ano_rotulo[chave_rotulo_ano_editorial]]
+    dados_prop[is.na(ANO_label_rotulo) | !nzchar(ANO_label_rotulo), ANO_label_rotulo := as.character(ANO)]
+    dados[, chave_rotulo_ano_editorial := NULL]
+    dados_prop[, chave_rotulo_ano_editorial := NULL]
+    if ("coorte_ano_inicial" %in% names(dados)) {
+      dados_prop[, coorte_ano_inicial := unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]]
+    }
+
+    ## faixa reservada à esquerda do painel (em unidades do eixo X, que
+    ## vai de 0 a 1) para o rótulo de linha. Painéis pareados por período têm 3
+    ## colunas e portanto menos largura por painel, exigindo faixa um pouco maior.
+    ## Se algum rótulo ainda clipar, aumentar estes valores.
+    inset_prop <- if (identical(escopo, "pareado_periodo")) 0.34 else 0.24
+
+    p <- ggplot2::ggplot(data = dados_prop) +
+      monitora_camada_barras_prop_obrigatorios(dados_prop) +
+      monitora_camadas_rotulos_prop_obrigatorios(dados_prop) +
+      monitora_editorial_anotacao_eixo_ano_nua(
+        dados_prop, y_continuo = TRUE,
+        size = if (identical(escopo, "pareado_periodo")) 2.65 else 3.0,
+        x_pos = if (identical(escopo, "pareado_periodo")) -0.024 else -0.018, hjust = 1
+      ) +
+      facet_layer +
+      ggplot2::labs(
+        title = textos$titulo,
+        subtitle = textos$subtitulo,
+        x = textos$eixo_x,
+        y = NULL,
+        fill = "Categoria",
+        caption = textos$rodape
+      ) +
+      monitora_scale_x_prop_obrigatorios(dados_prop, inset_esquerdo = inset_prop) +
+      monitora_theme_prop_publicavel() +
+      ggplot2::guides(fill = ggplot2::guide_legend(ncol = 1, byrow = TRUE)) +
+      ggplot2::theme(
+        legend.position = "right",
+        legend.box = "vertical",
+        panel.grid.major.y = ggplot2::element_blank(),
+        panel.grid.minor = ggplot2::element_blank(),
+        axis.text.y = ggplot2::element_blank(),
+        axis.ticks.y = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(14, 30, 14, 34),
+        plot.subtitle = ggplot2::element_text(size = 10),
+        plot.caption = ggplot2::element_text(size = 8.2, hjust = 0),
+        strip.text = ggplot2::element_text(face = "bold", size = if (identical(escopo, "pareado_periodo")) 8.7 else 10)
+      ) +
+      ## clip = "on" com janela calculada mantém o rótulo de linha e os rótulos
+      ## externos dentro do painel, sem limitar artificialmente o eixo a [0, 1].
+      monitora_coord_x_prop_obrigatorios(dados_prop, inset_esquerdo = inset_prop, clip = "on")
+    return(p)
+  }
+
+  dados_cob <- data.table::copy(dados)
+  if (grupo_grafico %in% c("categorias_gerais", MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS)) {
+    dados_cob <- monitora_adicionar_rotulo_cobertura_complexa(dados_cob)
+  }
+  dados_cob <- monitora_editorial_compactar_rotulos_cobertura(dados_cob, grupo_grafico = grupo_grafico, escopo = escopo)
+  dados_cob[, ano_rotulo := monitora_stat_compactar_rotulo_eixo_cobertura(ano_rotulo)]
+  dados_cob[, x_base_rotulo := pmax(veg_cover, ci_upper, na.rm = TRUE)]
+  offset_seg <- max(dados_cob$x_base_rotulo, na.rm = TRUE) * if (identical(escopo, "pareado_periodo")) 0.006 else 0.007
+  if (!is.finite(offset_seg) || offset_seg <= 0) offset_seg <- 0.35
+  offset_text <- offset_seg
+  dados_cob[!is.na(rotulo_cobertura_plot) & rotulo_cobertura_plot != "", `:=`(
+    x_seg_fim = x_base_rotulo + offset_seg,
+    x_rotulo = x_base_rotulo + offset_text
+  )]
+  mapa_y <- unique(dados_cob[, .(ANO_chr = as.character(ANO), ano_rotulo = as.character(ano_rotulo))])
+  y_labels <- stats::setNames(mapa_y$ano_rotulo, mapa_y$ANO_chr)
+  x_max <- max(dados_cob$x_base_rotulo, na.rm = TRUE)
+  if (!is.finite(x_max) || x_max <= 0) x_max <- max(dados_cob$veg_cover, na.rm = TRUE)
+  if (!is.finite(x_max) || x_max <= 0) x_max <- 5
+  x_lim <- monitora_calcular_xmax_cobertura_rotulos(dados_cob, fallback = x_max)
+  ## Faixa reservada à esquerda, em unidades do eixo X (% de cobertura), para o
+  ## rótulo de linha (ano + n UA), dimensionada sobre a escala visível. Painéis
+  ## pareados têm menos largura por painel e por isso recebem faixa proporcionalmente maior.
+  rotulos_anno_cob <- unique(as.character(stats::na.omit(dados_cob$ano_rotulo)))
+  inset_cob <- monitora_calcular_inset_rotulo_eixo_cobertura(
+    rotulos_anno_cob,
+    x_lim,
+    fator = if (identical(escopo, "pareado_periodo")) 0.30 else 0.26,
+    padding = if (identical(escopo, "pareado_periodo")) 2.4 else 2.0,
+    minimo = if (identical(escopo, "pareado_periodo")) 11 else 9
+  )
+  x_anno_cob <- -0.9
+
+  p <- ggplot2::ggplot(
+    dados_cob,
+    ggplot2::aes(
+      x = veg_cover,
+      y = factor(ANO),
+      fill = categoria_label,
+      group = categoria_label
+    )
+  ) +
+    ggplot2::geom_col(
+      position = ggplot2::position_dodge(width = 0.72),
+      width = 0.62,
+      color = "grey35",
+      linewidth = 0.12
+    ) +
+    ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = ci_lower, xmax = ci_upper),
+      position = ggplot2::position_dodge(width = 0.72),
+      height = 0.20,
+      linewidth = 0.30,
+      color = "black"
+    ) +
+    ggplot2::geom_text(
+      data = function(d) d[!is.na(d$rotulo_cobertura_plot) & d$rotulo_cobertura_plot != "", , drop = FALSE],
+      ggplot2::aes(x = x_rotulo, y = factor(ANO), label = rotulo_cobertura_plot, group = categoria_label),
+      inherit.aes = FALSE,
+      position = ggplot2::position_dodge(width = 0.72),
+      hjust = 0,
+      size = if (identical(escopo, "pareado_periodo")) MONITORA_FONTE_ROTULO_COB * 0.58 else MONITORA_FONTE_ROTULO_COB * 0.68,
+      lineheight = MONITORA_LINEHEIGHT_ROTULO,
+      color = "black",
+      show.legend = FALSE
+    ) +
+    facet_layer +
+    monitora_editorial_anotacao_eixo_ano_nua(
+      dados_cob, y_continuo = FALSE,
+      size = if (identical(escopo, "pareado_periodo")) 2.55 else 2.85,
+      x_pos = x_anno_cob, hjust = 1
+    ) +
+    ggplot2::labs(
+      title = textos$titulo,
+      subtitle = textos$subtitulo,
+      x = textos$eixo_x,
+      y = NULL,
+      fill = "Categoria",
+      caption = textos$rodape
+    ) +
+    ggplot2::scale_y_discrete() +
+    ggplot2::scale_x_continuous(
+      limits = c(-inset_cob, x_lim),
+      breaks = monitora_breaks_eixo_x_cobertura(x_lim),
+      labels = scales::label_number(accuracy = 1, decimal.mark = ","),
+      expand = ggplot2::expansion(mult = c(0, 0.01))
+    ) +
+    monitora_theme_cobertura_publicavel() +
+    ggplot2::guides(fill = ggplot2::guide_legend(ncol = 1, byrow = TRUE)) +
+    ggplot2::theme(
+      legend.position = "right",
+      legend.box = "vertical",
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank(),
+      plot.margin = ggplot2::margin(14, 30, 14, 34),
+      plot.subtitle = ggplot2::element_text(size = 10),
+      plot.caption = ggplot2::element_text(size = 8.2, hjust = 0),
+      strip.text = ggplot2::element_text(face = "bold", size = 10),
+      panel.spacing.x = grid::unit(if (identical(escopo, "pareado_periodo")) 2.8 else 2.3, "lines")
+    ) +
+    ## clip = "on" com janela dinâmica mantém rótulos, conectores e ano+n UA
+    ## dentro do painel, sem extravasar para facetas vizinhas.
+    ggplot2::coord_cartesian(xlim = c(-inset_cob, x_lim), clip = "on")
+  p
+}
+
+monitora_editorial_avaliar_variacao_esforco <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return(data.table::data.table())
+  n_ano <- unique(dt[, .(grupo_grafico, tipo_metrica, form_veg, ANO, ua_id = paste(UC, UA, sep = "__"))])
+  n_ano <- n_ano[, .(n_UA = data.table::uniqueN(ua_id)), by = .(grupo_grafico, tipo_metrica, form_veg, ANO)]
+  resumo <- n_ano[, .(
+    n_UA_min = min(n_UA, na.rm = TRUE),
+    n_UA_max = max(n_UA, na.rm = TRUE),
+    razao_min_max = min(n_UA, na.rm = TRUE) / max(n_UA, na.rm = TRUE),
+    n_anos = data.table::uniqueN(ANO),
+    n_UA_por_ano = paste(paste0(ANO, "=", n_UA), collapse = "; ")
+  ), by = .(grupo_grafico, tipo_metrica, form_veg)]
+  resumo[, classificacao_variacao_esforco := data.table::fcase(
+    razao_min_max < 0.50, "alta variação no esforço amostral entre anos",
+    razao_min_max < 0.80, "variação moderada no esforço amostral entre anos",
+    default = "esforço amostral relativamente equilibrado entre anos"
+  )]
+  resumo[]
+}
+
+monitora_editorial_gerar_graficos_temporais <- function(series_dt) {
+  if (is.null(series_dt) || !nrow(series_dt)) return(character(0))
+  series_dt <- data.table::as.data.table(series_dt)
+  series_dt <- series_dt[!is.na(grupo_grafico) & !is.na(tipo_metrica) & !is.na(ANO)]
+  if (!nrow(series_dt)) return(character(0))
+
+  nomes <- character(0)
+  dados_exportar <- list()
+  indice <- list()
+  idx <- 0L
+  grupos <- unique(series_dt[, .(grupo_grafico, tipo_metrica)])
+  data.table::setorder(grupos, grupo_grafico, tipo_metrica)
+
+  for (ii in seq_len(nrow(grupos))) {
+    grupo <- grupos$grupo_grafico[ii]
+    metrica <- grupos$tipo_metrica[ii]
+    base <- series_dt[grupo_grafico == grupo & tipo_metrica == metrica]
+    if (!nrow(base) || data.table::uniqueN(base$ANO) < 1L) next
+
+    codigo <- monitora_editorial_codigo_grupo(grupo, metrica)
+    escopos <- list(
+      amostra_total = base,
+      pareado_total = monitora_editorial_filtrar_pareado_total(base),
+      pareado_periodo = monitora_editorial_criar_pareado_periodo(base)
+    )
+
+    for (escopo in names(escopos)) {
+      dados_escopo <- escopos[[escopo]]
+      if (!nrow(dados_escopo)) next
+      dados_plot <- monitora_editorial_agregar(dados_escopo, escopo = escopo)
+      if (!nrow(dados_plot)) next
+      nome_obj <- paste0("plot_ed_", codigo, "_", escopo)
+      assign(nome_obj, monitora_editorial_plot(dados_plot, grupo, metrica, escopo), envir = .GlobalEnv)
+      nomes <- c(nomes, nome_obj)
+
+      idx <- idx + 1L
+      dados_exportar[[idx]] <- data.table::copy(dados_plot)[, `:=`(
+        nome_plot = nome_obj,
+        escopo = escopo
+      )]
+      indice[[idx]] <- data.table::data.table(
+        nome_plot = nome_obj,
+        arquivo_png = paste0(nome_obj, ".png"),
+        grupo_grafico = grupo,
+        tipo_metrica = metrica,
+        escopo = escopo,
+        titulo = monitora_editorial_textos(grupo, metrica, escopo)$titulo,
+        observacao = "Gráfico temporal editorial com rótulo de ano no formato ano + quebra de linha + (n UA = x)."
+      )
+    }
+  }
+
+  dados_exportar_dt <- data.table::rbindlist(dados_exportar, fill = TRUE, use.names = TRUE)
+  indice_dt <- data.table::rbindlist(indice, fill = TRUE, use.names = TRUE)
+  auditoria_dt <- monitora_editorial_avaliar_variacao_esforco(series_dt)
+
+  if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
+    if (nrow(dados_exportar_dt)) {
+      data.table::fwrite(dados_exportar_dt, file.path(MONITORA_OUTPUT_DIR, "graficos_temporais_editoriais_dados.csv"), row.names = FALSE)
+    }
+    if (nrow(indice_dt)) {
+      data.table::fwrite(indice_dt, file.path(MONITORA_OUTPUT_DIR, "indice_graficos_temporais_editoriais.csv"), row.names = FALSE)
+    }
+    if (nrow(auditoria_dt)) {
+      data.table::fwrite(auditoria_dt, file.path(MONITORA_OUTPUT_DIR, "auditoria_esforco_amostral_temporal.csv"), row.names = FALSE)
+    }
+  }
+
+  unique(nomes)
+}
+
+monitora_editorial_plot_names <- character(0)
+if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
+  monitora_stat_msg("rodando testes pareados específicos para gráficos editoriais período a período")
+  MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL <- monitora_editorial_testar_pareado_periodo_categoria(MONITORA_STAT_SERIES_UA_ANO)
+  if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR) && nrow(MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL)) {
+    data.table::fwrite(
+      MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL,
+      file.path(MONITORA_OUTPUT_DIR, "estatistica_pareada_periodo_editorial.csv"),
+      row.names = FALSE
+    )
+  }
+  monitora_stat_msg("gerando gráficos temporais editoriais com escopo amostral explícito")
+  monitora_editorial_plot_names <- monitora_editorial_gerar_graficos_temporais(MONITORA_STAT_SERIES_UA_ANO)
+  monitora_stat_msg("gráficos temporais editoriais preparados: ", length(monitora_editorial_plot_names))
+}
+
+monitora_coorte_filtrar_series <- function(series_dt) {
+  if (is.null(series_dt) || !nrow(series_dt)) return(data.table::data.table())
+  dt <- data.table::as.data.table(data.table::copy(series_dt))
+  anos <- sort(unique(as.integer(dt$ANO)))
+  anos <- anos[is.finite(anos)]
+  if (length(anos) < 2L) return(data.table::data.table())
+  out <- vector("list", 0)
+  idx <- 0L
+  grupos_form <- unique(dt[, .(grupo_grafico, tipo_metrica, form_veg)])
+  for (ano_inicio in anos[-length(anos)]) {
+    for (ii in seq_len(nrow(grupos_form))) {
+      gf <- grupos_form[ii]
+      base <- dt[
+        grupo_grafico == gf$grupo_grafico &
+          tipo_metrica == gf$tipo_metrica &
+          form_veg == gf$form_veg &
+          ANO >= ano_inicio
+      ]
+      if (!nrow(base)) next
+      uas_base <- unique(base[ANO == ano_inicio, .(UC, UA)])
+      if (!nrow(uas_base)) next
+      data.table::setkeyv(base, c("UC", "UA"))
+      data.table::setkeyv(uas_base, c("UC", "UA"))
+      sub <- base[uas_base, nomatch = 0L]
+      if (!nrow(sub) || data.table::uniqueN(sub$ANO) < 2L) next
+      idx <- idx + 1L
+      sub[, coorte_ano_inicial := ano_inicio]
+      out[[idx]] <- sub
+    }
+  }
+  data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+}
+
+monitora_coorte_codigo_curto <- function(grupo_grafico, tipo_metrica) {
+  monitora_editorial_codigo_grupo(grupo_grafico, tipo_metrica)
+}
+
+monitora_coorte_texto <- function(grupo_grafico, tipo_metrica, ano_inicio, form_veg = NULL) {
+  titulo_base <- monitora_editorial_titulo_base(grupo_grafico, tipo_metrica)
+  if (!is.null(form_veg)) {
+    titulo_base <- sub(" em formações campestres e savânicas$", paste0(" em formações ", tolower(form_veg), "s"), titulo_base)
+  }
+  subt <- paste0(
+    "Escopo: apenas UAs já amostradas em ", ano_inicio,
+    "; anos exibidos a partir de ", ano_inicio,
+    "."
+  )
+  list(
+    titulo = titulo_base,
+    subtitulo = subt,
+    caption = "Símbolos estatísticos (UA/transecto pareada) e regras editoriais idênticas às dos gráficos originais; coorte anual restrita às UAs presentes no ano inicial indicado."
+  )
+}
+
+monitora_coorte_agregar <- function(dt) {
+  monitora_editorial_agregar(dt, escopo = "amostra_total")
+}
+
+monitora_coorte_plot_prop <- function(dados, grupo_grafico, form_veg_alvo, com_rotulo = TRUE) {
+  dados <- data.table::as.data.table(data.table::copy(dados))
+  if (!nrow(dados)) return(NULL)
+  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]
+  txt <- monitora_coorte_texto(grupo_grafico, "proporcao_relativa", ano_inicio = ano_inicio, form_veg = form_veg_alvo)
+  dados <- dados[as.character(form_veg) == as.character(form_veg_alvo)]
+  if (!nrow(dados)) return(NULL)
+  dados_rot <- monitora_preparar_rotulos_prop_obrigatorios(
+    dados,
+    prop_min_interno = if (grupo_grafico %in% c("herbaceas_lenhosas")) 0.001 else 0.10
+  )
+  dados_rot <- monitora_editorial_compactar_rotulos_prop(dados_rot, grupo_grafico = grupo_grafico, escopo = "coorte")
+  ## ANO_label_rotulo já é rótulo de exibição calculado sem afetar a chave interna
+  ## de posicionamento. Não sobrescrever aqui, para preservar n UA quando disponível.
+  p <- ggplot2::ggplot(data = dados_rot) +
+    monitora_camada_barras_prop_obrigatorios(dados_rot)
+  if (isTRUE(com_rotulo)) {
+    p <- p + monitora_camadas_rotulos_prop_obrigatorios(dados_rot)
+  } else {
+    escala_anos <- unique(dados_rot[, .(ANO_factor_rotulo, ANO_label_rotulo)])
+    data.table::setorder(escala_anos, ANO_factor_rotulo)
+    p <- p + ggplot2::scale_y_continuous(
+      breaks = escala_anos$ANO_factor_rotulo,
+      labels = escala_anos$ANO_label_rotulo,
+      expand = ggplot2::expansion(mult = c(0.10, 0.12))
+    ) + ggplot2::coord_cartesian(xlim = c(0, 1), clip = "on")
+  }
+  p +
+    ggplot2::labs(
+      title = txt$titulo,
+      subtitle = txt$subtitulo,
+      x = "Proporção relativa",
+      y = "ANO",
+      fill = "Categoria",
+      caption = txt$caption
+    ) +
+    monitora_scale_x_prop_obrigatorios(dados_rot) +
+    monitora_theme_prop_publicavel() +
+    ggplot2::theme(
+      legend.position = "right",
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+}
+
+
+monitora_coorte_plot_cob <- function(dados, grupo_grafico, com_rotulo = TRUE) {
+  dados <- data.table::as.data.table(data.table::copy(dados))
+  if (!nrow(dados)) return(NULL)
+  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]
+  txt <- monitora_coorte_texto(grupo_grafico, "cobertura", ano_inicio = ano_inicio)
+
+  complexo <- grupo_grafico %in% c("categorias_gerais", MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS)
+  if (isTRUE(complexo)) {
+    dados <- monitora_adicionar_rotulo_cobertura_complexa(dados)
+  }
+  dados <- monitora_editorial_compactar_rotulos_cobertura(dados, grupo_grafico = grupo_grafico, escopo = "coorte")
+  dados <- monitora_preparar_layout_rotulos_cobertura(
+    dados,
+    complexo = complexo,
+    max_rotulos_complexo = if (grupo_grafico %in% c("formas_vida_secas_mortas")) 3L else 4L
+  )
+
+  x_ref <- suppressWarnings(max(pmax(dados$veg_cover, dados$ci_upper, dados$x_rotulo, na.rm = TRUE), na.rm = TRUE))
+  if (!is.finite(x_ref) || x_ref <= 0) x_ref <- max(dados$veg_cover, na.rm = TRUE)
+  if (!is.finite(x_ref) || x_ref <= 0) x_ref <- 5
+  x_lim <- monitora_calcular_xmax_cobertura_rotulos(dados, fallback = x_ref)
+  x_lim <- max(x_lim, x_ref)
+  breaks_x <- monitora_breaks_eixo_x_cobertura(x_lim)
+
+  cats <- unique(stats::na.omit(as.character(dados$categoria_label)))
+  n_cats <- length(cats)
+  legenda_inferior <- isTRUE(com_rotulo) && (isTRUE(complexo) || n_cats >= 6L)
+  leg_cols <- if (legenda_inferior) min(4L, max(2L, ceiling(n_cats / 3))) else 1L
+
+  p <- ggplot2::ggplot(
+    dados,
+    ggplot2::aes(x = veg_cover, y = factor(ANO), fill = categoria_label, group = categoria_label)
+  ) +
+    ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.7), width = 0.6) +
+    ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = ci_lower, xmax = ci_upper),
+      position = ggplot2::position_dodge(width = 0.7),
+      height = 0.2,
+      color = "black"
+    )
+  if (isTRUE(com_rotulo)) {
+    p <- p +
+      ggplot2::geom_label(
+        data = function(d) d[!is.na(d$rotulo_cobertura_plot) & d$rotulo_cobertura_plot != "", , drop = FALSE],
+        ggplot2::aes(x = x_rotulo, y = factor(ANO), label = rotulo_cobertura_plot, group = categoria_label),
+        inherit.aes = FALSE,
+        position = ggplot2::position_dodge(width = 0.7),
+        hjust = 0,
+        size = if (isTRUE(complexo)) MONITORA_FONTE_ROTULO_COB * 0.62 else MONITORA_FONTE_ROTULO_COB * 0.82,
+        lineheight = MONITORA_LINEHEIGHT_ROTULO,
+        label.size = NA,
+        label.padding = grid::unit(0.030, "lines"),
+        fill = "white",
+        color = "black",
+        show.legend = FALSE
+      )
+  }
+  p +
+    ggplot2::facet_wrap(~form_veg) +
+    ggplot2::labs(
+      title = txt$titulo,
+      subtitle = txt$subtitulo,
+      x = "Cobertura vegetal (%)",
+      y = "Ano",
+      fill = "Categoria",
+      caption = txt$caption
+    ) +
+    ggplot2::scale_y_discrete(drop = TRUE) +
+    ggplot2::scale_x_continuous(
+      breaks = breaks_x,
+      labels = scales::label_number(accuracy = 1, decimal.mark = ","),
+      expand = ggplot2::expansion(mult = c(0, 0.02))
+    ) +
+    monitora_theme_cobertura_publicavel() +
+    ggplot2::guides(fill = ggplot2::guide_legend(ncol = leg_cols, byrow = TRUE)) +
+    ggplot2::theme(
+      legend.position = if (legenda_inferior) "bottom" else "right",
+      legend.box = "vertical",
+      legend.text = ggplot2::element_text(size = if (legenda_inferior) 8.2 else 10),
+      legend.title = ggplot2::element_text(size = if (legenda_inferior) 9 else 11, face = "bold"),
+      panel.spacing.x = grid::unit(2.3, "lines"),
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank()
+    ) +
+    ## A janela usa o layout de rótulos calculado. Símbolos de composição não criam
+    ## camadas em y incompatível, evitando anos duplicados no eixo.
+    ggplot2::coord_cartesian(xlim = c(0, x_lim), clip = "on")
+}
+
+monitora_coorte_gerar_graficos <- function(series_coorte) {
+  if (is.null(series_coorte) || !nrow(series_coorte)) return(character(0))
+  nomes <- character(0)
+  grupos <- unique(series_coorte[, .(coorte_ano_inicial, grupo_grafico, tipo_metrica)])
+  data.table::setorder(grupos, coorte_ano_inicial, grupo_grafico, tipo_metrica)
+  for (ii in seq_len(nrow(grupos))) {
+    g <- grupos[ii]
+    base <- series_coorte[
+      coorte_ano_inicial == g$coorte_ano_inicial &
+        grupo_grafico == g$grupo_grafico &
+        tipo_metrica == g$tipo_metrica
+    ]
+    if (!nrow(base)) next
+    codigo <- monitora_coorte_codigo_curto(g$grupo_grafico, g$tipo_metrica)
+    dados_plot <- monitora_coorte_agregar(base)
+    if (!nrow(dados_plot)) next
+    dados_plot[, coorte_ano_inicial := g$coorte_ano_inicial]
+    if (identical(g$tipo_metrica, "proporcao_relativa")) {
+      for (fv in unique(as.character(dados_plot$form_veg))) {
+        sub <- dados_plot[form_veg == fv]
+        if (!nrow(sub)) next
+        sufixo_form <- if (grepl("Camp", fv, ignore.case = TRUE)) "camp" else "sav"
+        nome_com <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_", sufixo_form, "_com_rotulo")
+        nome_sem <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_", sufixo_form, "_sem_rotulo")
+        assign(nome_com, monitora_coorte_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = TRUE), envir = .GlobalEnv)
+        assign(nome_sem, monitora_coorte_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = FALSE), envir = .GlobalEnv)
+        nomes <- c(nomes, nome_com, nome_sem)
+      }
+    } else {
+      nome_com <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_com_rotulo")
+      nome_sem <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_sem_rotulo")
+      assign(nome_com, monitora_coorte_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = TRUE), envir = .GlobalEnv)
+      assign(nome_sem, monitora_coorte_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = FALSE), envir = .GlobalEnv)
+      nomes <- c(nomes, nome_com, nome_sem)
+    }
+  }
+  unique(nomes)
+}
+
+monitora_coorte_plot_names <- character(0)
+if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
+  MONITORA_STAT_SERIES_UA_ANO_COORTE <- monitora_coorte_filtrar_series(MONITORA_STAT_SERIES_UA_ANO)
+  if (nrow(MONITORA_STAT_SERIES_UA_ANO_COORTE)) {
+    monitora_stat_msg("rodando estatísticas para gráficos de coortes anuais iniciais")
+    partes_coorte <- split(MONITORA_STAT_SERIES_UA_ANO_COORTE, MONITORA_STAT_SERIES_UA_ANO_COORTE$coorte_ano_inicial)
+    MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
+      d <- partes_coorte[[k]]
+      out <- monitora_stat_comparar_adjacent(d)
+      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      out
+    }), fill = TRUE, use.names = TRUE)
+    MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
+      d <- partes_coorte[[k]]
+      out <- monitora_stat_comparar_linha_base(d)
+      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      out
+    }), fill = TRUE, use.names = TRUE)
+    MONITORA_STAT_COMPOSICAO_GERAL_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
+      d <- partes_coorte[[k]]
+      out <- monitora_stat_composicao_adjacent(d)
+      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      out
+    }), fill = TRUE, use.names = TRUE)
+    MONITORA_STAT_COMPOSICAO_LINHA_BASE_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
+      d <- partes_coorte[[k]]
+      out <- monitora_stat_composicao_linha_base(d)
+      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      out
+    }), fill = TRUE, use.names = TRUE)
+    if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
+      if (nrow(MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE)) data.table::fwrite(MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_mudanca_ano_a_ano_coortes_iniciais.csv"), row.names = FALSE)
+      if (nrow(MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE)) data.table::fwrite(MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_mudanca_linha_base_coortes_iniciais.csv"), row.names = FALSE)
+      if (nrow(MONITORA_STAT_COMPOSICAO_GERAL_COORTE)) data.table::fwrite(MONITORA_STAT_COMPOSICAO_GERAL_COORTE, file.path(MONITORA_OUTPUT_DIR, "estatisticas_composicao_geral_ano_a_ano_coortes_iniciais.csv"), row.names = FALSE)
+    }
+    monitora_coorte_plot_names <- monitora_coorte_gerar_graficos(MONITORA_STAT_SERIES_UA_ANO_COORTE)
+    monitora_stat_msg("gráficos de coortes anuais iniciais preparados: ", length(monitora_coorte_plot_names))
+  }
+}
+
 # Nomes de todos os objetos de gráfico.
 plot_list_names <- c(
   "plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo",
@@ -9857,6 +11755,12 @@ plot_list_names <- c(
   "plot_p5.3.1_veg_cover_seca_morta_com_rotulo",
   "plot_p5.3.2_seca_morta_sem_rotulo"
 )
+if (exists("monitora_editorial_plot_names") && length(monitora_editorial_plot_names) > 0L) {
+  plot_list_names <- unique(c(plot_list_names, monitora_editorial_plot_names))
+}
+if (exists("monitora_coorte_plot_names") && length(monitora_coorte_plot_names) > 0L) {
+  plot_list_names <- unique(c(plot_list_names, monitora_coorte_plot_names))
+}
 
 
 monitora_stat_largura_painel_gtable_in <- function(g, largura_total_in) {
@@ -9908,7 +11812,11 @@ monitora_stat_adicionar_caption_painel <- function(plot_obj, caption, largura_to
   painel <- monitora_stat_largura_painel_gtable_in(g, largura_total_in = largura_total_in)
 
   # Pequena folga interna para impedir encostar nas bordas do painel.
-  largura_util_in <- max(painel$largura_in - 0.06, 0.1)
+  # A estimativa de largura de texto pode subestimar glifos como ▲/▽/≈ e fontes
+  # substituídas. Além disso, blocos textuais longos precisam ser quebrados por
+  # palavras quando excedem sozinhos a largura útil. O fator de segurança abaixo
+  # encurta as linhas e a quebra robusta evita que o rodapé atravesse o painel.
+  largura_util_in <- max(painel$largura_in * 0.68 - 0.22, 0.1)
   linhas <- monitora_stat_quebrar_caption_painel_in(
     caption,
     largura_max_in = largura_util_in,
@@ -9936,7 +11844,7 @@ monitora_stat_adicionar_caption_painel <- function(plot_obj, caption, largura_to
     t = linha_caption,
     l = painel$l,
     r = painel$r,
-    clip = "off",
+    clip = "on",
     name = "caption_painel"
   )
   list(plot = g, n_linhas_caption = length(linhas))
@@ -10003,9 +11911,18 @@ monitora_ajustar_layout_exportacao <- function(plot_obj, nome_plot = NULL, width
 }
 
 monitora_ggsave_publicavel <- function(filename, plot, width = 11, height = 7, dpi = 320, nome_plot = NULL) {
+  if (!is.null(nome_plot) && grepl("^plot_ed_", nome_plot)) {
+    width <- max(width, 12.8)
+    height <- max(height, if (grepl("pareado_periodo", nome_plot)) 11.6 else 7.8)
+  }
+  if (!is.null(nome_plot) && grepl("_coorte_", nome_plot) && grepl("veg_cover", nome_plot) && grepl("_com_rotulo", nome_plot)) {
+    width <- max(width, 12.8)
+    height <- max(height, 8.8)
+  }
   tem_rotulo <- !is.null(nome_plot) && exists("monitora_stat_plot_com_rotulo", mode = "function") && monitora_stat_plot_com_rotulo(nome_plot)
   if (!is.null(nome_plot)) {
     plot <- monitora_stat_anotar_plot_exportacao(plot, nome_plot)
+    monitora_layout_registrar_auditoria_plot(plot, nome_plot = nome_plot)
   }
   # Gráficos com rótulos estatísticos precisam de folga vertical para a legenda metodológica.
   if (isTRUE(tem_rotulo)) height <- max(height, 7.95)
@@ -10047,6 +11964,14 @@ if (isTRUE(MONITORA_EXPORTAR_GRAFICOS) && (!exists("registros_corrig") || nrow(r
       row.names = FALSE
     )
     monitora_stat_msg("auditoria de símbolos dos gráficos gravada em output/auditoria_simbolos_graficos.csv")
+  }
+  if (exists("MONITORA_AUDITORIA_LAYOUT_ROTULOS")) {
+    data.table::fwrite(
+      MONITORA_AUDITORIA_LAYOUT_ROTULOS,
+      file.path(MONITORA_OUTPUT_DIR, "auditoria_layout_rotulos.csv"),
+      row.names = FALSE
+    )
+    monitora_stat_msg("auditoria de layout dos rótulos gravada em output/auditoria_layout_rotulos.csv")
   }
   monitora_perf_checkpoint("exportacao_graficos_png", "gravação dos gráficos PNG")
 } else {
@@ -10136,22 +12061,22 @@ combined_sf_object <- st_set_crs(combined_sf_object, 4326)
 st_write(combined_sf_object, "UAs_registros_corrig_stat.kml", driver = "KML", delete_dsn=TRUE)
 
 # Exporta o arquivo KML, sobrescrevendo arquivo anterior se existir.
-st_write(subset(combined_sf_object %>% select(c(".id", 
-                                                "PROTOCOLO", 
-                                                "UC", 
-                                                "UA", 
-                                                "ANO", 
-                                                "lat_ini", 
-                                                "long_ini", 
-                                                "alt_ini", 
-                                                "acc_ini", 
-                                                "lat_fin", 
-                                                "long_fin", 
-                                                "alt_fin", 
-                                                "acc_fin", 
-                                                "name", 
-                                                "geometry", 
-                                                "point_type"))), 
+st_write(subset(combined_sf_object %>% select(c(".id",
+                                                "PROTOCOLO",
+                                                "UC",
+                                                "UA",
+                                                "ANO",
+                                                "lat_ini",
+                                                "long_ini",
+                                                "alt_ini",
+                                                "acc_ini",
+                                                "lat_fin",
+                                                "long_fin",
+                                                "alt_fin",
+                                                "acc_fin",
+                                                "name",
+                                                "geometry",
+                                                "point_type"))),
          "UAs_verg_ini_verg_fin.kml", driver = "KML", delete_dsn=TRUE)
 
 # Remove objetos temporários.

@@ -1,93 +1,157 @@
-# Monitora-Campestre-Savanico
+# Monitora Campestre-Savânico — Alvo Global
 
-Scripts de tratamento, auditoria, análise estatística e visualização de dados do **Alvo Global do Componente Campestre Savânico** do Programa Monitora.
+Scripts de tratamento, auditoria, deduplicação, análise estatística e geração de produtos gráficos para dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
 
-## Versão pública atual
+Versão pública atual: **v2.1.0**.
 
-**v2.0.2** — Revisão editorial para publicação, com manutenção da consolidação estatística, auditoria e relatório textual.
+## Finalidade
 
-A partir desta versão, o repositório passa a adotar versionamento público semântico.
+O script consolida registros exportados do SISMONITORA e produz bases padronizadas, tabelas analíticas, auditorias, estatísticas temporais, relatório textual e gráficos publicáveis. O fluxo foi desenhado para aceitar tanto dados brutos quanto arquivos já tratados em execuções anteriores, permitindo novas rodadas de tratamento com dados incrementais.
 
-Consulte:
+## Entradas aceitas
 
-- [`VERSION`](VERSION)
-- [`CHANGELOG.md`](CHANGELOG.md)
-- [`docs/versionamento.md`](docs/versionamento.md)
+Coloque os arquivos no subdiretório `input/` ou no mesmo diretório do script. O uso de `input/` é recomendado para evitar confusão com produtos antigos.
 
-## Script recomendado para uso
+Entradas reconhecidas:
 
-O script atual recomendado está disponível diretamente na raiz do repositório:
+- arquivos ZIP exportados individualmente pelo SISMONITORA;
+- arquivos ZIP, CSV ou XLSX de exportação em lote;
+- arquivos `registros_corrig*.csv` gerados por execuções anteriores do próprio script, quando usados deliberadamente como nova entrada.
 
-[`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R)
+O script não exige extração manual dos ZIPs. As extrações recursivas são feitas em `extracted/`.
 
-A mesma versão também é mantida na estrutura interna do projeto:
+## Saídas principais
 
-[`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R)
+Na raiz do projeto:
 
-Uma cópia congelada da versão pública `v2.0.2` está disponível em:
+- `registros_corrig.csv`: registros padronizados, deduplicados e auditáveis;
+- `registros_corrig_stat.csv`: base estatística por UC, UA, ano e métricas derivadas.
 
-[`releases/v2.0.2/monitora_campsav_alvo_global_v2.0.2.R`](releases/v2.0.2/monitora_campsav_alvo_global_v2.0.2.R)
+Em `output/`:
 
-## Principais funcionalidades da v2.0.2
+- tabelas de proporção relativa e cobertura vegetal;
+- tabelas estatísticas de mudança ano a ano, linha de base e composição geral;
+- relatório textual estatístico (`relatorio_textual_estatistico.txt`);
+- gráficos publicáveis em `output/plots_png/`;
+- índice de gráficos e auditorias de símbolos, esforço amostral e layout de rótulos;
+- arquivos KML, quando habilitados e aplicáveis.
 
-- Importação de múltiplos tipos de entrada: ZIPs do SISMONITORA, CSV/XLSX em lote e arquivos pós-tratamento.
-- Auditoria de arquivos candidatos à importação.
-- Deduplicação semântica de registros equivalentes.
-- Verificação de integridade dos dados.
-- Tratamento defensivo de colunas, datas, coordenadas e aliases.
-- Controle de performance, memória e recursos computacionais.
-- Análise estatística inferencial pareada por unidade amostral.
-- Comparações ano a ano e contra linha de base acumulada.
-- Teste de permutação pareado.
-- Intervalo de confiança por bootstrap.
-- Correção de múltiplas comparações por FDR.
-- Análise de mudança na composição geral com distância de Bray-Curtis.
-- Geração de gráficos revisados com rótulos, símbolos estatísticos e legendas explicativas.
-- Geração de relatório textual estatístico e ecológico.
+Em `log/`:
 
-## Estrutura do repositório
+- relatório de execução;
+- auditorias de arquivos, tipos de entrada, duplicidades, compatibilidade entre fontes, completude e coordenadas;
+- relatórios de performance, memória e controle de recursos.
 
-- `MONITORA_CAMPSAV_Alvo_Global.R`: script atual recomendado para uso.
-- `R/monitora_campsav_alvo_global.R`: cópia do script atual na estrutura interna do projeto.
-- `releases/v2.0.2/`: cópia congelada da versão pública `v2.0.2`.
-- `archive/versoes_historicas/`: versões históricas anteriores ao versionamento semântico.
-- `docs/`: documentação auxiliar.
-- `tools/`: ferramentas auxiliares de auditoria e revisão.
-- `.github/workflows/`: automações do GitHub Actions.
+## Principais recursos da v2.1.0
 
-## Scripts históricos
+- Consolidação de gráficos temporais editoriais com escopo amostral explícito.
+- Gráficos para amostra total, UAs presentes em todos os anos e comparações pareadas por período.
+- Análise de coortes por ano inicial.
+- Relatório textual estatístico com síntese dos principais achados por UC, formação vegetacional, ano, linha de base e categoria.
+- Auditoria ampliada de entrada, deduplicação, completude, coordenadas, performance, memória, símbolos estatísticos e layout de rótulos.
+- Motor editorial de rótulos, conectores, símbolos estatísticos, margens e legendas inferiores dos gráficos.
+- Aceitação defensiva de `registros_corrig*.csv` como entrada válida, sem reprocessar automaticamente produtos de `output/` e `log/`.
 
-Os scripts `.R` datados foram movidos para:
+## Requisitos de R
 
-[`archive/versoes_historicas/`](archive/versoes_historicas/)
+Pacotes usados pelo script:
 
-Esses arquivos representam versões históricas anteriores à adoção do versionamento público semântico. Foram preservados por rastreabilidade.
+- `rstudioapi`
+- `dplyr`
+- `data.table`
+- `purrr`
+- `stringr`
+- `tidyverse`
+- `ggplot2`
+- `ggrepel`
+- `readxl`
+- `openxlsx`
+- `sf`
 
-Na revisão associada à publicação da `v2.0.0`, os comentários dos scripts históricos foram revisados editorialmente e padronizados majoritariamente em português, sem alteração do código ativo.
+O script tenta instalar pacotes ausentes durante a execução. Em ambientes institucionais ou sem permissão de instalação, instale os pacotes previamente.
 
-A versão recomendada para uso atual é:
+## Uso básico
 
-[`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R)
+1. Clone ou baixe este repositório.
+2. Coloque o script no diretório de trabalho do projeto.
+3. Coloque as entradas em `input/`.
+4. Execute o script completo no RStudio ou por `Rscript`.
+5. Consulte os produtos em `output/` e as auditorias em `log/`.
 
-## Uso auxiliar de IA
+Exemplo por terminal:
 
-Na fase de consolidação publicada como `v2.0.0`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração e organização do versionamento público.
+```bash
+Rscript monitora_campsav_alvo_global.R
+```
 
-O uso de IA teve caráter auxiliar. As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados e responsabilidade técnica pelo script permanecem sob responsabilidade do autor.
+## Parâmetros por variáveis de ambiente
 
-Mais detalhes em:
+Alguns parâmetros podem ser definidos antes da execução:
 
-[`docs/uso_de_ia.md`](docs/uso_de_ia.md)
+| Variável | Valores esperados | Finalidade |
+|---|---|---|
+| `MONITORA_PERFIL_EXECUCAO` | `auto`, `rapido`, `economico` | Ajusta estratégia de performance e uso de memória. |
+| `MONITORA_BATCH_SIZE_CSV` | inteiro | Define tamanho de lote para leitura/processamento de CSVs. |
+| `MONITORA_DT_THREADS` | inteiro | Define número de threads do `data.table`. |
+| `MONITORA_GC_MODO` | `auto`, `agressivo`, `desligado` | Controla chamadas de coleta de lixo. |
+| `MONITORA_AUDITORIA_COORDENADAS_COMPLETA` | `true`/`false` | Habilita auditoria completa de coordenadas. |
+| `MONITORA_EXPORTAR_GRAFICOS` | `true`/`false` | Habilita exportação de gráficos. |
+| `MONITORA_EXPORTAR_KML` | `true`/`false` | Habilita exportação de KML. |
+| `MONITORA_STAT_BOOT` | inteiro | Número de reamostragens bootstrap. |
+| `MONITORA_STAT_PERM` | inteiro | Número de permutações estatísticas. |
+| `MONITORA_GRAFICOS_PAREADOS_TODOS_PARES` | `true`/`false` | Controla geração ampliada de pares temporais nos gráficos editoriais. |
 
-## Backup pré-revisão
+Exemplo no Linux/macOS:
 
-O estado do repositório antes da revisão editorial, adoção do versionamento semântico e publicação da `v2.0.0` foi preservado em:
+```bash
+MONITORA_PERFIL_EXECUCAO=economico MONITORA_EXPORTAR_KML=false Rscript monitora_campsav_alvo_global.R
+```
 
-- branch: `backup/pre-revisao-editorial-20260610`
-- tag: `pre-revisao-editorial-20260610`
+## Interpretação dos gráficos
 
-## Licença
+Os gráficos publicáveis foram desenhados para explicitar:
 
-Este projeto está licenciado sob a licença GPL-3.0. Consulte:
+- formação vegetacional;
+- ano;
+- esforço amostral (`n UA`);
+- escopo amostral da comparação;
+- incerteza por IC95%, quando aplicável;
+- símbolos estatísticos de mudança por categoria ou composição geral;
+- legenda metodológica inferior, quando necessária.
 
-[`LICENSE`](LICENSE)
+Em gráficos com muitas categorias, a versão sem rótulos pode ser a principal para publicação, enquanto a versão com rótulos serve como apoio de diagnóstico e validação.
+
+## Auditoria antes de publicar uma versão
+
+Antes de subir uma nova versão, conferir:
+
+```bash
+VERSAO="2.1.0"
+TAG="v${VERSAO}"
+
+sha256sum \
+  "monitora_campsav_alvo_global_${TAG}.R" \
+  monitora_campsav_alvo_global.R \
+  MONITORA_CAMPSAV_Alvo_Global.R \
+  R/monitora_campsav_alvo_global.R \
+  "releases/${TAG}/monitora_campsav_alvo_global_${TAG}.R"
+
+grep -Rni "Versão pública" \
+  "monitora_campsav_alvo_global_${TAG}.R" \
+  monitora_campsav_alvo_global.R \
+  MONITORA_CAMPSAV_Alvo_Global.R \
+  R/monitora_campsav_alvo_global.R \
+  "releases/${TAG}/monitora_campsav_alvo_global_${TAG}.R"
+
+cat VERSION
+```
+
+Critério de liberação: os cinco scripts devem ter o mesmo hash, `VERSION` deve conter `2.1.0` e os gráficos de validação devem ter sido conferidos visualmente.
+
+## Citação
+
+CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas do Componente Campestre Savânico do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio.
+
+## Repositório
+
+https://github.com/danilovcorrea/Monitora-Campestre-Savanico
