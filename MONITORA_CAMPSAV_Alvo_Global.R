@@ -9065,9 +9065,9 @@ monitora_stat_filtrar_simbolos_editorial <- function(dados, grupo_grafico) {
 }
 
 
-monitora_stat_identificar_coorte_plot <- function(dados_plot) {
-  if (is.null(dados_plot) || !is.data.frame(dados_plot) || !"coorte_ano_inicial" %in% names(dados_plot)) return(NA_integer_)
-  vals <- unique(suppressWarnings(as.integer(as.character(dados_plot$coorte_ano_inicial))))
+monitora_stat_identificar_painel_ano_inicial_plot <- function(dados_plot) {
+  if (is.null(dados_plot) || !is.data.frame(dados_plot) || !"ano_inicial_painel" %in% names(dados_plot)) return(NA_integer_)
+  vals <- unique(suppressWarnings(as.integer(as.character(dados_plot$ano_inicial_painel))))
   vals <- vals[is.finite(vals)]
   if (!length(vals)) return(NA_integer_)
   vals[1]
@@ -9088,12 +9088,12 @@ monitora_stat_preparar_dados_composicao_plot <- function(dados_plot, grupo_grafi
   forms_plot <- if ("form_veg" %in% names(dados)) unique(as.character(dados$form_veg)) else character()
   if (!is.null(form_veg)) forms_plot <- as.character(form_veg)
 
-  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
-  if (is.finite(coorte_plot) && exists("MONITORA_STAT_COMPOSICAO_GERAL_COORTE")) {
-    comp <- MONITORA_STAT_COMPOSICAO_GERAL_COORTE[
-      MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["coorte_ano_inicial"]] == coorte_plot &
-        MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["grupo_grafico"]] == grupo_grafico &
-        MONITORA_STAT_COMPOSICAO_GERAL_COORTE[["tipo_metrica"]] == tipo_metrica
+  ano_inicial_painel_plot <- monitora_stat_identificar_painel_ano_inicial_plot(dados)
+  if (is.finite(ano_inicial_painel_plot) && exists("MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL")) {
+    comp <- MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL[
+      MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL[["ano_inicial_painel"]] == ano_inicial_painel_plot &
+        MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL[["tipo_metrica"]] == tipo_metrica
     ]
   } else {
     if (!exists("MONITORA_STAT_COMPOSICAO_GERAL")) return(data.table::data.table())
@@ -9244,17 +9244,17 @@ monitora_stat_preparar_dados_simbolos_plot <- function(dados_plot, grupo_grafico
   }
 
   usar_periodo <- "periodo_pareado" %in% names(dados) && exists("MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL")
-  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
+  ano_inicial_painel_plot <- monitora_stat_identificar_painel_ano_inicial_plot(dados)
   if (isTRUE(usar_periodo)) {
     stat <- MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[
       MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[["grupo_grafico"]] == grupo_grafico &
         MONITORA_STAT_MUDANCA_PERIODO_EDITORIAL[["tipo_metrica"]] == tipo_metrica
     ]
-  } else if (is.finite(coorte_plot) && exists("MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE")) {
-    stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[
-      MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["coorte_ano_inicial"]] == coorte_plot &
-        MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["grupo_grafico"]] == grupo_grafico &
-        MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE[["tipo_metrica"]] == tipo_metrica
+  } else if (is.finite(ano_inicial_painel_plot) && exists("MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL")) {
+    stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL[
+      MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL[["ano_inicial_painel"]] == ano_inicial_painel_plot &
+        MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL[["tipo_metrica"]] == tipo_metrica
     ]
   } else if (exists("MONITORA_STAT_MUDANCA_ANO_A_ANO")) {
     stat <- MONITORA_STAT_MUDANCA_ANO_A_ANO[
@@ -9418,12 +9418,12 @@ monitora_stat_preparar_dados_linha_base_plot <- function(dados_plot, grupo_grafi
   if (nrow(dados) == 0 || !all(c("ANO", "form_veg", "categoria") %in% names(dados))) {
     return(data.table::data.table())
   }
-  coorte_plot <- monitora_stat_identificar_coorte_plot(dados)
-  if (is.finite(coorte_plot) && exists("MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE")) {
-    stat <- MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[
-      MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["coorte_ano_inicial"]] == coorte_plot &
-        MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["grupo_grafico"]] == grupo_grafico &
-        MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE[["tipo_metrica"]] == tipo_metrica
+  ano_inicial_painel_plot <- monitora_stat_identificar_painel_ano_inicial_plot(dados)
+  if (is.finite(ano_inicial_painel_plot) && exists("MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL")) {
+    stat <- MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL[
+      MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL[["ano_inicial_painel"]] == ano_inicial_painel_plot &
+        MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL[["grupo_grafico"]] == grupo_grafico &
+        MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL[["tipo_metrica"]] == tipo_metrica
     ]
   } else {
     if (!exists("MONITORA_STAT_MUDANCA_LINHA_BASE")) return(data.table::data.table())
@@ -10313,7 +10313,7 @@ monitora_relatorio_principais_composicao <- function(dt, linha_base = FALSE, n_t
 monitora_relatorio_coluna_ano_inicial_painel <- function(dt) {
   if (is.null(dt) || !is.data.frame(dt)) return(NA_character_)
   if ("ano_inicial_painel" %in% names(dt)) return("ano_inicial_painel")
-  if ("coorte_ano_inicial" %in% names(dt)) return("coorte_ano_inicial")
+  if ("ano_inicial_painel" %in% names(dt)) return("ano_inicial_painel")
   NA_character_
 }
 
@@ -10622,7 +10622,7 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
       MONITORA_STAT_MIN_PARES, " UAs pareadas."
     ),
     paste0(
-      "- Os painéis amostrais por ano inicial não são coortes ecológicas de indivíduos; ",
+      "- Os painéis amostrais por ano inicial são subconjuntos longitudinais de UAs; ",
       "são subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento no painel."
     ),
     "",
@@ -10876,7 +10876,7 @@ monitora_gerar_relatorio_textual_estatistico <- function(caminho = file.path(MON
     paste0("- estabilidade/equivalência: IC95% dentro da margem ecológica de ±", MONITORA_STAT_MARGEM_PP, " p.p."),
     paste0("- pares insuficientes: menos de ", MONITORA_STAT_MIN_PARES, " UAs pareadas válidas."),
     "- inconclusivo: amostra testável, mas sem evidência suficiente para afirmar mudança ou estabilidade/equivalência.",
-    "- painel amostral por ano inicial: subconjunto longitudinal de UAs presentes no primeiro ano do painel; não representa coorte ecológica de indivíduos."
+    "- painel amostral por ano inicial: subconjunto longitudinal de UAs presentes no primeiro ano do painel."
   )
 
   linhas <- linhas[!is.na(linhas)]
@@ -11617,8 +11617,8 @@ monitora_editorial_plot <- function(dados, grupo_grafico, tipo_metrica, escopo) 
     dados_prop[is.na(ANO_label_rotulo) | !nzchar(ANO_label_rotulo), ANO_label_rotulo := as.character(ANO)]
     dados[, chave_rotulo_ano_editorial := NULL]
     dados_prop[, chave_rotulo_ano_editorial := NULL]
-    if ("coorte_ano_inicial" %in% names(dados)) {
-      dados_prop[, coorte_ano_inicial := unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]]
+    if ("ano_inicial_painel" %in% names(dados)) {
+      dados_prop[, ano_inicial_painel := unique(stats::na.omit(as.integer(as.character(dados$ano_inicial_painel))))[1]]
     }
 
     ## faixa reservada à esquerda do painel (em unidades do eixo X, que
@@ -11880,7 +11880,7 @@ if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_
   monitora_stat_msg("gráficos temporais editoriais preparados: ", length(monitora_editorial_plot_names))
 }
 
-monitora_coorte_filtrar_series <- function(series_dt) {
+monitora_painel_ano_inicial_filtrar_series <- function(series_dt) {
   if (is.null(series_dt) || !nrow(series_dt)) return(data.table::data.table())
   dt <- data.table::as.data.table(data.table::copy(series_dt))
   anos <- sort(unique(as.integer(dt$ANO)))
@@ -11906,18 +11906,18 @@ monitora_coorte_filtrar_series <- function(series_dt) {
       sub <- base[uas_base, nomatch = 0L]
       if (!nrow(sub) || data.table::uniqueN(sub$ANO) < 2L) next
       idx <- idx + 1L
-      sub[, coorte_ano_inicial := ano_inicio]
+      sub[, ano_inicial_painel := ano_inicio]
       out[[idx]] <- sub
     }
   }
   data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
 }
 
-monitora_coorte_codigo_curto <- function(grupo_grafico, tipo_metrica) {
+monitora_painel_ano_inicial_codigo_curto <- function(grupo_grafico, tipo_metrica) {
   monitora_editorial_codigo_grupo(grupo_grafico, tipo_metrica)
 }
 
-monitora_coorte_texto <- function(grupo_grafico, tipo_metrica, ano_inicio, form_veg = NULL) {
+monitora_painel_ano_inicial_texto <- function(grupo_grafico, tipo_metrica, ano_inicio, form_veg = NULL) {
   titulo_base <- monitora_editorial_titulo_base(grupo_grafico, tipo_metrica)
   if (!is.null(form_veg)) {
     titulo_base <- sub(" em formações campestres e savânicas$", paste0(" em formações ", tolower(form_veg), "s"), titulo_base)
@@ -11934,15 +11934,15 @@ monitora_coorte_texto <- function(grupo_grafico, tipo_metrica, ano_inicio, form_
   )
 }
 
-monitora_coorte_agregar <- function(dt) {
+monitora_painel_ano_inicial_agregar <- function(dt) {
   monitora_editorial_agregar(dt, escopo = "amostra_total")
 }
 
-monitora_coorte_plot_prop <- function(dados, grupo_grafico, form_veg_alvo, com_rotulo = TRUE) {
+monitora_painel_ano_inicial_plot_prop <- function(dados, grupo_grafico, form_veg_alvo, com_rotulo = TRUE) {
   dados <- data.table::as.data.table(data.table::copy(dados))
   if (!nrow(dados)) return(NULL)
-  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]
-  txt <- monitora_coorte_texto(grupo_grafico, "proporcao_relativa", ano_inicio = ano_inicio, form_veg = form_veg_alvo)
+  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$ano_inicial_painel))))[1]
+  txt <- monitora_painel_ano_inicial_texto(grupo_grafico, "proporcao_relativa", ano_inicio = ano_inicio, form_veg = form_veg_alvo)
   dados <- dados[as.character(form_veg) == as.character(form_veg_alvo)]
   if (!nrow(dados)) return(NULL)
   dados_rot <- monitora_preparar_rotulos_prop_obrigatorios(
@@ -11984,11 +11984,11 @@ monitora_coorte_plot_prop <- function(dados, grupo_grafico, form_veg_alvo, com_r
 }
 
 
-monitora_coorte_plot_cob <- function(dados, grupo_grafico, com_rotulo = TRUE) {
+monitora_painel_ano_inicial_plot_cob <- function(dados, grupo_grafico, com_rotulo = TRUE) {
   dados <- data.table::as.data.table(data.table::copy(dados))
   if (!nrow(dados)) return(NULL)
-  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$coorte_ano_inicial))))[1]
-  txt <- monitora_coorte_texto(grupo_grafico, "cobertura", ano_inicio = ano_inicio)
+  ano_inicio <- unique(stats::na.omit(as.integer(as.character(dados$ano_inicial_painel))))[1]
+  txt <- monitora_painel_ano_inicial_texto(grupo_grafico, "cobertura", ano_inicio = ano_inicio)
 
   complexo <- grupo_grafico %in% c("categorias_gerais", MONITORA_STAT_GRUPOS_MUITAS_CATEGORIAS)
   if (isTRUE(complexo)) {
@@ -12073,39 +12073,39 @@ monitora_coorte_plot_cob <- function(dados, grupo_grafico, com_rotulo = TRUE) {
     ggplot2::coord_cartesian(xlim = c(0, x_lim), clip = "on")
 }
 
-monitora_coorte_gerar_graficos <- function(series_coorte) {
-  if (is.null(series_coorte) || !nrow(series_coorte)) return(character(0))
+monitora_painel_ano_inicial_gerar_graficos <- function(series_painel_ano_inicial) {
+  if (is.null(series_painel_ano_inicial) || !nrow(series_painel_ano_inicial)) return(character(0))
   nomes <- character(0)
-  grupos <- unique(series_coorte[, .(coorte_ano_inicial, grupo_grafico, tipo_metrica)])
-  data.table::setorder(grupos, coorte_ano_inicial, grupo_grafico, tipo_metrica)
+  grupos <- unique(series_painel_ano_inicial[, .(ano_inicial_painel, grupo_grafico, tipo_metrica)])
+  data.table::setorder(grupos, ano_inicial_painel, grupo_grafico, tipo_metrica)
   for (ii in seq_len(nrow(grupos))) {
     g <- grupos[ii]
-    base <- series_coorte[
-      coorte_ano_inicial == g$coorte_ano_inicial &
+    base <- series_painel_ano_inicial[
+      ano_inicial_painel == g$ano_inicial_painel &
         grupo_grafico == g$grupo_grafico &
         tipo_metrica == g$tipo_metrica
     ]
     if (!nrow(base)) next
-    codigo <- monitora_coorte_codigo_curto(g$grupo_grafico, g$tipo_metrica)
-    dados_plot <- monitora_coorte_agregar(base)
+    codigo <- monitora_painel_ano_inicial_codigo_curto(g$grupo_grafico, g$tipo_metrica)
+    dados_plot <- monitora_painel_ano_inicial_agregar(base)
     if (!nrow(dados_plot)) next
-    dados_plot[, coorte_ano_inicial := g$coorte_ano_inicial]
+    dados_plot[, ano_inicial_painel := g$ano_inicial_painel]
     if (identical(g$tipo_metrica, "proporcao_relativa")) {
       for (fv in unique(as.character(dados_plot$form_veg))) {
         sub <- dados_plot[form_veg == fv]
         if (!nrow(sub)) next
         sufixo_form <- if (grepl("Camp", fv, ignore.case = TRUE)) "camp" else "sav"
-        nome_com <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_", sufixo_form, "_com_rotulo")
-        nome_sem <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_", sufixo_form, "_sem_rotulo")
-        assign(nome_com, monitora_coorte_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = TRUE), envir = .GlobalEnv)
-        assign(nome_sem, monitora_coorte_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = FALSE), envir = .GlobalEnv)
+        nome_com <- paste0("plot_", codigo, "_painel_ano_inicial_", g$ano_inicial_painel, "_", sufixo_form, "_com_rotulo")
+        nome_sem <- paste0("plot_", codigo, "_painel_ano_inicial_", g$ano_inicial_painel, "_", sufixo_form, "_sem_rotulo")
+        assign(nome_com, monitora_painel_ano_inicial_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = TRUE), envir = .GlobalEnv)
+        assign(nome_sem, monitora_painel_ano_inicial_plot_prop(sub, g$grupo_grafico, form_veg_alvo = fv, com_rotulo = FALSE), envir = .GlobalEnv)
         nomes <- c(nomes, nome_com, nome_sem)
       }
     } else {
-      nome_com <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_com_rotulo")
-      nome_sem <- paste0("plot_", codigo, "_coorte_", g$coorte_ano_inicial, "_sem_rotulo")
-      assign(nome_com, monitora_coorte_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = TRUE), envir = .GlobalEnv)
-      assign(nome_sem, monitora_coorte_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = FALSE), envir = .GlobalEnv)
+      nome_com <- paste0("plot_", codigo, "_painel_ano_inicial_", g$ano_inicial_painel, "_com_rotulo")
+      nome_sem <- paste0("plot_", codigo, "_painel_ano_inicial_", g$ano_inicial_painel, "_sem_rotulo")
+      assign(nome_com, monitora_painel_ano_inicial_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = TRUE), envir = .GlobalEnv)
+      assign(nome_sem, monitora_painel_ano_inicial_plot_cob(dados_plot, g$grupo_grafico, com_rotulo = FALSE), envir = .GlobalEnv)
       nomes <- c(nomes, nome_com, nome_sem)
     }
   }
@@ -12116,55 +12116,55 @@ monitora_coorte_gerar_graficos <- function(series_coorte) {
 monitora_exportar_tabela_painel_ano_inicial <- function(dt, arquivo) {
   if (is.null(dt) || !is.data.frame(dt) || !nrow(dt)) return(invisible(FALSE))
   out <- data.table::as.data.table(data.table::copy(dt))
-  if ("coorte_ano_inicial" %in% names(out) && !"ano_inicial_painel" %in% names(out)) {
-    data.table::setnames(out, "coorte_ano_inicial", "ano_inicial_painel")
+  if ("ano_inicial_painel" %in% names(out) && !"ano_inicial_painel" %in% names(out)) {
+    data.table::setnames(out, "ano_inicial_painel", "ano_inicial_painel")
   }
   data.table::fwrite(out, file.path(MONITORA_OUTPUT_DIR, arquivo), row.names = FALSE)
   invisible(TRUE)
 }
 
-monitora_coorte_plot_names <- character(0)
+monitora_painel_ano_inicial_plot_names <- character(0)
 if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
-  MONITORA_STAT_SERIES_UA_ANO_COORTE <- monitora_coorte_filtrar_series(MONITORA_STAT_SERIES_UA_ANO)
-  if (nrow(MONITORA_STAT_SERIES_UA_ANO_COORTE)) {
+  MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL <- monitora_painel_ano_inicial_filtrar_series(MONITORA_STAT_SERIES_UA_ANO)
+  if (nrow(MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL)) {
     monitora_stat_msg("rodando estatísticas para gráficos de painéis amostrais por ano inicial")
-    partes_coorte <- split(MONITORA_STAT_SERIES_UA_ANO_COORTE, MONITORA_STAT_SERIES_UA_ANO_COORTE$coorte_ano_inicial)
-    MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
-      d <- partes_coorte[[k]]
+    partes_painel_ano_inicial <- split(MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL, MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL$ano_inicial_painel)
+    MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL <- data.table::rbindlist(lapply(names(partes_painel_ano_inicial), function(k) {
+      d <- partes_painel_ano_inicial[[k]]
       out <- monitora_stat_comparar_adjacent(d)
-      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      if (nrow(out)) out[, ano_inicial_painel := as.integer(k)]
       out
     }), fill = TRUE, use.names = TRUE)
-    MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
-      d <- partes_coorte[[k]]
+    MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL <- data.table::rbindlist(lapply(names(partes_painel_ano_inicial), function(k) {
+      d <- partes_painel_ano_inicial[[k]]
       out <- monitora_stat_comparar_linha_base(d)
-      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      if (nrow(out)) out[, ano_inicial_painel := as.integer(k)]
       out
     }), fill = TRUE, use.names = TRUE)
-    MONITORA_STAT_COMPOSICAO_GERAL_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
-      d <- partes_coorte[[k]]
+    MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL <- data.table::rbindlist(lapply(names(partes_painel_ano_inicial), function(k) {
+      d <- partes_painel_ano_inicial[[k]]
       out <- monitora_stat_composicao_adjacent(d)
-      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      if (nrow(out)) out[, ano_inicial_painel := as.integer(k)]
       out
     }), fill = TRUE, use.names = TRUE)
-    MONITORA_STAT_COMPOSICAO_LINHA_BASE_COORTE <- data.table::rbindlist(lapply(names(partes_coorte), function(k) {
-      d <- partes_coorte[[k]]
+    MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL_ANO_INICIAL <- data.table::rbindlist(lapply(names(partes_painel_ano_inicial), function(k) {
+      d <- partes_painel_ano_inicial[[k]]
       out <- monitora_stat_composicao_linha_base(d)
-      if (nrow(out)) out[, coorte_ano_inicial := as.integer(k)]
+      if (nrow(out)) out[, ano_inicial_painel := as.integer(k)]
       out
     }), fill = TRUE, use.names = TRUE)
     if (exists("MONITORA_OUTPUT_DIR") && dir.exists(MONITORA_OUTPUT_DIR)) {
-      MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL <- MONITORA_STAT_MUDANCA_ANO_A_ANO_COORTE
-      MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL <- MONITORA_STAT_MUDANCA_LINHA_BASE_COORTE
-      MONITORA_STAT_COMPOSICAO_GERAL_PAINEL <- MONITORA_STAT_COMPOSICAO_GERAL_COORTE
-      MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL <- MONITORA_STAT_COMPOSICAO_LINHA_BASE_COORTE
+      MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL <- MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL
+      MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL <- MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL
+      MONITORA_STAT_COMPOSICAO_GERAL_PAINEL <- MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL
+      MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL <- MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL_ANO_INICIAL
       if (nrow(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL, "estatisticas_mudanca_ano_a_ano_paineis_ano_inicial.csv")
       if (nrow(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL, "estatisticas_mudanca_linha_base_paineis_ano_inicial.csv")
       if (nrow(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_COMPOSICAO_GERAL_PAINEL, "estatisticas_composicao_geral_ano_a_ano_paineis_ano_inicial.csv")
       if (nrow(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL)) monitora_exportar_tabela_painel_ano_inicial(MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL, "estatisticas_composicao_linha_base_paineis_ano_inicial.csv")
     }
-    monitora_coorte_plot_names <- monitora_coorte_gerar_graficos(MONITORA_STAT_SERIES_UA_ANO_COORTE)
-    monitora_stat_msg("gráficos de painéis amostrais por ano inicial preparados: ", length(monitora_coorte_plot_names))
+    monitora_painel_ano_inicial_plot_names <- monitora_painel_ano_inicial_gerar_graficos(MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL)
+    monitora_stat_msg("gráficos de painéis amostrais por ano inicial preparados: ", length(monitora_painel_ano_inicial_plot_names))
   }
 }
 
@@ -12210,8 +12210,8 @@ plot_list_names <- c(
 if (exists("monitora_editorial_plot_names") && length(monitora_editorial_plot_names) > 0L) {
   plot_list_names <- unique(c(plot_list_names, monitora_editorial_plot_names))
 }
-if (exists("monitora_coorte_plot_names") && length(monitora_coorte_plot_names) > 0L) {
-  plot_list_names <- unique(c(plot_list_names, monitora_coorte_plot_names))
+if (exists("monitora_painel_ano_inicial_plot_names") && length(monitora_painel_ano_inicial_plot_names) > 0L) {
+  plot_list_names <- unique(c(plot_list_names, monitora_painel_ano_inicial_plot_names))
 }
 
 monitora_grafico_detectar_tema <- function(nome_plot) {
@@ -12261,8 +12261,8 @@ monitora_grafico_detectar_escopo <- function(nome_plot) {
       default = "temporal"
     ))
   }
-  if (grepl("_coorte_[0-9]{4}", nome_plot)) {
-    ano <- sub(".*_coorte_([0-9]{4}).*", "\\1", nome_plot)
+  if (grepl("_painel_ano_inicial_[0-9]{4}", nome_plot)) {
+    ano <- sub(".*_painel_ano_inicial_([0-9]{4}).*", "\\1", nome_plot)
     return(paste0("ano_inicial_", ano))
   }
   "amostra_total"
@@ -12271,14 +12271,14 @@ monitora_grafico_detectar_escopo <- function(nome_plot) {
 monitora_grafico_detectar_bloco <- function(nome_plot) {
   data.table::fcase(
     grepl("^plot_ed_", nome_plot), "temporal",
-    grepl("_coorte_[0-9]{4}", nome_plot), "painel_ano_inicial",
+    grepl("_painel_ano_inicial_[0-9]{4}", nome_plot), "painel_ano_inicial",
     default = "sintese"
   )
 }
 
 monitora_grafico_detectar_ano_painel <- function(nome_plot) {
-  if (!grepl("_coorte_[0-9]{4}", nome_plot)) return(NA_integer_)
-  suppressWarnings(as.integer(sub(".*_coorte_([0-9]{4}).*", "\\1", nome_plot)))
+  if (!grepl("_painel_ano_inicial_[0-9]{4}", nome_plot)) return(NA_integer_)
+  suppressWarnings(as.integer(sub(".*_painel_ano_inicial_([0-9]{4}).*", "\\1", nome_plot)))
 }
 
 monitora_grafico_arquivo_dados <- function(metrica, tema, bloco) {
@@ -12360,7 +12360,7 @@ monitora_criar_indice_graficos_publicos <- function(nomes_plot) {
   idx[, observacao := data.table::fcase(
     bloco == "sintese", "Gráfico de síntese descritiva herdado do bloco histórico, exportado com nomenclatura pública seriada.",
     bloco == "temporal", "Gráfico temporal editorial com escopo amostral explícito.",
-    bloco == "painel_ano_inicial", "Gráfico de painel amostral por ano inicial; não representa coorte ecológica de indivíduos.",
+    bloco == "painel_ano_inicial", "Gráfico de painel amostral por ano inicial.",
     default = "Gráfico indexado."
   )]
   idx[, c("ordem_bloco", "ordem_original") := NULL]
@@ -12521,7 +12521,7 @@ monitora_ggsave_publicavel <- function(filename, plot, width = 11, height = 7, d
     width <- max(width, 12.8)
     height <- max(height, if (grepl("pareado_periodo", nome_plot)) 11.6 else 7.8)
   }
-  if (!is.null(nome_plot) && grepl("_coorte_", nome_plot) && grepl("veg_cover", nome_plot) && grepl("_com_rotulo", nome_plot)) {
+  if (!is.null(nome_plot) && grepl("_painel_ano_inicial_", nome_plot) && grepl("veg_cover", nome_plot) && grepl("_com_rotulo", nome_plot)) {
     width <- max(width, 12.8)
     height <- max(height, 8.8)
   }
