@@ -9132,6 +9132,19 @@ monitora_stat_preparar_dados_plot_composicao <- function(dados_plot, grupo_grafi
         MONITORA_STAT_COMPOSICAO_GERAL[["tipo_metrica"]] == tipo_metrica
     ]
   }
+  cols_comp_necessarias <- c(
+    "ano_2",
+    "form_veg",
+    "simbolo_mudanca_composicao",
+    "classe_mudanca_composicao",
+    "legenda_mudanca_composicao"
+  )
+  if (!all(cols_comp_necessarias %in% names(comp))) {
+    ## Em conjuntos sem comparação composicional válida, o objeto global pode existir,
+    ## mas estar vazio/sem esquema. Nesse caso, não há símbolo a acoplar ao gráfico.
+    return(data.table::data.table())
+  }
+
   if (length(forms_plot)) {
     comp <- comp[as.character(form_veg) %in% forms_plot]
   }
@@ -9292,6 +9305,23 @@ monitora_stat_preparar_dados_plot_simbolos <- function(dados_plot, grupo_grafico
         MONITORA_STAT_MUDANCA_ANO_A_ANO[["tipo_metrica"]] == tipo_metrica
     ]
   } else {
+    return(data.table::data.table())
+  }
+
+  cols_stat_necessarias <- c(
+    "ano_2",
+    "form_veg",
+    "categoria",
+    "categoria_label",
+    "simbolo_mudanca",
+    "classe_mudanca",
+    "legenda_mudanca"
+  )
+  if (isTRUE(usar_periodo)) {
+    cols_stat_necessarias <- c(cols_stat_necessarias, "periodo_pareado")
+  }
+  if (!all(cols_stat_necessarias %in% names(stat))) {
+    ## Sem colunas de comparação não há símbolo estatístico a preparar.
     return(data.table::data.table())
   }
   if (nrow(stat) == 0) return(data.table::data.table())
@@ -9461,6 +9491,19 @@ monitora_stat_preparar_dados_plot_linha_base <- function(dados_plot, grupo_grafi
       MONITORA_STAT_MUDANCA_LINHA_BASE[["grupo_grafico"]] == grupo_grafico &
         MONITORA_STAT_MUDANCA_LINHA_BASE[["tipo_metrica"]] == tipo_metrica
     ]
+  }
+  cols_stat_linha_base_necessarias <- c(
+    "ano_2",
+    "form_veg",
+    "categoria",
+    "categoria_label",
+    "simbolo_mudanca",
+    "classe_mudanca",
+    "legenda_mudanca"
+  )
+  if (!all(cols_stat_linha_base_necessarias %in% names(stat))) {
+    ## Objeto de linha de base existente, mas sem esquema de comparação válido.
+    return(data.table::data.table())
   }
   if (nrow(stat) == 0) return(data.table::data.table())
   # Regra solicitada: explicitar símbolo de linha de base somente quando houver mudança.
