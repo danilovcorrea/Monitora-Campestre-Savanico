@@ -29,13 +29,6 @@ Use preferencialmente:
 - [`monitora_campsav_alvo_global_v2.2.0.R`](monitora_campsav_alvo_global_v2.2.0.R): cópia versionada da versão pública atual.
 - [`releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R`](releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R): cópia congelada da versão pública `v2.2.0`.
 
-Links diretos para download/visualização do script atual:
-
-- [`monitora_campsav_alvo_global.R`](https://raw.githubusercontent.com/danilovcorrea/Monitora-Campestre-Savanico/main/monitora_campsav_alvo_global.R)
-- [`MONITORA_CAMPSAV_Alvo_Global.R`](https://raw.githubusercontent.com/danilovcorrea/Monitora-Campestre-Savanico/main/MONITORA_CAMPSAV_Alvo_Global.R)
-- [`monitora_campsav_alvo_global_v2.2.0.R`](https://raw.githubusercontent.com/danilovcorrea/Monitora-Campestre-Savanico/main/monitora_campsav_alvo_global_v2.2.0.R)
-- [`releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R`](https://raw.githubusercontent.com/danilovcorrea/Monitora-Campestre-Savanico/main/releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R)
-
 Na publicação da `v2.2.0`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
 ## Finalidade
 
@@ -351,4 +344,5 @@ CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global
 ## Repositório
 
 https://github.com/danilovcorrea/Monitora-Campestre-Savanico
+
 
