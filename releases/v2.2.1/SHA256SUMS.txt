@@ -1,0 +1,2 @@
+﻿5630b25118c49c3c7c2f035db268e7e7b5a25f31ed9f56de10116c36dbaedec1  releases\v2.2.1\monitora_campsav_alvo_global_v2.2.1.R
+61bd4fa38b559e54a0e4cad968d83c01f450a49a41a420e1a585263b274add4a  releases\v2.2.1\monitora_campsav_alvo_global_v2.2.1.zip

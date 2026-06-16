@@ -1,40 +1,43 @@
-﻿# Monitora Campestre-Savânico — Alvo Global
+# Monitora Campestre-Savânico — Alvo Global
 
 Scripts de tratamento, auditoria, deduplicação, análise estatística, validação assistida e geração de produtos gráficos para dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
 
 ## Versão pública atual
 
-**v2.2.0**
+v2.2.1
 
-A versão `v2.2.0` consolida a linha pública posterior à `v2.1.3` e acrescenta um **Painel de validação - correções assistidas de `registros_corrig`**, mantendo o fluxo analítico padrão do script. A execução analítica normal continua disponível sem abertura do painel; a validação assistida é acionada por uma variável explícita no início do script.
+A versão `v2.2.1` consolida a linha pública posterior à `v2.2.0` e acrescenta relatório de ocorrência de formas de vida exóticas em `output/`, com triagem dos registros que contêm o token `exotica` em `**Encostam** na vareta: (amostragem/registro)`.
 
-A terminologia pública vigente mantém **painéis amostrais por ano inicial** para os subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento.
+O novo relatório separa registros de formas de vida exóticas com e sem espécie exótica vinculada, reconhece campos de lista e campos abertos do tipo `Outra espécie ... exótica`, e trata `NA`, campos vazios e `---` como ausência nos produtos exportados.
 
+A versão mantém o Painel de validação e correções assistidas introduzido na `v2.2.0`, bem como o fluxo analítico padrão do script. A execução analítica normal continua disponível sem abertura do painel; a validação assistida é acionada por variável explícita no início do script.
+
+A terminologia pública vigente mantém painéis amostrais por ano inicial para os subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento.
 ## Consulte também
 
-- [`CHANGELOG.md`](CHANGELOG.md): histórico das versões públicas.
-- [`VERSION`](VERSION): versão pública atual.
-- [`LICENSE`](LICENSE): licença do projeto.
-- [`docs/uso_de_ia.md`](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
-- [`docs/versionamento.md`](docs/versionamento.md): notas de versionamento, quando disponível.
-- [`releases/v2.2.0/`](releases/v2.2.0/): cópia congelada da versão pública atual.
-
+  * [CHANGELOG.md](CHANGELOG.md): histórico das versões públicas.
+  * [VERSION](VERSION): versão pública atual.
+  * [LICENSE](LICENSE): licença do projeto.
+  * [docs/uso_de_ia.md](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
+  * [docs/versionamento.md](docs/versionamento.md): notas de versionamento, quando disponível.
+  * [releases/v2.2.1/](releases/v2.2.1/): cópia congelada da versão pública atual.
 ## Script recomendado para uso
 
 Use preferencialmente:
 
-- [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública atual com nome padronizado em minúsculas.
-- [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R): nome público histórico equivalente.
-- [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia mantida na estrutura interna do projeto.
-- [`monitora_campsav_alvo_global_v2.2.0.R`](monitora_campsav_alvo_global_v2.2.0.R): cópia versionada da versão pública atual.
-- [`releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R`](releases/v2.2.0/monitora_campsav_alvo_global_v2.2.0.R): cópia congelada da versão pública `v2.2.0`.
+  * [monitora_campsav_alvo_global.R](monitora_campsav_alvo_global.R): cópia pública atual com nome padronizado em minúsculas.
+  * [MONITORA_CAMPSAV_Alvo_Global.R](MONITORA_CAMPSAV_Alvo_Global.R): nome público histórico equivalente.
+  * [R/monitora_campsav_alvo_global.R](R/monitora_campsav_alvo_global.R): cópia mantida na estrutura interna do projeto.
+  * [monitora_campsav_alvo_global_v2.2.1.R](monitora_campsav_alvo_global_v2.2.1.R): cópia versionada da versão pública atual.
+  * [releases/v2.2.1/monitora_campsav_alvo_global_v2.2.1.R](releases/v2.2.1/monitora_campsav_alvo_global_v2.2.1.R): cópia congelada da versão pública `v2.2.1`.
 
-Na publicação da `v2.2.0`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
+Na publicação da `v2.2.1`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
 ## Finalidade
 
 O fluxo consolida registros exportados do SISMONITORA e produz bases padronizadas, tabelas analíticas, auditorias, estatísticas temporais, relatório textual e gráficos publicáveis. O script foi desenhado para aceitar tanto dados brutos quanto arquivos já tratados em execuções anteriores, permitindo novas rodadas de tratamento com dados incrementais.
 
 A partir da `v2.2.0`, o script também incorpora uma etapa opcional de validação assistida de `registros_corrig`, voltada a correções controladas, auditáveis e menos sujeitas a problemas comuns de edição manual em planilhas.
+A partir da `v2.2.1`, o script também gera relatório específico de ocorrência de formas de vida exóticas, com produtos auxiliares para auditoria de registros com e sem espécie exótica vinculada.
 
 ## Entradas aceitas
 
