@@ -1,27 +1,9 @@
-# Versionamento público do repositório
+# Versionamento
 
-A partir da consolidação da versão pública `v2.0.1`, o repositório passa a adotar versionamento semântico para as versões públicas estáveis.
+O projeto adota versionamento semântico público a partir da série `v2.0.0`.
 
-## Esquema adotado
+- Alterações maiores de fluxo, produtos ou recursos públicos justificam incremento de versão menor.
+- Correções pontuais ou revisões editoriais podem justificar incremento de patch.
+- Iterações internas de desenvolvimento não precisam ser preservadas como versões públicas quando forem consolidadas em uma release limpa.
 
-O padrão é:
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-- `MAJOR`: mudanças estruturais, alterações relevantes de arquitetura, entradas, saídas, estatística ou compatibilidade.
-- `MINOR`: novas funcionalidades compatíveis com a versão principal atual.
-- `PATCH`: correções pontuais, documentação, comentários ou pequenos ajustes sem mudança metodológica.
-
-## Histórico anterior
-
-Antes da adoção do versionamento semântico, o desenvolvimento foi registrado por scripts datados, versões intermediárias e correções de desenvolvimento. Esses arquivos devem ser preservados para rastreabilidade, mas não recebem numeração pública retroativa individual.
-
-## Arquivos recomendados
-
-- `R/monitora_campsav_alvo_global.R`: script principal atual.
-- `archive/`: scripts históricos preservados.
-- `releases/vX.Y.Z/`: cópias congeladas de versões públicas.
-- `CHANGELOG.md`: descrição das mudanças por versão pública.
-- `VERSION`: versão pública atual.
+A versão `v2.2.0` consolida a linha de validação assistida posterior à última versão pública `v2.1.3`.

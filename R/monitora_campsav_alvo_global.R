@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.1.3
+### Versão pública: v2.2.0
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -26,7 +26,7 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.1.3:
+### Destaques da versão pública v2.2.0:
 ###   - consolidação dos gráficos temporais editoriais com escopo amostral explícito;
 ###   - inclusão de painéis para amostra total, UAs pareadas em todos os anos e períodos
 ###     consecutivos pareados;
@@ -38,6 +38,15 @@
 ###     legendas inferiores dos gráficos publicáveis;
 ###   - aceitação de arquivos registros_corrig*.csv como insumos de novas rodadas de
 ###     tratamento, sem reprocessar produtos de output/ e log/.
+###   - inclusão de painel Shiny opcional e dinâmico para correções assistidas,
+###     com correções em lote por coleta, controle de campos condicionais do XLSForm e
+###     aplicação auditável por CSV longo de correções;
+###   - metadados dos XLSForms 2022, 2023, 2024 e 2025 embutidos no script,
+###     sem dependência de arquivos externos para regras do painel;
+###   - opção explícita no código para abertura do painel de correções: editar MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N";
+###   - correção da harmonização XLSForm: campos inferiores só atualizam superiores
+###     quando foram alterados na correção atual, evitando reintroduzir tokens residuais
+###     como exotica após movimentos exótica -> nativa.
 ###
 ### Observações:
 ###   - Não é necessário extrair manualmente os arquivos ZIP.
@@ -54,6 +63,24 @@
 ###
 ### Repositório: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 ### Contato: danilo.correa@icmbio.gov.br
+
+### Decisão de abertura do painel de correções assistidas
+###
+### Edite APENAS o valor abaixo para controlar a abertura do painel.
+### Use "S" para abrir o painel ou "N" para executar sem painel.
+###
+### Este formato é mais robusto no RStudio quando o script é executado por seleção
+### completa + CTRL+ENTER, porque não depende de pergunta interativa no console.
+### O painel só abre depois da consolidação de registros_corrig. Quando a opção é "N",
+### o script não instala/carrega shiny/DT, não carrega metadados XLSForm do painel e
+### ignora a etapa de correções assistidas.
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES)[1]))
+if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_ABRIR_PAINEL_CORRECOES <- identical(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES, "S")
 
 ### Verificação e carregamento dos pacotes necessários:
 
@@ -87,6 +114,14 @@ library("readxl")
 if (!require("openxlsx"))
   install.packages("openxlsx")
 library("openxlsx")
+if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
+  if (!require("shiny"))
+    install.packages("shiny")
+  library("shiny")
+  if (!require("DT"))
+    install.packages("DT")
+  library("DT")
+}
 if (!require("sf"))
   install.packages("sf")
 library("sf")
@@ -186,6 +221,17 @@ dir.create(MONITORA_INPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(MONITORA_EXTRACT_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(MONITORA_OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(MONITORA_LOG_DIR, showWarnings = FALSE, recursive = TRUE)
+
+
+### Caminho padrão do arquivo longo de correções assistidas
+###
+### A decisão de abrir o painel é tomada mais adiante, depois que registros_corrig existe.
+### O caminho é inicializado aqui apenas para evitar referências a objeto inexistente.
+
+MONITORA_ARQUIVO_CORRECOES_CAMPOS <- Sys.getenv(
+  "MONITORA_ARQUIVO_CORRECOES_CAMPOS",
+  unset = file.path(MONITORA_INPUT_DIR, "correcoes_campos.csv")
+)
 
 MONITORA_EXEC_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 MONITORA_LOG_EXECUCAO <- data.table(
@@ -401,6 +447,3985 @@ MONITORA_GC_AUTO_MIN_MEM_MB <- monitora_cfg_env_int("MONITORA_GC_AUTO_MIN_MEM_MB
 
 MONITORA_DT_THREADS <- monitora_cfg_env_int("MONITORA_DT_THREADS", default_threads)
 tryCatch(data.table::setDTthreads(MONITORA_DT_THREADS), error = function(e) NULL)
+
+
+### Painel dinâmico de correções assistidas e aplicação auditável
+###
+### Esta seção é opcional e não altera a execução padrão quando
+### a opção de abertura do painel está definida como "N" e não há arquivo de correções em input/.
+### O painel foi desenhado para evitar edição direta de registros_corrig.csv em planilhas:
+###   - trabalha com o arquivo consolidado real, portanto aceita atributos atuais, históricos e derivados;
+###   - sugere correção por coleta inteira como fluxo padrão;
+###   - registra alterações em formato longo e auditável;
+###   - usa metadados embutidos dos XLSForms atuais e históricos como dicionário auxiliar de tipos, opções e dependências;
+###   - controla campos condicionais de formas de vida, como samambaia, orquidea, cactacea e bromelioide.
+
+monitora_cfg_env_bool_opcional <- function(nome) {
+  val <- Sys.getenv(nome, unset = NA_character_)
+  if (is.na(val) || !nzchar(trimws(val))) return(NA)
+  tolower(trimws(val)) %in% c("1", "true", "t", "sim", "s", "yes", "y")
+}
+
+monitora_correcao_console_msg <- function(...) {
+  msg <- paste0(...)
+  message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [painel_correcoes] ", msg)
+  tryCatch(flush.console(), error = function(e) NULL)
+  invisible(TRUE)
+}
+
+monitora_correcao_perguntar_abrir_painel <- function(default = FALSE) {
+  ### Função mantida apenas por compatibilidade interna/legada.
+  ### A abertura do painel agora é controlada exclusivamente pela variável
+  ### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES definida no início do script.
+  return(isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES))
+  pergunta <- "Deseja abrir o painel de correções assistidas?"
+
+  if (!interactive()) {
+    env <- monitora_cfg_env_bool_opcional("MONITORA_ABRIR_PAINEL_CORRECOES")
+    if (!is.na(env)) return(isTRUE(env))
+    return(isTRUE(default))
+  }
+
+  normalizar_resp <- function(resp) {
+    resp <- toupper(trimws(as.character(resp)))
+    if (resp %in% c("S", "SIM", "Y", "YES")) return(TRUE)
+    if (resp %in% c("N", "NAO", "NÃO", "NO")) return(FALSE)
+    NA
+  }
+
+  ### Primeiro tentar um prompt do RStudio. Ele continua exigindo S/N, mas não sofre
+  ### com execução em bloco/CTRL+ENTER.
+  if (requireNamespace("rstudioapi", quietly = TRUE)) {
+    disponivel <- tryCatch(rstudioapi::isAvailable(), error = function(e) FALSE)
+    if (isTRUE(disponivel)) {
+      repeat {
+        resp_dialog <- tryCatch(
+          rstudioapi::showPrompt(
+            title = "Painel de validação - correções assistidas de registros_corrig",
+            message = paste0(pergunta, "\nDigite S ou N:"),
+            default = if (isTRUE(default)) "S" else "N"
+          ),
+          error = function(e) NA_character_
+        )
+        if (is.null(resp_dialog) || length(resp_dialog) == 0 || is.na(resp_dialog)) return(isTRUE(default))
+        ans <- normalizar_resp(resp_dialog)
+        if (!is.na(ans)) return(isTRUE(ans))
+        tryCatch(
+          rstudioapi::showDialog(
+            title = "Resposta inválida",
+            message = "Digite S para sim ou N para não."
+          ),
+          error = function(e) NULL
+        )
+      }
+    }
+  }
+
+  ### Fallback para console/terminal.
+  repeat {
+    cat("\n", pergunta, " [S/N]: ", sep = "")
+    flush.console()
+    resp <- tryCatch(readline(), error = function(e) "")
+    ans <- normalizar_resp(resp)
+    if (!is.na(ans)) return(isTRUE(ans))
+    if (!nzchar(trimws(resp))) return(isTRUE(default))
+    cat("Resposta inválida. Digite S para sim ou N para não.\n")
+  }
+}
+
+### Decisão inicial do painel.
+### A opção S/N já foi definida no início do script em
+### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.
+### O painel em si só abrirá depois que registros_corrig estiver consolidado.
+MONITORA_APLICAR_CORRECOES_CAMPOS <- isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)
+MONITORA_GERAR_DICIONARIOS_CORRECOES <- FALSE
+MONITORA_CORRIGIR_PONTO_METRO_AUTOMATICO <- monitora_cfg_env_bool("MONITORA_CORRIGIR_PONTO_METRO_AUTOMATICO", TRUE)
+MONITORA_VALIDAR_CONDICIONAIS_CORRECOES <- monitora_cfg_env_bool("MONITORA_VALIDAR_CONDICIONAIS_CORRECOES", TRUE)
+if (!exists("MONITORA_ARQUIVO_CORRECOES_CAMPOS", inherits = FALSE)) {
+  MONITORA_ARQUIVO_CORRECOES_CAMPOS <- Sys.getenv(
+    "MONITORA_ARQUIVO_CORRECOES_CAMPOS",
+    unset = file.path(MONITORA_INPUT_DIR, "correcoes_campos.csv")
+  )
+}
+### Mantido apenas por compatibilidade com execuções antigas. As regras XLSForm usadas pelo
+### painel agora ficam embutidas no script e não dependem da leitura de arquivos externos.
+MONITORA_XLSFORM_DIR <- Sys.getenv("MONITORA_XLSFORM_DIR", unset = MONITORA_INPUT_DIR)
+MONITORA_CORRECOES_DIR <- file.path(MONITORA_OUTPUT_DIR, "correcoes_campos")
+dir.create(MONITORA_CORRECOES_DIR, showWarnings = FALSE, recursive = TRUE)
+
+monitora_correcao_instalar_pacote_opcional <- function(pkg) {
+  if (requireNamespace(pkg, quietly = TRUE)) return(TRUE)
+  if (!interactive()) return(FALSE)
+  resp <- tryCatch(
+    utils::askYesNo(paste0("O pacote '", pkg, "' é necessário para o painel de correções. Instalar agora?"), default = TRUE),
+    error = function(e) FALSE
+  )
+  if (isTRUE(resp)) {
+    tryCatch(utils::install.packages(pkg), error = function(e) FALSE)
+  }
+  requireNamespace(pkg, quietly = TRUE)
+}
+
+monitora_correcao_carregar_dependencias_painel <- function() {
+  ok <- all(vapply(c("shiny", "DT"), monitora_correcao_instalar_pacote_opcional, logical(1)))
+  if (!ok) {
+    stop(
+      "Para abrir o painel de correções, instale os pacotes 'shiny' e 'DT'.\n",
+      "Comando sugerido: install.packages(c('shiny', 'DT'))",
+      call. = FALSE
+    )
+  }
+  TRUE
+}
+
+monitora_correcao_vazio <- function(x) {
+  if (is.null(x)) return(TRUE)
+  x <- as.character(x)
+  length(x) == 0 || all(is.na(x) | trimws(x) %in% c("", "NA", "NaN", "NULL", "<NA>"))
+}
+
+monitora_correcao_na_para_vazio <- function(x) {
+  x <- as.character(x)
+  x[is.na(x) | trimws(x) %in% c("NA", "NaN", "NULL", "<NA>")] <- ""
+  x
+}
+
+monitora_correcao_limpar_texto <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+monitora_correcao_tokenizar <- function(x) {
+  x <- monitora_correcao_limpar_texto(x)
+  if (!nzchar(x)) return(character(0))
+  unique(strsplit(x, "\\s+", perl = TRUE)[[1]])
+}
+
+monitora_correcao_colapsar_tokens <- function(tokens) {
+  tokens <- unique(monitora_correcao_limpar_texto(tokens))
+  tokens <- tokens[nzchar(tokens)]
+  if (length(tokens) == 0) return(NA_character_)
+  paste(tokens, collapse = " ")
+}
+
+monitora_correcao_append_token_valor <- function(valor, token) {
+  monitora_correcao_colapsar_tokens(c(monitora_correcao_tokenizar(valor), monitora_correcao_tokenizar(token)))
+}
+
+monitora_correcao_remove_token_valor <- function(valor, token) {
+  toks <- monitora_correcao_tokenizar(valor)
+  rem <- monitora_correcao_tokenizar(token)
+  monitora_correcao_colapsar_tokens(setdiff(toks, rem))
+}
+
+monitora_correcao_replace_token_valor <- function(valor, token_antigo, token_novo) {
+  monitora_correcao_append_token_valor(monitora_correcao_remove_token_valor(valor, token_antigo), token_novo)
+}
+
+monitora_correcao_primeira_coluna <- function(dt, candidatos = character(0), padroes = character(0)) {
+  nms <- names(dt)
+  for (cand in candidatos) {
+    hit <- nms[tolower(nms) == tolower(cand)]
+    if (length(hit) > 0) return(hit[1])
+  }
+  for (pat in padroes) {
+    hit <- grep(pat, nms, value = TRUE, ignore.case = TRUE)
+    if (length(hit) > 0) return(hit[1])
+  }
+  NA_character_
+}
+
+monitora_correcao_normalizar_nome_coluna <- function(x) {
+  ### Normalização robusta para resolver nomes de coluna vindos do XLSForm/painel.
+  ### Motivo: labels HTML exportados para CSV podem voltar com aspas escapadas de
+  ### formas distintas, por exemplo style="color:red" vs style=""color:red"".
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("&quot;", "", x, fixed = TRUE)
+  x <- gsub("\"", "", x, fixed = TRUE)
+  x <- gsub("'", "", x, fixed = TRUE)
+  x <- gsub("<[^>]+>", " ", x, perl = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  x <- trimws(tolower(x))
+  x2 <- suppressWarnings(iconv(x, from = "", to = "ASCII//TRANSLIT"))
+  x[!is.na(x2)] <- x2[!is.na(x2)]
+  x <- gsub("[^a-z0-9]+", "_", x, perl = TRUE)
+  x <- gsub("_+", "_", x, perl = TRUE)
+  x <- gsub("^_|_$", "", x, perl = TRUE)
+  x
+}
+
+monitora_correcao_primeira_coluna_normalizada <- function(dt, candidatos = character(0)) {
+  nms <- names(dt)
+  if (length(candidatos) == 0L || length(nms) == 0L) return(NA_character_)
+  nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+  cand_norm <- monitora_correcao_normalizar_nome_coluna(candidatos)
+  for (cc in cand_norm[!is.na(cand_norm) & nzchar(cand_norm)]) {
+    hit <- which(nms_norm == cc)
+    if (length(hit) > 0L) return(nms[hit[1L]])
+  }
+  NA_character_
+}
+
+monitora_correcao_colunas_chave <- function(dt) {
+  list(
+    coleta = monitora_correcao_primeira_coluna(dt, c("coleta", "id_coleta", "COLETA"), c("^coleta$", "id.*coleta")),
+    coleta_uuid = monitora_correcao_primeira_coluna(dt, c("coleta_uuid", "uuid_coleta"), c("coleta.*uuid", "uuid.*coleta")),
+    uuid_registro = monitora_correcao_primeira_coluna(dt, c("amostragem/registro/uuid", "uuid (amostragem/registro)", "uuid_registro", "UUID_REGISTRO"), c("registro.*uuid", "uuid.*registro")),
+    ponto_amostral = monitora_correcao_primeira_coluna(dt, c("amostragem/registro/ponto_amostral", "ponto_amostral", "Ponto amostral (amostragem/registro)"), c("ponto.*amostral")),
+    ponto_metro = monitora_correcao_primeira_coluna(dt, c("amostragem/registro/ponto_metro", "ponto_metro", "Metro (amostragem/registro)", "ponto metro"), c("ponto.*metro", "metro.*amostragem")),
+    tipo_forma_vida = monitora_correcao_primeira_coluna(dt, c("amostragem/registro/tipo_forma_vida", "tipo_forma_vida"), c("tipo.*forma.*vida", "encostam.*vareta")),
+    uc = monitora_correcao_primeira_coluna(dt, c("UC", "uc", "Unidade de Conservação"), c("unidade.*conserv")),
+    ea = monitora_correcao_primeira_coluna(dt, c("EA", "ea", "Estrato amostral", "estrato_amostral", "Area elegivel", "Área elegível"), c("^EA$", "estrato.*amostral", "[aá]rea.*eleg[ií]vel")),
+    ano = monitora_correcao_primeira_coluna(dt, c("ANO", "ano"), c("^ano$")),
+    ciclo = monitora_correcao_primeira_coluna(dt, c("CICLO", "ciclo"), c("^ciclo$")),
+    ua = monitora_correcao_primeira_coluna(dt, c("UA", "ua"), c("unidade.*amostral")),
+    campanha = monitora_correcao_primeira_coluna(dt, c("CAMPANHA", "campanha"), c("campanha"))
+  )
+}
+
+monitora_correcao_coluna_forma_vida <- function(dt, categoria) {
+  categoria <- tolower(categoria)
+  candidatos <- switch(
+    categoria,
+    nativa = c("amostragem/registro/forma_vida_nativa", "forma_vida_nativa"),
+    exotica = c("amostragem/registro/forma_vida_exotica", "forma_vida_exotica"),
+    seca_morta = c("amostragem/registro/forma_vida_seca_morta", "forma_vida_seca_morta"),
+    character(0)
+  )
+  padroes <- switch(
+    categoria,
+    nativa = c("forma.*vida.*nativ", "nativ.*forma.*vida"),
+    exotica = c("forma.*vida.*ex[oó]tic", "ex[oó]tic.*forma.*vida"),
+    seca_morta = c("forma.*vida.*seca", "seca.*morta.*forma.*vida"),
+    character(0)
+  )
+  monitora_correcao_primeira_coluna(dt, candidatos, padroes)
+}
+
+monitora_correcao_resolver_coluna <- function(dt, nome, dicionario = NULL) {
+  if (is.null(nome) || is.na(nome) || !nzchar(nome)) return(NA_character_)
+  nms <- names(dt)
+  if (nome %in% nms) return(nome)
+
+  ### 1. comparação simples, sem diferenciar maiúsculas/minúsculas
+  hit <- nms[tolower(nms) == tolower(nome)]
+  if (length(hit) > 0) return(hit[1])
+
+  ### 2. comparação normalizada: remove tags HTML, aspas escapadas, acentos e pontuação.
+  ### Esta etapa corrige labels vindos do XLSForm/painel que chegam no CSV com
+  ### variações de aspas em <span style="color:red">.
+  hit_norm <- monitora_correcao_primeira_coluna_normalizada(dt, nome)
+  if (!is.na(hit_norm) && nzchar(hit_norm)) return(hit_norm)
+
+  ### 3. atalhos semânticos para os principais campos hierárquicos de forma de vida.
+  nome_norm <- monitora_correcao_normalizar_nome_coluna(nome)
+  if (grepl("formas_de_vida_de_plantas.*exot", nome_norm) || grepl("forma_vida_exotica$", nome_norm)) {
+    col <- monitora_correcao_coluna_forma_vida(dt, "exotica")
+    if (!is.na(col) && col %in% nms) return(col)
+  }
+  if (grepl("formas_de_vida_de_plantas.*nativ", nome_norm) || grepl("forma_vida_nativa$", nome_norm)) {
+    col <- monitora_correcao_coluna_forma_vida(dt, "nativa")
+    if (!is.na(col) && col %in% nms) return(col)
+  }
+  if (grepl("formas_de_vida_de_plantas.*seca.*morta", nome_norm) || grepl("forma_vida_seca_morta$", nome_norm)) {
+    col <- monitora_correcao_coluna_forma_vida(dt, "seca_morta")
+    if (!is.na(col) && col %in% nms) return(col)
+  }
+  if (grepl("encostam.*vareta", nome_norm) || grepl("tipo_forma_vida", nome_norm)) {
+    col <- monitora_correcao_colunas_chave(dt)$tipo_forma_vida
+    if (!is.na(col) && col %in% nms) return(col)
+  }
+
+  ### 4. resolução por dicionário XLSForm/atributos, também com normalização.
+  if (!is.null(dicionario) && nrow(dicionario) > 0) {
+    d <- data.table::as.data.table(dicionario)
+    for (cc in c("name", "caminho_registro", "label", "atributo_coluna_registros_corrig", "xlsform_name", "xlsform_label")) {
+      if (!(cc %in% names(d))) d[, (cc) := NA_character_]
+    }
+    cand <- unique(c(
+      d[name == nome, name],
+      d[name == nome, caminho_registro],
+      d[name == nome, label],
+      d[caminho_registro == nome, name],
+      d[caminho_registro == nome, caminho_registro],
+      d[caminho_registro == nome, label],
+      d[label == nome, name],
+      d[label == nome, caminho_registro],
+      d[label == nome, label],
+      d[atributo_coluna_registros_corrig == nome, atributo_coluna_registros_corrig],
+      d[xlsform_name == nome, atributo_coluna_registros_corrig],
+      d[xlsform_label == nome, atributo_coluna_registros_corrig]
+    ))
+    cand <- cand[!is.na(cand) & nzchar(cand)]
+    for (cc in cand) {
+      if (cc %in% nms) return(cc)
+      hit <- nms[tolower(nms) == tolower(cc)]
+      if (length(hit) > 0) return(hit[1])
+      hit_norm <- monitora_correcao_primeira_coluna_normalizada(dt, cc)
+      if (!is.na(hit_norm) && nzchar(hit_norm)) return(hit_norm)
+    }
+
+    ### Match normalizado entre o nome solicitado e qualquer coluna de mapeamento do dicionário.
+    alvo_norm <- monitora_correcao_normalizar_nome_coluna(nome)
+    vals <- unique(c(d$name, d$caminho_registro, d$label, d$atributo_coluna_registros_corrig, d$xlsform_name, d$xlsform_label))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    vals_norm <- monitora_correcao_normalizar_nome_coluna(vals)
+    vals_hit <- vals[vals_norm == alvo_norm]
+    for (vv in vals_hit) {
+      cand2 <- unique(c(
+        d[name == vv, name], d[name == vv, caminho_registro], d[name == vv, label], d[name == vv, atributo_coluna_registros_corrig],
+        d[caminho_registro == vv, name], d[caminho_registro == vv, caminho_registro], d[caminho_registro == vv, label], d[caminho_registro == vv, atributo_coluna_registros_corrig],
+        d[label == vv, name], d[label == vv, caminho_registro], d[label == vv, label], d[label == vv, atributo_coluna_registros_corrig],
+        d[atributo_coluna_registros_corrig == vv, atributo_coluna_registros_corrig]
+      ))
+      cand2 <- cand2[!is.na(cand2) & nzchar(cand2)]
+      for (cc in cand2) {
+        if (cc %in% nms) return(cc)
+        hit_norm <- monitora_correcao_primeira_coluna_normalizada(dt, cc)
+        if (!is.na(hit_norm) && nzchar(hit_norm)) return(hit_norm)
+      }
+    }
+  }
+
+  ### 5. Heurística final: procura texto normalizado entre nomes de colunas.
+  nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+  alvo_norm <- monitora_correcao_normalizar_nome_coluna(nome)
+  hit <- which(nzchar(alvo_norm) & (grepl(alvo_norm, nms_norm, fixed = TRUE) | grepl(nms_norm, alvo_norm, fixed = TRUE)))
+  if (length(hit) > 0) return(nms[hit[1]])
+  NA_character_
+}
+
+monitora_correcao_tipo_xlsform <- function(type) {
+  type <- trimws(as.character(type))
+  base <- sub("\\s+.*$", "", type)
+  lista <- ifelse(grepl("\\s+", type), sub("^[^[:space:]]+\\s+", "", type), NA_character_)
+  data.table::data.table(tipo_base = base, list_name = lista)
+}
+
+### Metadados XLSForm embutidos para o painel de correções
+### Gerados a partir das versões históricas 2022, 2023, 2024 e 2025 anexadas ao projeto.
+### Esta seção evita dependência de leitura externa de .xlsx/.zip durante a execução.
+### Implementação sem linhas gigantes para evitar truncamento no console do R.
+monitora_correcao_fread_tsv_embutido <- function(linhas) {
+  data.table::fread(
+    text = paste(linhas, collapse = "\n"),
+    sep = "\t",
+    quote = "",
+    encoding = "UTF-8",
+    na.strings = "",
+    showProgress = FALSE
+  )
+}
+
+monitora_correcao_xlsforms_embutidos <- function() {
+  campos_linhas <- c(
+    "arquivo_xlsform\tname\tcaminho_registro\ttype\ttipo_base\tlist_name\tlabel\trelevant\trequired",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tstarttime\tamostragem/registro/starttime\tstart\tstart\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tdeviceid\tamostragem/registro/deviceid\tdeviceid\tdeviceid\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tdevicephonenum\tamostragem/registro/devicephonenum\tphonenumber\tphonenumber\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tinicio\tamostragem/registro/inicio\tnote\tnote\t\tPrograma Monitora Subprograma Terrestre Componente Campestre Savânico Protocolo de Monitoramento de Plantas Herbáceas e Lenhosas, Nativas e Exóticas (Alvo Global)\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tuc\tamostragem/registro/uc\tselect_one uc\tselect_one\tuc\tUnidade de Conservação\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\testacao_amostral\tamostragem/registro/estacao_amostral\tselect_one estacao_amostral\tselect_one\testacao_amostral\tEstação Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tunidade_amostral\tamostragem/registro/unidade_amostral\tselect_one unidade_amostral\tselect_one\tunidade_amostral\tUnidade Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tdata_hora\tamostragem/registro/data_hora\tbegin_group\tbegin_group\t\tData e Horário\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tdata\tamostragem/registro/data\tdate\tdate\t\tData\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\thora\tamostragem/registro/hora\ttime\ttime\t\tHorário\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tdata_hora\tamostragem/registro/data_hora\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tcoletor\tamostragem/registro/coletor\tbegin repeat\tbegin\trepeat\tColetor de dados\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ticone_colaborador\tamostragem/registro/icone_colaborador\tnote\tnote\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tcpf\tamostragem/registro/cpf\ttext\ttext\t\tCPF\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tnome\tamostragem/registro/nome\ttext\ttext\t\tNome\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tcoletor\tamostragem/registro/coletor\tend repeat\tend\trepeat\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tform_veg\tamostragem/registro/form_veg\tselect_one form_veg\tselect_one\tform_veg\tQual a formação vegetacional onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tbegin_group\tbegin_group\t\tHistórico de impactos, ações de manejo ou uso\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\timpacto_manejo_uso\tamostragem/registro/impacto_manejo_uso\tselect_one impacto_manejo_uso\tselect_one\timpacto_manejo_uso\tOcorreram impactos, ações de manejo ou uso no local onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manejo_uso\tselect_multiple\ttipos_impacto_manejo_uso\tQual(is)?\t${impacto_manejo_uso}=”sim”\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso_outro\tamostragem/registro/tipos_impacto_manejo_uso_outro\ttext\ttext\t\tOutros tipos de manejo ou uso:\tselected(${tipos_impacto_manejo_uso}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso_descricao\tamostragem/registro/tipos_impacto_manejo_uso_descricao\ttext\ttext\t\tDescreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos:\t${impacto_manejo_uso}=”sim”\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tobservacoes_gerais\tamostragem/registro/observacoes_gerais\ttext\ttext\t\tDescreva observações gerais do transecto, caso necessário:\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tamostragem\tamostragem/registro/amostragem\tbegin_group\tbegin_group\t\tAmostragem\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tponto_inicio_transecto\tamostragem/registro/ponto_inicio_transecto\tgeopoint\tgeopoint\t\tCoordenada inicial da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_ponto_inicial\tamostragem/registro/foto_ponto_inicial\timage\timage\t\tFoto do ponto inicial do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tnum_placa\tamostragem/registro/num_placa\ttext\ttext\t\tNúmero da plaqueta\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tamostragem/registro/modulo\tselect_one modulo\tselect_one\tmodulo\tMódulo\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tregistro\tamostragem/registro/registro\tbegin repeat\tbegin\trepeat\tPONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tponto_amostral\tamostragem/registro/ponto_amostral\thidden\thidden\t\tponto_amostral\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tponto_metro\tamostragem/registro/ponto_metro\thidden\thidden\t\tponto_metro\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tponto_metro_count\tamostragem/registro/ponto_metro_count\tnote\tnote\t\t## PONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttipo_forma_vida\t**Encostam** na vareta:\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multiple\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tselected(${tipo_forma_vida}, 'nativa')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bromelioide\tamostragem/registro/forma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tselect_one\tforma_vida_nativa_bromelioide\tA erva bromelioide observada é:\tselected(${forma_vida_nativa}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bromelioide_sp\tamostragem/registro/forma_vida_nativa_bromelioide_sp\ttext\ttext\t\tEspécie ou nome popular (Erva bromelioide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_cactacea\tamostragem/registro/forma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tselect_one\tforma_vida_nativa_cactacea\tA cactácea observada é:\tselected(${forma_vida_nativa}, 'cactacea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_cactacea_sp\tamostragem/registro/forma_vida_nativa_cactacea_sp\ttext\ttext\t\tEspécie ou nome popular (Cactácea)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_orquidea\tamostragem/registro/forma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tselect_one\tforma_vida_nativa_orquidea\tA orquídea observada é:\tselected(${forma_vida_nativa}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_orquidea_sp\tamostragem/registro/forma_vida_nativa_orquidea_sp\ttext\ttext\t\tEspécie ou nome popular (Orquídea)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_outra\tamostragem/registro/forma_vida_nativa_outra\ttext\ttext\t\tOutra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_nativa_outra\tamostragem/registro/foto_forma_vida_nativa_outra\timage\timage\t\tFoto de outra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_nativa_desconhecida\tamostragem/registro/foto_forma_vida_nativa_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tselected(${forma_vida_nativa}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_graminoide\tamostragem/registro/forma_vida_nativa_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_palmeira\tamostragem/registro/forma_vida_nativa_palmeira\ttext\ttext\t\tEspécie ou nome popular (Palmeira)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_samambaia\tamostragem/registro/forma_vida_nativa_samambaia\ttext\ttext\t\tEspécie ou nome popular (Samambaia)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_canela_de_ema\tamostragem/registro/forma_vida_nativa_canela_de_ema\ttext\ttext\t\tEspécie ou nome popular (Velósia)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_multiple\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tselected(${tipo_forma_vida}, 'exotica')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tselect_multiple\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tselect_multiple\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tselect_multiple\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tselect_multiple\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tselect_multiple\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tselect_multiple\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\tselect_multiple\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tselect_multiple\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lianas\tselect_multiple\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tselect_multiple\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tselect_multiple\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tselect_multiple\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outros\tselect_multiple\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_outra\tamostragem/registro/forma_vida_exotica_outra\ttext\ttext\t\tOutra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_exotica_outra\tamostragem/registro/foto_forma_vida_exotica_outra\timage\timage\t\tFoto de outra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_exotica_desconhecida\tamostragem/registro/foto_forma_vida_exotica_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tselected(${forma_vida_exotica}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_bromelioide\tamostragem/registro/forma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tselect_one\tforma_vida_exotica_bromelioide\tA erva bromelioide observada é:\tselected(${forma_vida_exotica}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_cactacea\tamostragem/registro/forma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tselect_one\tforma_vida_exotica_cactacea\tA cactácea observada é:\tselected(${forma_vida_exotica}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_orquidea\tamostragem/registro/forma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tselect_one\tforma_vida_exotica_orquidea\tA orquídea observada é:\tselected(${forma_vida_exotica}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_graminoide_outra_sp\tamostragem/registro/exotica_graminoide_outra_sp\ttext\ttext\t\tOutra espécie de erva graminoide exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_erva_outra_sp\tamostragem/registro/exotica_erva_outra_sp\ttext\ttext\t\tOutra espécie de erva não graminoide exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_arbusto_abaixo_outra_sp\tamostragem/registro/exotica_arbusto_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_arbusto_acima_outra_sp\tamostragem/registro/exotica_arbusto_acima_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_arvore_abaixo_outra_sp\tamostragem/registro/exotica_arvore_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_arvore_acima_outra_sp\tamostragem/registro/exotica_arvore_acima_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_bambu_outra_sp\tamostragem/registro/exotica_bambu_outra_sp\ttext\ttext\t\tOutra espécie de bambu exótico:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_cactacea_outra_sp\tamostragem/registro/exotica_cactacea_outra_sp\ttext\ttext\t\tOutra espécie de cactácea exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_orquidea_outra_sp\tamostragem/registro/exotica_orquidea_outra_sp\ttext\ttext\t\tOutra espécie de orquídea exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_palmeira_outra_sp\tamostragem/registro/exotica_palmeira_outra_sp\ttext\ttext\t\tOutra espécie de palmeira exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_samambaia_outra_sp\tamostragem/registro/exotica_samambaia_outra_sp\ttext\ttext\t\tOutra espécie de samambaia exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\texotica_outros_outra_sp\tamostragem/registro/exotica_outros_outra_sp\ttext\ttext\t\tOutra espécie exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tselect_multiple\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tselected(${tipo_forma_vida}, 'seca_morta')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_bromelioide\tamostragem/registro/forma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tselect_one\tforma_vida_seca_morta_bromelioide\tA erva bromelioide observada é:\tselected(${forma_vida_seca_morta}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_cactacea\tamostragem/registro/forma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tselect_one\tforma_vida_seca_morta_cactacea\tA cactácea observada é:\tselected(${forma_vida_seca_morta}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_orquidea\tamostragem/registro/forma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tselect_one\tforma_vida_seca_morta_orquidea\tA orquídea observada é:\tselected(${forma_vida_seca_morta}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_outra\tamostragem/registro/forma_vida_seca_morta_outra\ttext\ttext\t\tOutra forma de vida de planta seca e/ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_seca_morta_outra\tamostragem/registro/foto_forma_vida_seca_morta_outra\timage\timage\t\tFoto de outra forma de vida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_forma_vida_seca_morta_desconhecida\tamostragem/registro/foto_forma_vida_seca_morta_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tobservacao\tamostragem/registro/observacao\ttext\ttext\t\tDescreva observações gerais do ponto amostral, caso necessário:\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tuuid\tamostragem/registro/uuid\tcalculate\tcalculate\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tregistro\tamostragem/registro/registro\tend repeat\tend\trepeat\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tponto_fim_transecto\tamostragem/registro/ponto_fim_transecto\tgeopoint\tgeopoint\t\tCoordenada final da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tfoto_ponto_final\tamostragem/registro/foto_ponto_final\timage\timage\t\tFoto do ponto final do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tamostragem\tamostragem/registro/amostragem\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tendtime\tamostragem/registro/endtime\tend\tend\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tstarttime\tamostragem/registro/starttime\tstart\tstart\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tdeviceid\tamostragem/registro/deviceid\tdeviceid\tdeviceid\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tdevicephonenum\tamostragem/registro/devicephonenum\tphonenumber\tphonenumber\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tinicio\tamostragem/registro/inicio\tnote\tnote\t\tPrograma Monitora Subprograma Terrestre Componente Campestre Savânico Protocolo de Monitoramento de Plantas Herbáceas e Lenhosas, Nativas e Exóticas (Alvo Global)\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tuc\tamostragem/registro/uc\tselect_one uc\tselect_one\tuc\tUnidade de Conservação\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\testacao_amostral\tamostragem/registro/estacao_amostral\tselect_one estacao_amostral\tselect_one\testacao_amostral\tEstação Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tunidade_amostral\tamostragem/registro/unidade_amostral\tselect_one unidade_amostral\tselect_one\tunidade_amostral\tUnidade Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tdata_hora\tamostragem/registro/data_hora\tbegin_group\tbegin_group\t\tData e Horário\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tdata\tamostragem/registro/data\tdate\tdate\t\tData\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\thora\tamostragem/registro/hora\ttime\ttime\t\tHorário\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tdata_hora\tamostragem/registro/data_hora\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tcoletor\tamostragem/registro/coletor\tbegin repeat\tbegin\trepeat\tColetor de dados\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ticone_colaborador\tamostragem/registro/icone_colaborador\tnote\tnote\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tcpf\tamostragem/registro/cpf\ttext\ttext\t\tCPF\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tnome\tamostragem/registro/nome\ttext\ttext\t\tNome\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tcoletor\tamostragem/registro/coletor\tend repeat\tend\trepeat\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tform_veg\tamostragem/registro/form_veg\tselect_one form_veg\tselect_one\tform_veg\tQual a formação vegetacional onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tbegin_group\tbegin_group\t\tHistórico de impactos, ações de manejo ou uso\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\timpacto_manejo_uso\tamostragem/registro/impacto_manejo_uso\tselect_one impacto_manejo_uso\tselect_one\timpacto_manejo_uso\tOcorreram impactos, ações de manejo ou uso no local onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manejo_uso\tselect_multiple\ttipos_impacto_manejo_uso\tQual(is)?\t${impacto_manejo_uso}=”sim”\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso_outro\tamostragem/registro/tipos_impacto_manejo_uso_outro\ttext\ttext\t\tOutros tipos de manejo ou uso:\tselected(${tipos_impacto_manejo_uso}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso_descricao\tamostragem/registro/tipos_impacto_manejo_uso_descricao\ttext\ttext\t\tDescreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos:\t${impacto_manejo_uso}=”sim”\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tamostragem\tamostragem/registro/amostragem\tbegin_group\tbegin_group\t\tAmostragem\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tponto_inicio_transecto\tamostragem/registro/ponto_inicio_transecto\tgeopoint\tgeopoint\t\tCoordenada inicial da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_ponto_inicial\tamostragem/registro/foto_ponto_inicial\timage\timage\t\tFoto do ponto inicial do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tnum_placa\tamostragem/registro/num_placa\ttext\ttext\t\tNúmero da plaqueta\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tamostragem/registro/modulo\tselect_one modulo\tselect_one\tmodulo\tMódulo\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tregistro\tamostragem/registro/registro\tbegin repeat\tbegin\trepeat\tPONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tponto_amostral\tamostragem/registro/ponto_amostral\thidden\thidden\t\tponto_amostral\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tponto_metro\tamostragem/registro/ponto_metro\thidden\thidden\t\tponto_metro\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tponto_metro_count\tamostragem/registro/ponto_metro_count\tnote\tnote\t\t## PONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttipo_forma_vida\t**Encostam** na vareta:\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multiple\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tselected(${tipo_forma_vida}, 'nativa')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bromelioide\tamostragem/registro/forma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tselect_one\tforma_vida_nativa_bromelioide\tA bromélia observada é:\tselected(${forma_vida_nativa}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bromelioide_sp\tamostragem/registro/forma_vida_nativa_bromelioide_sp\ttext\ttext\t\tEspécie ou nome popular (Bromelioide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_cactacea\tamostragem/registro/forma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tselect_one\tforma_vida_nativa_cactacea\tA cactácea observada é:\tselected(${forma_vida_nativa}, 'cactacea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_cactacea_sp\tamostragem/registro/forma_vida_nativa_cactacea_sp\ttext\ttext\t\tEspécie ou nome popular (Cactácea)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_orquidea\tamostragem/registro/forma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tselect_one\tforma_vida_nativa_orquidea\tA orquídea observada é:\tselected(${forma_vida_nativa}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_orquidea_sp\tamostragem/registro/forma_vida_nativa_orquidea_sp\ttext\ttext\t\tEspécie ou nome popular (Orquídea)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_outra\tamostragem/registro/forma_vida_nativa_outra\ttext\ttext\t\tOutra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_nativa_outra\tamostragem/registro/foto_forma_vida_nativa_outra\timage\timage\t\tFoto de outra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_nativa_desconhecida\tamostragem/registro/foto_forma_vida_nativa_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tselected(${forma_vida_nativa}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_graminoide\tamostragem/registro/forma_vida_nativa_graminoide\ttext\ttext\t\tEspécie ou nome popular (Graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_palmeira\tamostragem/registro/forma_vida_nativa_palmeira\ttext\ttext\t\tEspécie ou nome popular (Palmeira)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_samambaia\tamostragem/registro/forma_vida_nativa_samambaia\ttext\ttext\t\tEspécie ou nome popular (Samambaia)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_canela_de_ema\tamostragem/registro/forma_vida_nativa_canela_de_ema\ttext\ttext\t\tEspécie ou nome popular (Canela-de-ema)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_multiple\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tselected(${tipo_forma_vida}, 'exotica')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tselect_multiple\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tselect_multiple\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tselect_multiple\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tselect_multiple\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tselect_multiple\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tselect_multiple\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\tselect_multiple\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tselect_multiple\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lianas\tselect_multiple\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tselect_multiple\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tselect_multiple\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tselect_multiple\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outros\tselect_multiple\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_outra\tamostragem/registro/forma_vida_exotica_outra\ttext\ttext\t\tOutra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_exotica_outra\tamostragem/registro/foto_forma_vida_exotica_outra\timage\timage\t\tFoto de outra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_exotica_desconhecida\tamostragem/registro/foto_forma_vida_exotica_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tselected(${forma_vida_exotica}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_bromelioide\tamostragem/registro/forma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tselect_one\tforma_vida_exotica_bromelioide\tA bromélia observada é:\tselected(${forma_vida_exotica}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_cactacea\tamostragem/registro/forma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tselect_one\tforma_vida_exotica_cactacea\tA cactácea observada é:\tselected(${forma_vida_exotica}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_orquidea\tamostragem/registro/forma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tselect_one\tforma_vida_exotica_orquidea\tA orquídea observada é:\tselected(${forma_vida_exotica}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_graminoide_outra_sp\tamostragem/registro/exotica_graminoide_outra_sp\ttext\ttext\t\tOutra espécie de erva graminoide exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_erva_outra_sp\tamostragem/registro/exotica_erva_outra_sp\ttext\ttext\t\tOutra espécie de erva não graminoide exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_arbusto_abaixo_outra_sp\tamostragem/registro/exotica_arbusto_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_arbusto_acima_outra_sp\tamostragem/registro/exotica_arbusto_acima_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_arvore_abaixo_outra_sp\tamostragem/registro/exotica_arvore_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_arvore_acima_outra_sp\tamostragem/registro/exotica_arvore_acima_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_bambu_outra_sp\tamostragem/registro/exotica_bambu_outra_sp\ttext\ttext\t\tOutra espécie de bambu exótico:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_cactacea_outra_sp\tamostragem/registro/exotica_cactacea_outra_sp\ttext\ttext\t\tOutra espécie de cactácea exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_orquidea_outra_sp\tamostragem/registro/exotica_orquidea_outra_sp\ttext\ttext\t\tOutra espécie de orquídea exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_palmeira_outra_sp\tamostragem/registro/exotica_palmeira_outra_sp\ttext\ttext\t\tOutra espécie de palmeira exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_samambaia_outra_sp\tamostragem/registro/exotica_samambaia_outra_sp\ttext\ttext\t\tOutra espécie de samambaia exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\texotica_outros_outra_sp\tamostragem/registro/exotica_outros_outra_sp\ttext\ttext\t\tOutra espécie exótica:\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tselect_multiple\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tselected(${tipo_forma_vida}, 'seca_morta')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_bromelioide\tamostragem/registro/forma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tselect_one\tforma_vida_seca_morta_bromelioide\tA bromélia observada é:\tselected(${forma_vida_seca_morta}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_cactacea\tamostragem/registro/forma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tselect_one\tforma_vida_seca_morta_cactacea\tA cactácea observada é:\tselected(${forma_vida_seca_morta}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_orquidea\tamostragem/registro/forma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tselect_one\tforma_vida_seca_morta_orquidea\tA orquídea observada é:\tselected(${forma_vida_seca_morta}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_outra\tamostragem/registro/forma_vida_seca_morta_outra\ttext\ttext\t\tOutra forma de vida de planta seca e/ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_seca_morta_outra\tamostragem/registro/foto_forma_vida_seca_morta_outra\timage\timage\t\tFoto de outra forma de vida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_forma_vida_seca_morta_desconhecida\tamostragem/registro/foto_forma_vida_seca_morta_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tuuid\tamostragem/registro/uuid\tcalculate\tcalculate\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tregistro\tamostragem/registro/registro\tend repeat\tend\trepeat\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tponto_fim_transecto\tamostragem/registro/ponto_fim_transecto\tgeopoint\tgeopoint\t\tCoordenada final da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tfoto_ponto_final\tamostragem/registro/foto_ponto_final\timage\timage\t\tFoto do ponto final do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tamostragem\tamostragem/registro/amostragem\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tendtime\tamostragem/registro/endtime\tend\tend\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tstart\tamostragem/registro/start\tstart\tstart\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tend\tamostragem/registro/end\tend\tend\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tdeviceid\tamostragem/registro/deviceid\tdeviceid\tdeviceid\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tphonenumber\tamostragem/registro/phonenumber\tphonenumber\tphonenumber\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tcontrole_versao\tamostragem/registro/controle_versao\tcalculate\tcalculate\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tinicio\tamostragem/registro/inicio\tnote\tnote\t\tPrograma Monitora Subprograma Terrestre Componente Campestre Savânico Protocolo de Monitoramento de Plantas Herbáceas e Lenhosas, Nativas e Exóticas (Alvo Global)\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tuc\tamostragem/registro/uc\tselect_one uc\tselect_one\tuc\tUnidade de Conservação\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\testacao_amostral\tamostragem/registro/estacao_amostral\tselect_one estacao_amostral\tselect_one\testacao_amostral\tEstação Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tunidade_amostral\tamostragem/registro/unidade_amostral\tselect_one unidade_amostral\tselect_one\tunidade_amostral\tUnidade Amostral\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tn_form_ref\tamostragem/registro/n_form_ref\thidden\thidden\t\tFormulário de referência\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tdata_hora\tamostragem/registro/data_hora\tbegin_group\tbegin_group\t\tData e Horário\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tdata\tamostragem/registro/data\tdate\tdate\t\tData\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\thora\tamostragem/registro/hora\ttime\ttime\t\tHorário\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tdata_hora\tamostragem/registro/data_hora\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tcoletor\tamostragem/registro/coletor\tbegin_repeat\tbegin_repeat\t\tColetor de dados\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ticone_colaborador\tamostragem/registro/icone_colaborador\tnote\tnote\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tcpf\tamostragem/registro/cpf\ttext\ttext\t\tCPF\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tnome\tamostragem/registro/nome\ttext\ttext\t\tNome completo\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tcoletor\tamostragem/registro/coletor\tend_repeat\tend_repeat\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tform_veg\tamostragem/registro/form_veg\tselect_one form_veg\tselect_one\tform_veg\tQual a formação vegetacional onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tbegin_group\tbegin_group\t\tHistórico de impactos, ações de manejo ou uso\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\timpacto_manejo_uso\tamostragem/registro/impacto_manejo_uso\tselect_one impacto_manejo_uso\tselect_one\timpacto_manejo_uso\tOcorreram impactos, ações de manejo ou uso no local onde está situado o transecto?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manejo_uso\tselect_multiple\ttipos_impacto_manejo_uso\tQual(is)?\t${impacto_manejo_uso}=”sim”\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso_outro\tamostragem/registro/tipos_impacto_manejo_uso_outro\ttext\ttext\t\tOutros tipos de manejo ou uso:\tselected(${tipos_impacto_manejo_uso}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso_descricao\tamostragem/registro/tipos_impacto_manejo_uso_descricao\ttext\ttext\t\tDescreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos:\t${impacto_manejo_uso}=”sim”\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tend_group\tend_group\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tobservacoes_gerais\tamostragem/registro/observacoes_gerais\ttext\ttext\t\tDescreva observações gerais do transecto, caso necessário:\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tamostragem\tamostragem/registro/amostragem\tbegin_repeat\tbegin_repeat\t\tAmostragem\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tponto_inicio_transecto\tamostragem/registro/ponto_inicio_transecto\tgeopoint\tgeopoint\t\tCoordenada inicial da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_ponto_inicial\tamostragem/registro/foto_ponto_inicial\timage\timage\t\tFoto do ponto inicial do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tnum_placa\tamostragem/registro/num_placa\ttext\ttext\t\tNúmero da plaqueta\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tnum_placa_formatado\tamostragem/registro/num_placa_formatado\tcalculate\tcalculate\t\tNúmero da plaqueta formatado\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_plaqueta\tamostragem/registro/foto_plaqueta\timage\timage\t\tFoto da plaqueta\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tamostragem/registro/especie\tselect_one especie\tselect_one\tespecie\tHaverá identificação de espécie ou outro nível taxonômico?\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tregistro\tamostragem/registro/registro\tbegin_repeat\tbegin_repeat\t\tPONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tponto_amostral\tamostragem/registro/ponto_amostral\thidden\thidden\t\tponto_amostral\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tponto_metro\tamostragem/registro/ponto_metro\thidden\thidden\t\tponto_metro\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tponto_metro_count\tamostragem/registro/ponto_metro_count\tnote\tnote\t\t## PONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttipo_forma_vida\t**Encostam** na vareta:\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_serrapilheira\tamostragem/registro/forma_serrapilheira\tselect_multiple forma_vida_serrapilheira\tselect_multiple\tforma_vida_serrapilheira\tMateriais botânicos em decomposição no solo observados:\tselected(${tipo_forma_vida}, 'serrapilheira')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tamostragem/registro/forma_vida_outros\tselect_multiple forma_vida_outros\tselect_multiple\tforma_vida_outros\tOutras plantas terrestres, líquens e/ou fungos​:\tselected(${tipo_forma_vida}, 'outra_forma_vida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multiple\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tselected(${tipo_forma_vida}, 'nativa')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bromelioide\tamostragem/registro/forma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tselect_one\tforma_vida_nativa_bromelioide\tA erva bromelioide <span style=\"color:red\">nativa</span> observada é:\tselected(${forma_vida_nativa}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bromelioide_sp\tamostragem/registro/forma_vida_nativa_bromelioide_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_cactacea\tamostragem/registro/forma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tselect_one\tforma_vida_nativa_cactacea\tO cacto <span style=\"color:red\">nativo</span> observado é:\tselected(${forma_vida_nativa}, 'cactacea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_cactacea_sp\tamostragem/registro/forma_vida_nativa_cactacea_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto nativo </span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_orquidea\tamostragem/registro/forma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tselect_one\tforma_vida_nativa_orquidea\tA orquídea <span style=\"color:red\">nativa</span> observada é:\tselected(${forma_vida_nativa}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_orquidea_sp\tamostragem/registro/forma_vida_nativa_orquidea_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_samambaia\tamostragem/registro/forma_vida_nativa_samambaia\tselect_one forma_vida_nativa_samambaia\tselect_one\tforma_vida_nativa_samambaia\tA samambaia <span style=\"color:red\">nativa</span> observada é:\tselected(${forma_vida_nativa}, 'samambaia')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_samambaia_sp\tamostragem/registro/forma_vida_nativa_samambaia_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_graminoide\tamostragem/registro/forma_vida_nativa_graminoide\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura inferior a 50cm)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu nativo</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_palmeira\tamostragem/registro/forma_vida_nativa_palmeira\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_canela_de_ema\tamostragem/registro/forma_vida_nativa_canela_de_ema\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Velloziaceae nativa</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_nativa_desconhecida\tamostragem/registro/foto_forma_vida_nativa_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tselected(${forma_vida_nativa}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_nativa_desconhecida02\tamostragem/registro/foto_forma_vida_nativa_desconhecida02\timage\timage\t\tOutra foto da forma de vida desconhecida de planta nativa, caso ache necessário:\tselected(${forma_vida_nativa}, 'desconhecida') and ${foto_forma_vida_nativa_desconhecida} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_nativa_desconhecida03\tamostragem/registro/foto_forma_vida_nativa_desconhecida03\timage\timage\t\toutra foto da forma de vida desconhecida de planta nativa, caso ache necessário:\tselected(${forma_vida_nativa}, 'desconhecida') and ${foto_forma_vida_nativa_desconhecida02} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_multiple\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tselected(${tipo_forma_vida}, 'exotica')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_bromelioide\tamostragem/registro/forma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tselect_one\tforma_vida_exotica_bromelioide\tA erva bromelioide <span style=\"color:red\">exótica</span> observada é:\tselected(${forma_vida_exotica}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_cactacea\tamostragem/registro/forma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tselect_one\tforma_vida_exotica_cactacea\tO cacto <span style=\"color:red\">exótico</span> observado é:\tselected(${forma_vida_exotica}, 'cactacea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_orquidea\tamostragem/registro/forma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tselect_one\tforma_vida_exotica_orquidea\tA orquídea <span style=\"color:red\">exótica</span> observada é:\tselected(${forma_vida_exotica}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_samambaia\tamostragem/registro/forma_vida_exotica_samambaia\tselect_one forma_vida_exotica_samambaia\tselect_one\tforma_vida_exotica_samambaia\tA samambaia <span style=\"color:red\">exótica</span> observada é:\tselected(${forma_vida_exotica}, 'samambaia')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tselect_multiple\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> ervas graminóides exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_graminoide_outra_sp\tamostragem/registro/exotica_graminoide_outra_sp\ttext\ttext\t\tOutra espécie de erva graminoide exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tselect_multiple\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_erva_outra_sp\tamostragem/registro/exotica_erva_outra_sp\ttext\ttext\t\tOutra espécie de erva não graminoide exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tselect_multiple\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_arbusto_abaixo_outra_sp\tamostragem/registro/exotica_arbusto_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tselect_multiple\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_arbusto_acima_outra_sp\tamostragem/registro/exotica_arbusto_acima_outra_sp\ttext\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tselect_multiple\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_arvore_abaixo_outra_sp\tamostragem/registro/exotica_arvore_abaixo_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tselect_multiple\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_arvore_acima_outra_sp\tamostragem/registro/exotica_arvore_acima_outra_sp\ttext\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\tselect_multiple\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_bambu_outra_sp\tamostragem/registro/exotica_bambu_outra_sp\ttext\ttext\t\tOutra espécie de bambu exótico:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lianas\tselect_multiple\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_lianas_outra_sp\tamostragem/registro/exotica_lianas_outra_sp\ttext\ttext\t\tOutra espécie de liana exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas') and selected(${especies_exotica_lianas}, 'exotica_lianas_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_ervas_de_passarinho\tamostragem/registro/especies_exotica_ervas_de_passarinho\tselect_multiple especies_exotica_ervas_de_passarinho\tselect_multiple\tespecies_exotica_ervas_de_passarinho\t**Espécies** de <span style=\"color:red\"> ervas-de-passarinho (hemiparasita) exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_ervas_de_passarinho_outra_sp\tamostragem/registro/exotica_ervas_de_passarinho_outra_sp\ttext\ttext\t\tOutra espécie de erva-de-passarinho exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho') and selected(${especies_exotica_ervas_de_passarinho}, 'exotica_ervas_de_passarinho_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tselect_multiple\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_palmeira_outra_sp\tamostragem/registro/exotica_palmeira_outra_sp\ttext\ttext\t\tOutra espécie de palmeira exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bromelioide\tamostragem/registro/especies_exotica_bromelioide\tselect_multiple especies_exotica_bromelioide\tselect_multiple\tespecies_exotica_bromelioide\t**Espécies** de <span style=\"color:red\"> ervas bromelioides exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_bromelioide_outra_sp\tamostragem/registro/exotica_bromelioide_outra_sp\ttext\ttext\t\tOutra espécie de erva bromelióide exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide') and selected(${especies_exotica_bromelioide}, 'exotica_bromelioide_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tselect_multiple\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cacto exótico:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_cactacea_outra_sp\tamostragem/registro/exotica_cactacea_outra_sp\ttext\ttext\t\tOutra espécie de cacto exótico:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tselect_multiple\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_orquidea_outra_sp\tamostragem/registro/exotica_orquidea_outra_sp\ttext\ttext\t\tOutra espécie de orquídea exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tselect_multiple\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_samambaia_outra_sp\tamostragem/registro/exotica_samambaia_outra_sp\ttext\ttext\t\tOutra espécie de samambaia exótica:\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outros\tselect_multiple\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outras exóticas:</span>\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'outros')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\texotica_outros_outra_sp\tamostragem/registro/exotica_outros_outra_sp\ttext\ttext\t\tOutra espécie exótica:\tselected(${especie}, 'sim') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_exotica_desconhecida\tamostragem/registro/foto_forma_vida_exotica_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tselected(${forma_vida_exotica}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_exotica_desconhecida02\tamostragem/registro/foto_forma_vida_exotica_desconhecida02\timage\timage\t\tOutra foto da forma de vida desconhecida de planta exótica, caso ache necessário:\tselected(${forma_vida_exotica}, 'desconhecida') and ${foto_forma_vida_exotica_desconhecida} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_exotica_desconhecida03\tamostragem/registro/foto_forma_vida_exotica_desconhecida03\timage\timage\t\tOutra foto da forma de vida desconhecida de planta exótica, caso ache necessário:\tselected(${forma_vida_exotica}, 'desconhecida') and ${foto_forma_vida_exotica_desconhecida02} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tselect_multiple\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tselected(${tipo_forma_vida}, 'seca_morta')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bromelioide\tamostragem/registro/forma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tselect_one\tforma_vida_seca_morta_bromelioide\tA erva bromelioide <span style=\"color:red\">seca ou morta</span> observada é:\tselected(${forma_vida_seca_morta}, 'bromelioide')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bromelioide_sp\tamostragem/registro/forma_vida_seca_morta_bromelioide_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bromelioide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_cactacea\tamostragem/registro/forma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tselect_one\tforma_vida_seca_morta_cactacea\tO cacto <span style=\"color:red\">seco ou morto</span> observado é:\tselected(${forma_vida_seca_morta}, 'cactacea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_cactacea_sp\tamostragem/registro/forma_vida_seca_morta_cactacea_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto seco ou morto</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'cactacea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_orquidea\tamostragem/registro/forma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tselect_one\tforma_vida_seca_morta_orquidea\tA orquídea <span style=\"color:red\">seca ou morta</span> observada é:\tselected(${forma_vida_seca_morta}, 'orquidea')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_orquidea_sp\tamostragem/registro/forma_vida_seca_morta_orquidea_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'orquidea')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_samambaia\tamostragem/registro/forma_vida_seca_morta_samambaia\tselect_one forma_vida_seca_morta_samambaia\tselect_one\tforma_vida_seca_morta_samambaia\tA samambaia <span style=\"color:red\">seca ou morta</span> observada é:\tselected(${forma_vida_seca_morta}, 'samambaia')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_samambaia_sp\tamostragem/registro/forma_vida_seca_morta_samambaia_sp\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'samambaia')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_graminoide\tamostragem/registro/forma_vida_seca_morta_graminoide\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_erva_nao_graminoide\tamostragem/registro/forma_vida_seca_morta_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'erva_nao_graminoide')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_arbusto_abaixo\tamostragem/registro/forma_vida_seca_morta_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura inferior a 50cm)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_arbusto_acima\tamostragem/registro/forma_vida_seca_morta_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_mortaarvore_abaixo\tamostragem/registro/forma_vida_seca_mortaarvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore seca ou morta</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_arvore_acima\tamostragem/registro/forma_vida_seca_morta_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Árvore seca ou morta</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bambu\tamostragem/registro/forma_vida_seca_morta_bambu\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu seco ou morto</span> )\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bambu')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_lianas\tamostragem/registro/forma_vida_seca_morta_lianas\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'lianas')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_ervas_de_passarinho\tamostragem/registro/forma_vida_seca_morta_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'ervas_de_passarinho')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_palmeira\tamostragem/registro/forma_vida_seca_morta_palmeira\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'palmeira')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_canela_de_ema\tamostragem/registro/forma_vida_seca_morta_canela_de_ema\ttext\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Velloziaceae seca ou morta</span>)\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'canela_de_ema')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_seca_morta_desconhecida\tamostragem/registro/foto_forma_vida_seca_morta_desconhecida\timage\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'desconhecida')\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_seca_morta_desconhecida02\tamostragem/registro/foto_forma_vida_seca_morta_desconhecida02\timage\timage\t\tOutra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário:\tselected(${forma_vida_seca_morta}, 'desconhecida') and ${foto_forma_vida_seca_morta_desconhecida} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_forma_vida_seca_morta_desconhecida03\tamostragem/registro/foto_forma_vida_seca_morta_desconhecida03\timage\timage\t\tOutra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário:\tselected(${forma_vida_seca_morta}, 'desconhecida') and ${foto_forma_vida_seca_morta_desconhecida02} != ''\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tobservacao\tamostragem/registro/observacao\ttext\ttext\t\tDescreva observações gerais do ponto amostral, caso necessário:\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tuuid\tamostragem/registro/uuid\tcalculate\tcalculate\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tregistro\tamostragem/registro/registro\tend_repeat\tend_repeat\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tponto_fim_transecto\tamostragem/registro/ponto_fim_transecto\tgeopoint\tgeopoint\t\tCoordenada final da amostragem\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tfoto_ponto_final\tamostragem/registro/foto_ponto_final\timage\timage\t\tFoto do ponto final do transecto\t\tyes",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tamostragem\tamostragem/registro/amostragem\tend_repeat\tend_repeat\t\t\t\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tendtime\tamostragem/registro/endtime\tend\tend\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tstarttime\tamostragem/registro/starttime\tstart\tstart\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tdeviceid\tamostragem/registro/deviceid\tdeviceid\tdeviceid\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tdevicephonenum\tamostragem/registro/devicephonenum\tphonenumber\tphonenumber\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tinicio\tamostragem/registro/inicio\tnote\tnote\t\tPrograma Monitora Componente Campestre Savânico Protocolo de Monitoramento de plantas herbáceas e lenhosas\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tuc\tamostragem/registro/uc\tselect_one uc\tselect_one\tuc\tUnidade de Conservação\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\testacao_amostral\tamostragem/registro/estacao_amostral\tselect_one estacao_amostral\tselect_one\testacao_amostral\tEstação Amostral\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tunidade_amostral\tamostragem/registro/unidade_amostral\tselect_one unidade_amostral\tselect_one\tunidade_amostral\tUnidade Amostral\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tdata_hora\tamostragem/registro/data_hora\tbegin_group\tbegin_group\t\tData e Horário\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tdata\tamostragem/registro/data\tdate\tdate\t\tData\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\thora\tamostragem/registro/hora\ttime\ttime\t\tHorário\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tdata_hora\tamostragem/registro/data_hora\tend_group\tend_group\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tcoletor\tamostragem/registro/coletor\tbegin repeat\tbegin\trepeat\tColetor de dados\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ticone_colaborador\tamostragem/registro/icone_colaborador\tnote\tnote\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tcpf\tamostragem/registro/cpf\ttext\ttext\t\tCPF\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tnome\tamostragem/registro/nome\ttext\ttext\t\tNome\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tcoletor\tamostragem/registro/coletor\tend repeat\tend\trepeat\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tform_veg\tamostragem/registro/form_veg\tselect_one form_veg\tselect_one\tform_veg\tQual a formação vegetacional onde está situado o transecto?\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tbegin_group\tbegin_group\t\tHistórico de impactos, ações de manejo ou uso\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\timpacto_manejo_uso\tamostragem/registro/impacto_manejo_uso\tselect_one impacto_manejo_uso\tselect_one\timpacto_manejo_uso\tOcorreram impactos, ações de manejo ou uso no local onde está situado o transecto?\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manejo_uso\tselect_multiple\ttipos_impacto_manejo_uso\tQual(is)?\t${impacto_manejo_uso}=”sim”\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso_outro\tamostragem/registro/tipos_impacto_manejo_uso_outro\ttext\ttext\t\tOutros tipos de manejo ou uso:\tselected(${tipos_impacto_manejo_uso}, 'outros')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso_descricao\tamostragem/registro/tipos_impacto_manejo_uso_descricao\ttext\ttext\t\tDescreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos:\t${impacto_manejo_uso}=”sim”\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\timpact_manejo_uso\tamostragem/registro/impact_manejo_uso\tend_group\tend_group\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tamostragem\tamostragem/registro/amostragem\tbegin_group\tbegin_group\t\tAmostragem\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tponto_inicio_transecto\tamostragem/registro/ponto_inicio_transecto\tgeopoint\tgeopoint\t\tCoordenada inicial da amostragem\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tfoto_ponto_inicial\tamostragem/registro/foto_ponto_inicial\timage\timage\t\tFoto do ponto inicial do transecto\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tnum_placa\tamostragem/registro/num_placa\ttext\ttext\t\tNúmero do transecto\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tamostragem/registro/especies\tselect_one especies\tselect_one\tespecies\tHaverá identificação de espécies?\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tregistro\tamostragem/registro/registro\tbegin repeat\tbegin\trepeat\tPONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tponto_amostral\tamostragem/registro/ponto_amostral\thidden\thidden\t\tponto_amostral\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tponto_metro\tamostragem/registro/ponto_metro\thidden\thidden\t\tponto_metro\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tponto_metro_count\tamostragem/registro/ponto_metro_count\tnote\tnote\t\t## PONTO ${ponto_amostral}: ${ponto_metro} METROS\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttipo_forma_vida\t**Encostam** na vareta:\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multiple\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tselected(${tipo_forma_vida}, 'nativa')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide\tamostragem/registro/forma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tselect_one\tforma_vida_nativa_bromelioide\tSelecione se a bromélia observada é:\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide_sp\tamostragem/registro/forma_vida_nativa_bromelioide_sp\ttext\ttext\t\tEspécie ou nome popular (Bromelioide)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_orquidea\tamostragem/registro/forma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tselect_one\tforma_vida_nativa_orquidea\tSelecione se a orquidea observada é:\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_orquidea_sp\tamostragem/registro/forma_vida_nativa_orquidea_sp\ttext\ttext\t\tEspécie ou nome popular (Orquídea)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_outra\tamostragem/registro/forma_vida_nativa_outra\ttext\ttext\t\tOutra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tfoto_forma_vida_nativa_outra\tamostragem/registro/foto_forma_vida_nativa_outra\timage\timage\t\tFoto de outra forma de vida de planta nativa:\tselected(${forma_vida_nativa}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_graminoide\tamostragem/registro/forma_vida_nativa_graminoide\ttext\ttext\t\tEspécie ou nome popular (Graminoide)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto abaixo de 0,5m de altura)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_cactacea\tamostragem/registro/forma_vida_nativa_cactacea\ttext\ttext\t\tEspécie ou nome popular (Cactácea)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_palmeira\tamostragem/registro/forma_vida_nativa_palmeira\ttext\ttext\t\tEspécie ou nome popular (Palmeira)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_samambaia\tamostragem/registro/forma_vida_nativa_samambaia\ttext\ttext\t\tEspécie ou nome popular (Samambaia)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_canela_de_ema\tamostragem/registro/forma_vida_nativa_canela_de_ema\ttext\ttext\t\tEspécie ou nome popular (Canela-de-ema)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_multiple\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tselected(${tipo_forma_vida}, 'exotica')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tselect_multiple\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tamostragem/registro/especies_exotica_erva\tselect_multiple especies_exotica_erva\tselect_multiple\tespecies_exotica_erva\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tselect_multiple\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> abaixo de 0,5m de altura:\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tselect_multiple\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> acima de 0,5m de altura:\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_acima\tselect_multiple\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> abaixo de 5cm diâmetro:\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tselect_multiple\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> acima de 5cm diâmetro:\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\tselect_multiple\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tselect_multiple\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lianas\tselect_multiple\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tselect_multiple\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tselect_multiple\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tselect_multiple\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outros\tselect_multiple\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_bromelioide\tamostragem/registro/forma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tselect_one\tforma_vida_exotica_bromelioide\tSelecione se a bromélia observada é:\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'bromelioide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_orquidea\tamostragem/registro/forma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tselect_one\tforma_vida_exotica_orquidea\tSelecione se a orquidea observada é:\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'orquidea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_outra\tamostragem/registro/forma_vida_exotica_outra\ttext\ttext\t\tOutra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tfoto_forma_vida_exotica_outra\tamostragem/registro/foto_forma_vida_exotica_outra\timage\timage\t\tFoto de outra forma de vida de planta exótica:\tselected(${forma_vida_exotica}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tselect_multiple\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tselected(${tipo_forma_vida}, 'seca_morta')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_bromelioide\tamostragem/registro/forma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tselect_one\tforma_vida_seca_morta_bromelioide\tSelecione se a bromélia observada é:\tselected(${forma_vida_seca_morta}, 'bromelioide')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_orquidea\tamostragem/registro/forma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tselect_one\tforma_vida_seca_morta_orquidea\tSelecione se a orquidea observada é:\tselected(${forma_vida_seca_morta}, 'orquidea')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_outra\tamostragem/registro/forma_vida_seca_morta_outra\ttext\ttext\t\tOutra forma de vida de planta seca e/ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tfoto_forma_vida_seca_morta_outra\tamostragem/registro/foto_forma_vida_seca_morta_outra\timage\timage\t\tFoto de outra forma de vida de planta seca ou morta:\tselected(${forma_vida_seca_morta}, 'outra')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tuuid\tamostragem/registro/uuid\tcalculate\tcalculate\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tregistro\tamostragem/registro/registro\tend repeat\tend\trepeat\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tponto_fim_transecto\tamostragem/registro/ponto_fim_transecto\tgeopoint\tgeopoint\t\tCoordenada final da amostragem\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tfoto_ponto_final\tamostragem/registro/foto_ponto_final\timage\timage\t\tFoto do ponto final do transecto\t\tyes",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tamostragem\tamostragem/registro/amostragem\tend_group\tend_group\t\t\t\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tendtime\tamostragem/registro/endtime\tend\tend\t\t\t\t"
+  )
+  campos <- monitora_correcao_fread_tsv_embutido(campos_linhas)
+  campos[] <- lapply(campos, as.character)
+  opcoes_linhas <- c(
+    "arquivo_xlsform\tlist_name\tname\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tuc\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\testacao_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tunidade_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tform_veg\tcampestre\tCampestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tform_veg\tsavanica\tSavânica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tsolo_nu\tSolo nu / rochas (sem plantas tocando a vareta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tserrapilheira\tSerrapilheira (partes de plantas em decomposição no solo)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Velloziaceae)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tVelósia (Velloziaceae)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_cactacea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_cactacea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_cactacea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\timpacto_manejo_uso\tsim\tSim",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\timpacto_manejo_uso\tnão\tNão",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tincendio\tIncêndio",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\taceiro\tAceiro",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tqueima_prescrita\tQueima prescrita",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tqueima_controlada\tQueima controlada",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\textrativismo\tExtrativismo",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\therbivoria\tHerbivoria",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tpisoteio\tPisoteio da vegetação por animais de criação ou por Espécies Exóticas e Invasoras",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\trestauracao\tRestauração",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tuso_publico\tUso Público",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\toutros\tOutros",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tbasico\tProtocolo Básico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tProtocolo Avançado",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tarundo_donax\t01 - Cana-do-reino (Arundo donax)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tdigitaria_insularis\t02 - Capim-amargoso (Digitaria insularis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\teragrostis_plana\t03 - Capim-annoni (Eragrostis plana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tmelinis_repens\t04 - Capim-bandeira (Melinis repens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_brizantha\t05 - Capim-braquiária-brizanta (Urochloa brizantha)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_decumbens\t06 - Capim-braquiária-decumbens (Urochloa decumbens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_humidicola\t07 - Capim-braquiária-humidicola (Urochloa humidicola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_subquadripara\t08 - Capim-braquiária-hybrida (Urochloa subquadripara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_ruziziensis\t09 - Capim-braquiária-ruziziensis (Urochloa ruziziensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcenchrus_echinatus\t10 - Capim-carrapicho (Cenchrus echinatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tmegathyrsus_maximus\t11 - Capim-colonião (Megathyrsus maximus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcynodon_dactylon\t12 - Capim-de-burro (Cynodon dactylon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcoix_lacryma\t13 - Capim-de-lágrima (Coix lacryma)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_mutica\t14 - Capim-de-planta (Urochloa mutica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcenchrus_purpureus\t15 - Capim-elefante (Cenchrus purpureus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tandropogon_gayanus\t16 - Capim-gamba (Andropogon gayanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tmelinis_minutiflora\t17 - Capim-gordura (Melinis minutiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\thyparrhenia_rufa\t18 - Capim-jaraguá (Hyparrhenia rufa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\turochloa_plantaginea\t19 - Capim-marmelada (Urochloa plantaginea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tchloris_gayana\t20 - Capim-rhodes (Chloris gayana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcenchrus_pedicellatus\t21 - Falso-capim-custódio (Cenchrus pedicellatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcynodon_plectostachyus\t22 - Grama-bermuda (Cynodon plectostachyus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcynodon_nlemfuensis\t23 - Grama-estrela (Cynodon nlemfuensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tcenchrus_clandestinus\t24 - Quicuio (Cenchrus clandestinus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\tOutra espécie de erva graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_balbisiana\t01 - Banana-flor (Musa balbisiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_ornata\t02 - Bananeira-ornamental (Musa ornata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tbegonia_ulmifolia\t03 - Begônia (Begonia ulmifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tcirsium_vulgare\t04 - Cardo negro (Cirsium vulgare)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tdieffenbachia_seguine\t05 - Comigo-ninguém-pode (Dieffenbachia seguine)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tzantedeschia_aethiopica\t06 - Copo-de-leite (Zantedeschia aethiopica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tmonstera_deliciosa\t07 - Costela-de-adão (Monstera deliciosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tcrotalaria_retusa\t08 - Crotalaria (Crotalaria retusa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tdracaena_fragrans\t09 - Dracena (Dracaena fragrans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tsansevieria_trifasciata\t10 - Espada-de-são-jorge (Sansevieria trifasciata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tkalanchoe_pinnata\t11 - Folha-da-fortuna (Kalanchoe pinnata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tepipremnum_pinnatum\t12 - Jibóia (Epipremnum pinnatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\ttradescantia_zebrina\t13 - Lambari (Tradescantia zebrina)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\thedychium_coronarium\t14 - Lírio-do-brejo (Hedychium coronarium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tcoreopsis_tinctoria\t15 - Margaridinha-escura (Coreopsis tinctoria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\timpatiens_walleriana\t16 - Maria-sem-vergonha (Impatiens walleriana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tcrocosmia\t17 - Palma-de-santa-rita (Crocosmia crocosmiiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tbidens_pilosa\t18 - Picão (Bidens pilosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tsyngonium_podophyllum\t19 - Singonio (Syngonium podophyllum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tcyperus_rotundus\t20 - Tiririca (Cyperus rotundus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\tOutra espécie de erva não graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_grand_exot_arb_abaixo\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tprosopis_pallida_exot_arb_abaixo\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcalotropis_procera_exot_arb_abaixo\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\ttecoma_stans_exot_arb_abaixo\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_nigra_exot_arb_abaixo\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_alba_arb_exot_arb_abaixo\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\trubus_ulmifolius_amora_exot_arb_abaixo\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\trubus_fruticosus_amora_exot_arb_abaixo\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcoffea_arabica_exot_arb_abaixo\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tlantana_camara_exot_arb_abaixo\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tparkinsonia_aculeata_cina_exot_arb_abaixo\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcordyline_fruticosa_exot_arb_abaixo\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcrotalaria_spectabilis_exot_arb_abaixo\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcestrum_nocturnum_exot_arb_abaixo\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tspartium_junceum_exot_arb_abaixo\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tvachellia_farnesiana_exot_arb_abaixo\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tmurraya_paniculata_falsa_exot_arb_abaixo\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\trubus_rosifolius_framboesa_exot_arb_abaixo\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\ttithonia_diversifolia_girassol_exot_arb_abaixo\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_banksii_exot_arb_abaixo\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_robusta_exot_arb_abaixo\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tleucaena_leucocephala_exot_arb_abaixo\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\turena_lobata_malva_exot_arb_abaixo\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tricinus_communis_mamona_exot_arb_abaixo\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tjatropha_curcas_exot_arb_abaixo\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tulex_europaeus_exot_arb_abaixo\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tmimosa_caesalpiniifolia_exot_arb_abaixo\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tduranta_erecta_exot_arb_abaixo\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_madagascariensis_exot_arb_abaixo\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_grand_exot_arb_acima\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tprosopis_pallida_exot_arb_acima\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcalotropis_procera_exot_arb_acima\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\ttecoma_stans_exot_arb_acima\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tmorus_nigra_exot_arb_acima\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tmorus_alba_arb_exot_arb_acima\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\trubus_ulmifolius_amora_exot_arb_acima\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\trubus_fruticosus_amora_exot_arb_acima\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcoffea_arabica_exot_arb_acima\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tlantana_camara_exot_arb_acima\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tparkinsonia_aculeata_cina_exot_arb_acima\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcordyline_fruticosa_exot_arb_acima\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcrotalaria_spectabilis_exot_arb_acima\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcestrum_nocturnum_exot_arb_acima\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tspartium_junceum_exot_arb_acima\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tvachellia_farnesiana_exot_arb_acima\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tmurraya_paniculata_falsa_exot_arb_acima\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\trubus_rosifolius_framboesa_exot_arb_acima\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\ttithonia_diversifolia_girassol_exot_arb_acima\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_banksii_exot_arb_acima\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_robusta_exot_arb_acima\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tleucaena_leucocephala_exot_arb_acima\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\turena_lobata_malva_exot_arb_acima\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tricinus_communis_mamona_exot_arb_acima\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tjatropha_curcas_exot_arb_acima\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tulex_europaeus_exot_arb_acima\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tmimosa_caesalpiniifolia_exot_arb_acima\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tduranta_erecta_exot_arb_acima\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_madagascariensis_exot_arb_acima\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpersea_americana_arv_exot_abaixo\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tacacia_auriculiformis_arv_exot_abaixo\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tacacia_mangium_arv_exot_abaixo\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tacacia_decurrens_arv_exot_abaixo\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_lucidum_arv_exot_abaixo\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tprosopis_juliflora_arv_exot_abaixo\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcinnamomum_verum_arv_exot_abaixo\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tterminalia_catappa_arv_exot_abaixo\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcupressus_lusitanica_arv_exot_abaixo\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_alba_arv_exot_abaixo\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_camaldulensis_arv_exot_abaixo\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_crebra_arv_exot_abaixo\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_grandis_arv_exot_abaixo\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_incrassata_arv_exot_abaixo\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_resinifera_arv_exot_abaixo\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_robusta_arv_exot_abaixo\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucaluptus_saligna_arv_exot_abaixo\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_tereticomis_arv_exot_abaixo\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_viminalis_arv_exot_abaixo\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcorymbia_citriodora_arv_exot_abaixo\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tclitoria_fairchildiana_arv_exot_abaixo\t21 - Facão (Clitoria fairchildiana )",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpeltophorum_dubium_arv_exot_abaixo\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tficus_microcarpa_arv_exot_abaixo\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tdelonix_regia_arv_exot_abaixo\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_altilis_arv_exot_abaixo\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpsidium_guajava_arv_exot_abaixo\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_banksii_arv_exot_abaixo\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_robusta_arv_exot_abaixo\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tschizolobium_parahyba_arv_exot_abaixo\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpittosporum_undulatum_arv_exot_abaixo\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_heterophyllus_arv_exot_abaixo\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_jambos_arv_exot_abaixo\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_malaccense_arv_exot_abaixo\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_cumini_arv_exot_abaixo\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_sinensis_arv_exot_abaixo\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tleucaena_leucocephala_arv_exot_abaixo\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_sinense_arv_exot_abaixo\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_limon_arv_exot_abaixo\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tmangifera_indica_arv_exot_abaixo\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\thovenia_dulcis_arv_exot_abaixo\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tazadirachta_indica_arv_exot_abaixo\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\teriobotrya_japonica_arv_exot_abaixo\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\taleurites_moluccanus_arv_exot_abaixo\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tjatropha_curcas_arv_exot_abaixo\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tcasuarina_equisetifolia_arv_exot_abaixo\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpinus_pinaster_arv_exot_abaixo\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpinus_taeda_arv_exot_abaixo\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpinus_caribaea_arv_exot_abaixo\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpinus_elliottii_arv_exot_abaixo\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tpinus_oocarpa_arv_exot_abaixo\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tmelia_azedarach_arv_exot_abaixo\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tsalix_rubens_arv_exot_abaixo\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\tOutra espécie de árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpersea_americana_arv_exot_acima\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tacacia_auriculiformis_arv_exot_acima\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tacacia_mangium_arv_exot_acima\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tacacia_decurrens_arv_exot_acima\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tligustrum_lucidum_arv_exot_acima\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tprosopis_juliflora_arv_exot_acima\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcinnamomum_verum_arv_exot_acima\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tterminalia_catappa_arv_exot_acima\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcupressus_lusitanica_arv_exot_acima\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_alba_arv_exot_acima\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_camaldulensis_arv_exot_acima\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_crebra_arv_exot_acima\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_grandis_arv_exot_acima\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_incrassata_arv_exot_acima\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_resinifera_arv_exot_acima\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_robusta_arv_exot_acima\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucaluptus_saligna_arv_exot_acima\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_tereticomis_arv_exot_acima\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teucalyptus_viminalis_arv_exot_acima\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcorymbia_citriodora_arv_exot_acima\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tclitoria_fairchildiana_arv_exot_acima\t21 - Facão (Clitoria fairchildiana )",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpeltophorum_dubium_arv_exot_acima\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tficus_microcarpa_arv_exot_acima\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tdelonix_regia_arv_exot_acima\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tartocarpus_altilis_arv_exot_acima\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpsidium_guajava_arv_exot_acima\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tgrevillea_banksii_arv_exot_acima\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tgrevillea_robusta_arv_exot_acima\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tschizolobium_parahyba_arv_exot_acima\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpittosporum_undulatum_arv_exot_acima\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tartocarpus_heterophyllus_arv_exot_acima\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tsyzygium_jambos_arv_exot_acima\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tsyzygium_malaccense_arv_exot_acima\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tsyzygium_cumini_arv_exot_acima\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcitrus_sinensis_arv_exot_acima\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tleucaena_leucocephala_arv_exot_acima\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tligustrum_sinense_arv_exot_acima\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcitrus_limon_arv_exot_acima\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tmangifera_indica_arv_exot_acima\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\thovenia_dulcis_arv_exot_acima\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tazadirachta_indica_arv_exot_acima\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\teriobotrya_japonica_arv_exot_acima\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\taleurites_moluccanus_arv_exot_acima\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tjatropha_curcas_arv_exot_acima\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tcasuarina_equisetifolia_arv_exot_acima\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_pinaster_arv_exot_acima\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_taeda_arv_exot_acima\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_caribaea_arv_exot_acima\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_elliottii_arv_exot_acima\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\tOutra espécie de bambu exótico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_cactacea\topuntia_ficus_exotica_cactacea\t01 - Opuntia ficus-indica (Palmatória)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\tOutra espécie de cactácea exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tthunbergia_alata_exotica_lianas\t01 - Amarelinha (Thunbergia alata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tsiscyos_edulis_exotica_lianas\t02 - Chuchu (Sicyos edulis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tabrus_precatorius_exotica_lianas\t03 - Ervilha-do-rosário (Abrus precatorius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tlonicera_exotica_lianas\t04 - Madressilva (Lonicera japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tmomordica_charantia_exotica_lianas\t05 - Melão de são caetano (Momordica charantia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tpueraria_exotica_lianas\t06 - Puerária (Pueraria phaseoloides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\texotica_liana_outra_sp\tOutra espécie de liana exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_orquidea\toeceoclades_maculata_exotica_orquidea\t01 - Oeceoclades maculata (Cantaria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\tOutra espécie de orquídea exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\telaeis_guineensis_exotica_palmeira\t01- Dendê (Elaeis guineensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\tlivistona_chinensis_exotica_palmeira\t02- Falsa-latania (Livistona chinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\tarchontophoenix_cunning_exotica_palmeira\t03- Palmeira-ciaforte (Archontophoenix cunninghamiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\tcaryota_urens_exotica_palmeira\t04- Palmeira-rabo-de-peixe (Caryota urens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\tOutra espécie de palmeira exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\tchristella_dentata_exotica_samambaia\t01- Christella (Christella dentata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\tnephrolepis_cordifolia_exotica_samambaia\t02- Escadinha do Céu (Nephrolepis cordifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\tdeparia_peter_exotica_samambaia\t03- Samambaia-japonesa (Deparia petersenii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\tOutra espécie de samambaia exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\tagave_americana_exotica_outros\t01- Agave-azul (Agave americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\tfurcraea_exotica_outros\t02- Pita (Furcraea foetida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\tagave_sisalana_exotica_outros\t03- Piteira-azul/Sisal (Agave sisalana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\theptapleurum_exotica_outros\t04- Cheflera-pequena (Heptapleurum arboricola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\tOutra espécie exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tuc\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\testacao_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tunidade_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tform_veg\tcampestre\tCampestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tform_veg\tsavanica\tSavânica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tsolo_nu\tSolo nu / rochas (sem plantas tocando a vareta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\toutra\tOutra forma de vida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_cactacea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\timpacto_manejo_uso\tsim\tSim",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\timpacto_manejo_uso\tnão\tNão",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tincendio\tIncêndio",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\taceiro\tAceiro",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tqueima_prescrita\tQueima prescrita",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tqueima_controlada\tQueima controlada",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\textrativismo\tExtrativismo",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tpastejo\tPastejo",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\trestauracao\tRestauração",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tuso_publico\tUso público",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\toutros\tOutros",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tbasico\tProtocolo Básico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tProtocolo Avançado",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tarundo_donax\t01 - Cana-do-reino (Arundo donax)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tdigitaria_insularis\t02 - Capim-amargoso (Digitaria insularis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\teragrostis_plana\t03 - Capim-annoni (Eragrostis plana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tmelinis_repens\t04 - Capim-bandeira (Melinis repens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_brizantha\t05 - Capim-braquiária-brizanta (Urochloa brizantha)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_decumbens\t06 - Capim-braquiária-decumbens (Urochloa decumbens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_humidicola\t07 - Capim-braquiária-humidicola (Urochloa humidicola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_subquadripara\t08 - Capim-braquiária-hybrida (Urochloa subquadripara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_ruziziensis\t09 - Capim-braquiária-ruziziensis (Urochloa ruziziensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcenchrus_echinatus\t10 - Capim-carrapicho (Cenchrus echinatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tmegathyrsus_maximus\t11 - Capim-colonião (Megathyrsus maximus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcynodon_dactylon\t12 - Capim-de-burro (Cynodon dactylon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcoix_lacryma\t13 - Capim-de-lágrima (Coix lacryma)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_mutica\t14 - Capim-de-planta (Urochloa mutica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcenchrus_purpureus\t15 - Capim-elefante (Cenchrus purpureus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tandropogon_gayanus\t16 - Capim-gamba (Andropogon gayanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tmelinis_minutiflora\t17 - Capim-gordura (Melinis minutiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\thyparrhenia_rufa\t18 - Capim-jaraguá (Hyparrhenia rufa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\turochloa_plantaginea\t19 - Capim-marmelada (Urochloa plantaginea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tchloris_gayana\t20 - Capim-rhodes (Chloris gayana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcenchrus_pedicellatus\t21 - Falso-capim-custódio (Cenchrus pedicellatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcynodon_plectostachyus\t22 - Grama-bermuda (Cynodon plectostachyus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcynodon_nlemfuensis\t23 - Grama-estrela (Cynodon nlemfuensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tcenchrus_clandestinus\t24 - Quicuio (Cenchrus clandestinus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\tOutra espécie de erva graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_balbisiana\t01 - Banana-flor (Musa balbisiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_ornata\t02 - Bananeira-ornamental (Musa ornata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tbegonia_ulmifolia\t03 - Begônia (Begonia ulmifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tcirsium_vulgare\t04 - Cardo negro (Cirsium vulgare)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tdieffenbachia_seguine\t05 - Comigo-ninguém-pode (Dieffenbachia seguine)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tzantedeschia_aethiopica\t06 - Copo-de-leite (Zantedeschia aethiopica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tmonstera_deliciosa\t07 - Costela-de-adão (Monstera deliciosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tcrotalaria_retusa\t08 - Crotalaria (Crotalaria retusa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tdracaena_fragrans\t09 - Dracena (Dracaena fragrans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tsansevieria_trifasciata\t10 - Espada-de-são-jorge (Sansevieria trifasciata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tkalanchoe_pinnata\t11 - Folha-da-fortuna (Kalanchoe pinnata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tepipremnum_pinnatum\t12 - Jibóia (Epipremnum pinnatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\ttradescantia_zebrina\t13 - Lambari (Tradescantia zebrina)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\thedychium_coronarium\t14 - Lírio-do-brejo (Hedychium coronarium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tcoreopsis_tinctoria\t15 - Margaridinha-escura (Coreopsis tinctoria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\timpatiens_walleriana\t16 - Maria-sem-vergonha (Impatiens walleriana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tcrocosmia\t17 - Palma-de-santa-rita (Crocosmia crocosmiiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tbidens_pilosa\t18 - Picão (Bidens pilosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tsyngonium_podophyllum\t19 - Singonio (Syngonium podophyllum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tcyperus_rotundus\t20 - Tiririca (Cyperus rotundus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\tOutra espécie de erva não graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_grand_exot_arb_abaixo\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tprosopis_pallida_exot_arb_abaixo\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcalotropis_procera_exot_arb_abaixo\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\ttecoma_stans_exot_arb_abaixo\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_nigra_exot_arb_abaixo\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_alba_arb_exot_arb_abaixo\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\trubus_ulmifolius_amora_exot_arb_abaixo\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\trubus_fruticosus_amora_exot_arb_abaixo\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcoffea_arabica_exot_arb_abaixo\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tlantana_camara_exot_arb_abaixo\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tparkinsonia_aculeata_cina_exot_arb_abaixo\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcordyline_fruticosa_exot_arb_abaixo\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcrotalaria_spectabilis_exot_arb_abaixo\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcestrum_nocturnum_exot_arb_abaixo\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tspartium_junceum_exot_arb_abaixo\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tvachellia_farnesiana_exot_arb_abaixo\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tmurraya_paniculata_falsa_exot_arb_abaixo\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\trubus_rosifolius_framboesa_exot_arb_abaixo\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\ttithonia_diversifolia_girassol_exot_arb_abaixo\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_banksii_exot_arb_abaixo\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_robusta_exot_arb_abaixo\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tleucaena_leucocephala_exot_arb_abaixo\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\turena_lobata_malva_exot_arb_abaixo\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tricinus_communis_mamona_exot_arb_abaixo\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tjatropha_curcas_exot_arb_abaixo\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tulex_europaeus_exot_arb_abaixo\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tmimosa_caesalpiniifolia_exot_arb_abaixo\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tduranta_erecta_exot_arb_abaixo\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_madagascariensis_exot_arb_abaixo\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_grand_exot_arb_acima\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tprosopis_pallida_exot_arb_acima\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcalotropis_procera_exot_arb_acima\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\ttecoma_stans_exot_arb_acima\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tmorus_nigra_exot_arb_acima\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tmorus_alba_arb_exot_arb_acima\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\trubus_ulmifolius_amora_exot_arb_acima\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\trubus_fruticosus_amora_exot_arb_acima\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcoffea_arabica_exot_arb_acima\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tlantana_camara_exot_arb_acima\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tparkinsonia_aculeata_cina_exot_arb_acima\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcordyline_fruticosa_exot_arb_acima\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcrotalaria_spectabilis_exot_arb_acima\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcestrum_nocturnum_exot_arb_acima\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tspartium_junceum_exot_arb_acima\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tvachellia_farnesiana_exot_arb_acima\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tmurraya_paniculata_falsa_exot_arb_acima\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\trubus_rosifolius_framboesa_exot_arb_acima\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\ttithonia_diversifolia_girassol_exot_arb_acima\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_banksii_exot_arb_acima\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_robusta_exot_arb_acima\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tleucaena_leucocephala_exot_arb_acima\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\turena_lobata_malva_exot_arb_acima\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tricinus_communis_mamona_exot_arb_acima\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tjatropha_curcas_exot_arb_acima\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tulex_europaeus_exot_arb_acima\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tmimosa_caesalpiniifolia_exot_arb_acima\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tduranta_erecta_exot_arb_acima\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_madagascariensis_exot_arb_acima\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpersea_americana_arv_exot_abaixo\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tacacia_auriculiformis_arv_exot_abaixo\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tacacia_mangium_arv_exot_abaixo\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tacacia_decurrens_arv_exot_abaixo\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_lucidum_arv_exot_abaixo\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tprosopis_juliflora_arv_exot_abaixo\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcinnamomum_verum_arv_exot_abaixo\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tterminalia_catappa_arv_exot_abaixo\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcupressus_lusitanica_arv_exot_abaixo\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_alba_arv_exot_abaixo\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_camaldulensis_arv_exot_abaixo\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_crebra_arv_exot_abaixo\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_grandis_arv_exot_abaixo\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_incrassata_arv_exot_abaixo\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_resinifera_arv_exot_abaixo\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_robusta_arv_exot_abaixo\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucaluptus_saligna_arv_exot_abaixo\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_tereticomis_arv_exot_abaixo\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_viminalis_arv_exot_abaixo\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcorymbia_citriodora_arv_exot_abaixo\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tclitoria_fairchildiana_arv_exot_abaixo\t21 - Facão (Clitoria fairchildiana )",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpeltophorum_dubium_arv_exot_abaixo\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tficus_microcarpa_arv_exot_abaixo\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tdelonix_regia_arv_exot_abaixo\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_altilis_arv_exot_abaixo\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpsidium_guajava_arv_exot_abaixo\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_banksii_arv_exot_abaixo\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_robusta_arv_exot_abaixo\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tschizolobium_parahyba_arv_exot_abaixo\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpittosporum_undulatum_arv_exot_abaixo\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_heterophyllus_arv_exot_abaixo\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_jambos_arv_exot_abaixo\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_malaccense_arv_exot_abaixo\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_cumini_arv_exot_abaixo\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_sinensis_arv_exot_abaixo\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tleucaena_leucocephala_arv_exot_abaixo\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_sinense_arv_exot_abaixo\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_limon_arv_exot_abaixo\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tmangifera_indica_arv_exot_abaixo\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\thovenia_dulcis_arv_exot_abaixo\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tazadirachta_indica_arv_exot_abaixo\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\teriobotrya_japonica_arv_exot_abaixo\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\taleurites_moluccanus_arv_exot_abaixo\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tjatropha_curcas_arv_exot_abaixo\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tcasuarina_equisetifolia_arv_exot_abaixo\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpinus_pinaster_arv_exot_abaixo\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpinus_taeda_arv_exot_abaixo\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpinus_caribaea_arv_exot_abaixo\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpinus_elliottii_arv_exot_abaixo\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tpinus_oocarpa_arv_exot_abaixo\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tmelia_azedarach_arv_exot_abaixo\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tsalix_rubens_arv_exot_abaixo\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\tOutra espécie de árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpersea_americana_arv_exot_acima\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tacacia_auriculiformis_arv_exot_acima\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tacacia_mangium_arv_exot_acima\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tacacia_decurrens_arv_exot_acima\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tligustrum_lucidum_arv_exot_acima\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tprosopis_juliflora_arv_exot_acima\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcinnamomum_verum_arv_exot_acima\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tterminalia_catappa_arv_exot_acima\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcupressus_lusitanica_arv_exot_acima\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_alba_arv_exot_acima\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_camaldulensis_arv_exot_acima\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_crebra_arv_exot_acima\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_grandis_arv_exot_acima\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_incrassata_arv_exot_acima\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_resinifera_arv_exot_acima\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_robusta_arv_exot_acima\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucaluptus_saligna_arv_exot_acima\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_tereticomis_arv_exot_acima\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teucalyptus_viminalis_arv_exot_acima\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcorymbia_citriodora_arv_exot_acima\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tclitoria_fairchildiana_arv_exot_acima\t21 - Facão (Clitoria fairchildiana )",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpeltophorum_dubium_arv_exot_acima\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tficus_microcarpa_arv_exot_acima\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tdelonix_regia_arv_exot_acima\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tartocarpus_altilis_arv_exot_acima\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpsidium_guajava_arv_exot_acima\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tgrevillea_banksii_arv_exot_acima\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tgrevillea_robusta_arv_exot_acima\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tschizolobium_parahyba_arv_exot_acima\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpittosporum_undulatum_arv_exot_acima\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tartocarpus_heterophyllus_arv_exot_acima\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tsyzygium_jambos_arv_exot_acima\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tsyzygium_malaccense_arv_exot_acima\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tsyzygium_cumini_arv_exot_acima\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcitrus_sinensis_arv_exot_acima\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tleucaena_leucocephala_arv_exot_acima\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tligustrum_sinense_arv_exot_acima\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcitrus_limon_arv_exot_acima\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tmangifera_indica_arv_exot_acima\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\thovenia_dulcis_arv_exot_acima\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tazadirachta_indica_arv_exot_acima\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\teriobotrya_japonica_arv_exot_acima\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\taleurites_moluccanus_arv_exot_acima\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tjatropha_curcas_arv_exot_acima\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tcasuarina_equisetifolia_arv_exot_acima\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_pinaster_arv_exot_acima\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_taeda_arv_exot_acima\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_caribaea_arv_exot_acima\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_elliottii_arv_exot_acima\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\tOutra espécie de bambu exótico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_cactacea\topuntia_ficus_exotica_cactacea\t01 - Opuntia ficus-indica (Palmatória)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\tOutra espécie de Cactácea exótico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tthunbergia_alata_exotica_lianas\t01 - Amarelinha (Thunbergia alata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tsiscyos_edulis_exotica_lianas\t02 - Chuchu (Sicyos edulis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tabrus_precatorius_exotica_lianas\t03 - Ervilha-do-rosário (Abrus precatorius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tlonicera_exotica_lianas\t04 - Madressilva (Lonicera japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tmomordica_charantia_exotica_lianas\t05 - Melão de são caetano (Momordica charantia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tpueraria_exotica_lianas\t06 - Puerária (Pueraria phaseoloides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\texotica_liana_outra_sp\tOutra espécie de liana exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_orquidea\toeceoclades_maculata_exotica_orquidea\t01 - Oeceoclades maculata (Cantaria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\tOutra espécie de orquídea exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\telaeis_guineensis_exotica_palmeira\t01- Dendê (Elaeis guineensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\tlivistona_chinensis_exotica_palmeira\t02- Falsa-latania (Livistona chinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\tarchontophoenix_cunning_exotica_palmeira\t03- Palmeira-ciaforte (Archontophoenix cunninghamiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\tcaryota_urens_exotica_palmeira\t04- Palmeira-rabo-de-peixe (Caryota urens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\tOutra espécie de palmeira exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\tchristella_dentata_exotica_samambaia\t01- Christella (Christella dentata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\tnephrolepis_cordifolia_exotica_samambaia\t02- Escadinha do Céu (Nephrolepis cordifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\tdeparia_peter_exotica_samambaia\t03- Samambaia-japonesa (Deparia petersenii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\tOutra espécie de samambaia exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\tagave_americana_exotica_outros\t01- Agave-azul (Agave americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\tfurcraea_exotica_outros\t02- Pita (Furcraea foetida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\tagave_sisalana_exotica_outros\t03- Piteira-azul/Sisal (Agave sisalana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\theptapleurum_exotica_outros\t04- Cheflera-pequena (Heptapleurum arboricola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\tOutra espécie exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tuc\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\testacao_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tunidade_amostral\tnum_key\tlabel",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tform_veg\tcampestre\tCampestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tform_veg\tsavanica\tSavânica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tsolo_nu\tSolo nu / rochas (sem plantas tocando a vareta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tserrapilheira\tMaterial botânico em decomposição no solo",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\toutra_forma_vida\tOutras plantas terrestres, líquens e/ou fungos",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tserrapilheira\tSerrapilheira (matéria orgânica em decomposição no solo composta por folhas, cascas, etc)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tfragmentos_botanicos\tTroncos, galhos, ramos ou outras partes lenhosas não fragmentadas",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tmaterial_inundado\tMatéria orgânica inundável (turfa, batume ou matéria orgânica subaquática)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcactacea\tCacto",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Velloziaceae)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tcactacea\tCacto",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcactacea\tCacto",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tlianas\tLiana, cipó ou trepadeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tVelósia (Velloziaceae)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tdesconhecida\tForma de vida desconhecida",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_cactacea\tepifita\tEpífito (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_cactacea\trupicola\tRupícolo (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_samambaia\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_samambaia\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa_samambaia\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_cactacea\tepifita\tEpífito (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_cactacea\trupicola\tRupícolo (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_samambaia\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_samambaia\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica_samambaia\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bromelioide\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_bromelioide\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_cactacea\tepifita\tEpífito (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_cactacea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_cactacea\trupicola\tRupícolo (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_orquidea\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_orquidea\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_orquidea\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_samambaia\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_samambaia\tterrestre\tTerrestre",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta_samambaia\trupicola\tRupícola (que se desenvolve sobre rochas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tmusgos\tMusgos (\"lodo\")",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\thepaticas\tHepáticas (possuem filídios ou talóides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tantoceros\tAntóceros (com talos ou em formato de estrela)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tliquens\tLíquens",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tfungos\tFungos (ex: cogumelos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\timpacto_manejo_uso\tsim\tSim",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\timpacto_manejo_uso\tnão\tNão",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tincendio\tIncêndio",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\taceiro\tAceiro",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tqueima_prescrita\tQueima prescrita",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tqueima_controlada\tQueima controlada",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\textrativismo\tExtrativismo",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\therbivoria\tHerbivoria",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tpisoteio\tPisoteio da vegetação por animais de criação ou por Espécies Exóticas e Invasoras",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\trestauracao\tRestauração",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tuso_publico\tUso Público",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\toutros\tOutros",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tSim",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tnao\tNão",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tarundo_donax\t01 - Cana-do-reino (Arundo donax)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tdigitaria_insularis\t02 - Capim-amargoso (Digitaria insularis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\teragrostis_plana\t03 - Capim-annoni (Eragrostis plana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tmelinis_repens\t04 - Capim-bandeira (Melinis repens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_brizantha\t05 - Capim-braquiária-brizanta (Urochloa brizantha)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_decumbens\t06 - Capim-braquiária-decumbens (Urochloa decumbens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_humidicola\t07 - Capim-braquiária-humidicola (Urochloa humidicola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_subquadripara\t08 - Capim-braquiária-hybrida (Urochloa subquadripara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_ruziziensis\t09 - Capim-braquiária-ruziziensis (Urochloa ruziziensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcenchrus_echinatus\t10 - Capim-carrapicho (Cenchrus echinatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tmegathyrsus_maximus\t11 - Capim-colonião (Megathyrsus maximus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcynodon_dactylon\t12 - Capim-de-burro (Cynodon dactylon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcoix_lacryma\t13 - Capim-de-lágrima (Coix lacryma)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_mutica\t14 - Capim-de-planta (Urochloa mutica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcenchrus_purpureus\t15 - Capim-elefante (Cenchrus purpureus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tandropogon_gayanus\t16 - Capim-gamba (Andropogon gayanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tmelinis_minutiflora\t17 - Capim-gordura (Melinis minutiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\thyparrhenia_rufa\t18 - Capim-jaraguá (Hyparrhenia rufa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\turochloa_plantaginea\t19 - Capim-marmelada (Urochloa plantaginea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tchloris_gayana\t20 - Capim-rhodes (Chloris gayana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcenchrus_pedicellatus\t21 - Falso-capim-custódio (Cenchrus pedicellatus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcynodon_plectostachyus\t22 - Grama-bermuda (Cynodon plectostachyus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcynodon_nlemfuensis\t23 - Grama-estrela (Cynodon nlemfuensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tcenchrus_clandestinus\t24 - Quicuio (Cenchrus clandestinus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\tOutra espécie de erva graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_balbisiana\t01 - Banana-flor (Musa balbisiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tmusa_ornata\t02 - Bananeira-ornamental (Musa ornata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tbegonia_ulmifolia\t03 - Begônia (Begonia ulmifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tcirsium_vulgare\t04 - Cardo negro (Cirsium vulgare)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tdieffenbachia_seguine\t05 - Comigo-ninguém-pode (Dieffenbachia seguine)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tzantedeschia_aethiopica\t06 - Copo-de-leite (Zantedeschia aethiopica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tmonstera_deliciosa\t07 - Costela-de-adão (Monstera deliciosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tcrotalaria_retusa\t08 - Crotalaria (Crotalaria retusa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tdracaena_fragrans\t09 - Dracena (Dracaena fragrans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tsansevieria_trifasciata\t10 - Espada-de-são-jorge (Sansevieria trifasciata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tkalanchoe_pinnata\t11 - Folha-da-fortuna (Kalanchoe pinnata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tepipremnum_pinnatum\t12 - Jibóia (Epipremnum pinnatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\ttradescantia_zebrina\t13 - Lambari (Tradescantia zebrina)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\thedychium_coronarium\t14 - Lírio-do-brejo (Hedychium coronarium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tcoreopsis_tinctoria\t15 - Margaridinha-escura (Coreopsis tinctoria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\timpatiens_walleriana\t16 - Maria-sem-vergonha (Impatiens walleriana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tcrocosmia\t17 - Palma-de-santa-rita (Crocosmia crocosmiiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tbidens_pilosa\t18 - Picão (Bidens pilosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tsyngonium_podophyllum\t19 - Singonio (Syngonium podophyllum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tcyperus_rotundus\t20 - Tiririca (Cyperus rotundus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tsenecio_madagascariensis\t21 - Maria mole (Senecio madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\tOutra espécie de erva não graminoide exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_grand_exot_arb_abaixo\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tprosopis_pallida_exot_arb_abaixo\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcalotropis_procera_exot_arb_abaixo\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\ttecoma_stans_exot_arb_abaixo\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_nigra_exot_arb_abaixo\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_alba_arb_exot_arb_abaixo\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\trubus_ulmifolius_amora_exot_arb_abaixo\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\trubus_fruticosus_amora_exot_arb_abaixo\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcoffea_arabica_exot_arb_abaixo\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tlantana_camara_exot_arb_abaixo\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tparkinsonia_aculeata_cina_exot_arb_abaixo\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcordyline_fruticosa_exot_arb_abaixo\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcrotalaria_spectabilis_exot_arb_abaixo\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcestrum_nocturnum_exot_arb_abaixo\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tspartium_junceum_exot_arb_abaixo\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tvachellia_farnesiana_exot_arb_abaixo\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tmurraya_paniculata_falsa_exot_arb_abaixo\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\trubus_rosifolius_framboesa_exot_arb_abaixo\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\ttithonia_diversifolia_girassol_exot_arb_abaixo\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_banksii_exot_arb_abaixo\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_robusta_exot_arb_abaixo\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tleucaena_leucocephala_exot_arb_abaixo\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\turena_lobata_malva_exot_arb_abaixo\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tricinus_communis_mamona_exot_arb_abaixo\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tjatropha_curcas_exot_arb_abaixo\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tulex_europaeus_exot_arb_abaixo\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tmimosa_caesalpiniifolia_exot_arb_abaixo\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tduranta_erecta_exot_arb_abaixo\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_madagascariensis_exot_arb_abaixo\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tsenecio_madagascariensis_exot_arb_abaixo\t30 - Maria mole (Senecio madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura inferior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_grand_exot_arb_acima\t01 - Alamanda-roxa (Cryptostegia grandiflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tprosopis_pallida_exot_arb_acima\t02 - Algaroba (Prosopis pallida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcalotropis_procera_exot_arb_acima\t03 - Algodão-de-seda (Calotropis procera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\ttecoma_stans_exot_arb_acima\t04 - Amarelinho (Tecoma stans)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tmorus_nigra_exot_arb_acima\t05 - Amora (Morus nigra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tmorus_alba_arb_exot_arb_acima\t06 - Amora-branca (Morus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\trubus_ulmifolius_amora_exot_arb_acima\t07 - Amora-preta (Rubus ulmifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\trubus_fruticosus_amora_exot_arb_acima\t08 - Amora-silvestre (Rubus fruticosus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcoffea_arabica_exot_arb_acima\t09 - Café (Coffea arabica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tlantana_camara_exot_arb_acima\t10 - Lantana (Lantana camara)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tparkinsonia_aculeata_cina_exot_arb_acima\t11 - Cina-Cina (Parkinsonia aculeata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcordyline_fruticosa_exot_arb_acima\t12 - Cordiline (Cordyline fruticosa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcrotalaria_spectabilis_exot_arb_acima\t13 - Crotalaria (Crotalaria spectabilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcestrum_nocturnum_exot_arb_acima\t14 - Dama-da-noite (Cestrum nocturnum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tspartium_junceum_exot_arb_acima\t15 - Esparto (Spartium junceum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tvachellia_farnesiana_exot_arb_acima\t16 - Esponjinha (Vachellia farnesiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tmurraya_paniculata_falsa_exot_arb_acima\t17 - Falsa-murta (Murraya paniculata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\trubus_rosifolius_framboesa_exot_arb_acima\t18 - Framboesa-silvestre (Rubus rosifolius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\ttithonia_diversifolia_girassol_exot_arb_acima\t19 - Girassol mexicano (Tithonia diversifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_banksii_exot_arb_acima\t20 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_robusta_exot_arb_acima\t21 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tleucaena_leucocephala_exot_arb_acima\t22 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\turena_lobata_malva_exot_arb_acima\t23 - Malva-roxa (Urena lobata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tricinus_communis_mamona_exot_arb_acima\t24 - Mamona/carrapateira (Ricinus communis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tjatropha_curcas_exot_arb_acima\t25 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tulex_europaeus_exot_arb_acima\t26 - Tôjo (Ulex europaeus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tmimosa_caesalpiniifolia_exot_arb_acima\t27 - Unha-de-gato (Mimosa caesalpiniifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tduranta_erecta_exot_arb_acima\t28 - Violeteira (Duranta erecta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_madagascariensis_exot_arb_acima\t29 - Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tsenecio_madagascariensis_exot_arb_acima\t30 - Maria mole (Senecio madagascariensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\tOutra espécie de arbusto tocando a vareta a uma altura igual ou superior a 50cm",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpersea_americana_arv_exot_abaixo\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tacacia_auriculiformis_arv_exot_abaixo\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tacacia_mangium_arv_exot_abaixo\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tacacia_decurrens_arv_exot_abaixo\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_lucidum_arv_exot_abaixo\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tprosopis_juliflora_arv_exot_abaixo\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcinnamomum_verum_arv_exot_abaixo\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tterminalia_catappa_arv_exot_abaixo\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcupressus_lusitanica_arv_exot_abaixo\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_alba_arv_exot_abaixo\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_camaldulensis_arv_exot_abaixo\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_crebra_arv_exot_abaixo\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_grandis_arv_exot_abaixo\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_incrassata_arv_exot_abaixo\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_resinifera_arv_exot_abaixo\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_robusta_arv_exot_abaixo\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucaluptus_saligna_arv_exot_abaixo\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_tereticomis_arv_exot_abaixo\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_viminalis_arv_exot_abaixo\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcorymbia_citriodora_arv_exot_abaixo\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tclitoria_fairchildiana_arv_exot_abaixo\t21 - Facão (Clitoria fairchildiana )",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpeltophorum_dubium_arv_exot_abaixo\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tficus_microcarpa_arv_exot_abaixo\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tdelonix_regia_arv_exot_abaixo\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_altilis_arv_exot_abaixo\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpsidium_guajava_arv_exot_abaixo\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_banksii_arv_exot_abaixo\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_robusta_arv_exot_abaixo\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tschizolobium_parahyba_arv_exot_abaixo\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpittosporum_undulatum_arv_exot_abaixo\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_heterophyllus_arv_exot_abaixo\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_jambos_arv_exot_abaixo\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_malaccense_arv_exot_abaixo\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_cumini_arv_exot_abaixo\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_sinensis_arv_exot_abaixo\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tleucaena_leucocephala_arv_exot_abaixo\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_sinense_arv_exot_abaixo\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_limon_arv_exot_abaixo\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tmangifera_indica_arv_exot_abaixo\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\thovenia_dulcis_arv_exot_abaixo\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tazadirachta_indica_arv_exot_abaixo\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\teriobotrya_japonica_arv_exot_abaixo\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\taleurites_moluccanus_arv_exot_abaixo\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tjatropha_curcas_arv_exot_abaixo\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tcasuarina_equisetifolia_arv_exot_abaixo\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpinus_pinaster_arv_exot_abaixo\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpinus_taeda_arv_exot_abaixo\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpinus_caribaea_arv_exot_abaixo\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpinus_elliottii_arv_exot_abaixo\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tpinus_oocarpa_arv_exot_abaixo\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tmelia_azedarach_arv_exot_abaixo\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tsalix_rubens_arv_exot_abaixo\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\tOutra espécie de árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpersea_americana_arv_exot_acima\t01 - Abacate (Persea americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tacacia_auriculiformis_arv_exot_acima\t02 - Acácia (Acacia auriculiformis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tacacia_mangium_arv_exot_acima\t03 - Acácia (Acacia mangium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tacacia_decurrens_arv_exot_acima\t04 - Acácia negra (Acacia decurrens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tligustrum_lucidum_arv_exot_acima\t05 - Alfeneiro (Ligustrum lucidum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tprosopis_juliflora_arv_exot_acima\t06 - Algaroba (Prosopis juliflora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcinnamomum_verum_arv_exot_acima\t07 - Caneleira-da-índia (Cinnamomum verum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tterminalia_catappa_arv_exot_acima\t08 - Castanhola (Terminalia catappa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcupressus_lusitanica_arv_exot_acima\t09 - Cipreste (Cupressus lusitanica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_alba_arv_exot_acima\t10 - Eucalipto (Eucalyptus alba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_camaldulensis_arv_exot_acima\t11 - Eucalipto (Eucalyptus camaldulensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_crebra_arv_exot_acima\t12 - Eucalipto (Eucalyptus crebra)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_grandis_arv_exot_acima\t13 - Eucalipto (Eucalyptus grandis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_incrassata_arv_exot_acima\t14 - Eucalipto (Eucalyptus incrassata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_resinifera_arv_exot_acima\t15 - Eucalipto (Eucalyptus resinifera)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_robusta_arv_exot_acima\t16 - Eucalipto (Eucalyptus robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucaluptus_saligna_arv_exot_acima\t17 - Eucalipto (Eucalyptus saligna)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_tereticomis_arv_exot_acima\t18 - Eucalipto (Eucalyptus tereticornis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teucalyptus_viminalis_arv_exot_acima\t19 - Eucalipto (Eucalyptus viminalis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcorymbia_citriodora_arv_exot_acima\t20 - Eucalipto-limão (Corymbia citriodora)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tclitoria_fairchildiana_arv_exot_acima\t21 - Facão (Clitoria fairchildiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpeltophorum_dubium_arv_exot_acima\t22 - Farinha-seca (Peltophorum dubium)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tficus_microcarpa_arv_exot_acima\t23 - Figueira-asiatica (Ficus microcarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tdelonix_regia_arv_exot_acima\t24 - Flamboyant (Delonix regia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tartocarpus_altilis_arv_exot_acima\t25 - fruta-pão (Artocarpus altilis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpsidium_guajava_arv_exot_acima\t26 - Goiaba (Psidium guajava)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tgrevillea_banksii_arv_exot_acima\t27 - Grevílea (Grevillea banksii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tgrevillea_robusta_arv_exot_acima\t28 - Grevílea-vermelha (Grevillea robusta)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tschizolobium_parahyba_arv_exot_acima\t29 - Guapuruvu (Schizolobium parahyba)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpittosporum_undulatum_arv_exot_acima\t30 - Incenso (Pittosporum undulatum)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tartocarpus_heterophyllus_arv_exot_acima\t31 - Jaca (Artocarpus heterophyllus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tsyzygium_jambos_arv_exot_acima\t32 - Jambo (Syzygium jambos)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tsyzygium_malaccense_arv_exot_acima\t33 - Jambo (Syzygium malaccense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tsyzygium_cumini_arv_exot_acima\t34 - Jambolão (Syzygium cumini)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcitrus_sinensis_arv_exot_acima\t35 - Laranja (Citrus sinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tleucaena_leucocephala_arv_exot_acima\t36 - Leucena (Leucaena leucocephala)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tligustrum_sinense_arv_exot_acima\t37 - Ligustrio (Ligustrum sinense)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcitrus_limon_arv_exot_acima\t38 - Limão-verdadeiro (Citrus limon)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tmangifera_indica_arv_exot_acima\t39 - Manga (Mangifera indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\thovenia_dulcis_arv_exot_acima\t40 - Mata-fome (Hovenia dulcis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tazadirachta_indica_arv_exot_acima\t41 - Nim-indiano (Azadirachta indica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\teriobotrya_japonica_arv_exot_acima\t42 - Níspera (Eriobotrya japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\taleurites_moluccanus_arv_exot_acima\t43 - Nogueira-de-iguape (Aleurites moluccanus)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tjatropha_curcas_arv_exot_acima\t44 - Pinhão branco (Jatropha curcas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tcasuarina_equisetifolia_arv_exot_acima\t45 - Pinheiro-casuarina (Casuarina equisetifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_pinaster_arv_exot_acima\t46 - Pinheiro-marÌtimo (Pinus pinaster)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_taeda_arv_exot_acima\t47 - Pinus (Pinus taeda)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_caribaea_arv_exot_acima\t48 - Pinus (Pinus caribaea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_elliottii_arv_exot_acima\t49 - Pinus (Pinus elliottii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\tOutra espécie de bambu exótico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bromelioide\texotica_bromelioide_outra_sp\tOutra espécie de erva bromeliode exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_cactacea\topuntia_ficus_exotica_cactacea\t01 - Opuntia ficus-indica (Palmatória)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\tOutra espécie de cacto exótico",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_ervas_de_passarinho\texotica_ervas_de_passarinho_outra_sp\tOutra espécie de erva-de-passarinho (hemiparasita) exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tthunbergia_alata_exotica_lianas\t01 - Amarelinha (Thunbergia alata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tsiscyos_edulis_exotica_lianas\t02 - Chuchu (Sicyos edulis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tabrus_precatorius_exotica_lianas\t03 - Ervilha-do-rosário (Abrus precatorius)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tlonicera_exotica_lianas\t04 - Madressilva (Lonicera japonica)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tmomordica_charantia_exotica_lianas\t05 - Melão de são caetano (Momordica charantia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tpueraria_exotica_lianas\t06 - Puerária (Pueraria phaseoloides)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\texotica_lianas_outra_sp\tOutra espécie de liana exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_orquidea\toeceoclades_maculata_exotica_orquidea\t01 - Oeceoclades maculata (Cantaria)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\tOutra espécie de orquídea exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\telaeis_guineensis_exotica_palmeira\t01- Dendê (Elaeis guineensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\tlivistona_chinensis_exotica_palmeira\t02- Falsa-latania (Livistona chinensis)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\tarchontophoenix_cunning_exotica_palmeira\t03- Palmeira-ciaforte (Archontophoenix cunninghamiana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\tcaryota_urens_exotica_palmeira\t04- Palmeira-rabo-de-peixe (Caryota urens)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\tOutra espécie de palmeira exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\tchristella_dentata_exotica_samambaia\t01- Christella (Christella dentata)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\tnephrolepis_cordifolia_exotica_samambaia\t02- Escadinha do Céu (Nephrolepis cordifolia)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\tdeparia_peter_exotica_samambaia\t03- Samambaia-japonesa (Deparia petersenii)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\tOutra espécie de samambaia exótica",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\tagave_americana_exotica_outros\t01- Agave-azul (Agave americana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\tfurcraea_exotica_outros\t02- Pita (Furcraea foetida)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\tagave_sisalana_exotica_outros\t03- Piteira-azul/Sisal (Agave sisalana)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\theptapleurum_exotica_outros\t04- Cheflera-pequena (Heptapleurum arboricola)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\tOutra espécie exótica",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tuc\tnum_key\tlabel",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\testacao_amostral\tnum_key\tlabel",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tunidade_amostral\tnum_key\tlabel",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tform_veg\tcampestre\tCampestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tform_veg\tsavanica\tSavânica",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tsolo_nu\tSolo nu / rochas (sem plantas tocando a vara)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto acima de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcanela_de_ema\tCanela-de-ema ou candombá",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto acima de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto acima de 0,5m de altura",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tCanela-de-ema ou candombá",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\toutra\tOutra forma de vida",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_orquidea\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_orquidea\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_bromelioide\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_bromelioide\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_orquidea\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica_orquidea\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_bromelioide\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_bromelioide\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_orquidea\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta_orquidea\tterrestre\tTerrestre",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\timpacto_manejo_uso\tsim\tSim",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\timpacto_manejo_uso\tnão\tNão",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tincendio\tIncêndio",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\taceiro\tAceiro",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tqueima_prescrita\tQueima prescrita",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tqueima_controlada\tQueima controlada",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\textrativismo\tExtrativismo",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tpastejo\tPastejo",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\trestauracao\tRestauração",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tuso_publico\tUso público",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\toutros\tOutros",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tSim",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tnão\tNão",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tarundo_donax\t1- Cana-do-reino (Arundo donax)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tdigitaria_insularis\t2- Capim-amargoso (Digitaria insularis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\teragrostis_plana\t3- Capim-annoni (Eragrostis plana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tmelinis_repens\t4- Capim-bandeira (Melinis repens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_brizantha\t5- Capim-braquiária-brizanta (Urochloa brizantha)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_decumbens\t6- Capim-braquiária-decumbens (Urochloa decumbens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_humidicola\t7- Capim-braquiária-humidicola (Urochloa humidicola)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_subquadripara\t8- Capim-braquiária-hybrida (Urochloa subquadripara)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_ruziziensis\t9- Capim-braquiária-ruziziensis (Urochloa ruziziensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcenchrus_echinatus\t10- Capim-carrapicho (Cenchrus echinatus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tmegathyrsus_maximus\t11- Capim-colonião (Megathyrsus maximus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcynodon_dactylon\t12- Capim-de-burro (Cynodon dactylon)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcoix_lacryma\t13- Capim-de-lágrima (Coix lacryma)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_mutica\t14- Capim-de-planta (Urochloa mutica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcenchrus_purpureus\t15- Capim-elefante (Cenchrus purpureus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tandropogon_gayanus\t16- Capim-gamba (Andropogon gayanus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tmelinis_minutiflora\t17- Capim-gordura (Melinis minutiflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\thyparrhenia_rufa\t18- Capim-jaraguá (Hyparrhenia rufa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\turochloa_plantaginea\t19- Capim-marmelada (Urochloa plantaginea)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tchloris_gayana\t20- Capim-rhodes (Chloris gayana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcenchrus_pedicellatus\t21- Falso-capim-custódio (Cenchrus pedicellatus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcynodon_plectostachyus\t22- Grama-bermuda (Cynodon plectostachyus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcynodon_nlemfuensis\t23- Grama-estrela (Cynodon nlemfuensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tcenchrus_clandestinus\t24- Quicuio (Cenchrus clandestinus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tmusa_balbisiana\t1- Banana-flor (Musa balbisiana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tmusa_ornata\t2- Bananeira-ornamental (Musa ornata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tbegonia_ulmifolia\t3- Begônia (Begonia ulmifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tcirsium_vulgare\t4- Cardo negro (Cirsium vulgare)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tdieffenbachia_seguine\t5- Comigo-ninguém-pode (Dieffenbachia seguine)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tzantedeschia_aethiopica\t6- Copo-de-leite (Zantedeschia aethiopica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tmonstera_deliciosa\t7- Costela-de-adão (Monstera deliciosa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tcrotalaria_retusa\t8- Crotalaria (Crotalaria retusa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tdracaena_fragrans\t9- Dracena (Dracaena fragrans)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tsansevieria_trifasciata\t10- Espada-de-são-jorge (Sansevieria trifasciata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tkalanchoe_pinnata\t11- Folha-da-fortuna (Kalanchoe pinnata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tepipremnum_pinnatum\t12- Jibóia (Epipremnum pinnatum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\ttradescantia_zebrina\t13- lambari (Tradescantia zebrina)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\thedychium_coronarium\t14- lírio-do-brejo (Hedychium coronarium)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tcoreopsis_tinctoria\t15- Margaridinha-escura (Coreopsis tinctoria)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\timpatiens_walleriana\t16- maria-sem-vergonha (Impatiens walleriana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tcrocosmia\t17- palma-de-santa-rita (Crocosmia crocosmiiflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tbidens_pilosa\t18- picão (Bidens pilosa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tsyngonium_podophyllum\t19- Singonio (Syngonium podophyllum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tcyperus_rotundus\t20- Tiririca (Cyperus rotundus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_grand_exot_arb_abaixo\t1- Alamanda-roxa (Cryptostegia grandiflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tprosopis_pallida_exot_arb_abaixo\t2- Algaroba (Prosopis pallida)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcalotropis_procera_exot_arb_abaixo\t3- Algodão-de-seda (Calotropis procera)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\ttecoma_stans_exot_arb_abaixo\t4- Amarelinho (Tecoma stans)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_nigra_exot_arb_abaixo\t5- Amora (Morus nigra)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tmorus_alba_arb_exot_arb_abaixo\t6- Amora-branca (Morus alba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\trubus_ulmifolius_amora_exot_arb_abaixo\t7- Amora-preta (Rubus ulmifolius)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\trubus_fruticosus_amora_exot_arb_abaixo\t8- Amora-silvestre (Rubus fruticosus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcoffea_arabica_exot_arb_abaixo\t9- Café (Coffea arabica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tlantana_camara_exot_arb_abaixo\t10- Lantana (Lantana camara)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tparkinsonia_aculeata_cina_exot_arb_abaixo\t11- Cina-Cina (Parkinsonia aculeata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcordyline_fruticosa_exot_arb_abaixo\t12- Cordiline (Cordyline fruticosa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcrotalaria_spectabilis_exot_arb_abaixo\t13- Crotalaria (Crotalaria spectabilis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcestrum_nocturnum_exot_arb_abaixo\t14- Dama-da-noite (Cestrum nocturnum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tspartium_junceum_exot_arb_abaixo\t15- Esparto (Spartium junceum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tvachellia_farnesiana_exot_arb_abaixo\t16- Esponjinha (Vachellia farnesiana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tmurraya_paniculata_falsa_exot_arb_abaixo\t17- Falsa-murta (Murraya paniculata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\trubus_rosifolius_framboesa_exot_arb_abaixo\t18- Framboesa-silvestre (Rubus rosifolius)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\ttithonia_diversifolia_girassol_exot_arb_abaixo\t19- Girassol mexicano (Tithonia diversifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_banksii_exot_arb_abaixo\t20- Grevílea (Grevillea banksii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tgrevillea_robusta_exot_arb_abaixo\t21- Grevílea-vermelha (Grevillea robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tleucaena_leucocephala_exot_arb_abaixo\t22- Leucena (Leucaena leucocephala)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\turena_lobata_malva_exot_arb_abaixo\t23- Malva-roxa (Urena lobata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tricinus_communis_mamona_exot_arb_abaixo\t24- Mamona/carrapateira (Ricinus communis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tjatropha_curcas_exot_arb_abaixo\t25- Pinhão branco (Jatropha curcas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tulex_europaeus_exot_arb_abaixo\t26- Tôjo (Ulex europaeus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tmimosa_caesalpiniifolia_exot_arb_abaixo\t27- Unha-de-gato (Mimosa caesalpiniifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tduranta_erecta_exot_arb_abaixo\t28- Violeteira (Duranta erecta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tcryptostegia_madagascariensis_exot_arb_abaixo\t29- Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_grand_exot_arb_acima\t1- Alamanda-roxa (Cryptostegia grandiflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tprosopis_pallida_exot_arb_acima\t2- Algaroba (Prosopis pallida)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcalotropis_procera_exot_arb_acima\t3- Algodão-de-seda (Calotropis procera)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\ttecoma_stans_exot_arb_acima\t4- Amarelinho (Tecoma stans)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tmorus_nigra_exot_arb_acima\t5- Amora (Morus nigra)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tmorus_alba_arb_exot_arb_acima\t6- Amora-branca (Morus alba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\trubus_ulmifolius_amora_exot_arb_acima\t7- Amora-preta (Rubus ulmifolius)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\trubus_fruticosus_amora_exot_arb_acima\t8- Amora-silvestre (Rubus fruticosus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcoffea_arabica_exot_arb_acima\t9- Café (Coffea arabica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tlantana_camara_exot_arb_acima\t10- Lantana (Lantana camara)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tparkinsonia_aculeata_cina_exot_arb_acima\t11- Cina-Cina (Parkinsonia aculeata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcordyline_fruticosa_exot_arb_acima\t12- Cordiline (Cordyline fruticosa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcrotalaria_spectabilis_exot_arb_acima\t13- Crotalaria (Crotalaria spectabilis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcestrum_nocturnum_exot_arb_acima\t14- Dama-da-noite (Cestrum nocturnum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tspartium_junceum_exot_arb_acima\t15- Esparto (Spartium junceum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tvachellia_farnesiana_exot_arb_acima\t16- Esponjinha (Vachellia farnesiana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tmurraya_paniculata_falsa_exot_arb_acima\t17- Falsa-murta (Murraya paniculata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\trubus_rosifolius_framboesa_exot_arb_acima\t18- Framboesa-silvestre (Rubus rosifolius)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\ttithonia_diversifolia_girassol_exot_arb_acima\t19- Girassol mexicano (Tithonia diversifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_banksii_exot_arb_acima\t20- Grevílea (Grevillea banksii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tgrevillea_robusta_exot_arb_acima\t21- Grevílea-vermelha (Grevillea robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tleucaena_leucocephala_exot_arb_acima\t22- Leucena (Leucaena leucocephala)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\turena_lobata_malva_exot_arb_acima\t23- Malva-roxa (Urena lobata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tricinus_communis_mamona_exot_arb_acima\t24- Mamona/carrapateira (Ricinus communis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tjatropha_curcas_exot_arb_acima\t25- Pinhão branco (Jatropha curcas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tulex_europaeus_exot_arb_acima\t26- Tôjo (Ulex europaeus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tmimosa_caesalpiniifolia_exot_arb_acima\t27- Unha-de-gato (Mimosa caesalpiniifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tduranta_erecta_exot_arb_acima\t28- Violeteira (Duranta erecta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tcryptostegia_madagascariensis_exot_arb_acima\t29- Viuvinha-alegre (Cryptostegia madagascariensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpersea_americana_arv_exot_abaixo\t1- Abacate (Persea americana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tacacia_auriculiformis_arv_exot_abaixo\t2- Acácia (Acacia auriculiformis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tacacia_mangium_arv_exot_abaixo\t3- Acácia (Acacia mangium)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tacacia_decurrens_arv_exot_abaixo\t4- Acácia negra (Acacia decurrens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_lucidum_arv_exot_abaixo\t5- Alfeneiro (Ligustrum lucidum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tprosopis_juliflora_arv_exot_abaixo\t6- Algaroba (Prosopis juliflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcinnamomum_verum_arv_exot_abaixo\t7- Caneleira-da-índia (Cinnamomum verum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tterminalia_catappa_arv_exot_abaixo\t8- Castanhola (Terminalia catappa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcupressus_lusitanica_arv_exot_abaixo\t9- Cipreste (Cupressus lusitanica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_alba_arv_exot_abaixo\t10- Eucalipto (Eucalyptus alba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_camaldulensis_arv_exot_abaixo\t11- Eucalipto (Eucalyptus camaldulensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_crebra_arv_exot_abaixo\t12- Eucalipto (Eucalyptus crebra)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_grandis_arv_exot_abaixo\t13- Eucalipto (Eucalyptus grandis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_incrassata_arv_exot_abaixo\t14- Eucalipto (Eucalyptus incrassata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_resinifera_arv_exot_abaixo\t15- Eucalipto (Eucalyptus resinifera)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_robusta_arv_exot_abaixo\t16- Eucalipto (Eucalyptus robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucaluptus_saligna_arv_exot_abaixo\t17- Eucalipto (Eucalyptus saligna)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_tereticomis_arv_exot_abaixo\t18- Eucalipto (Eucalyptus tereticornis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teucalyptus_viminalis_arv_exot_abaixo\t19- Eucalipto (Eucalyptus viminalis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcorymbia_citriodora_arv_exot_abaixo\t20- Eucalipto-limão (Corymbia citriodora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tclitoria_fairchildiana_arv_exot_abaixo\t21- Facão (Clitoria fairchildiana )",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpeltophorum_dubium_arv_exot_abaixo\t22- Farinha-seca (Peltophorum dubium)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tficus_microcarpa_arv_exot_abaixo\t23- Figueira-asiatica (Ficus microcarpa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tdelonix_regia_arv_exot_abaixo\t24- Flamboyant (Delonix regia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_altilis_arv_exot_abaixo\t25- fruta-pão (Artocarpus altilis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpsidium_guajava_arv_exot_abaixo\t26- Goiaba (Psidium guajava)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_banksii_arv_exot_abaixo\t27- Grevílea (Grevillea banksii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tgrevillea_robusta_arv_exot_abaixo\t28- Grevílea-vermelha (Grevillea robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tschizolobium_parahyba_arv_exot_abaixo\t29- Guapuruvu (Schizolobium parahyba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpittosporum_undulatum_arv_exot_abaixo\t30- Incenso (Pittosporum undulatum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tartocarpus_heterophyllus_arv_exot_abaixo\t31- Jaca (Artocarpus heterophyllus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_jambos_arv_exot_abaixo\t32- Jambo (Syzygium jambos)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_malaccense_arv_exot_abaixo\t33- Jambo (Syzygium malaccense)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tsyzygium_cumini_arv_exot_abaixo\t34- Jambolão (Syzygium cumini)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_sinensis_arv_exot_abaixo\t35- Laranja (Citrus sinensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tleucaena_leucocephala_arv_exot_abaixo\t36- Leucena (Leucaena leucocephala)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tligustrum_sinense_arv_exot_abaixo\t37- Ligustrio (Ligustrum sinense)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcitrus_limon_arv_exot_abaixo\t38- Limão-verdadeiro (Citrus limon)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tmangifera_indica_arv_exot_abaixo\t39- Manga (Mangifera indica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\thovenia_dulcis_arv_exot_abaixo\t40- Mata-fome (Hovenia dulcis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tazadirachta_indica_arv_exot_abaixo\t41- Nim-indiano (Azadirachta indica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\teriobotrya_japonica_arv_exot_abaixo\t42- Níspera (Eriobotrya japonica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\taleurites_moluccanus_arv_exot_abaixo\t43- Nogueira-de-iguape (Aleurites moluccanus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tjatropha_curcas_arv_exot_abaixo\t44- Pinhão branco (Jatropha curcas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tcasuarina_equisetifolia_arv_exot_abaixo\t45- Pinheiro-casuarina (Casuarina equisetifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpinus_pinaster_arv_exot_abaixo\t46- Pinheiro-marÌtimo (Pinus pinaster)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpinus_taeda_arv_exot_abaixo\t47- Pinus (Pinus taeda)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpinus_caribaea_arv_exot_abaixo\t48- Pinus (Pinus caribaea)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpinus_elliottii_arv_exot_abaixo\t49- Pinus (Pinus elliottii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tpinus_oocarpa_arv_exot_abaixo\t50- Pinus (Pinus oocarpa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tmelia_azedarach_arv_exot_abaixo\t51- Sinamomo (Melia azedarach)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tsalix_rubens_arv_exot_abaixo\t52- Vimeiro (Salix x rubens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpersea_americana_arv_exot_acima\t1- Abacate (Persea americana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tacacia_auriculiformis_arv_exot_acima\t2- Acácia (Acacia auriculiformis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tacacia_mangium_arv_exot_acima\t3- Acácia (Acacia mangium)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tacacia_decurrens_arv_exot_acima\t4- Acácia negra (Acacia decurrens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tligustrum_lucidum_arv_exot_acima\t5- Alfeneiro (Ligustrum lucidum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tprosopis_juliflora_arv_exot_acima\t6- Algaroba (Prosopis juliflora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcinnamomum_verum_arv_exot_acima\t7- Caneleira-da-índia (Cinnamomum verum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tterminalia_catappa_arv_exot_acima\t8- Castanhola (Terminalia catappa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcupressus_lusitanica_arv_exot_acima\t9- Cipreste (Cupressus lusitanica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_alba_arv_exot_acima\t10- Eucalipto (Eucalyptus alba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_camaldulensis_arv_exot_acima\t11- Eucalipto (Eucalyptus camaldulensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_crebra_arv_exot_acima\t12- Eucalipto (Eucalyptus crebra)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_grandis_arv_exot_acima\t13- Eucalipto (Eucalyptus grandis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_incrassata_arv_exot_acima\t14- Eucalipto (Eucalyptus incrassata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_resinifera_arv_exot_acima\t15- Eucalipto (Eucalyptus resinifera)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_robusta_arv_exot_acima\t16- Eucalipto (Eucalyptus robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucaluptus_saligna_arv_exot_acima\t17- Eucalipto (Eucalyptus saligna)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_tereticomis_arv_exot_acima\t18- Eucalipto (Eucalyptus tereticornis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teucalyptus_viminalis_arv_exot_acima\t19- Eucalipto (Eucalyptus viminalis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcorymbia_citriodora_arv_exot_acima\t20- Eucalipto-limão (Corymbia citriodora)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tclitoria_fairchildiana_arv_exot_acima\t21- Facão (Clitoria fairchildiana )",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpeltophorum_dubium_arv_exot_acima\t22- Farinha-seca (Peltophorum dubium)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tficus_microcarpa_arv_exot_acima\t23- Figueira-asiatica (Ficus microcarpa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tdelonix_regia_arv_exot_acima\t24- Flamboyant (Delonix regia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tartocarpus_altilis_arv_exot_acima\t25- fruta-pão (Artocarpus altilis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpsidium_guajava_arv_exot_acima\t26- Goiaba (Psidium guajava)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tgrevillea_banksii_arv_exot_acima\t27- Grevílea (Grevillea banksii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tgrevillea_robusta_arv_exot_acima\t28- Grevílea-vermelha (Grevillea robusta)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tschizolobium_parahyba_arv_exot_acima\t29- Guapuruvu (Schizolobium parahyba)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpittosporum_undulatum_arv_exot_acima\t30- Incenso (Pittosporum undulatum)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tartocarpus_heterophyllus_arv_exot_acima\t31- Jaca (Artocarpus heterophyllus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tsyzygium_jambos_arv_exot_acima\t32- Jambo (Syzygium jambos)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tsyzygium_malaccense_arv_exot_acima\t33- Jambo (Syzygium malaccense)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tsyzygium_cumini_arv_exot_acima\t34- Jambolão (Syzygium cumini)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcitrus_sinensis_arv_exot_acima\t35- Laranja (Citrus sinensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tleucaena_leucocephala_arv_exot_acima\t36- Leucena (Leucaena leucocephala)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tligustrum_sinense_arv_exot_acima\t37- Ligustrio (Ligustrum sinense)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcitrus_limon_arv_exot_acima\t38- Limão-verdadeiro (Citrus limon)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tmangifera_indica_arv_exot_acima\t39- Manga (Mangifera indica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\thovenia_dulcis_arv_exot_acima\t40- Mata-fome (Hovenia dulcis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tazadirachta_indica_arv_exot_acima\t41- Nim-indiano (Azadirachta indica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\teriobotrya_japonica_arv_exot_acima\t42- Níspera (Eriobotrya japonica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\taleurites_moluccanus_arv_exot_acima\t43- Nogueira-de-iguape (Aleurites moluccanus)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tjatropha_curcas_arv_exot_acima\t44- Pinhão branco (Jatropha curcas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tcasuarina_equisetifolia_arv_exot_acima\t45- Pinheiro-casuarina (Casuarina equisetifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpinus_pinaster_arv_exot_acima\t46- Pinheiro-marÌtimo (Pinus pinaster)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpinus_taeda_arv_exot_acima\t47- Pinus (Pinus taeda)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpinus_caribaea_arv_exot_acima\t48- Pinus (Pinus caribaea)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpinus_elliottii_arv_exot_acima\t49- Pinus (Pinus elliottii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50- Pinus (Pinus oocarpa)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51- Sinamomo (Melia azedarach)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52- Vimeiro (Salix x rubens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t1- Bambu-de-jardim (Phyllostachys aurea)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t2- Bambu-gigante (Phyllostachys bambusoides)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t3- Bambu-verde (Bambusa vulgaris)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_cactacea\topuntia_ficus_exotica_cactacea\t3-Opuntia ficus-indica (Palmatória)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tthunbergia_alata_exotica_lianas\t1- Amarelinha (Thunbergia alata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tsiscyos_edulis_exotica_lianas\t2- Chuchu (Sicyos edulis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tabrus_precatorius_exotica_lianas\t3- Ervilha-do-rosário (Abrus precatorius)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tlonicera_exotica_lianas\t4- Madressilva (Lonicera japonica)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tmomordica_charantia_exotica_lianas\t5- Melão de são caetano (Momordica charantia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tpueraria_exotica_lianas\t6- Puerária (Pueraria phaseoloides)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_orquidea\toeceoclades_maculata_exotica_orquidea\t1- Oeceoclades maculata (Cantaria)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\telaeis_guineensis_exotica_palmeira\t1- Dendê (Elaeis guineensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\tlivistona_chinensis_exotica_palmeira\t2- Falsa-latania (Livistona chinensis)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\tarchontophoenix_cunning_exotica_palmeira\t3- Palmeira-ciaforte (Archontophoenix cunninghamiana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\tcaryota_urens_exotica_palmeira\t4- Palmeira-rabo-de-peixe (Caryota urens)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_samambaia\tchristella_dentata_exotica_samambaia\t1- Christella (Christella dentata)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_samambaia\tnephrolepis_cordifolia_exotica_samambaia\t2- Escadinha do Céu (Nephrolepis cordifolia)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_samambaia\tdeparia_peter_exotica_samambaia\t3- Samambaia-japonesa (Deparia petersenii)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\tagave_americana_exotica_outros\t1- Agave-azul (Agave americana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\tfurcraea_exotica_outros\t2- Pita (Furcraea foetida)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\tagave_sisalana_exotica_outros\t3- Piteira-azul/Sisal (Agave sisalana)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\theptapleurum_exotica_outros\t4- Cheflera-pequena (Heptapleurum arboricola)"
+  )
+  opcoes <- monitora_correcao_fread_tsv_embutido(opcoes_linhas)
+  opcoes[] <- lapply(opcoes, as.character)
+  dependencias_linhas <- c(
+    "arquivo_xlsform\tparent_name\ttoken\tdependent_name\tdependent_type\tdependent_list_name\tdependent_label\trequired\trelevant\tfonte",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\toutros\ttipos_impacto_manejo_uso_outro\ttext\t\tOutros tipos de manejo ou uso:\t\tselected(${tipos_impacto_manejo_uso}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tnativa\tforma_vida_nativa\tselect_multiple forma_vida_nativa\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tyes\tselected(${tipo_forma_vida}, 'nativa')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tforma_vida_nativa_bromelioide\tA erva bromelioide observada é:\tyes\tselected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Erva bromelioide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Erva bromelioide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tforma_vida_nativa_cactacea\tA cactácea observada é:\tyes\tselected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tforma_vida_nativa_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\toutra\tforma_vida_nativa_outra\ttext\t\tOutra forma de vida de planta nativa:\t\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\toutra\tfoto_forma_vida_nativa_outra\timage\t\tFoto de outra forma de vida de planta nativa:\tyes\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tdesconhecida\tfoto_forma_vida_nativa_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tyes\tselected(${forma_vida_nativa}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Erva graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tgraminoide\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Erva graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\terva_nao_graminoide\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tlianas\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tervas_de_passarinho\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tpalmeira\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tsamambaia\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Velósia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcanela_de_ema\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Velósia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\texotica\tforma_vida_exotica\tselect_multiple forma_vida_exotica\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tyes\tselected(${tipo_forma_vida}, 'exotica')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\terva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_abaixo\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_acima\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_abaixo\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_acima\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbambu\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tcactacea\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tlianas\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\torquidea\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tpalmeira\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tsamambaia\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutros\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutra\tforma_vida_exotica_outra\ttext\t\tOutra forma de vida de planta exótica:\t\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutra\tfoto_forma_vida_exotica_outra\timage\t\tFoto de outra forma de vida de planta exótica:\tyes\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tdesconhecida\tfoto_forma_vida_exotica_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tyes\tselected(${forma_vida_exotica}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbromelioide\tforma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tforma_vida_exotica_bromelioide\tA erva bromelioide observada é:\tyes\tselected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tcactacea\tforma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tforma_vida_exotica_cactacea\tA cactácea observada é:\t\tselected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\torquidea\tforma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tforma_vida_exotica_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\terva_nao_graminoide\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_abaixo\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_acima\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_abaixo\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_acima\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbambu\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tcactacea\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\torquidea\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tpalmeira\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tsamambaia\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutros\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tseca_morta\tforma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tyes\tselected(${tipo_forma_vida}, 'seca_morta')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbromelioide\tforma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tforma_vida_seca_morta_bromelioide\tA erva bromelioide observada é:\tyes\tselected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tcactacea\tforma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tforma_vida_seca_morta_cactacea\tA cactácea observada é:\t\tselected(${forma_vida_seca_morta}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\torquidea\tforma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tforma_vida_seca_morta_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\toutra\tforma_vida_seca_morta_outra\ttext\t\tOutra forma de vida de planta seca e/ou morta:\t\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\toutra\tfoto_forma_vida_seca_morta_outra\timage\t\tFoto de outra forma de vida de planta seca ou morta:\tyes\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tdesconhecida\tfoto_forma_vida_seca_morta_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tyes\tselected(${forma_vida_seca_morta}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\toutros\ttipos_impacto_manejo_uso_outro\ttext\t\tOutros tipos de manejo ou uso:\t\tselected(${tipos_impacto_manejo_uso}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tnativa\tforma_vida_nativa\tselect_multiple forma_vida_nativa\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tyes\tselected(${tipo_forma_vida}, 'nativa')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tforma_vida_nativa_bromelioide\tA bromélia observada é:\tyes\tselected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Bromelioide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Bromelioide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tforma_vida_nativa_cactacea\tA cactácea observada é:\tyes\tselected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tforma_vida_nativa_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\toutra\tforma_vida_nativa_outra\ttext\t\tOutra forma de vida de planta nativa:\t\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\toutra\tfoto_forma_vida_nativa_outra\timage\t\tFoto de outra forma de vida de planta nativa:\tyes\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tdesconhecida\tfoto_forma_vida_nativa_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tyes\tselected(${forma_vida_nativa}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tgraminoide\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\terva_nao_graminoide\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tlianas\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tervas_de_passarinho\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tpalmeira\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tsamambaia\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Canela-de-ema)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcanela_de_ema\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Canela-de-ema)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\texotica\tforma_vida_exotica\tselect_multiple forma_vida_exotica\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tyes\tselected(${tipo_forma_vida}, 'exotica')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tgraminoide\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\terva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_abaixo\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_acima\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_abaixo\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_acima\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbambu\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcactacea\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tlianas\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\torquidea\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tpalmeira\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tsamambaia\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutros\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutra\tforma_vida_exotica_outra\ttext\t\tOutra forma de vida de planta exótica:\t\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutra\tfoto_forma_vida_exotica_outra\timage\t\tFoto de outra forma de vida de planta exótica:\tyes\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tdesconhecida\tfoto_forma_vida_exotica_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tyes\tselected(${forma_vida_exotica}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbromelioide\tforma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tforma_vida_exotica_bromelioide\tA bromélia observada é:\tyes\tselected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcactacea\tforma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tforma_vida_exotica_cactacea\tA cactácea observada é:\t\tselected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\torquidea\tforma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tforma_vida_exotica_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tgraminoide\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\terva_nao_graminoide\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_abaixo\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_acima\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_abaixo\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_acima\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbambu\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcactacea\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cactácea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\torquidea\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tpalmeira\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tsamambaia\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutros\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_exotica}, 'outros') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tseca_morta\tforma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tyes\tselected(${tipo_forma_vida}, 'seca_morta')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbromelioide\tforma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tforma_vida_seca_morta_bromelioide\tA bromélia observada é:\tyes\tselected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcactacea\tforma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tforma_vida_seca_morta_cactacea\tA cactácea observada é:\t\tselected(${forma_vida_seca_morta}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\torquidea\tforma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tforma_vida_seca_morta_orquidea\tA orquídea observada é:\tyes\tselected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\toutra\tforma_vida_seca_morta_outra\ttext\t\tOutra forma de vida de planta seca e/ou morta:\t\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\toutra\tfoto_forma_vida_seca_morta_outra\timage\t\tFoto de outra forma de vida de planta seca ou morta:\tyes\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tdesconhecida\tfoto_forma_vida_seca_morta_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tyes\tselected(${forma_vida_seca_morta}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\toutros\ttipos_impacto_manejo_uso_outro\ttext\t\tOutros tipos de manejo ou uso:\t\tselected(${tipos_impacto_manejo_uso}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tserrapilheira\tforma_serrapilheira\tselect_multiple forma_vida_serrapilheira\tforma_vida_serrapilheira\tMateriais botânicos em decomposição no solo observados:\tyes\tselected(${tipo_forma_vida}, 'serrapilheira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\toutra_forma_vida\tforma_vida_outros\tselect_multiple forma_vida_outros\tforma_vida_outros\tOutras plantas terrestres, líquens e/ou fungos​:\tyes\tselected(${tipo_forma_vida}, 'outra_forma_vida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tnativa\tforma_vida_nativa\tselect_multiple forma_vida_nativa\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\tyes\tselected(${tipo_forma_vida}, 'nativa')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tforma_vida_nativa_bromelioide\tA erva bromelioide <span style=\"color:red\">nativa</span> observada é:\tyes\tselected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea\tselect_one forma_vida_nativa_cactacea\tforma_vida_nativa_cactacea\tO cacto <span style=\"color:red\">nativo</span> observado é:\tyes\tselected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto nativo </span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto nativo </span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tforma_vida_nativa_orquidea\tA orquídea <span style=\"color:red\">nativa</span> observada é:\tyes\tselected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tsamambaia\tforma_vida_nativa_samambaia\tselect_one forma_vida_nativa_samambaia\tforma_vida_nativa_samambaia\tA samambaia <span style=\"color:red\">nativa</span> observada é:\tyes\tselected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_samambaia_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tsamambaia\tforma_vida_nativa_samambaia_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tgraminoide\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\terva_nao_graminoide\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura inferior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura inferior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto nativo</span> tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu nativo</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu nativo</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tlianas\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tervas_de_passarinho\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tpalmeira\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Velloziaceae nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcanela_de_ema\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Velloziaceae nativa</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tdesconhecida\tfoto_forma_vida_nativa_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta nativa:\tyes\tselected(${forma_vida_nativa}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tdesconhecida\tfoto_forma_vida_nativa_desconhecida02\timage\t\tOutra foto da forma de vida desconhecida de planta nativa, caso ache necessário:\t\tselected(${forma_vida_nativa}, 'desconhecida') and ${foto_forma_vida_nativa_desconhecida} != ''\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tdesconhecida\tfoto_forma_vida_nativa_desconhecida03\timage\t\toutra foto da forma de vida desconhecida de planta nativa, caso ache necessário:\t\tselected(${forma_vida_nativa}, 'desconhecida') and ${foto_forma_vida_nativa_desconhecida02} != ''\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\texotica\tforma_vida_exotica\tselect_multiple forma_vida_exotica\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\tyes\tselected(${tipo_forma_vida}, 'exotica')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\tforma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tforma_vida_exotica_bromelioide\tA erva bromelioide <span style=\"color:red\">exótica</span> observada é:\tyes\tselected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tcactacea\tforma_vida_exotica_cactacea\tselect_one forma_vida_exotica_cactacea\tforma_vida_exotica_cactacea\tO cacto <span style=\"color:red\">exótico</span> observado é:\tyes\tselected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\torquidea\tforma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tforma_vida_exotica_orquidea\tA orquídea <span style=\"color:red\">exótica</span> observada é:\tyes\tselected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tsamambaia\tforma_vida_exotica_samambaia\tselect_one forma_vida_exotica_samambaia\tforma_vida_exotica_samambaia\tA samambaia <span style=\"color:red\">exótica</span> observada é:\tyes\tselected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> ervas graminóides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tgraminoide\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> ervas graminóides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tgraminoide\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\texotica_graminoide_outra_sp\texotica_graminoide_outra_sp\ttext\t\tOutra espécie de erva graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'graminoide') and selected(${especies_exotica_graminoide}, 'exotica_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\terva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\tselect_multiple especies_exotica_erva_nao_graminoide\tespecies_exotica_erva_nao_graminoide\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\terva_nao_graminoide\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\texotica_erva_nao_graminoide_outra_sp\texotica_erva_outra_sp\ttext\t\tOutra espécie de erva não graminoide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide') and selected(${especies_exotica_erva_nao_graminoide}, 'exotica_erva_nao_graminoide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_abaixo\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm:\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_abaixo\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\texotica_arbusto_abaixo_outra_sp\texotica_arbusto_abaixo_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo') and selected(${especies_exotica_arbusto_abaixo}, 'exotica_arbusto_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_acima\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm:\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_acima\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\texotica_arbusto_acima_outra_sp\texotica_arbusto_acima_outra_sp\ttext\t\tOutra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima') and selected(${especies_exotica_arbusto_acima}, 'exotica_arbusto_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_abaixo\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_abaixo\tespecies_exotica_arvore_abaixo\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_abaixo\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\texotica_arvore_abaixo_outra_sp\texotica_arvore_abaixo_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo') and selected(${especies_exotica_arvore_abaixo}, 'exotica_arvore_abaixo_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_acima\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_acima\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\texotica_arvore_acima_outra_sp\ttext\t\tOutra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30):\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima') and selected(${especies_exotica_arvore_acima}, 'exotica_arvore_acima_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbambu\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbambu\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\texotica_bambu_outra_sp\texotica_bambu_outra_sp\ttext\t\tOutra espécie de bambu exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bambu') and selected(${especies_exotica_bambu}, 'exotica_bambu_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tlianas\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_lianas_outra_sp\ttext\t\tOutra espécie de liana exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas') and selected(${especies_exotica_lianas}, 'exotica_lianas_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tlianas\texotica_lianas_outra_sp\ttext\t\tOutra espécie de liana exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas') and selected(${especies_exotica_lianas}, 'exotica_lianas_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\texotica_lianas_outra_sp\texotica_lianas_outra_sp\ttext\t\tOutra espécie de liana exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'lianas') and selected(${especies_exotica_lianas}, 'exotica_lianas_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_ervas_de_passarinho\tselect_multiple especies_exotica_ervas_de_passarinho\tespecies_exotica_ervas_de_passarinho\t**Espécies** de <span style=\"color:red\"> ervas-de-passarinho (hemiparasita) exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tervas_de_passarinho\tespecies_exotica_ervas_de_passarinho\tselect_multiple especies_exotica_ervas_de_passarinho\tespecies_exotica_ervas_de_passarinho\t**Espécies** de <span style=\"color:red\"> ervas-de-passarinho (hemiparasita) exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_ervas_de_passarinho_outra_sp\ttext\t\tOutra espécie de erva-de-passarinho exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho') and selected(${especies_exotica_ervas_de_passarinho}, 'exotica_ervas_de_passarinho_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tervas_de_passarinho\texotica_ervas_de_passarinho_outra_sp\ttext\t\tOutra espécie de erva-de-passarinho exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho') and selected(${especies_exotica_ervas_de_passarinho}, 'exotica_ervas_de_passarinho_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_ervas_de_passarinho\texotica_ervas_de_passarinho_outra_sp\texotica_ervas_de_passarinho_outra_sp\ttext\t\tOutra espécie de erva-de-passarinho exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'ervas_de_passarinho') and selected(${especies_exotica_ervas_de_passarinho}, 'exotica_ervas_de_passarinho_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tpalmeira\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tpalmeira\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\texotica_palmeira_outra_sp\texotica_palmeira_outra_sp\ttext\t\tOutra espécie de palmeira exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'palmeira') and selected(${especies_exotica_palmeira}, 'exotica_palmeira_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_bromelioide\tselect_multiple especies_exotica_bromelioide\tespecies_exotica_bromelioide\t**Espécies** de <span style=\"color:red\"> ervas bromelioides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\tespecies_exotica_bromelioide\tselect_multiple especies_exotica_bromelioide\tespecies_exotica_bromelioide\t**Espécies** de <span style=\"color:red\"> ervas bromelioides exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_bromelioide_outra_sp\ttext\t\tOutra espécie de erva bromelióide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide') and selected(${especies_exotica_bromelioide}, 'exotica_bromelioide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\texotica_bromelioide_outra_sp\ttext\t\tOutra espécie de erva bromelióide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide') and selected(${especies_exotica_bromelioide}, 'exotica_bromelioide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bromelioide\texotica_bromelioide_outra_sp\texotica_bromelioide_outra_sp\ttext\t\tOutra espécie de erva bromelióide exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide') and selected(${especies_exotica_bromelioide}, 'exotica_bromelioide_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cacto exótico:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tcactacea\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cacto exótico:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cacto exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tcactacea\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cacto exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_cactacea\texotica_cactacea_outra_sp\texotica_cactacea_outra_sp\ttext\t\tOutra espécie de cacto exótico:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'cactacea') and selected(${especies_exotica_cactacea}, 'exotica_cactacea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\torquidea\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\torquidea\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_orquidea\texotica_orquidea_outra_sp\texotica_orquidea_outra_sp\ttext\t\tOutra espécie de orquídea exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'orquidea') and selected(${especies_exotica_orquidea}, 'exotica_orquidea_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tsamambaia\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tsamambaia\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\texotica_samambaia_outra_sp\texotica_samambaia_outra_sp\ttext\t\tOutra espécie de samambaia exótica:\tyes\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'samambaia') and selected(${especies_exotica_samambaia}, 'exotica_samambaia_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outras exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\toutros\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outras exóticas:</span>\t\tselected(${especie}, 'sim') and selected(${forma_vida_exotica}, 'outros')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\tyes\tselected(${especie}, 'sim') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\texotica_outros_outra_sp\texotica_outros_outra_sp\ttext\t\tOutra espécie exótica:\tyes\tselected(${especie}, 'sim') and selected(${especies_exotica_outros}, 'exotica_outros_outra_sp')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tdesconhecida\tfoto_forma_vida_exotica_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta exótica:\tyes\tselected(${forma_vida_exotica}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tdesconhecida\tfoto_forma_vida_exotica_desconhecida02\timage\t\tOutra foto da forma de vida desconhecida de planta exótica, caso ache necessário:\t\tselected(${forma_vida_exotica}, 'desconhecida') and ${foto_forma_vida_exotica_desconhecida} != ''\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tdesconhecida\tfoto_forma_vida_exotica_desconhecida03\timage\t\tOutra foto da forma de vida desconhecida de planta exótica, caso ache necessário:\t\tselected(${forma_vida_exotica}, 'desconhecida') and ${foto_forma_vida_exotica_desconhecida02} != ''\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tseca_morta\tforma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\tyes\tselected(${tipo_forma_vida}, 'seca_morta')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbromelioide\tforma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tforma_vida_seca_morta_bromelioide\tA erva bromelioide <span style=\"color:red\">seca ou morta</span> observada é:\tyes\tselected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_bromelioide_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbromelioide\tforma_vida_seca_morta_bromelioide_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva bromelioide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcactacea\tforma_vida_seca_morta_cactacea\tselect_one forma_vida_seca_morta_cactacea\tforma_vida_seca_morta_cactacea\tO cacto <span style=\"color:red\">seco ou morto</span> observado é:\tyes\tselected(${forma_vida_seca_morta}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_cactacea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto seco ou morto</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcactacea\tforma_vida_seca_morta_cactacea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Cacto seco ou morto</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'cactacea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\torquidea\tforma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tforma_vida_seca_morta_orquidea\tA orquídea <span style=\"color:red\">seca ou morta</span> observada é:\tyes\tselected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_orquidea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\torquidea\tforma_vida_seca_morta_orquidea_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Orquídea seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tsamambaia\tforma_vida_seca_morta_samambaia\tselect_one forma_vida_seca_morta_samambaia\tforma_vida_seca_morta_samambaia\tA samambaia <span style=\"color:red\">seca ou morta</span> observada é:\tyes\tselected(${forma_vida_seca_morta}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_samambaia_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tsamambaia\tforma_vida_seca_morta_samambaia_sp\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Samambaia seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'samambaia')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tgraminoide\tforma_vida_seca_morta_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva graminoide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tforma_vida_seca_morta_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva não graminoide seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'erva_nao_graminoide')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_arbusto_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura inferior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tforma_vida_seca_morta_arbusto_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura inferior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_arbusto_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_acima\tforma_vida_seca_morta_arbusto_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Arbusto seco ou morto</span> tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arbusto_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_mortaarvore_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore seca ou morta</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tforma_vida_seca_mortaarvore_abaixo\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Árvore seca ou morta</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_arvore_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Árvore seca ou morta</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_acima\tforma_vida_seca_morta_arvore_acima\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Árvore seca ou morta</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_bambu\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu seco ou morto</span> )\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbambu\tforma_vida_seca_morta_bambu\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Bambu seco ou morto</span> )\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'bambu')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_lianas\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tlianas\tforma_vida_seca_morta_lianas\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Liana seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'lianas')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tforma_vida_seca_morta_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Erva-de-passarinho seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'ervas_de_passarinho')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_palmeira\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tpalmeira\tforma_vida_seca_morta_palmeira\ttext\t\tEspécie ou nome popular (<span style=\"color:red\">Palmeira seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'palmeira')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecie\tsim\tforma_vida_seca_morta_canela_de_ema\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Velloziaceae seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tforma_vida_seca_morta_canela_de_ema\ttext\t\tEspécie ou nome popular (<span style=\"color:red\"> Velloziaceae seca ou morta</span>)\t\tselected(${especie}, 'sim') and selected(${forma_vida_seca_morta}, 'canela_de_ema')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tdesconhecida\tfoto_forma_vida_seca_morta_desconhecida\timage\t\tFoto da forma de vida desconhecida de planta seca ou morta:\tyes\tselected(${forma_vida_seca_morta}, 'desconhecida')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tdesconhecida\tfoto_forma_vida_seca_morta_desconhecida02\timage\t\tOutra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário:\t\tselected(${forma_vida_seca_morta}, 'desconhecida') and ${foto_forma_vida_seca_morta_desconhecida} != ''\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tdesconhecida\tfoto_forma_vida_seca_morta_desconhecida03\timage\t\tOutra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário:\t\tselected(${forma_vida_seca_morta}, 'desconhecida') and ${foto_forma_vida_seca_morta_desconhecida02} != ''\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\toutros\ttipos_impacto_manejo_uso_outro\ttext\t\tOutros tipos de manejo ou uso:\t\tselected(${tipos_impacto_manejo_uso}, 'outros')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tnativa\tforma_vida_nativa\tselect_multiple forma_vida_nativa\tforma_vida_nativa\tFormas de vida de plantas <span style=\"color:red\">nativas:</span>\t\tselected(${tipo_forma_vida}, 'nativa')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tforma_vida_nativa_bromelioide\tSelecione se a bromélia observada é:\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide\tselect_one forma_vida_nativa_bromelioide\tforma_vida_nativa_bromelioide\tSelecione se a bromélia observada é:\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Bromelioide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbromelioide\tforma_vida_nativa_bromelioide_sp\ttext\t\tEspécie ou nome popular (Bromelioide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tforma_vida_nativa_orquidea\tSelecione se a orquidea observada é:\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea\tselect_one forma_vida_nativa_orquidea\tforma_vida_nativa_orquidea\tSelecione se a orquidea observada é:\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\torquidea\tforma_vida_nativa_orquidea_sp\ttext\t\tEspécie ou nome popular (Orquídea)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\toutra\tforma_vida_nativa_outra\ttext\t\tOutra forma de vida de planta nativa:\t\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\toutra\tfoto_forma_vida_nativa_outra\timage\t\tFoto de outra forma de vida de planta nativa:\t\tselected(${forma_vida_nativa}, 'outra')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Graminoide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tgraminoide\tforma_vida_nativa_graminoide\ttext\t\tEspécie ou nome popular (Graminoide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\terva_nao_graminoide\tforma_vida_nativa_erva_nao_graminoide\ttext\t\tEspécie ou nome popular (Erva não graminoide)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto abaixo de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto abaixo de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_cactacea\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcactacea\tforma_vida_nativa_cactacea\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tlianas\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tervas_de_passarinho\tforma_vida_nativa_ervas_de_passarinho\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tpalmeira\tforma_vida_nativa_palmeira\ttext\t\tEspécie ou nome popular (Palmeira)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'palmeira')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tsamambaia\tforma_vida_nativa_samambaia\ttext\t\tEspécie ou nome popular (Samambaia)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'samambaia')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Canela-de-ema)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcanela_de_ema\tforma_vida_nativa_canela_de_ema\ttext\t\tEspécie ou nome popular (Canela-de-ema)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'canela_de_ema')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\texotica\tforma_vida_exotica\tselect_multiple forma_vida_exotica\tforma_vida_exotica\tFormas de vida de plantas <span style=\"color:red\">exóticas:</span>\t\tselected(${tipo_forma_vida}, 'exotica')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tgraminoide\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotica_graminoide\t**Espécies** de <span style=\"color:red\"> graminóides exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_erva\tselect_multiple especies_exotica_erva\tespecies_exotica_erva\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\terva_nao_graminoide\tespecies_exotica_erva\tselect_multiple especies_exotica_erva\tespecies_exotica_erva\t**Espécies** de <span style=\"color:red\"> ervas não graminóides exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'erva_nao_graminoide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> abaixo de 0,5m de altura:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_abaixo\tespecies_exotica_arbusto_abaixo\tselect_multiple especies_exotica_arbusto_abaixo\tespecies_exotica_arbusto_abaixo\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> abaixo de 0,5m de altura:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> acima de 0,5m de altura:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_acima\tespecies_exotica_arbusto_acima\tselect_multiple especies_exotica_arbusto_acima\tespecies_exotica_arbusto_acima\t**Espécies** de <span style=\"color:red\"> arbustos exóticos</span> acima de 0,5m de altura:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arbusto_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> abaixo de 5cm diâmetro:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_abaixo\tespecies_exotica_arvore_abaixo\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> abaixo de 5cm diâmetro:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> acima de 5cm diâmetro:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_acima\tespecies_exotica_arvore_acima\tselect_multiple especies_exotica_arvore_acima\tespecies_exotica_arvore_acima\t**Espécies** de <span style=\"color:red\"> árvores exóticas</span> acima de 5cm diâmetro:\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbambu\tespecies_exotica_bambu\tselect_multiple especies_exotica_bambu\tespecies_exotica_bambu\t**Espécies** de <span style=\"color:red\"> bambus exóticos:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bambu')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tcactacea\tespecies_exotica_cactacea\tselect_multiple especies_exotica_cactacea\tespecies_exotica_cactacea\t**Espécies** de <span style=\"color:red\"> cactáceas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'cactacea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tlianas\tespecies_exotica_lianas\tselect_multiple especies_exotica_lianas\tespecies_exotica_lianas\t**Espécies** de <span style=\"color:red\"> lianas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'lianas')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\torquidea\tespecies_exotica_orquidea\tselect_multiple especies_exotica_orquidea\tespecies_exotica_orquidea\t**Espécies** de <span style=\"color:red\"> orquídeas exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tpalmeira\tespecies_exotica_palmeira\tselect_multiple especies_exotica_palmeira\tespecies_exotica_palmeira\t**Espécies** de <span style=\"color:red\"> palmeiras exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'palmeira')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tsamambaia\tespecies_exotica_samambaia\tselect_multiple especies_exotica_samambaia\tespecies_exotica_samambaia\t**Espécies** de <span style=\"color:red\"> samambaias exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'samambaia')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbromelioide\tespecies_exotica_outros\tselect_multiple especies_exotica_outros\tespecies_exotica_outros\t**Espécies** de <span style=\"color:red\"> outros exóticas:</span>\t\tselected(${especies}, 'sim') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tnao\tforma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tforma_vida_exotica_bromelioide\tSelecione se a bromélia observada é:\t\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbromelioide\tforma_vida_exotica_bromelioide\tselect_one forma_vida_exotica_bromelioide\tforma_vida_exotica_bromelioide\tSelecione se a bromélia observada é:\t\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tnao\tforma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tforma_vida_exotica_orquidea\tSelecione se a orquidea observada é:\t\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\torquidea\tforma_vida_exotica_orquidea\tselect_one forma_vida_exotica_orquidea\tforma_vida_exotica_orquidea\tSelecione se a orquidea observada é:\t\tselected(${especies}, 'nao') and selected(${forma_vida_exotica}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\toutra\tforma_vida_exotica_outra\ttext\t\tOutra forma de vida de planta exótica:\t\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\toutra\tfoto_forma_vida_exotica_outra\timage\t\tFoto de outra forma de vida de planta exótica:\t\tselected(${forma_vida_exotica}, 'outra')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tseca_morta\tforma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tforma_vida_seca_morta\tFormas de vida de plantas <span style=\"color:red\">secas ou mortas:</span>\t\tselected(${tipo_forma_vida}, 'seca_morta')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbromelioide\tforma_vida_seca_morta_bromelioide\tselect_one forma_vida_seca_morta_bromelioide\tforma_vida_seca_morta_bromelioide\tSelecione se a bromélia observada é:\t\tselected(${forma_vida_seca_morta}, 'bromelioide')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\torquidea\tforma_vida_seca_morta_orquidea\tselect_one forma_vida_seca_morta_orquidea\tforma_vida_seca_morta_orquidea\tSelecione se a orquidea observada é:\t\tselected(${forma_vida_seca_morta}, 'orquidea')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\toutra\tforma_vida_seca_morta_outra\ttext\t\tOutra forma de vida de planta seca e/ou morta:\t\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\toutra\tfoto_forma_vida_seca_morta_outra\timage\t\tFoto de outra forma de vida de planta seca ou morta:\t\tselected(${forma_vida_seca_morta}, 'outra')\txlsform_embutido"
+  )
+  dependencias <- monitora_correcao_fread_tsv_embutido(dependencias_linhas)
+  dependencias[] <- lapply(dependencias, as.character)
+  arquivos_linhas <- c(
+    "arquivo_xlsform\tform_id\tversion\tfonte",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tPLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24\t1\tembutido_no_script",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tPLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23\t1\tembutido_no_script",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tPLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25\t2025022101\tembutido_no_script",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tcomp_camp_sav_plantas_herb_lenh_nat_exot_ago22\t1\tembutido_no_script"
+  )
+  arquivos <- monitora_correcao_fread_tsv_embutido(arquivos_linhas)
+  arquivos[] <- lapply(arquivos, as.character)
+  list(campos = campos, opcoes = opcoes, dependencias = dependencias, arquivos = arquivos)
+}
+
+
+monitora_correcao_ler_xlsforms <- function(...) {
+  ### Compatibilidade com versões anteriores: a v2.2.0 não lê XLSForms externos.
+  ### Todas as regras utilizadas pelo painel são carregadas da seção embutida acima.
+  monitora_correcao_xlsforms_embutidos()
+}
+
+monitora_correcao_dependencias_padrao <- function() {
+  formas_cond <- c("bromelioide", "cactacea", "orquidea", "samambaia")
+  cats <- c("nativa", "exotica", "seca_morta")
+  out <- data.table::CJ(categoria = cats, token = formas_cond)
+  out[, parent_name := paste0("forma_vida_", categoria)]
+  out[, dependent_name := paste0("forma_vida_", categoria, "_", token)]
+  out[, dependent_type := "select_one habito_forma_vida"]
+  out[, dependent_list_name := "habito_forma_vida"]
+  out[, required := "yes"]
+  out[, relevant := paste0("selected(${", parent_name, "}, '", token, "')")]
+  out[, fonte := "regra_padrao_monitora"]
+  out[]
+}
+
+monitora_correcao_unificar_dependencias <- function(dep_xlsform) {
+  dep_padrao <- monitora_correcao_dependencias_padrao()
+  if (is.null(dep_xlsform) || nrow(dep_xlsform) == 0) return(dep_padrao)
+  cols <- union(names(dep_xlsform), names(dep_padrao))
+  for (cc in setdiff(cols, names(dep_xlsform))) dep_xlsform[, (cc) := NA_character_]
+  for (cc in setdiff(cols, names(dep_padrao))) dep_padrao[, (cc) := NA_character_]
+  unique(data.table::rbindlist(list(dep_xlsform[, ..cols], dep_padrao[, ..cols]), fill = TRUE, use.names = TRUE))
+}
+
+monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
+  dt <- data.table::as.data.table(dt)
+  chaves <- monitora_correcao_colunas_chave(dt)
+  nms <- names(dt)
+  campos <- if (!is.null(meta_xls) && !is.null(meta_xls$campos)) data.table::as.data.table(meta_xls$campos) else data.table::data.table()
+  out <- data.table::data.table(
+    atributo_coluna_registros_corrig = nms,
+    n_preenchidos = vapply(dt, function(x) sum(!is.na(x) & nzchar(trimws(as.character(x)))), integer(1)),
+    n_valores_unicos = vapply(dt, function(x) length(unique(na.omit(as.character(x)))), integer(1)),
+    classe_r = vapply(dt, function(x) paste(class(x), collapse = "/"), character(1))
+  )
+  out[, escopo_sugerido := "ponto"]
+  cols_coleta <- unique(na.omit(c(chaves$coleta, chaves$coleta_uuid, chaves$uc, chaves$ano, chaves$ua, chaves$campanha, "form_veg", "CICLO", "PROTOCOLO")))
+  out[atributo_coluna_registros_corrig %in% cols_coleta, escopo_sugerido := "coleta_inteira"]
+  out[grepl("form_veg|campanha|ciclo|^UC$|^EA$|^UA$|estrato|[aá]rea.*eleg[ií]vel|data_hora/data|data_hora/hora|num_placa|coordenada|protocolo", atributo_coluna_registros_corrig, ignore.case = TRUE), escopo_sugerido := "coleta_inteira"]
+  out[grepl("ponto|registro|forma_vida|esp[eé]cie|ex[oó]tica|nativa|seca|morta", atributo_coluna_registros_corrig, ignore.case = TRUE), escopo_sugerido := "ponto"]
+  out[, tipo_valor_inferido := fifelse(grepl("uuid", atributo_coluna_registros_corrig, ignore.case = TRUE), "uuid",
+                                fifelse(grepl("data", atributo_coluna_registros_corrig, ignore.case = TRUE), "data/texto",
+                                fifelse(grepl("hora", atributo_coluna_registros_corrig, ignore.case = TRUE), "hora/texto",
+                                fifelse(grepl("forma_vida|esp[eé]cies|tipo_forma", atributo_coluna_registros_corrig, ignore.case = TRUE), "select_multiple/texto",
+                                fifelse(grepl("ponto_metro", atributo_coluna_registros_corrig, ignore.case = TRUE), "decimal", "texto")))))]
+  if (nrow(campos) > 0) {
+    out[, xlsform_name := NA_character_]
+    out[, xlsform_label := NA_character_]
+    out[, xlsform_tipo := NA_character_]
+    for (ii in seq_len(nrow(out))) {
+      cc <- out$atributo_coluna_registros_corrig[ii]
+      hit <- campos[name == cc | caminho_registro == cc | label == cc]
+      if (nrow(hit) == 0) {
+        hit <- campos[grepl(paste0("(^|/)", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", cc, perl = TRUE), "$"), caminho_registro, ignore.case = TRUE)]
+      }
+      if (nrow(hit) > 0) {
+        data.table::set(out, i = ii, j = "xlsform_name", value = hit$name[1])
+        data.table::set(out, i = ii, j = "xlsform_label", value = hit$label[1])
+        data.table::set(out, i = ii, j = "xlsform_tipo", value = hit$type[1])
+      }
+    }
+  }
+  out[]
+}
+
+monitora_correcao_template <- function() {
+  data.table::data.table(
+    id_correcao = character(),
+    data_hora_correcao = character(),
+    responsavel = character(),
+    tipo_correcao = character(),
+    ordem_operacao = integer(),
+    escopo_aplicacao = character(),
+    coleta = character(),
+    coleta_uuid = character(),
+    uuid_registro = character(),
+    ponto_amostral = character(),
+    ponto_metro = character(),
+    atributo_coluna_registros_corrig = character(),
+    acao = character(),
+    token_pai = character(),
+    categoria_origem = character(),
+    categoria_destino = character(),
+    valor_original_esperado = character(),
+    valor_novo = character(),
+    n_linhas_esperado = integer(),
+    n_linhas_alvo = integer(),
+    aplicar_todos_registros_coleta = character(),
+    validar_opcao = character(),
+    fonte_validacao = character(),
+    motivo = character(),
+    status_validacao = character(),
+    mensagem_validacao = character()
+  )
+}
+
+monitora_correcao_novo_id <- function(prefix = "CORR") {
+  paste0(prefix, "_", format(Sys.time(), "%Y%m%d%H%M%S"), "_", sample.int(9999, 1))
+}
+
+monitora_correcao_localizar_linhas <- function(dt, corr, chaves = monitora_correcao_colunas_chave(dt)) {
+  idx <- rep(TRUE, nrow(dt))
+  escopo <- tolower(trimws(as.character(corr$escopo_aplicacao[1])))
+  if (!nzchar(escopo) || is.na(escopo)) escopo <- "ponto"
+
+  if (!monitora_correcao_vazio(corr$uuid_registro[1]) && !is.na(chaves$uuid_registro) && chaves$uuid_registro %in% names(dt)) {
+    return(which(as.character(dt[[chaves$uuid_registro]]) == as.character(corr$uuid_registro[1])))
+  }
+  if (!monitora_correcao_vazio(corr$coleta_uuid[1]) && !is.na(chaves$coleta_uuid) && chaves$coleta_uuid %in% names(dt)) {
+    idx <- idx & as.character(dt[[chaves$coleta_uuid]]) == as.character(corr$coleta_uuid[1])
+  } else if (!monitora_correcao_vazio(corr$coleta[1]) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt)) {
+    idx <- idx & as.character(dt[[chaves$coleta]]) == as.character(corr$coleta[1])
+  }
+
+  if (escopo %in% c("ponto", "coleta_ponto", "uuid_registro") && !monitora_correcao_vazio(corr$ponto_amostral[1]) && !is.na(chaves$ponto_amostral) && chaves$ponto_amostral %in% names(dt)) {
+    idx <- idx & as.character(dt[[chaves$ponto_amostral]]) == as.character(corr$ponto_amostral[1])
+  }
+  which(idx)
+}
+
+monitora_correcao_aplicar_operacao <- function(valor_atual, acao, valor_novo, valor_original_esperado = NA_character_) {
+  acao <- tolower(trimws(as.character(acao)))
+  valor_novo <- if (is.na(valor_novo)) NA_character_ else as.character(valor_novo)
+  valor_original_esperado <- if (is.na(valor_original_esperado)) NA_character_ else as.character(valor_original_esperado)
+  if (acao %in% c("clear", "limpar")) return(rep(NA_character_, length(valor_atual)))
+  if (acao %in% c("append_token", "adicionar_token")) return(vapply(valor_atual, monitora_correcao_append_token_valor, character(1), token = valor_novo))
+  if (acao %in% c("remove_token", "remover_token")) return(vapply(valor_atual, monitora_correcao_remove_token_valor, character(1), token = valor_novo))
+  if (acao %in% c("replace_token", "substituir_token")) return(vapply(valor_atual, monitora_correcao_replace_token_valor, character(1), token_antigo = valor_original_esperado, token_novo = valor_novo))
+  rep(valor_novo, length(valor_atual))
+}
+
+monitora_correcao_recalcular_tipo_forma_vida <- function(dt, linhas) {
+  chaves <- monitora_correcao_colunas_chave(dt)
+  tipo_col <- chaves$tipo_forma_vida
+  if (is.na(tipo_col) || !(tipo_col %in% names(dt)) || length(linhas) == 0) return(invisible(dt))
+  parent_cols <- list(
+    nativa = monitora_correcao_coluna_forma_vida(dt, "nativa"),
+    exotica = monitora_correcao_coluna_forma_vida(dt, "exotica"),
+    seca_morta = monitora_correcao_coluna_forma_vida(dt, "seca_morta")
+  )
+  for (ii in linhas) {
+    atual <- monitora_correcao_tokenizar(dt[[tipo_col]][ii])
+    outros <- setdiff(atual, c("nativa", "exotica", "seca_morta"))
+    cats <- character(0)
+    for (cat in names(parent_cols)) {
+      cc <- parent_cols[[cat]]
+      if (!is.na(cc) && cc %in% names(dt) && !monitora_correcao_vazio(dt[[cc]][ii])) cats <- c(cats, cat)
+    }
+    data.table::set(dt, i = ii, j = tipo_col, value = monitora_correcao_colapsar_tokens(c(outros, cats)))
+  }
+  invisible(dt)
+}
+
+
+monitora_correcao_recalcular_superiores_vinculados <- function(dt, linhas, deps = NULL, dicionario = NULL, afetacoes = NULL) {
+  ### Recalcula e harmoniza campos superiores vinculados por regras do XLSForm.
+  ### Regra conservadora:
+  ###   1. se um campo inferior dependente estiver preenchido, o token correspondente é garantido no campo superior;
+  ###   2. o campo superior de classe geral (**Encostam** na vareta / tipo_forma_vida) é sempre recalculado
+  ###      a partir das colunas pai de nativa, exótica e seca/morta;
+  ###   3. remoções de tokens em campos intermediários continuam sendo feitas por operações explícitas
+  ###      (por exemplo, movimento exótica -> nativa), evitando apagar informação válida de forma automática.
+  dt <- data.table::as.data.table(dt)
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  if (length(linhas) == 0L) return(data.table::data.table())
+  audit <- data.table::data.table()
+  deps <- if (is.null(deps)) data.table::data.table() else data.table::as.data.table(deps)
+  if (nrow(deps) > 0L) {
+    if (!all(c("parent_name", "token", "dependent_name") %in% names(deps))) deps <- data.table::data.table()
+  }
+  afetacoes <- if (is.null(afetacoes)) data.table::data.table() else data.table::as.data.table(afetacoes)
+  if (nrow(afetacoes) > 0L && all(c("linha_indice", "atributo") %in% names(afetacoes))) {
+    afetacoes[, linha_indice := suppressWarnings(as.integer(linha_indice))]
+    afetacoes[, atributo := as.character(atributo)]
+    afetacoes <- afetacoes[!is.na(linha_indice) & linha_indice %in% linhas & !is.na(atributo) & nzchar(atributo)]
+    afetacoes <- unique(afetacoes[, .(linha_indice, atributo)])
+  } else {
+    afetacoes <- data.table::data.table()
+  }
+
+  ### 1. Propagar preenchimento de campos inferiores para seus campos superiores,
+  ### conforme pares selected(${parent_name}, 'token') extraídos dos XLSForms.
+  ### Importante: a propagação lower -> parent só é feita quando o campo inferior
+  ### foi efetivamente alterado nesta rodada de correções. Isso evita reintroduzir
+  ### tokens obsoletos a partir de campos dependentes históricos/residuais que
+  ### permaneceram preenchidos mas não fizeram parte da correção atual.
+  if (nrow(deps) > 0L) {
+    deps_validas <- deps[!is.na(parent_name) & nzchar(parent_name) & !is.na(token) & nzchar(token) & !is.na(dependent_name) & nzchar(dependent_name)]
+    if (nrow(deps_validas) > 0L) {
+      deps_validas <- unique(deps_validas[, .(parent_name, token, dependent_name)])
+      for (rr in seq_len(nrow(deps_validas))) {
+        parent_col <- monitora_correcao_resolver_coluna(dt, deps_validas$parent_name[rr], dicionario)
+        dep_col <- monitora_correcao_resolver_coluna(dt, deps_validas$dependent_name[rr], dicionario)
+        token <- deps_validas$token[rr]
+        if (is.na(parent_col) || is.na(dep_col)) next
+        if (!(parent_col %in% names(dt)) || !(dep_col %in% names(dt))) next
+        idx_base <- linhas
+        if (nrow(afetacoes) > 0L) {
+          idx_base <- afetacoes[atributo == dep_col, linha_indice]
+          idx_base <- unique(idx_base[!is.na(idx_base) & idx_base %in% linhas])
+        }
+        if (length(idx_base) == 0L) next
+        idx <- idx_base[!vapply(as.character(dt[[dep_col]][idx_base]), monitora_correcao_vazio, logical(1))]
+        if (length(idx) == 0L) next
+        antes <- as.character(dt[[parent_col]][idx])
+        depois <- vapply(antes, monitora_correcao_append_token_valor, character(1), token = token)
+        mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+        if (any(mudou)) {
+          data.table::set(dt, i = idx[mudou], j = parent_col, value = depois[mudou])
+          audit <- data.table::rbindlist(list(audit, data.table::data.table(
+            id_correcao = "RECALC_SUPERIORES_XLSFORM",
+            ordem_operacao = NA_character_,
+            status = "aplicada",
+            mensagem = paste0("Campo superior atualizado a partir de campo inferior vinculado pelo XLSForm: ", dep_col),
+            atributo = parent_col,
+            linha_indice = idx[mudou],
+            valor_antes = antes[mudou],
+            valor_depois = depois[mudou],
+            arquivo_correcao = "recalculo_automatico_pos_correcoes"
+          )), fill = TRUE, use.names = TRUE)
+        }
+      }
+    }
+  }
+
+  ### 2. Recalcular classe geral de forma de vida, inclusive removendo 'exotica'
+  ### quando a coluna de formas exóticas ficou vazia após movimento/correção.
+  chaves <- monitora_correcao_colunas_chave(dt)
+  tipo_col <- chaves$tipo_forma_vida
+  if (!is.na(tipo_col) && tipo_col %in% names(dt)) {
+    antes_tipo <- as.character(dt[[tipo_col]][linhas])
+    monitora_correcao_recalcular_tipo_forma_vida(dt, linhas)
+    depois_tipo <- as.character(dt[[tipo_col]][linhas])
+    mudou <- monitora_correcao_na_para_vazio(antes_tipo) != monitora_correcao_na_para_vazio(depois_tipo)
+    if (any(mudou)) {
+      audit <- data.table::rbindlist(list(audit, data.table::data.table(
+        id_correcao = "RECALC_SUPERIORES_XLSFORM",
+        ordem_operacao = NA_character_,
+        status = "aplicada",
+        mensagem = "Campo superior tipo_forma_vida recalculado a partir das categorias de forma de vida",
+        atributo = tipo_col,
+        linha_indice = linhas[mudou],
+        valor_antes = antes_tipo[mudou],
+        valor_depois = depois_tipo[mudou],
+        arquivo_correcao = "recalculo_automatico_pos_correcoes"
+      )), fill = TRUE, use.names = TRUE)
+    }
+  }
+  audit[]
+}
+
+
+monitora_correcao_reforcar_movimentos_forma_vida <- function(dt, corr, chaves = monitora_correcao_colunas_chave(dt), dicionario = NULL) {
+  ### Backstop semântico para movimentos entre categorias de forma de vida.
+  ### A auditoria mostrou que, em alguns fluxos do painel, a operação remove_token
+  ### podia não esvaziar a categoria de origem antes do recálculo do campo superior.
+  ### Aqui a transação de movimento é interpretada semanticamente: token_pai deve sair
+  ### da categoria_origem e entrar em categoria_destino nas linhas-alvo. Só depois o
+  ### tipo_forma_vida é recalculado.
+  dt <- data.table::as.data.table(dt)
+  corr <- data.table::as.data.table(corr)
+  if (nrow(corr) == 0L) {
+    return(list(audit = data.table::data.table(), linhas = integer(), afetacoes = data.table::data.table(linha_indice = integer(), atributo = character())))
+  }
+  cols_need <- c("tipo_correcao", "id_correcao", "escopo_aplicacao", "coleta", "coleta_uuid", "uuid_registro", "ponto_amostral", "token_pai", "categoria_origem", "categoria_destino")
+  for (cc in setdiff(cols_need, names(corr))) corr[, (cc) := NA_character_]
+  mov <- corr[tolower(trimws(as.character(tipo_correcao))) %in% c("movimento_forma_vida_condicional", "movimento_forma_vida")]
+  mov <- mov[!monitora_correcao_vazio(token_pai) & !monitora_correcao_vazio(categoria_origem) & !monitora_correcao_vazio(categoria_destino)]
+  if (nrow(mov) == 0L) {
+    return(list(audit = data.table::data.table(), linhas = integer(), afetacoes = data.table::data.table(linha_indice = integer(), atributo = character())))
+  }
+  mov <- unique(mov[, .(
+    id_correcao,
+    escopo_aplicacao,
+    coleta,
+    coleta_uuid,
+    uuid_registro,
+    ponto_amostral,
+    token_pai,
+    categoria_origem = tolower(trimws(as.character(categoria_origem))),
+    categoria_destino = tolower(trimws(as.character(categoria_destino)))
+  )])
+  audit <- data.table::data.table()
+  linhas_afetadas <- integer(0)
+  afetacoes <- data.table::data.table(linha_indice = integer(), atributo = character())
+
+  for (rr in seq_len(nrow(mov))) {
+    linha_mov <- mov[rr]
+    linhas <- monitora_correcao_localizar_linhas(dt, linha_mov, chaves)
+    linhas <- unique(as.integer(linhas))
+    linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+    if (length(linhas) == 0L) next
+    token <- as.character(linha_mov$token_pai[1])
+    col_origem <- monitora_correcao_coluna_forma_vida(dt, linha_mov$categoria_origem[1])
+    col_destino <- monitora_correcao_coluna_forma_vida(dt, linha_mov$categoria_destino[1])
+
+    if (!is.na(col_origem) && col_origem %in% names(dt)) {
+      antes <- as.character(dt[[col_origem]][linhas])
+      depois <- vapply(antes, monitora_correcao_remove_token_valor, character(1), token = token)
+      mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+      if (any(mudou)) {
+        data.table::set(dt, i = linhas[mudou], j = col_origem, value = depois[mudou])
+        linhas_afetadas <- unique(c(linhas_afetadas, linhas[mudou]))
+        afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas[mudou], atributo = col_origem)), fill = TRUE, use.names = TRUE)
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = linha_mov$id_correcao[1],
+          ordem_operacao = NA_character_,
+          status = "aplicada",
+          mensagem = paste0("Backstop semântico do movimento: token removido da categoria de origem ", linha_mov$categoria_origem[1]),
+          atributo = col_origem,
+          linha_indice = linhas[mudou],
+          valor_antes = antes[mudou],
+          valor_depois = depois[mudou],
+          arquivo_correcao = "reforco_semantico_movimento_forma_vida"
+        )), fill = TRUE, use.names = TRUE)
+      }
+    }
+
+    if (!is.na(col_destino) && col_destino %in% names(dt)) {
+      antes <- as.character(dt[[col_destino]][linhas])
+      depois <- vapply(antes, monitora_correcao_append_token_valor, character(1), token = token)
+      mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+      if (any(mudou)) {
+        data.table::set(dt, i = linhas[mudou], j = col_destino, value = depois[mudou])
+        linhas_afetadas <- unique(c(linhas_afetadas, linhas[mudou]))
+        afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas[mudou], atributo = col_destino)), fill = TRUE, use.names = TRUE)
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = linha_mov$id_correcao[1],
+          ordem_operacao = NA_character_,
+          status = "aplicada",
+          mensagem = paste0("Backstop semântico do movimento: token garantido na categoria de destino ", linha_mov$categoria_destino[1]),
+          atributo = col_destino,
+          linha_indice = linhas[mudou],
+          valor_antes = antes[mudou],
+          valor_depois = depois[mudou],
+          arquivo_correcao = "reforco_semantico_movimento_forma_vida"
+        )), fill = TRUE, use.names = TRUE)
+      }
+    }
+  }
+  list(audit = audit[], linhas = linhas_afetadas, afetacoes = afetacoes[])
+}
+
+monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_ARQUIVO_CORRECOES_CAMPOS, dicionario = NULL) {
+  if (!file.exists(arquivo_correcao)) {
+    monitora_log_registrar_evento("correcoes_campos", "INFO", arquivo_correcao, "Arquivo de correções não encontrado; nenhuma correção aplicada", "opcional")
+    return(dt)
+  }
+  dt <- monitora_dt_referenciar(dt)
+  corr <- tryCatch(data.table::fread(arquivo_correcao, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) data.table::data.table())
+  if (nrow(corr) == 0) {
+    monitora_log_registrar_evento("correcoes_campos", "AVISO", arquivo_correcao, "Arquivo de correções vazio ou ilegível", "nenhuma correção aplicada")
+    return(dt)
+  }
+  template <- monitora_correcao_template()
+  for (cc in setdiff(names(template), names(corr))) corr[, (cc) := NA_character_]
+  data.table::setDT(corr)
+  corr[, ordem_tmp := seq_len(.N)]
+  chaves <- monitora_correcao_colunas_chave(dt)
+  audit <- data.table::data.table()
+  linhas_afetadas_vinculos <- integer(0)
+  afetacoes_vinculos <- data.table::data.table(linha_indice = integer(), atributo = character())
+
+  for (rr in seq_len(nrow(corr))) {
+    linha_corr <- corr[rr]
+    col <- monitora_correcao_resolver_coluna(dt, linha_corr$atributo_coluna_registros_corrig[1], dicionario)
+    acao <- tolower(trimws(as.character(linha_corr$acao[1])))
+    linhas <- monitora_correcao_localizar_linhas(dt, linha_corr, chaves)
+    n_esperado <- suppressWarnings(as.integer(linha_corr$n_linhas_esperado[1]))
+    status <- "aplicada"
+    msg <- "OK"
+
+    if (acao %in% c("recalcular_tipo_forma_vida", "atualizar_tipo_forma_vida")) {
+      if (length(linhas) == 0) {
+        status <- "falha"; msg <- "Nenhuma linha-alvo localizada para recalcular tipo_forma_vida"
+      } else {
+        antes_tipo <- if (!is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% names(dt)) as.character(dt[[chaves$tipo_forma_vida]][linhas]) else NA_character_
+        monitora_correcao_recalcular_tipo_forma_vida(dt, linhas)
+        depois_tipo <- if (!is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% names(dt)) as.character(dt[[chaves$tipo_forma_vida]][linhas]) else NA_character_
+        linhas_afetadas_vinculos <- unique(c(linhas_afetadas_vinculos, linhas))
+        if (!is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% names(dt)) {
+          afetacoes_vinculos <- data.table::rbindlist(list(afetacoes_vinculos, data.table::data.table(linha_indice = linhas, atributo = chaves$tipo_forma_vida)), fill = TRUE, use.names = TRUE)
+        }
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = linha_corr$id_correcao[1], ordem_operacao = linha_corr$ordem_operacao[1],
+          status = status, mensagem = msg, atributo = chaves$tipo_forma_vida,
+          linha_indice = linhas, valor_antes = antes_tipo, valor_depois = depois_tipo,
+          arquivo_correcao = arquivo_correcao
+        )), fill = TRUE, use.names = TRUE)
+      }
+      next
+    }
+
+    if (is.na(col) || !(col %in% names(dt))) {
+      status <- "falha"; msg <- paste0("Coluna não encontrada: ", linha_corr$atributo_coluna_registros_corrig[1])
+    } else if (length(linhas) == 0) {
+      status <- "falha"; msg <- "Nenhuma linha-alvo localizada"
+    } else if (!is.na(n_esperado) && n_esperado > 0L && length(linhas) != n_esperado) {
+      status <- "falha"; msg <- paste0("n_linhas_alvo=", length(linhas), " diferente de n_linhas_esperado=", n_esperado)
+    } else {
+      valor_atual <- as.character(dt[[col]][linhas])
+      esperado <- linha_corr$valor_original_esperado[1]
+      if (!monitora_correcao_vazio(esperado)) {
+        iguais <- monitora_correcao_na_para_vazio(valor_atual) == monitora_correcao_na_para_vazio(esperado)
+        if (!all(iguais)) {
+          ### Para remoções de token em movimentos assistidos de forma de vida,
+          ### o valor_original_esperado pode ter sido capturado antes de outras
+          ### harmonizações. Nesses casos, a trava segura é a presença do token-alvo
+          ### na linha-alvo, especialmente quando a linha está identificada por UUID.
+          ### Isto evita bloquear a remoção de forma_vida_exotica e, em seguida,
+          ### reintroduzir 'exotica' no campo superior tipo_forma_vida.
+          if (acao %in% c("remove_token", "remover_token")) {
+            token_remover <- as.character(linha_corr$valor_novo[1])
+            contem_token <- vapply(
+              valor_atual,
+              function(v) token_remover %in% monitora_correcao_tokenizar(v),
+              logical(1)
+            )
+            if (length(contem_token) == length(valor_atual) && all(contem_token)) {
+              msg <- paste0(
+                "OK; valor_original_esperado divergiu em ", sum(!iguais),
+                " linha(s), mas o token-alvo '", token_remover,
+                "' estava presente em todas as linhas-alvo"
+              )
+            } else {
+              status <- "falha"
+              msg <- paste0(
+                "valor_original_esperado não confere em ", sum(!iguais),
+                " linha(s) e o token-alvo não está presente em ",
+                sum(!contem_token), " linha(s)"
+              )
+            }
+          } else {
+            status <- "falha"
+            msg <- paste0("valor_original_esperado não confere em ", sum(!iguais), " linha(s)")
+          }
+        }
+      }
+      if (identical(status, "aplicada")) {
+        novo <- monitora_correcao_aplicar_operacao(valor_atual, acao, linha_corr$valor_novo[1], esperado)
+        data.table::set(dt, i = linhas, j = col, value = novo)
+        linhas_afetadas_vinculos <- unique(c(linhas_afetadas_vinculos, linhas))
+        afetacoes_vinculos <- data.table::rbindlist(list(afetacoes_vinculos, data.table::data.table(linha_indice = linhas, atributo = col)), fill = TRUE, use.names = TRUE)
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = linha_corr$id_correcao[1], ordem_operacao = linha_corr$ordem_operacao[1],
+          status = status, mensagem = msg, atributo = col,
+          linha_indice = linhas, valor_antes = valor_atual, valor_depois = novo,
+          arquivo_correcao = arquivo_correcao
+        )), fill = TRUE, use.names = TRUE)
+      }
+    }
+    if (!identical(status, "aplicada")) {
+      audit <- data.table::rbindlist(list(audit, data.table::data.table(
+        id_correcao = linha_corr$id_correcao[1], ordem_operacao = linha_corr$ordem_operacao[1],
+        status = status, mensagem = msg, atributo = linha_corr$atributo_coluna_registros_corrig[1],
+        linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_,
+        arquivo_correcao = arquivo_correcao
+      )), fill = TRUE, use.names = TRUE)
+    }
+  }
+
+  reforco_movimentos <- monitora_correcao_reforcar_movimentos_forma_vida(dt, corr, chaves, dicionario)
+  if (nrow(reforco_movimentos$audit) > 0L) {
+    audit <- data.table::rbindlist(list(audit, reforco_movimentos$audit), fill = TRUE, use.names = TRUE)
+    linhas_afetadas_vinculos <- unique(c(linhas_afetadas_vinculos, reforco_movimentos$linhas))
+    afetacoes_vinculos <- data.table::rbindlist(list(afetacoes_vinculos, reforco_movimentos$afetacoes), fill = TRUE, use.names = TRUE)
+    monitora_log_registrar_evento(
+      "correcoes_campos",
+      "INFO",
+      NA_character_,
+      paste0(nrow(reforco_movimentos$audit), " reforço(s) semântico(s) aplicado(s) em movimentos de forma de vida"),
+      "movimentos interpretados antes do recálculo de campos superiores"
+    )
+  }
+
+  if (length(linhas_afetadas_vinculos) > 0L) {
+    deps_vinculos <- if (exists("MONITORA_DEPENDENCIAS_CORRECOES", inherits = TRUE)) get("MONITORA_DEPENDENCIAS_CORRECOES", inherits = TRUE) else NULL
+    audit_vinculos <- monitora_correcao_recalcular_superiores_vinculados(dt, linhas_afetadas_vinculos, deps_vinculos, dicionario, afetacoes_vinculos)
+    if (nrow(audit_vinculos) > 0L) {
+      audit <- data.table::rbindlist(list(audit, audit_vinculos), fill = TRUE, use.names = TRUE)
+      monitora_log_registrar_evento(
+        "correcoes_campos",
+        "INFO",
+        NA_character_,
+        paste0(nrow(audit_vinculos), " atualização(ões) automática(s) de campos superiores vinculados ao XLSForm"),
+        "campos superiores recalculados após correções"
+      )
+    }
+  }
+
+  if (nrow(audit) > 0) {
+    saida_audit <- file.path(MONITORA_LOG_DIR, paste0("auditoria_correcoes_campos_", MONITORA_EXEC_ID, ".csv"))
+    data.table::fwrite(audit, saida_audit, na = "")
+    data.table::fwrite(audit, file.path(MONITORA_CORRECOES_DIR, "auditoria_correcoes_campos_ultima_execucao.csv"), na = "")
+    monitora_log_registrar_evento("correcoes_campos", if (any(audit$status == "falha")) "AVISO" else "INFO", saida_audit, paste0(nrow(audit), " linha(s) de auditoria de correções"), "verificar falhas antes de liberar produtos")
+  }
+  dt[]
+}
+
+monitora_correcao_corrigir_ponto_metro <- function(dt) {
+  if (!isTRUE(MONITORA_CORRIGIR_PONTO_METRO_AUTOMATICO)) return(dt)
+  dt <- monitora_dt_referenciar(dt)
+  chaves <- monitora_correcao_colunas_chave(dt)
+  if (is.na(chaves$ponto_amostral) || is.na(chaves$ponto_metro)) return(dt)
+  if (!(chaves$ponto_amostral %in% names(dt)) || !(chaves$ponto_metro %in% names(dt))) return(dt)
+  ponto <- suppressWarnings(as.numeric(gsub(",", ".", as.character(dt[[chaves$ponto_amostral]]))))
+  metro_atual <- suppressWarnings(as.numeric(gsub(",", ".", as.character(dt[[chaves$ponto_metro]]))))
+  metro_esperado <- (ponto - 1) / 2
+  corrigir <- !is.na(ponto) & ponto >= 1 & ponto <= 101 & !is.na(metro_atual) & abs(metro_atual - metro_esperado) > 1e-9
+  if (any(corrigir)) {
+    aud <- data.table::data.table(
+      linha_indice = which(corrigir),
+      ponto_amostral = as.character(dt[[chaves$ponto_amostral]][corrigir]),
+      ponto_metro_antes = as.character(dt[[chaves$ponto_metro]][corrigir]),
+      ponto_metro_depois = as.character(metro_esperado[corrigir])
+    )
+    data.table::fwrite(aud, file.path(MONITORA_LOG_DIR, paste0("auditoria_correcao_ponto_metro_", MONITORA_EXEC_ID, ".csv")), na = "")
+    data.table::set(dt, i = which(corrigir), j = chaves$ponto_metro, value = as.character(metro_esperado[corrigir]))
+    monitora_log_registrar_evento("correcao_ponto_metro", "AVISO", NA_character_, paste0(sum(corrigir), " valor(es) de ponto_metro corrigidos por ponto_amostral"), "ver auditoria_correcao_ponto_metro")
+  } else {
+    monitora_log_registrar_evento("correcao_ponto_metro", "INFO", NA_character_, "Nenhuma inconformidade detectada", "ponto_metro validado por ponto_amostral")
+  }
+  dt[]
+}
+
+monitora_correcao_validar_dependencias <- function(dt, deps, dicionario = NULL) {
+  if (!isTRUE(MONITORA_VALIDAR_CONDICIONAIS_CORRECOES)) return(data.table::data.table())
+  if (is.null(deps) || nrow(deps) == 0) return(data.table::data.table())
+  dt <- data.table::as.data.table(dt)
+  deps <- data.table::as.data.table(deps)
+  out <- list()
+  for (ii in seq_len(nrow(deps))) {
+    parent_col <- monitora_correcao_resolver_coluna(dt, deps$parent_name[ii], dicionario)
+    dep_col <- monitora_correcao_resolver_coluna(dt, deps$dependent_name[ii], dicionario)
+    if (is.na(parent_col) || is.na(dep_col) || !(parent_col %in% names(dt)) || !(dep_col %in% names(dt))) next
+    token <- deps$token[ii]
+    ativo <- vapply(as.character(dt[[parent_col]]), function(x) token %in% monitora_correcao_tokenizar(x), logical(1))
+    vazio_dep <- vapply(as.character(dt[[dep_col]]), monitora_correcao_vazio, logical(1))
+    falha <- which(ativo & vazio_dep)
+    if (length(falha) > 0) {
+      out[[length(out) + 1L]] <- data.table::data.table(
+        parent_col = parent_col,
+        token = token,
+        dependent_col = dep_col,
+        n_falhas = length(falha),
+        linhas_exemplo = paste(utils::head(falha, 20), collapse = ";"),
+        fonte = deps$fonte[ii]
+      )
+    }
+  }
+  res <- if (length(out) > 0) data.table::rbindlist(out, fill = TRUE, use.names = TRUE) else data.table::data.table()
+  if (nrow(res) > 0) {
+    arq <- file.path(MONITORA_LOG_DIR, paste0("auditoria_dependencias_condicionais_", MONITORA_EXEC_ID, ".csv"))
+    data.table::fwrite(res, arq, na = "")
+    monitora_log_registrar_evento("dependencias_condicionais", "AVISO", arq, paste0(nrow(res), " regra(s) com pendências condicionais"), "corrigir antes de validar no SISMONITORA")
+  } else {
+    monitora_log_registrar_evento("dependencias_condicionais", "INFO", NA_character_, "Nenhuma pendência condicional detectada nas regras mapeadas", "OK")
+  }
+  res
+}
+
+monitora_correcao_resumo_coleta <- function(dt, coleta_valor, chaves = monitora_correcao_colunas_chave(dt)) {
+  if (is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) return(data.table::data.table())
+  dt[as.character(get(chaves$coleta)) == as.character(coleta_valor)]
+}
+
+monitora_correcao_criar_operacao <- function(id, responsavel, tipo, ordem, escopo, coleta = NA_character_, coleta_uuid = NA_character_, uuid_registro = NA_character_, ponto_amostral = NA_character_, ponto_metro = NA_character_, atributo, acao, valor_original = NA_character_, valor_novo = NA_character_, n_esperado = NA_integer_, n_alvo = NA_integer_, motivo = NA_character_, token_pai = NA_character_, categoria_origem = NA_character_, categoria_destino = NA_character_) {
+  data.table::data.table(
+    id_correcao = id,
+    data_hora_correcao = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    responsavel = responsavel,
+    tipo_correcao = tipo,
+    ordem_operacao = as.integer(ordem),
+    escopo_aplicacao = escopo,
+    coleta = coleta,
+    coleta_uuid = coleta_uuid,
+    uuid_registro = uuid_registro,
+    ponto_amostral = ponto_amostral,
+    ponto_metro = ponto_metro,
+    atributo_coluna_registros_corrig = atributo,
+    acao = acao,
+    token_pai = token_pai,
+    categoria_origem = categoria_origem,
+    categoria_destino = categoria_destino,
+    valor_original_esperado = valor_original,
+    valor_novo = valor_novo,
+    n_linhas_esperado = as.integer(n_esperado),
+    n_linhas_alvo = as.integer(n_alvo),
+    aplicar_todos_registros_coleta = ifelse(identical(escopo, "coleta_inteira"), "sim", "nao"),
+    validar_opcao = "sim",
+    fonte_validacao = "painel_dinamico_xlsform_historico",
+    motivo = motivo,
+    status_validacao = "pendente",
+    mensagem_validacao = NA_character_
+  )
+}
+
+monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITORA_ARQUIVO_CORRECOES_CAMPOS) {
+  monitora_correcao_carregar_dependencias_painel()
+  dt <- data.table::as.data.table(dt)
+  chaves <- monitora_correcao_colunas_chave(dt)
+  dict <- monitora_correcao_dicionario_atributos(dt, meta_xls)
+  deps <- monitora_correcao_unificar_dependencias(if (!is.null(meta_xls)) meta_xls$dependencias else data.table::data.table())
+
+  monitora_painel_valor <- function(x) {
+    if (is.null(x) || length(x) == 0L || is.na(x[1])) return("")
+    as.character(x[1])
+  }
+  monitora_painel_valores_coluna <- function(x, col) {
+    if (is.na(col) || !col %in% names(x)) return(character(0))
+    vals <- unique(as.character(x[[col]]))
+    vals <- vals[!is.na(vals) & nzchar(trimws(vals))]
+    sort(vals)
+  }
+  monitora_painel_choices <- function(rotulo_todos, vals) {
+    vals <- vals[!is.na(vals) & nzchar(trimws(vals))]
+    vals <- sort(unique(as.character(vals)))
+    stats::setNames(c("", vals), c(rotulo_todos, vals))
+  }
+  monitora_painel_choices_obrigatorio <- function(rotulo_vazio, vals) {
+    vals <- vals[!is.na(vals) & nzchar(trimws(vals))]
+    vals <- sort(unique(as.character(vals)))
+    if (length(vals) == 0L) return(stats::setNames("", rotulo_vazio))
+    stats::setNames(vals, vals)
+  }
+  monitora_painel_coluna_ok <- function(col, x = dt) {
+    !is.na(col) && nzchar(col) && col %in% names(x)
+  }
+  monitora_painel_n_coletas <- function(x) {
+    if (!monitora_painel_coluna_ok(chaves$coleta, x)) return(NA_integer_)
+    data.table::uniqueN(as.character(x[[chaves$coleta]]))
+  }
+  monitora_painel_coleta_unica <- function(x) {
+    if (!monitora_painel_coluna_ok(chaves$coleta, x)) return(NA_character_)
+    vals <- unique(as.character(x[[chaves$coleta]]))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    if (length(vals) == 1L) vals[1] else NA_character_
+  }
+
+  valores_uc <- monitora_painel_valores_coluna(dt, chaves$uc)
+  valores_ea <- monitora_painel_valores_coluna(dt, chaves$ea)
+  valores_ano <- monitora_painel_valores_coluna(dt, chaves$ano)
+  valores_ciclo <- monitora_painel_valores_coluna(dt, chaves$ciclo)
+  valores_campanha <- monitora_painel_valores_coluna(dt, chaves$campanha)
+  valores_ua <- monitora_painel_valores_coluna(dt, chaves$ua)
+  valores_coleta <- monitora_painel_valores_coluna(dt, chaves$coleta)
+  coleta_inicial <- ""
+  col_forma_exotica <- monitora_correcao_coluna_forma_vida(dt, "exotica")
+  formas_exoticas_observadas <- character(0)
+  if (!is.na(col_forma_exotica) && col_forma_exotica %in% names(dt)) {
+    formas_exoticas_observadas <- sort(unique(unlist(lapply(as.character(dt[[col_forma_exotica]]), monitora_correcao_tokenizar), use.names = FALSE)))
+    formas_exoticas_observadas <- formas_exoticas_observadas[!is.na(formas_exoticas_observadas) & nzchar(formas_exoticas_observadas)]
+  }
+  formas_mv_choices <- sort(unique(c(
+    "bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia",
+    "arbusto_acima", "arbusto_abaixo", "arvore_acima", "arvore_abaixo",
+    "graminoide", "erva_nao_graminoide", "bambu", "lianas", "palmeira",
+    formas_exoticas_observadas
+  )))
+
+  monitora_painel_valor_celula <- function(x, col, i) {
+    if (is.na(col) || !(col %in% names(x)) || length(i) != 1L || is.na(i) || i < 1L || i > nrow(x)) return(NA_character_)
+    as.character(x[[col]][i])
+  }
+
+  monitora_painel_tabela_exoticas <- function(x) {
+    if (is.na(col_forma_exotica) || !(col_forma_exotica %in% names(x)) || nrow(x) == 0L) return(data.table::data.table())
+    linhas <- which(!vapply(as.character(x[[col_forma_exotica]]), monitora_correcao_vazio, logical(1)))
+    if (length(linhas) == 0L) return(data.table::data.table())
+    out <- vector("list", length(linhas))
+    for (kk in seq_along(linhas)) {
+      ii <- linhas[kk]
+      tokens <- monitora_correcao_tokenizar(x[[col_forma_exotica]][ii])
+      tokens <- tokens[!is.na(tokens) & nzchar(tokens)]
+      if (length(tokens) == 0L) next
+      out[[kk]] <- data.table::rbindlist(lapply(tokens, function(tok) {
+        hab_col <- monitora_correcao_resolver_coluna(x, paste0("forma_vida_exotica_", tok), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        esp_col <- monitora_correcao_resolver_coluna(x, paste0("especies_exotica_", tok), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        data.table::data.table(
+          linha_filtro = ii,
+          COLETA = monitora_painel_valor_celula(x, chaves$coleta, ii),
+          UC = monitora_painel_valor_celula(x, chaves$uc, ii),
+          ANO = monitora_painel_valor_celula(x, chaves$ano, ii),
+          UA = monitora_painel_valor_celula(x, chaves$ua, ii),
+          ponto_amostral = monitora_painel_valor_celula(x, chaves$ponto_amostral, ii),
+          ponto_metro = monitora_painel_valor_celula(x, chaves$ponto_metro, ii),
+          forma_vida_exotica = tok,
+          forma_vida_exotica_original = as.character(x[[col_forma_exotica]][ii]),
+          habito_exotica = monitora_painel_valor_celula(x, hab_col, ii),
+          especies_exoticas = monitora_painel_valor_celula(x, esp_col, ii),
+          uuid_registro = monitora_painel_valor_celula(x, chaves$uuid_registro, ii)
+        )
+      }), fill = TRUE, use.names = TRUE)
+    }
+    res <- data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+    if (nrow(res) == 0L) return(res)
+    data.table::setorder(res, COLETA, ponto_amostral, forma_vida_exotica)
+    res[]
+  }
+
+  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table())
+
+  monitora_painel_dt_options <- function(scroll_x = TRUE) {
+    list(
+      pageLength = 10,
+      lengthMenu = list(c(10, 25, 50, 75, 100), c("10", "25", "50", "75", "100")),
+      scrollX = isTRUE(scroll_x),
+      deferRender = TRUE
+    )
+  }
+
+  ui <- shiny::fluidPage(
+    shiny::titlePanel("Painel de validação - correções assistidas de registros_corrig"),
+    shiny::sidebarLayout(
+      shiny::sidebarPanel(
+        shiny::textInput("responsavel", "Responsável pela correção", value = Sys.info()[["user"]]),
+        shiny::selectInput("filtro_uc", "Filtrar UC", choices = monitora_painel_choices("(todas)", valores_uc), selected = ""),
+        shiny::selectInput("filtro_ea", "Filtrar EA", choices = monitora_painel_choices("(todas)", valores_ea), selected = ""),
+        shiny::selectInput("filtro_ano", "Filtrar ano", choices = monitora_painel_choices("(todos)", valores_ano), selected = ""),
+        shiny::selectInput("filtro_ciclo", "Filtrar ciclo", choices = monitora_painel_choices("(todos)", valores_ciclo), selected = ""),
+        shiny::selectInput("filtro_campanha", "Filtrar campanha", choices = monitora_painel_choices("(todas)", valores_campanha), selected = ""),
+        shiny::selectInput("filtro_ua", "Filtrar UA", choices = monitora_painel_choices("(todas)", valores_ua), selected = ""),
+        shiny::selectInput("coleta", "Coleta a corrigir", choices = monitora_painel_choices("(todas as coletas filtradas; selecione uma coleta para corrigir)", valores_coleta), selected = coleta_inicial),
+        shiny::uiOutput("ui_ponto"),
+        shiny::selectizeInput("atributo", "Atributo / coluna a corrigir", choices = dict$atributo_coluna_registros_corrig, selected = dict$atributo_coluna_registros_corrig[1], options = list(placeholder = "Digite para buscar a coluna")),
+        shiny::radioButtons("escopo", "Escopo da aplicação", choices = c("Aplicar aos 101 registros da coleta" = "coleta_inteira", "Aplicar apenas ao ponto selecionado" = "ponto"), selected = "coleta_inteira"),
+        shiny::selectInput("acao", "Ação", choices = c("Substituir valor" = "update", "Limpar valor" = "clear", "Adicionar token" = "append_token", "Remover token" = "remove_token", "Substituir token" = "replace_token")),
+        shiny::textAreaInput("valor_original", "Valor original esperado (trava; opcional, mas recomendado)", value = "", rows = 2),
+        shiny::textAreaInput("valor_novo", "Valor novo / token", value = "", rows = 2),
+        shiny::numericInput("n_esperado", "Número esperado de linhas-alvo", value = 101, min = 1, step = 1),
+        shiny::checkboxInput("confirmar_abrangencia", "Confirmo que revisei a abrangência e o número de linhas-alvo", value = FALSE),
+        shiny::textAreaInput("motivo", "Motivo / justificativa", value = "", rows = 2),
+        shiny::actionButton("add_corr", "Adicionar correção simples/lote"),
+        shiny::hr(),
+        shiny::h4("Movimento assistido de forma de vida"),
+        shiny::selectInput("mv_forma", "Forma de vida", choices = formas_mv_choices, selected = if ("arbusto_acima" %in% formas_mv_choices) "arbusto_acima" else formas_mv_choices[1]),
+        shiny::selectInput("mv_origem", "Origem", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),
+        shiny::selectInput("mv_destino", "Destino", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),
+        shiny::selectInput("mv_habito", "Hábito, quando obrigatório", choices = c("(não informado)" = "", "terrestre" = "terrestre", "epifita" = "epifita", "rupicola" = "rupicola")),
+        shiny::actionButton("add_mv", "Adicionar movimento de forma de vida"),
+        shiny::hr(),
+        shiny::actionButton("salvar", "Salvar correções e fechar", class = "btn-primary"),
+        shiny::actionButton("cancelar", "Fechar painel sem salvar e continuar script")
+      ),
+      shiny::mainPanel(
+        shiny::h4("Diagnóstico dos registros selecionados"),
+        shiny::verbatimTextOutput("diagnostico"),
+        shiny::uiOutput("alerta_abrangencia"),
+        shiny::h4("Triagem de formas de vida exóticas nos registros selecionados"),
+        shiny::uiOutput("resumo_exoticas"),
+        DT::DTOutput("tabela_exoticas"),
+        shiny::actionButton("usar_exotica_selecionada", "Usar linha selecionada para mover exótica → nativa", class = "btn-warning"),
+        shiny::hr(),
+        shiny::h4("Registros selecionados"),
+        DT::DTOutput("tabela"),
+        shiny::h4("Correções pendentes nesta sessão"),
+        shiny::uiOutput("status_correcoes"),
+        DT::DTOutput("correcoes")
+      )
+    )
+  )
+
+  server <- function(input, output, session) {
+    monitora_painel_limpar_apos_correcao <- function() {
+      ### Reinicia filtros de busca e campos de justificativa após uma correção simples/lote
+      ### ter sido adicionada à sessão. Mantém apenas o responsável e a lista de
+      ### correções pendentes, para reduzir o risco de reaplicar o mesmo filtro por engano.
+      for (id in c("filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo", "filtro_campanha", "filtro_ua", "coleta")) {
+        try(shiny::updateSelectInput(session, id, selected = ""), silent = TRUE)
+      }
+      try(shiny::updateSelectInput(session, "ponto", selected = ""), silent = TRUE)
+      try(shiny::updateTextAreaInput(session, "valor_original", value = ""), silent = TRUE)
+      try(shiny::updateTextAreaInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateTextAreaInput(session, "motivo", value = ""), silent = TRUE)
+      try(shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira"), silent = TRUE)
+      try(shiny::updateSelectInput(session, "acao", selected = "update"), silent = TRUE)
+      try(shiny::updateNumericInput(session, "n_esperado", value = 101), silent = TRUE)
+      try(shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE), silent = TRUE)
+      rv$ponto_alvo <- ""
+    }
+
+    monitora_painel_adicionar_movimento_pretriado <- function() {
+      ### Quando o usuário seleciona uma linha na triagem de exóticas e, em seguida,
+      ### clica em "Adicionar correção simples/lote", o comportamento esperado é
+      ### converter essa intenção em movimento assistido exótica -> nativa, e não
+      ### gravar uma correção genérica sobre a coluna atualmente selecionada no
+      ### seletor de atributos. Esta rotina implementa essa conversão de forma
+      ### explícita e auditável.
+      alvo <- if (!is.null(rv$movimento_alvo) && data.table::is.data.table(rv$movimento_alvo) && nrow(rv$movimento_alvo) > 0L) rv$movimento_alvo[1] else data.table::data.table()
+      if (nrow(alvo) == 0L) return(FALSE)
+
+      forma_val <- monitora_painel_valor(alvo$forma_vida_exotica)
+      uuid_val <- monitora_painel_valor(alvo$uuid_registro)
+      coleta_val <- monitora_painel_valor(alvo$COLETA)
+      ponto_val <- monitora_painel_valor(alvo$ponto_amostral)
+      valor_original_origem <- monitora_painel_valor(alvo$forma_vida_exotica_original)
+      if (!nzchar(forma_val)) {
+        shiny::showNotification("A linha pré-triada não contém forma de vida exótica válida; movimento bloqueado.", type = "error", duration = 8)
+        return(TRUE)
+      }
+
+      linhas_globais <- integer(0)
+      if (nzchar(uuid_val) && monitora_painel_coluna_ok(chaves$uuid_registro, dt)) {
+        linhas_globais <- which(as.character(dt[[chaves$uuid_registro]]) == uuid_val)
+      }
+      if (length(linhas_globais) == 0L && nzchar(coleta_val) && nzchar(ponto_val) && monitora_painel_coluna_ok(chaves$coleta, dt) && monitora_painel_coluna_ok(chaves$ponto_amostral, dt)) {
+        linhas_globais <- which(as.character(dt[[chaves$coleta]]) == coleta_val & as.character(dt[[chaves$ponto_amostral]]) == ponto_val)
+      }
+      if (length(linhas_globais) != 1L) {
+        shiny::showNotification(paste0("Movimento bloqueado: a linha pré-triada localizou ", length(linhas_globais), " linha(s). Selecione novamente uma única linha na triagem."), type = "error", duration = 10)
+        return(TRUE)
+      }
+
+      origem_val <- "exotica"
+      destino_val <- "nativa"
+      n_exp <- 1L
+      col_origem <- monitora_correcao_coluna_forma_vida(dt, origem_val)
+      col_destino <- monitora_correcao_coluna_forma_vida(dt, destino_val)
+      if (is.na(col_origem) || is.na(col_destino) || !(col_origem %in% names(dt)) || !(col_destino %in% names(dt))) {
+        shiny::showNotification("Não foi possível localizar as colunas de forma de vida exótica/nativa; movimento bloqueado.", type = "error", duration = 8)
+        return(TRUE)
+      }
+
+      forma_condicional <- forma_val %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+      habito_val <- monitora_painel_valor(input$mv_habito)
+      if (!nzchar(habito_val)) {
+        habito_origem <- monitora_painel_valor(alvo$habito_exotica)
+        if (nzchar(habito_origem) && habito_origem %in% c("terrestre", "epifita", "rupicola")) habito_val <- habito_origem
+      }
+      if (isTRUE(forma_condicional) && !nzchar(habito_val)) {
+        shiny::updateSelectInput(session, "mv_forma", choices = sort(unique(c(formas_mv_choices, forma_val))), selected = forma_val)
+        shiny::updateSelectInput(session, "mv_origem", selected = origem_val)
+        shiny::updateSelectInput(session, "mv_destino", selected = destino_val)
+        shiny::showNotification("Esta forma de vida exige informar o hábito: terrestre, epifita ou rupicola. Informe o hábito e clique novamente em 'Adicionar correção simples/lote' ou use 'Adicionar movimento de forma de vida'.", type = "error", duration = 12)
+        return(TRUE)
+      }
+
+      motivo_val <- monitora_painel_valor(input$motivo)
+      if (!nzchar(motivo_val)) {
+        motivo_val <- paste0("Movimento assistido a partir da triagem de exóticas: mover '", forma_val, "' de exótica para nativa.")
+      }
+
+      id <- monitora_correcao_novo_id("MOVFV")
+      esc <- "uuid_registro"
+      uuid_arg <- ifelse(nzchar(uuid_val), uuid_val, NA_character_)
+      ponto_arg <- ifelse(nzchar(ponto_val), ponto_val, NA_character_)
+      valor_original_remove <- ifelse(nzchar(valor_original_origem), valor_original_origem, NA_character_)
+      ops <- list(
+        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 1, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_origem, acao = "remove_token", valor_original = valor_original_remove, valor_novo = forma_val, n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val),
+        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 2, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_destino, acao = "append_token", valor_novo = forma_val, n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val)
+      )
+
+      deps_mov <- deps[parent_name == paste0("forma_vida_", origem_val) & token == forma_val]
+      if (nrow(deps_mov) > 0L) {
+        deps_mov_cols <- unique(vapply(deps_mov$dependent_name, function(nn) monitora_correcao_resolver_coluna(dt, nn, if (!is.null(meta_xls)) meta_xls$campos else NULL), character(1)))
+        deps_mov_cols <- deps_mov_cols[!is.na(deps_mov_cols) & deps_mov_cols %in% names(dt)]
+        for (dep_origem in deps_mov_cols) {
+          ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
+            id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val,
+            uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_origem,
+            acao = "clear", n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val,
+            token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val
+          )
+        }
+      } else if (isTRUE(forma_condicional)) {
+        dep_origem <- monitora_correcao_resolver_coluna(dt, paste0("forma_vida_", origem_val, "_", forma_val), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        if (!is.na(dep_origem)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_origem, acao = "clear", n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val)
+      }
+
+      if (isTRUE(forma_condicional)) {
+        dep_destino <- monitora_correcao_resolver_coluna(dt, paste0("forma_vida_", destino_val, "_", forma_val), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        if (!is.na(dep_destino)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_destino, acao = "update", valor_novo = habito_val, n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val)
+      }
+
+      tipo_col <- monitora_correcao_colunas_chave(dt)$tipo_forma_vida
+      if (!is.na(tipo_col)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = tipo_col, acao = "recalcular_tipo_forma_vida", n_esperado = n_exp, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = origem_val, categoria_destino = destino_val)
+
+      rv$correcoes <- data.table::rbindlist(c(list(rv$correcoes), ops), fill = TRUE, use.names = TRUE)
+      rv$movimento_alvo <- data.table::data.table()
+      n_pend <- nrow(rv$correcoes)
+      monitora_correcao_console_msg("Linha pré-triada convertida em movimento assistido exótica -> nativa: ", length(ops), " operação(ões) nova(s); ", n_pend, " operação(ões) pendente(s) no total.")
+      shiny::showNotification(paste0("Linha pré-triada convertida em movimento exótica → nativa. Há ", n_pend, " operação(ões) pendente(s). Use 'Salvar correções e fechar' para gravar."), type = "message", duration = 10)
+      monitora_painel_limpar_apos_correcao()
+      return(TRUE)
+    }
+
+    dados_pre_coleta <- shiny::reactive({
+      x <- dt
+      filtro_uc <- monitora_painel_valor(input$filtro_uc)
+      filtro_ea <- monitora_painel_valor(input$filtro_ea)
+      filtro_ano <- monitora_painel_valor(input$filtro_ano)
+      filtro_ciclo <- monitora_painel_valor(input$filtro_ciclo)
+      filtro_campanha <- monitora_painel_valor(input$filtro_campanha)
+      filtro_ua <- monitora_painel_valor(input$filtro_ua)
+      if (nzchar(filtro_uc) && monitora_painel_coluna_ok(chaves$uc, x)) x <- x[as.character(get(chaves$uc)) == filtro_uc]
+      if (nzchar(filtro_ea) && monitora_painel_coluna_ok(chaves$ea, x)) x <- x[as.character(get(chaves$ea)) == filtro_ea]
+      if (nzchar(filtro_ano) && monitora_painel_coluna_ok(chaves$ano, x)) x <- x[as.character(get(chaves$ano)) == filtro_ano]
+      if (nzchar(filtro_ciclo) && monitora_painel_coluna_ok(chaves$ciclo, x)) x <- x[as.character(get(chaves$ciclo)) == filtro_ciclo]
+      if (nzchar(filtro_campanha) && monitora_painel_coluna_ok(chaves$campanha, x)) x <- x[as.character(get(chaves$campanha)) == filtro_campanha]
+      if (nzchar(filtro_ua) && monitora_painel_coluna_ok(chaves$ua, x)) x <- x[as.character(get(chaves$ua)) == filtro_ua]
+      x
+    })
+
+    dados_filtrados <- shiny::reactive({
+      x <- dados_pre_coleta()
+      coleta_val <- monitora_painel_valor(input$coleta)
+      if (!nzchar(coleta_val) || !monitora_painel_coluna_ok(chaves$coleta, x)) return(x)
+      x[as.character(get(chaves$coleta)) == coleta_val]
+    })
+
+    shiny::observeEvent(dados_pre_coleta(), {
+      x <- dados_pre_coleta()
+      vals <- monitora_painel_valores_coluna(x, chaves$coleta)
+      coleta_atual <- monitora_painel_valor(input$coleta)
+      selecionado <- if (nzchar(coleta_atual) && coleta_atual %in% vals) coleta_atual else ""
+      shiny::updateSelectInput(session, "coleta", choices = monitora_painel_choices("(todas as coletas filtradas; selecione uma coleta para corrigir)", vals), selected = selecionado)
+    }, ignoreInit = TRUE)
+
+    output$ui_ponto <- shiny::renderUI({
+      x <- dados_filtrados()
+      pts <- monitora_painel_valores_coluna(x, chaves$ponto_amostral)
+      ponto_sel <- if (nzchar(monitora_painel_valor(rv$ponto_alvo)) && monitora_painel_valor(rv$ponto_alvo) %in% pts) monitora_painel_valor(rv$ponto_alvo) else ""
+      shiny::selectInput("ponto", "Ponto amostral", choices = monitora_painel_choices("(não selecionar)", pts), selected = ponto_sel)
+    })
+
+    output$diagnostico <- shiny::renderPrint({
+      x <- dados_filtrados()
+      cat("Linhas selecionadas:", nrow(x), "\n")
+      cat("Colunas:", ncol(dt), "\n")
+      if (monitora_painel_coluna_ok(chaves$uc, x)) cat("UCs selecionadas:", data.table::uniqueN(as.character(x[[chaves$uc]])), "\n")
+      if (monitora_painel_coluna_ok(chaves$ea, x)) cat("EAs selecionadas:", data.table::uniqueN(as.character(x[[chaves$ea]])), "\n")
+      if (monitora_painel_coluna_ok(chaves$ano, x)) cat("Anos selecionados:", paste(sort(unique(as.character(x[[chaves$ano]]))), collapse = ", "), "\n")
+      if (monitora_painel_coluna_ok(chaves$ciclo, x)) cat("Ciclos selecionados:", paste(sort(unique(as.character(x[[chaves$ciclo]]))), collapse = ", "), "\n")
+      if (monitora_painel_coluna_ok(chaves$campanha, x)) cat("Campanhas selecionadas:", paste(sort(unique(as.character(x[[chaves$campanha]]))), collapse = ", "), "\n")
+      if (monitora_painel_coluna_ok(chaves$ua, x)) cat("UAs selecionadas:", data.table::uniqueN(as.character(x[[chaves$ua]])), "\n")
+      if (monitora_painel_coluna_ok(chaves$coleta, x)) cat("Coletas selecionadas:", data.table::uniqueN(as.character(x[[chaves$coleta]])), "\n")
+      if (monitora_painel_coluna_ok(chaves$ponto_amostral, x)) {
+        pts_diag_chr <- as.character(x[[chaves$ponto_amostral]])
+        pts_diag_num <- suppressWarnings(as.numeric(pts_diag_chr))
+        if (all(is.na(pts_diag_num))) {
+          pts_diag_ord <- sort(unique(pts_diag_chr))
+        } else {
+          pts_diag_ord <- as.character(sort(unique(pts_diag_num[!is.na(pts_diag_num)])))
+        }
+        if (length(pts_diag_ord) > 12L) {
+          cat("Pontos amostrais selecionados:", length(pts_diag_ord), "ponto(s); primeiros:", paste(utils::head(pts_diag_ord, 12), collapse = ", "), "\n")
+        } else {
+          cat("Pontos amostrais selecionados:", paste(pts_diag_ord, collapse = ", "), "\n")
+        }
+      }
+      if (!is.na(col_forma_exotica) && col_forma_exotica %in% names(x)) {
+        n_exoticas <- sum(!vapply(as.character(x[[col_forma_exotica]]), monitora_correcao_vazio, logical(1)))
+        cat("Pontos com forma de vida exótica:", n_exoticas, "\n")
+        if (n_exoticas > 0L) {
+          toks <- sort(table(unlist(lapply(as.character(x[[col_forma_exotica]]), monitora_correcao_tokenizar), use.names = FALSE)), decreasing = TRUE)
+          if (length(toks) > 0L) cat("Formas exóticas observadas:", paste(paste0(names(toks), "=", as.integer(toks)), collapse = "; "), "\n")
+        }
+      }
+      if (!is.null(input$atributo) && input$atributo %in% names(x)) {
+        cat("\nAtributo selecionado:", input$atributo, "\n")
+        freq_attr <- x[, .N, by = c(input$atributo)][order(-N)]
+        print(utils::head(freq_attr, 10))
+      }
+    })
+
+    output$alerta_abrangencia <- shiny::renderUI({
+      x <- dados_filtrados()
+      n_coletas <- monitora_painel_n_coletas(x)
+      if (is.na(n_coletas)) return(NULL)
+      coleta_val <- monitora_painel_valor(input$coleta)
+      if (!nzchar(coleta_val)) {
+        return(shiny::div(
+          class = "alert alert-warning",
+          shiny::strong("Visualização ampla habilitada. "),
+          paste0("Os filtros atuais abrangem ", nrow(x), " registro(s) em ", n_coletas, " coleta(s). "),
+          "Use esta visualização para triagem e consulta. Para gravar correções, selecione uma coleta específica ou use uma linha da triagem de exóticas para preparar a coleta e o ponto."
+        ))
+      }
+      if (nrow(x) == 0L) {
+        return(shiny::div(class = "alert alert-warning", shiny::strong("Nenhum registro selecionado. "), "Revise os filtros."))
+      }
+      if (n_coletas == 1L && nrow(x) != 101L) {
+        return(shiny::div(
+          class = "alert alert-warning",
+          shiny::strong("Coleta com número incomum de registros. "),
+          paste0("A visualização possui ", nrow(x), " linha(s), não 101. Revise a abrangência antes de salvar correções.")
+        ))
+      }
+      shiny::div(class = "alert alert-info", "Para correções em lote, confirme que a visualização corresponde à coleta desejada antes de salvar.")
+    })
+
+    exoticas_coleta <- shiny::reactive({
+      monitora_painel_tabela_exoticas(dados_filtrados())
+    })
+
+    output$resumo_exoticas <- shiny::renderUI({
+      ex <- exoticas_coleta()
+      if (nrow(ex) == 0L) {
+        return(shiny::div(class = "alert alert-success", "Nenhuma forma de vida exótica registrada nos registros selecionados."))
+      }
+      shiny::div(
+        class = "alert alert-warning",
+        shiny::strong(paste0(nrow(ex), " ocorrência(s) de forma de vida exótica nos registros selecionados. ")),
+        "Selecione uma linha na tabela abaixo para preparar automaticamente o movimento exótica → nativa em escopo de ponto."
+      )
+    })
+
+    output$tabela_exoticas <- DT::renderDT({
+      ex <- exoticas_coleta()
+      if (nrow(ex) == 0L) return(DT::datatable(data.table::data.table(mensagem = "Sem registros com forma de vida exótica nos registros selecionados."), rownames = FALSE))
+      DT::datatable(
+        ex,
+        selection = "single",
+        options = monitora_painel_dt_options(),
+        rownames = FALSE
+      )
+    }, server = TRUE)
+
+    output$tabela <- DT::renderDT({
+      x <- dados_filtrados()
+      cols <- unique(na.omit(c(chaves$coleta, chaves$uc, chaves$ea, chaves$ano, chaves$ciclo, chaves$campanha, chaves$ua, chaves$ponto_amostral, chaves$ponto_metro, chaves$uuid_registro, input$atributo)))
+      cols <- cols[cols %in% names(x)]
+      DT::datatable(x[, ..cols], options = monitora_painel_dt_options(), rownames = FALSE)
+    }, server = TRUE)
+
+    output$status_correcoes <- shiny::renderUI({
+      n_ops <- tryCatch(nrow(rv$correcoes), error = function(e) 0L)
+      if (is.na(n_ops) || n_ops == 0L) {
+        shiny::div(class = "alert alert-info", "Nenhuma correção adicionada nesta sessão. Depois de preparar uma alteração, clique em 'Adicionar correção simples/lote' ou 'Adicionar movimento de forma de vida' antes de salvar.")
+      } else {
+        shiny::div(class = "alert alert-success", paste0(n_ops, " operação(ões) de correção pendente(s) nesta sessão. Clique em 'Salvar correções e fechar' para gravar e aplicar."))
+      }
+    })
+
+    output$correcoes <- DT::renderDT({
+      DT::datatable(rv$correcoes, options = monitora_painel_dt_options(), rownames = FALSE)
+    }, server = TRUE)
+
+    shiny::observeEvent(input$usar_exotica_selecionada, {
+      ex <- exoticas_coleta()
+      sel <- input$tabela_exoticas_rows_selected
+      if (length(sel) != 1L || nrow(ex) == 0L || sel < 1L || sel > nrow(ex)) {
+        shiny::showNotification("Selecione uma linha na tabela de exóticas antes de usar esta ação.", type = "error")
+        return(NULL)
+      }
+      r <- ex[sel]
+      coleta_sel <- monitora_painel_valor(r$COLETA)
+      ponto_sel <- monitora_painel_valor(r$ponto_amostral)
+      forma_sel <- monitora_painel_valor(r$forma_vida_exotica)
+      if (!nzchar(ponto_sel) || !nzchar(forma_sel)) {
+        shiny::showNotification("A linha selecionada não possui ponto amostral ou forma de vida exótica identificável.", type = "error")
+        return(NULL)
+      }
+      rv$ponto_alvo <- ponto_sel
+      rv$movimento_alvo <- data.table::copy(r)
+      if (nzchar(coleta_sel)) shiny::updateSelectInput(session, "coleta", selected = coleta_sel)
+      shiny::updateSelectInput(session, "ponto", selected = ponto_sel)
+      if (forma_sel %in% formas_mv_choices) {
+        shiny::updateSelectInput(session, "mv_forma", selected = forma_sel)
+      } else {
+        shiny::updateSelectInput(session, "mv_forma", choices = sort(unique(c(formas_mv_choices, forma_sel))), selected = forma_sel)
+      }
+      shiny::updateSelectInput(session, "mv_origem", selected = "exotica")
+      shiny::updateSelectInput(session, "mv_destino", selected = "nativa")
+      shiny::updateRadioButtons(session, "escopo", selected = "ponto")
+      shiny::updateNumericInput(session, "n_esperado", value = 1)
+      shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
+      hab <- monitora_painel_valor(r$habito_exotica)
+      if (nzchar(hab) && hab %in% c("terrestre", "epifita", "rupicola")) shiny::updateSelectInput(session, "mv_habito", selected = hab)
+      shiny::updateTextAreaInput(session, "motivo", value = paste0("Triagem de forma de vida exótica: avaliar/mover '", forma_sel, "' para nativa no ponto amostral ", ponto_sel, "."))
+      shiny::showNotification("Movimento exótica → nativa preparado no painel. A coleta e o ponto foram selecionados a partir da linha de triagem. Revise o hábito, a abrangência e clique em 'Adicionar movimento de forma de vida'.", type = "message", duration = 8)
+    })
+
+    shiny::observeEvent(input$atributo, {
+      info <- dict[atributo_coluna_registros_corrig == input$atributo]
+      esc <- if (nrow(info) > 0) info$escopo_sugerido[1] else "ponto"
+      shiny::updateRadioButtons(session, "escopo", selected = ifelse(identical(esc, "coleta_inteira"), "coleta_inteira", "ponto"))
+      shiny::updateNumericInput(session, "n_esperado", value = ifelse(identical(esc, "coleta_inteira"), 101, 1))
+      shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
+      x <- dados_filtrados()
+      if (input$atributo %in% names(x)) {
+        vals <- unique(as.character(x[[input$atributo]]))
+        vals <- vals[!is.na(vals)]
+        if (length(vals) == 1) shiny::updateTextAreaInput(session, "valor_original", value = vals[1])
+      }
+    }, ignoreInit = FALSE)
+
+    shiny::observeEvent(input$escopo, {
+      shiny::updateNumericInput(session, "n_esperado", value = ifelse(identical(input$escopo, "coleta_inteira"), 101, 1))
+      shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
+    })
+
+    shiny::observeEvent(input$add_corr, {
+      if (isTRUE(monitora_painel_adicionar_movimento_pretriado())) return(NULL)
+      x <- dados_filtrados()
+      if (!monitora_painel_coluna_ok(chaves$coleta, x)) {
+        shiny::showNotification("Não foi possível identificar a coluna de coleta; correção bloqueada para evitar alteração ambígua.", type = "error")
+        return(NULL)
+      }
+      n_coletas <- monitora_painel_n_coletas(x)
+      coleta_val <- monitora_painel_coleta_unica(x)
+      if (is.na(coleta_val) || n_coletas != 1L) {
+        shiny::showNotification("Selecione uma coleta específica antes de adicionar correções. A visualização ampla serve para triagem e consulta.", type = "error", duration = 8)
+        return(NULL)
+      }
+      ponto_val <- monitora_painel_valor(input$ponto)
+      if (identical(input$escopo, "ponto") && !nzchar(ponto_val)) {
+        shiny::showNotification("Selecione um ponto amostral ou use escopo de coleta inteira.", type = "error")
+        return(NULL)
+      }
+      linhas <- if (identical(input$escopo, "coleta_inteira")) seq_len(nrow(x)) else {
+        if (monitora_painel_coluna_ok(chaves$ponto_amostral, x)) which(as.character(x[[chaves$ponto_amostral]]) == ponto_val) else integer(0)
+      }
+      n_esperado <- suppressWarnings(as.integer(input$n_esperado))
+      if (!is.finite(n_esperado) || n_esperado < 1L) n_esperado <- ifelse(identical(input$escopo, "coleta_inteira"), 101L, 1L)
+      if (length(linhas) != n_esperado && !isTRUE(input$confirmar_abrangencia)) {
+        shiny::showNotification(paste0("A correção atingirá ", length(linhas), " linha(s), mas o esperado informado é ", n_esperado, ". Revise a abrangência e marque a confirmação para continuar."), type = "error", duration = 10)
+        return(NULL)
+      }
+      atributo_sel <- monitora_painel_valor(input$atributo)
+      if (!nzchar(atributo_sel)) {
+        shiny::showNotification("Selecione um atributo válido antes de adicionar a correção.", type = "error", duration = 8)
+        return(NULL)
+      }
+      if (atributo_sel %in% c(chaves$coleta, chaves$coleta_uuid, chaves$uuid_registro) && input$acao %in% c("clear", "update") && !nzchar(monitora_painel_valor(input$valor_novo))) {
+        shiny::showNotification("Correção bloqueada: o atributo selecionado é uma chave de identificação e o valor novo está vazio. Se a intenção era mover exótica para nativa, selecione a linha na triagem e clique em adicionar; o painel converterá para movimento assistido.", type = "error", duration = 12)
+        return(NULL)
+      }
+      id <- monitora_correcao_novo_id("CORR")
+      op <- monitora_correcao_criar_operacao(
+        id = id, responsavel = input$responsavel, tipo = "simples_ou_lote", ordem = 1,
+        escopo = input$escopo, coleta = coleta_val, ponto_amostral = ifelse(nzchar(ponto_val), ponto_val, NA_character_),
+        ponto_metro = if (length(linhas) == 1 && monitora_painel_coluna_ok(chaves$ponto_metro, x)) as.character(x[[chaves$ponto_metro]][linhas]) else NA_character_,
+        atributo = atributo_sel, acao = input$acao, valor_original = input$valor_original, valor_novo = input$valor_novo,
+        n_esperado = n_esperado, n_alvo = length(linhas), motivo = input$motivo
+      )
+      rv$correcoes <- data.table::rbindlist(list(rv$correcoes, op), fill = TRUE, use.names = TRUE)
+      n_pend <- nrow(rv$correcoes)
+      monitora_correcao_console_msg("Correção adicionada à sessão do painel: ", n_pend, " operação(ões) pendente(s) no total. Use 'Salvar correções e fechar' para gravar.")
+      shiny::showNotification(paste0("Correção adicionada. Há ", n_pend, " operação(ões) pendente(s). Use 'Salvar correções e fechar' para gravar. Os filtros e campos de justificativa foram limpos."), type = "message", duration = 8)
+      monitora_painel_limpar_apos_correcao()
+    })
+
+    shiny::observeEvent(input$add_mv, {
+      alvo <- if (!is.null(rv$movimento_alvo) && data.table::is.data.table(rv$movimento_alvo) && nrow(rv$movimento_alvo) > 0L) rv$movimento_alvo[1] else data.table::data.table()
+      mv_origem_val <- monitora_painel_valor(input$mv_origem)
+      mv_destino_val <- monitora_painel_valor(input$mv_destino)
+      mv_forma_val <- monitora_painel_valor(input$mv_forma)
+      alvo_forma <- if (nrow(alvo) > 0L) monitora_painel_valor(alvo$forma_vida_exotica) else ""
+      usar_alvo_triado <- nrow(alvo) > 0L && identical(mv_origem_val, "exotica") && identical(mv_destino_val, "nativa") && nzchar(alvo_forma)
+      if (isTRUE(usar_alvo_triado)) mv_forma_val <- alvo_forma
+
+      x <- dados_filtrados()
+      if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
+        shiny::showNotification("Não foi possível identificar a coluna de coleta; movimento bloqueado para evitar alteração ambígua.", type = "error")
+        return(NULL)
+      }
+
+      uuid_val <- NA_character_
+      coleta_val <- NA_character_
+      ponto_val <- NA_character_
+      linhas_globais <- integer(0)
+      linhas <- integer(0)
+      esc <- input$escopo
+      valor_original_origem <- NA_character_
+
+      if (isTRUE(usar_alvo_triado)) {
+        uuid_val <- monitora_painel_valor(alvo$uuid_registro)
+        coleta_val <- monitora_painel_valor(alvo$COLETA)
+        ponto_val <- monitora_painel_valor(alvo$ponto_amostral)
+        valor_original_origem <- monitora_painel_valor(alvo$forma_vida_exotica_original)
+        esc <- "uuid_registro"
+        if (nzchar(uuid_val) && monitora_painel_coluna_ok(chaves$uuid_registro, dt)) {
+          linhas_globais <- which(as.character(dt[[chaves$uuid_registro]]) == uuid_val)
+        }
+        if (length(linhas_globais) == 0L && nzchar(coleta_val) && nzchar(ponto_val) && monitora_painel_coluna_ok(chaves$coleta, dt) && monitora_painel_coluna_ok(chaves$ponto_amostral, dt)) {
+          linhas_globais <- which(as.character(dt[[chaves$coleta]]) == coleta_val & as.character(dt[[chaves$ponto_amostral]]) == ponto_val)
+        }
+        linhas <- seq_along(linhas_globais)
+        x <- if (length(linhas_globais) > 0L) dt[linhas_globais] else data.table::data.table()
+      } else {
+        if (!monitora_painel_coluna_ok(chaves$coleta, x)) {
+          shiny::showNotification("Não foi possível identificar a coluna de coleta; movimento bloqueado para evitar alteração ambígua.", type = "error")
+          return(NULL)
+        }
+        n_coletas <- monitora_painel_n_coletas(x)
+        coleta_val <- monitora_painel_coleta_unica(x)
+        if (is.na(coleta_val) || n_coletas != 1L) {
+          shiny::showNotification("Selecione uma coleta específica antes de adicionar movimento de forma de vida. A visualização ampla serve para triagem e consulta.", type = "error", duration = 8)
+          return(NULL)
+        }
+        ponto_val <- monitora_painel_valor(input$ponto)
+        if (identical(input$escopo, "ponto") && !nzchar(ponto_val)) {
+          shiny::showNotification("Para movimento pontual, selecione o ponto amostral.", type = "error")
+          return(NULL)
+        }
+        linhas <- if (identical(input$escopo, "coleta_inteira")) seq_len(nrow(x)) else {
+          if (monitora_painel_coluna_ok(chaves$ponto_amostral, x)) which(as.character(x[[chaves$ponto_amostral]]) == ponto_val) else integer(0)
+        }
+      }
+
+      n_exp <- suppressWarnings(as.integer(input$n_esperado))
+      if (isTRUE(usar_alvo_triado)) n_exp <- 1L
+      if (!is.finite(n_exp) || n_exp < 1L) n_exp <- ifelse(identical(input$escopo, "coleta_inteira"), 101L, 1L)
+      if (length(linhas) != n_exp && !isTRUE(input$confirmar_abrangencia)) {
+        shiny::showNotification(paste0("O movimento atingirá ", length(linhas), " linha(s), mas o esperado informado é ", n_exp, ". Revise a abrangência e marque a confirmação para continuar."), type = "error", duration = 10)
+        return(NULL)
+      }
+      if (!nzchar(mv_forma_val)) {
+        shiny::showNotification("Informe a forma de vida a mover.", type = "error")
+        return(NULL)
+      }
+      forma_condicional <- mv_forma_val %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+      if (isTRUE(forma_condicional) && !nzchar(monitora_painel_valor(input$mv_habito))) {
+        shiny::showNotification("Esta forma de vida exige informar o hábito: terrestre, epifita ou rupicola.", type = "error")
+        return(NULL)
+      }
+      col_origem <- monitora_correcao_coluna_forma_vida(dt, mv_origem_val)
+      col_destino <- monitora_correcao_coluna_forma_vida(dt, mv_destino_val)
+      if (is.na(col_origem) || is.na(col_destino)) {
+        shiny::showNotification("Não foi possível localizar as colunas de forma de vida de origem/destino.", type = "error")
+        return(NULL)
+      }
+      id <- monitora_correcao_novo_id("MOVFV")
+      uuid_arg <- ifelse(nzchar(uuid_val), uuid_val, NA_character_)
+      ponto_arg <- ifelse(nzchar(ponto_val), ponto_val, NA_character_)
+      valor_original_remove <- ifelse(nzchar(valor_original_origem), valor_original_origem, NA_character_)
+      ops <- list(
+        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 1, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_origem, acao = "remove_token", valor_original = valor_original_remove, valor_novo = mv_forma_val, n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val),
+        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 2, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_destino, acao = "append_token", valor_novo = mv_forma_val, n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val)
+      )
+      ### Campos inferiores vinculados pelo XLSForm: ao mover uma forma de vida,
+      ### limpar todos os dependentes da origem para o token movido. Isso inclui campos
+      ### de hábito, espécie/lista de espécie, "outra sp", fotos e campos históricos,
+      ### conforme dependências selected(${forma_vida_<categoria>}, '<token>') embutidas.
+      deps_mov <- deps[parent_name == paste0("forma_vida_", mv_origem_val) & token == mv_forma_val]
+      if (nrow(deps_mov) > 0L) {
+        deps_mov_cols <- unique(vapply(deps_mov$dependent_name, function(nn) monitora_correcao_resolver_coluna(dt, nn, if (!is.null(meta_xls)) meta_xls$campos else NULL), character(1)))
+        deps_mov_cols <- deps_mov_cols[!is.na(deps_mov_cols) & deps_mov_cols %in% names(dt)]
+        for (dep_origem in deps_mov_cols) {
+          ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
+            id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val,
+            uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_origem,
+            acao = "clear", n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo,
+            token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val
+          )
+        }
+      } else if (isTRUE(forma_condicional)) {
+        dep_origem <- monitora_correcao_resolver_coluna(dt, paste0("forma_vida_", mv_origem_val, "_", mv_forma_val), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        if (!is.na(dep_origem)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_origem, acao = "clear", n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val)
+      }
+
+      ### Para formas condicionais no destino, preencher/atualizar o hábito obrigatório.
+      if (isTRUE(forma_condicional)) {
+        dep_destino <- monitora_correcao_resolver_coluna(dt, paste0("forma_vida_", mv_destino_val, "_", mv_forma_val), if (!is.null(meta_xls)) meta_xls$campos else NULL)
+        if (!is.na(dep_destino)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_destino, acao = "update", valor_novo = input$mv_habito, n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val)
+      }
+      tipo_col <- monitora_correcao_colunas_chave(dt)$tipo_forma_vida
+      if (!is.na(tipo_col)) ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = tipo_col, acao = "recalcular_tipo_forma_vida", n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val)
+      rv$correcoes <- data.table::rbindlist(c(list(rv$correcoes), ops), fill = TRUE, use.names = TRUE)
+      rv$movimento_alvo <- data.table::data.table()
+      n_pend <- nrow(rv$correcoes)
+      monitora_correcao_console_msg("Movimento de forma de vida adicionado à sessão do painel: ", length(ops), " operação(ões) nova(s); ", n_pend, " operação(ões) pendente(s) no total. Use 'Salvar correções e fechar' para gravar.")
+      shiny::showNotification(paste0("Movimento adicionado. Há ", n_pend, " operação(ões) pendente(s). Use 'Salvar correções e fechar' para gravar."), type = "message", duration = 8)
+      shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
+    })
+
+    session$onSessionEnded(function() {
+      if (!isTRUE(rv$painel_finalizado)) {
+        monitora_correcao_console_msg("Sessão do painel encerrada pelo navegador; retornando sem salvar correções novas.")
+        rv$painel_finalizado <- TRUE
+        tryCatch(shiny::stopApp(monitora_correcao_template()), error = function(e) NULL)
+      }
+    })
+
+    shiny::observeEvent(input$salvar, {
+      rv$painel_finalizado <- TRUE
+      res <- data.table::copy(rv$correcoes)
+      n_res <- tryCatch(nrow(res), error = function(e) 0L)
+      monitora_correcao_console_msg("Comando recebido: salvar correções e fechar painel.")
+      if (!is.na(n_res) && n_res > 0L) {
+        dir.create(dirname(arquivo_saida), showWarnings = FALSE, recursive = TRUE)
+        data.table::fwrite(res, arquivo_saida, na = "")
+        monitora_correcao_console_msg(n_res, " operação(ões) gravada(s) em ", arquivo_saida, ".")
+      } else {
+        monitora_correcao_console_msg("Nenhuma correção pendente na sessão; nada foi gravado. Verifique se a alteração foi adicionada à lista de correções antes de salvar.")
+      }
+      shiny::stopApp(res)
+    })
+
+    shiny::observeEvent(input$cancelar, {
+      n_pend <- tryCatch(nrow(rv$correcoes), error = function(e) 0L)
+      if (!is.na(n_pend) && n_pend > 0L) {
+        shiny::showModal(shiny::modalDialog(
+          title = "Descartar correções pendentes?",
+          paste0("Há ", n_pend, " operação(ões) de correção pendente(s) nesta sessão. Fechar sem salvar descartará essas alterações."),
+          footer = shiny::tagList(
+            shiny::modalButton("Voltar ao painel"),
+            shiny::actionButton("confirmar_descartar_correcoes", "Descartar e continuar script", class = "btn-danger")
+          ),
+          easyClose = FALSE
+        ))
+        return(NULL)
+      }
+      rv$painel_finalizado <- TRUE
+      monitora_correcao_console_msg("Comando recebido: fechar painel sem salvar; não havia correções pendentes. Retomando execução do script.")
+      shiny::stopApp(monitora_correcao_template())
+    })
+
+    shiny::observeEvent(input$confirmar_descartar_correcoes, {
+      n_pend <- tryCatch(nrow(rv$correcoes), error = function(e) 0L)
+      rv$painel_finalizado <- TRUE
+      monitora_correcao_console_msg("Correções pendentes descartadas pelo usuário: ", n_pend, " operação(ões). Retomando execução do script sem salvar novas correções.")
+      shiny::removeModal()
+      shiny::stopApp(monitora_correcao_template())
+    })
+  }
+
+  monitora_correcao_console_msg("Painel Shiny será aberto. A execução do script fica pausada enquanto o painel estiver aberto.")
+  monitora_correcao_console_msg("Para continuar a execução, use 'Salvar correções e fechar' ou 'Fechar painel sem salvar e continuar script'.")
+  arquivo_saida_mtime_antes <- if (file.exists(arquivo_saida)) file.info(arquivo_saida)$mtime else as.POSIXct(NA)
+  app_result <- shiny::runApp(shiny::shinyApp(ui, server), launch.browser = TRUE)
+  n_ops <- tryCatch(nrow(app_result), error = function(e) NA_integer_)
+  arquivo_saida_mtime_depois <- if (file.exists(arquivo_saida)) file.info(arquivo_saida)$mtime else as.POSIXct(NA)
+  arquivo_salvo_nesta_sessao <- file.exists(arquivo_saida) && !is.na(arquivo_saida_mtime_depois) && (is.na(arquivo_saida_mtime_antes) || arquivo_saida_mtime_depois >= arquivo_saida_mtime_antes)
+  if ((is.na(n_ops) || n_ops == 0L) && isTRUE(arquivo_salvo_nesta_sessao) && file.info(arquivo_saida)$size > 0) {
+    app_result_arquivo <- tryCatch(data.table::fread(arquivo_saida, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) data.table::data.table())
+    if (nrow(app_result_arquivo) > 0L) {
+      app_result <- app_result_arquivo
+      n_ops <- nrow(app_result)
+      monitora_correcao_console_msg("Correções recuperadas do arquivo salvo pelo painel: ", n_ops, " operação(ões).")
+    }
+  }
+  if (is.na(n_ops) || n_ops == 0L) {
+    monitora_correcao_console_msg("Painel fechado sem correções novas; o script continuará a partir deste ponto.")
+  } else {
+    monitora_correcao_console_msg("Painel fechado com ", n_ops, " operação(ões) de correção; o script continuará a partir deste ponto.")
+  }
+  app_result
+}
+
 
 ### Usa subdiretório de extração por execução, evitando que resquícios de execuções anteriores
 ### sejam reprocessados ou aumentem o custo de varredura em lotes grandes.
@@ -5016,6 +9041,108 @@ if (isTRUE(MONITORA_AUDITORIA_COORDENADAS_COMPLETA) && !is.null(coord_audit_all)
 }
 rm(coord_cols, coord_audit_all, coord_audit_summary); monitora_recurso_gc("coordenadas_fim")
 
+
+### Execução opcional do painel dinâmico e aplicação auditável de correções de campos
+### Blindagem para execuções parciais ou sessões com objetos limpos.
+if (!exists("MONITORA_ARQUIVO_CORRECOES_CAMPOS", inherits = FALSE)) {
+  MONITORA_ARQUIVO_CORRECOES_CAMPOS <- Sys.getenv(
+    "MONITORA_ARQUIVO_CORRECOES_CAMPOS",
+    unset = file.path(if (exists("MONITORA_INPUT_DIR", inherits = FALSE)) MONITORA_INPUT_DIR else "input", "correcoes_campos.csv")
+  )
+}
+if (!exists("MONITORA_CORRECOES_DIR", inherits = FALSE)) {
+  MONITORA_CORRECOES_DIR <- file.path(if (exists("MONITORA_OUTPUT_DIR", inherits = FALSE)) MONITORA_OUTPUT_DIR else "output", "correcoes_campos")
+  dir.create(MONITORA_CORRECOES_DIR, showWarnings = FALSE, recursive = TRUE)
+}
+
+### A decisão sobre abertura do painel já foi tomada no início do script.
+### Neste ponto, o painel só será carregado se MONITORA_ABRIR_PAINEL_CORRECOES = TRUE,
+### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N".
+if (!exists("MONITORA_VALIDAR_CONDICIONAIS_CORRECOES", inherits = FALSE)) MONITORA_VALIDAR_CONDICIONAIS_CORRECOES <- TRUE
+###
+### O ponto de integração fica depois da padronização/deduplicação e antes da criação de
+### registros_corrig_stat. Assim, qualquer correção validada afeta as estatísticas, gráficos
+### e arquivos finais da mesma execução.
+
+MONITORA_CORRECOES_ARQUIVO_EXISTE <- isTRUE(file.exists(MONITORA_ARQUIVO_CORRECOES_CAMPOS)) &&
+  isTRUE(file.info(MONITORA_ARQUIVO_CORRECOES_CAMPOS)$size > 0)
+
+MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS <- isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES) ||
+  isTRUE(MONITORA_GERAR_DICIONARIOS_CORRECOES) ||
+  (isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS) && isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE))
+
+MONITORA_META_XLSFORMS_CORRECOES <- list(
+  arquivos = data.table::data.table(),
+  campos = data.table::data.table(),
+  opcoes = data.table::data.table(),
+  dependencias = data.table::data.table()
+)
+MONITORA_DEPENDENCIAS_CORRECOES <- data.table::data.table()
+MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES <- data.table::data.table()
+
+### Correção sistemática de ponto_metro é leve e independe do painel/XLSForm.
+registros_corrig <- monitora_correcao_corrigir_ponto_metro(registros_corrig)
+
+if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
+  monitora_correcao_console_msg("Preparando metadados embutidos e dicionário do painel de correções.")
+  data.table::fwrite(monitora_correcao_template(), file.path(MONITORA_CORRECOES_DIR, "modelo_correcoes_campos.csv"), na = "")
+  MONITORA_META_XLSFORMS_CORRECOES <- monitora_correcao_xlsforms_embutidos()
+  MONITORA_DEPENDENCIAS_CORRECOES <- monitora_correcao_unificar_dependencias(MONITORA_META_XLSFORMS_CORRECOES$dependencias)
+
+  if (nrow(MONITORA_META_XLSFORMS_CORRECOES$arquivos) > 0) {
+    data.table::fwrite(MONITORA_META_XLSFORMS_CORRECOES$arquivos, file.path(MONITORA_LOG_DIR, paste0("xlsforms_detectados_painel_correcoes_", MONITORA_EXEC_ID, ".csv")), na = "")
+    data.table::fwrite(MONITORA_META_XLSFORMS_CORRECOES$campos, file.path(MONITORA_CORRECOES_DIR, "dicionario_xlsform_campos_detectados.csv"), na = "")
+    data.table::fwrite(MONITORA_META_XLSFORMS_CORRECOES$opcoes, file.path(MONITORA_CORRECOES_DIR, "dicionario_xlsform_opcoes_detectadas.csv"), na = "")
+    data.table::fwrite(MONITORA_DEPENDENCIAS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "dicionario_xlsform_dependencias_condicionais.csv"), na = "")
+    monitora_log_registrar_evento("painel_correcoes_xlsform", "INFO", NA_character_, paste0(nrow(MONITORA_META_XLSFORMS_CORRECOES$arquivos), " XLSForm(s) embutido(s) carregado(s) para regras auxiliares"), "campos/opcoes/dependencias embutidos exportados em output/correcoes_campos")
+  } else {
+    monitora_log_registrar_evento("painel_correcoes_xlsform", "AVISO", NA_character_, "Nenhum metadado XLSForm embutido carregado; painel usará apenas a estrutura de registros_corrig", "ver seção de metadados XLSForm embutidos no script")
+  }
+
+  MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES <- monitora_correcao_dicionario_atributos(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES)
+  data.table::fwrite(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "dicionario_atributos_registros_corrig.csv"), na = "")
+  monitora_correcao_console_msg("Dicionário do painel preparado: ", nrow(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES), " atributo(s) disponíveis para correção.")
+
+  if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
+    monitora_correcao_console_msg("Preparando abertura do painel de correções assistidas.")
+    monitora_correcao_console_msg("A página do painel pode ficar cinza/opaca ao fechar; isso apenas indica que a sessão Shiny foi encerrada. Acompanhe o avanço pelo console.")
+    monitora_log_registrar_evento("painel_correcoes", "INFO", NA_character_, "Abrindo painel Shiny de correções assistidas", "aguardar o fechamento do painel para continuar a execução")
+    MONITORA_CORRECOES_GERADAS_PAINEL <- monitora_correcao_painel(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES, MONITORA_ARQUIVO_CORRECOES_CAMPOS)
+    monitora_correcao_console_msg("Painel encerrado; retomando fluxo principal do script.")
+    if (exists("MONITORA_CORRECOES_GERADAS_PAINEL") && nrow(MONITORA_CORRECOES_GERADAS_PAINEL) > 0) {
+      MONITORA_CORRECOES_ARQUIVO_EXISTE <- TRUE
+      monitora_correcao_console_msg(nrow(MONITORA_CORRECOES_GERADAS_PAINEL), " operação(ões) retornada(s) pelo painel; arquivo de correções será aplicado na sequência quando habilitado.")
+      monitora_log_registrar_evento("painel_correcoes", "INFO", MONITORA_ARQUIVO_CORRECOES_CAMPOS, paste0(nrow(MONITORA_CORRECOES_GERADAS_PAINEL), " operação(ões) salvas pelo painel"), "correções serão aplicadas na sequência")
+    } else {
+      monitora_correcao_console_msg("Nenhuma correção nova retornada pelo painel; seguindo para a próxima etapa.")
+      monitora_log_registrar_evento("painel_correcoes", "INFO", MONITORA_ARQUIVO_CORRECOES_CAMPOS, "Painel fechado sem correções novas", "seguir fluxo principal")
+    }
+  }
+
+  if (isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS) && isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE)) {
+    monitora_correcao_console_msg("Aplicando correções assistidas registradas em ", MONITORA_ARQUIVO_CORRECOES_CAMPOS, ".")
+    registros_corrig <- monitora_correcao_aplicar_arquivo(registros_corrig, MONITORA_ARQUIVO_CORRECOES_CAMPOS, MONITORA_META_XLSFORMS_CORRECOES$campos)
+    monitora_correcao_console_msg("Aplicação das correções assistidas concluída; seguindo para validações/estatísticas.")
+  } else if (isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS)) {
+    monitora_correcao_console_msg("Nenhum arquivo de correções aplicável encontrado; seguindo sem aplicar correções assistidas.")
+    monitora_log_registrar_evento("correcoes_campos", "INFO", MONITORA_ARQUIVO_CORRECOES_CAMPOS, "Arquivo de correções inexistente ou vazio; etapa de aplicação ignorada", "fluxo padrão sem painel")
+  }
+
+  if (isTRUE(MONITORA_VALIDAR_CONDICIONAIS_CORRECOES) && nrow(MONITORA_DEPENDENCIAS_CORRECOES) > 0) {
+    MONITORA_AUDITORIA_DEPENDENCIAS_CONDICIONAIS <- monitora_correcao_validar_dependencias(registros_corrig, MONITORA_DEPENDENCIAS_CORRECOES, MONITORA_META_XLSFORMS_CORRECOES$campos)
+  } else {
+    MONITORA_AUDITORIA_DEPENDENCIAS_CONDICIONAIS <- data.table::data.table()
+  }
+} else {
+  monitora_log_registrar_evento("painel_correcoes", "INFO", NA_character_, "Painel/correções ignorados: painel desligado e nenhum arquivo de correções encontrado", "não foram carregados metadados XLSForm nem gerados dicionários completos")
+  MONITORA_AUDITORIA_DEPENDENCIAS_CONDICIONAIS <- data.table::data.table()
+}
+
+monitora_perf_registrar_checkpoint("painel_correcoes_campos", "correções assistidas avaliadas/aplicadas quando habilitadas", registros_corrig)
+if (exists("MONITORA_ABRIR_PAINEL_CORRECOES", inherits = FALSE) && isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
+  monitora_correcao_console_msg("Etapa do painel/correções finalizada. Iniciando construção das tabelas estatísticas.")
+}
+
 ### Construção das tabelas estatísticas
 
 ## Preparação de registros_corrig_stat com data.table e tabelas estreitas.
@@ -5700,7 +9827,7 @@ monitora_plot_criar_indice_graficos_auxiliares <- function() {
       "plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo.png",
       "plot_p2.1.1_prop_rel_categ_camp_sem_rotulo.png",
       "plot_p2.1.2_prop_rel_categ_camp_com_rotulo.png",
-      "plot_p2.2.1_prop_rel_categ_sav_sem_rotulo.png",
+      "plot_p2.2.2_prop_rel_categ_sav_sem_rotulo.png",
       "plot_p2.2.2_prop_rel_categ_sav_com_rotulo.png",
       "plot_p2.3.1_veg_cover_categ_com_rotulo.png",
       "plot_p2.3.2_veg_cover_categ_sem_rotulo.png",
@@ -7529,7 +11656,7 @@ em formações campestres",
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p2_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
 
-plot_p2.2.1_prop_rel_categ_sav_sem_rotulo <- reg_corrig_stat_summarise_p2 %>%
+plot_p2.2.2_prop_rel_categ_sav_sem_rotulo <- reg_corrig_stat_summarise_p2 %>%
   subset(., form_veg == "Savânica") %>%
   ggplot(aes(prop, ANO, fill = categoria_label)) +
   geom_col() +
@@ -7565,7 +11692,7 @@ em formações savânicas",
 
 list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo, 
      plot_p2.1.2_prop_rel_categ_camp_com_rotulo, 
-     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo, 
+     plot_p2.2.2_prop_rel_categ_sav_sem_rotulo, 
      plot_p2.2.2_prop_rel_categ_sav_com_rotulo,
      plot_p2.3.1_veg_cover_categ_com_rotulo,
      plot_p2.3.2_veg_cover_categ_sem_rotulo)
@@ -12251,7 +16378,7 @@ plot_list_names <- c(
   "plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo",
   "plot_p2.1.1_prop_rel_categ_camp_sem_rotulo",
   "plot_p2.1.2_prop_rel_categ_camp_com_rotulo",
-  "plot_p2.2.1_prop_rel_categ_sav_sem_rotulo",
+  "plot_p2.2.2_prop_rel_categ_sav_sem_rotulo",
   "plot_p2.2.2_prop_rel_categ_sav_com_rotulo",
   "plot_p2.3.1_veg_cover_categ_com_rotulo",
   "plot_p2.3.2_veg_cover_categ_sem_rotulo",
