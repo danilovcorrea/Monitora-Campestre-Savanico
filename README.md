@@ -4,34 +4,32 @@ Scripts de tratamento, auditoria, deduplicação, análise estatística, valida�
 
 ## Versão pública atual
 
-v2.2.1
+v2.2.2
 
-A versão `v2.2.1` consolida a linha pública posterior à `v2.2.0` e acrescenta relatório de ocorrência de formas de vida exóticas em `output/`, com triagem dos registros que contêm o token `exotica` em `**Encostam** na vareta: (amostragem/registro)`.
+A versão `v2.2.2` consolida a linha pública posterior à `v2.2.1` e estabiliza o Painel de validação - correções assistidas de `registros_corrig`, com foco em integridade transacional, triagem operacional de formas de vida exóticas, auditoria semântica pré/pós-correção e melhoria de performance.
 
-O novo relatório separa registros de formas de vida exóticas com e sem espécie exótica vinculada, reconhece campos de lista e campos abertos do tipo `Outra espécie ... exótica`, e trata `NA`, campos vazios e `---` como ausência nos produtos exportados.
-
-A versão mantém o Painel de validação e correções assistidas introduzido na `v2.2.0`, bem como o fluxo analítico padrão do script. A execução analítica normal continua disponível sem abertura do painel; a validação assistida é acionada por variável explícita no início do script.
+A versão mantém o relatório de ocorrência de formas de vida exóticas da `v2.2.1`, o Painel de validação e correções assistidas da `v2.2.0`, e o fluxo analítico, estatístico e gráfico consolidado na série `v2.1.x`.
 
 A terminologia pública vigente mantém painéis amostrais por ano inicial para os subconjuntos longitudinais de UAs definidos pelo primeiro ano de acompanhamento.
 ## Consulte também
 
-  * [CHANGELOG.md](CHANGELOG.md): histórico das versões públicas.
-  * [VERSION](VERSION): versão pública atual.
-  * [LICENSE](LICENSE): licença do projeto.
-  * [docs/uso_de_ia.md](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
-  * [docs/versionamento.md](docs/versionamento.md): notas de versionamento, quando disponível.
-  * [releases/v2.2.1/](releases/v2.2.1/): cópia congelada da versão pública atual.
+* [CHANGELOG.md](CHANGELOG.md): histórico das versões públicas.
+* [VERSION](VERSION): versão pública atual.
+* [LICENSE](LICENSE): licença do projeto.
+* [docs/uso_de_ia.md](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
+* [docs/versionamento.md](docs/versionamento.md): notas de versionamento, quando disponível.
+* [releases/v2.2.2/](releases/v2.2.2/): cópia congelada da versão pública atual.
 ## Script recomendado para uso
 
 Use preferencialmente:
 
-  * [monitora_campsav_alvo_global.R](monitora_campsav_alvo_global.R): cópia pública atual com nome padronizado em minúsculas.
-  * [MONITORA_CAMPSAV_Alvo_Global.R](MONITORA_CAMPSAV_Alvo_Global.R): nome público histórico equivalente.
-  * [R/monitora_campsav_alvo_global.R](R/monitora_campsav_alvo_global.R): cópia mantida na estrutura interna do projeto.
-  * [monitora_campsav_alvo_global_v2.2.1.R](monitora_campsav_alvo_global_v2.2.1.R): cópia versionada da versão pública atual.
-  * [releases/v2.2.1/monitora_campsav_alvo_global_v2.2.1.R](releases/v2.2.1/monitora_campsav_alvo_global_v2.2.1.R): cópia congelada da versão pública `v2.2.1`.
+* [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública atual com nome padronizado em minúsculas.
+* [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R): nome público histórico equivalente.
+* [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia mantida na estrutura interna do projeto.
+* [`monitora_campsav_alvo_global_v2.2.2.R`](monitora_campsav_alvo_global_v2.2.2.R): cópia versionada da versão pública atual.
+* [`releases/v2.2.2/monitora_campsav_alvo_global_v2.2.2.R`](releases/v2.2.2/monitora_campsav_alvo_global_v2.2.2.R): cópia congelada da versão pública `v2.2.2`.
 
-Na publicação da `v2.2.1`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
+Na publicação da `v2.2.2`, essas cinco cópias públicas do script são mantidas com conteúdo idêntico.
 ## Finalidade
 
 O fluxo consolida registros exportados do SISMONITORA e produz bases padronizadas, tabelas analíticas, auditorias, estatísticas temporais, relatório textual e gráficos publicáveis. O script foi desenhado para aceitar tanto dados brutos quanto arquivos já tratados em execuções anteriores, permitindo novas rodadas de tratamento com dados incrementais.
@@ -148,17 +146,16 @@ Desde a primeira versão pública com versionamento semântico, o projeto consol
 
 ## Estrutura do repositório
 
-- `MONITORA_CAMPSAV_Alvo_Global.R`: script atual recomendado para uso.
-- `monitora_campsav_alvo_global.R`: cópia pública equivalente do script atual.
-- `R/monitora_campsav_alvo_global.R`: cópia do script atual na estrutura interna do projeto.
-- `monitora_campsav_alvo_global_v2.2.0.R`: cópia versionada da versão pública atual.
-- `releases/v2.2.0/`: cópia congelada da versão pública `v2.2.0`.
-- `releases/v2.1.3/`, `releases/v2.1.2/`, `releases/v2.1.1/`, `releases/v2.1.0/`, `releases/v2.0.0/`, `releases/v2.0.1/`, `releases/v2.0.2/`: versões públicas anteriores preservadas por rastreabilidade, quando presentes no repositório.
-- `archive/versoes_historicas/`: versões históricas anteriores ao versionamento público semântico.
-- `docs/`: documentação auxiliar, incluindo versionamento e uso de IA, quando presente.
-- `tools/`: ferramentas auxiliares de auditoria e revisão, quando presentes.
-- `.github/workflows/`: automações do GitHub Actions, quando presentes.
-
+* [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R): script atual recomendado para uso.
+* [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública equivalente do script atual.
+* [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia do script atual na estrutura interna do projeto.
+* [`monitora_campsav_alvo_global_v2.2.2.R`](monitora_campsav_alvo_global_v2.2.2.R): cópia versionada da versão pública atual.
+* [`releases/v2.2.2/`](releases/v2.2.2/): cópia congelada da versão pública `v2.2.2`.
+* [`releases/v2.2.1/`](releases/v2.2.1/), [`releases/v2.2.0/`](releases/v2.2.0/), [`releases/v2.1.3/`](releases/v2.1.3/), [`releases/v2.1.2/`](releases/v2.1.2/), [`releases/v2.1.1/`](releases/v2.1.1/), [`releases/v2.1.0/`](releases/v2.1.0/), [`releases/v2.0.2/`](releases/v2.0.2/), [`releases/v2.0.1/`](releases/v2.0.1/) e [`releases/v2.0.0/`](releases/v2.0.0/): versões públicas anteriores preservadas por rastreabilidade, quando presentes no repositório.
+* [`archive/versoes_historicas/`](archive/versoes_historicas/): versões históricas anteriores ao versionamento público semântico.
+* [`docs/`](docs/): documentação auxiliar, incluindo versionamento e uso de IA, quando presente.
+* [`tools/`](tools/): ferramentas auxiliares de auditoria e revisão, quando presentes.
+* [`.github/workflows/`](.github/workflows/): automações do GitHub Actions, quando presentes.
 ## Scripts históricos
 
 Os scripts `.R` datados ou anteriores à adoção do versionamento público semântico foram movidos para:
@@ -216,18 +213,13 @@ O script tenta instalar pacotes ausentes durante a execução. Em ambientes inst
 3. Execute o script completo no RStudio ou por `Rscript`.
 4. Consulte os produtos em `output/` e as auditorias em `log/`.
 
-Exemplo por terminal:
+Exemplo:
 
-```bash
-Rscript MONITORA_CAMPSAV_Alvo_Global.R
-```
+    Rscript MONITORA_CAMPSAV_Alvo_Global.R
 
 Também é possível executar a versão pública específica:
 
-```bash
-Rscript monitora_campsav_alvo_global_v2.2.0.R
-```
-
+    Rscript monitora_campsav_alvo_global_v2.2.2.R
 ## Parâmetros por variáveis de ambiente
 
 Alguns parâmetros podem ser definidos antes da execução:
@@ -348,5 +340,19 @@ CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global
 
 https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
+## Principais recursos da v2.2.2
 
-
+* Validação transacional de grupos de correção no painel.
+* Bloqueio integral de grupos quando qualquer operação obrigatória falha.
+* Triagem de exóticas por vínculo estrito entre `Encostam`, forma de vida e espécie.
+* Separação de registros com `exotica` em `Encostam` sem forma de vida exótica detalhada.
+* Tabela unificada de triagem para exóticas, desconhecidas e outras formas de vida.
+* Deduplicação imediata no painel e deduplicação defensiva na aplicação.
+* Localização acelerada por `linha_indice`.
+* Trava de hábito para formas condicionais.
+* Mapa canônico estrutural de colunas cacheado.
+* Auditoria semântica pré/pós-correção.
+* Melhorias de performance, checkpoints, progresso textual e exportação de CSVs.
+* Preservação do relatório de ocorrência de formas de vida exóticas.
+* Preservação do Painel de validação - correções assistidas.
+* Preservação do fluxo estatístico e gráfico consolidado.

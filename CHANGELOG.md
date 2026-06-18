@@ -1,4 +1,35 @@
-﻿
+
+
+## [v2.2.2] - 2026-06-18
+
+### Destaques
+
+- Publica a versão `v2.2.2` após a `v2.2.1`.
+- Estabiliza o Painel de validação - correções assistidas de `registros_corrig`.
+- Mantém o relatório de ocorrência de formas de vida exóticas, o painel assistido e o fluxo analítico, estatístico e gráfico consolidado.
+
+### Adicionado
+
+- Pré-validação transacional de grupos de correção.
+- Auditoria semântica pré/pós-correção.
+- Tabela unificada de triagem do painel.
+- Localização acelerada por `linha_indice`.
+- Deduplicação defensiva por assinatura semântica.
+
+### Alterado
+
+- Triagem de exóticas passa a exigir vínculo operacional estrito entre `Encostam`, forma de vida e espécie.
+- Hábito passa a ser aceito apenas para formas condicionais.
+- Mapa canônico estrutural de colunas passa a ser cacheado.
+- Comentários do script foram revisados para remover menções a versões internas e comentários interlocutórios.
+
+### Corrigido
+
+- Bloqueio de correções parciais em movimentos assistidos.
+- Redução de reintrodução de tokens residuais após movimentos exótica → nativa.
+- Tratamento mais seguro de CSVs vazios, warnings de exportação e objetos temporários.
+- Melhoria de checkpoints, progresso textual e controle de recursos.
+
 ## [v2.2.1] - 2026-06-16
 
 ### Adicionado
@@ -181,4 +212,3 @@ Todas as mudanÃ§as relevantes deste projeto sÃ£o documentadas neste arquivo.
 - Intervalo de confianÃ§a por bootstrap.
 - CorreÃ§Ã£o de mÃºltiplas comparaÃ§Ãµes por FDR.
 - AnÃ¡lise de mudanÃ§a na composiÃ§Ã£o geral com distÃ¢ncia de Bray-Curtis.
-
