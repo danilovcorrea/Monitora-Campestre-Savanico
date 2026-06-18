@@ -1,3 +1,56 @@
+# Changelog
+
+Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
+
+## [v2.3.0] - 2026-06-18
+
+### Destaques
+
+- Publica a versão `v2.3.0` após a `v2.2.2`.
+- Amplia o Painel de validação - correções assistidas de `registros_corrig`.
+- Introduz correção em lote por múltiplas COLETAS com filtros superiores hierárquicos.
+- Introduz exclusão auditável de COLETAS filtradas ou selecionadas.
+- Altera a deduplicação para preservar COLETAS distintas com mesma UC + UA + ANO para curadoria manual.
+- Adiciona trava pós-correções para impedir análise estatística quando restarem conflitos de UAs duplicadas no mesmo ano.
+- Inclui `COLETA` em `registros_corrig_stat`, antes de `UC`.
+
+### Adicionado
+
+- Filtros superiores hierárquicos e multisseleção no painel: UC(s), EA(s), ano(s), ciclo(s), campanha(s), UA(s) e COLETAS.
+- Checkbox para usar todas as COLETAS resultantes dos filtros superiores.
+- Prévia auditável por COLETA antes de gerar operações em lote.
+- Operações de correção em lote com uma operação por COLETA por atributo.
+- Botão para adicionar exclusão auditável de COLETAS filtradas/selecionadas.
+- Filtro de triagem para UAs duplicadas no mesmo ano.
+- Auditorias pré e pós-correções de COLETAS com UAs duplicadas por ano.
+- Cache de localização de linhas por COLETA, coleta_uuid, uuid_registro e linha_indice.
+- Coluna `COLETA` em `registros_corrig_stat`, posicionada antes de `UC`.
+
+### Alterado
+
+- A deduplicação automática foi ajustada para manter registros genuinamente idênticos, mas preservar COLETAS distintas envolvidas em conflitos UC + UA + ANO.
+- Casos de múltiplas COLETAS para a mesma UC + UA + ANO deixam de ser resolvidos automaticamente e passam a ser encaminhados para triagem/correção no painel.
+- A etapa pós-correções passa a bloquear a continuidade da execução quando conflitos de UAs duplicadas no mesmo ano permanecem não resolvidos.
+- O README foi atualizado para refletir os novos fluxos de curadoria, mantendo as seções públicas anteriores, incluindo uso auxiliar de IA.
+- Os links do README foram atualizados para as cinco cópias públicas da `v2.3.0`.
+
+### Corrigido
+
+- Redução de risco operacional em edições de atributos uniformes por COLETA.
+- Evita que conflitos reais de campo sejam mascarados por deduplicação automática.
+- Reforça a rastreabilidade entre `registros_corrig.csv` e `registros_corrig_stat.csv` por meio do atributo `COLETA`.
+
+### Validação recomendada
+
+- Executar o script com `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`.
+- Executar o script com `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"`.
+- Testar correção em lote por múltiplas COLETAS.
+- Testar seleção automática de COLETAS pelos filtros superiores.
+- Testar exclusão auditável de COLETAS.
+- Testar caso com múltiplas COLETAS na mesma UC + UA + ANO e confirmar interrupção pós-correções quando o conflito não for resolvido.
+- Conferir `output/registros_corrig.csv`, `output/registros_corrig_stat.csv` e auditorias de COLETAS com UAs duplicadas.
+- Conferir que as cinco cópias públicas do script têm SHA256 idêntico.
+
 
 
 ## [v2.2.2] - 2026-06-18
