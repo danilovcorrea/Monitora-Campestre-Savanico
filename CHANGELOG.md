@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.3.1 - 2026-06-19
+
+### Painel de correções assistidas
+
+- Implementa limpeza atômica auditável de outra forma de vida.
+- Remove tokens históricos de outra(s) forma(s) de vida em listas de forma de vida nativa, exótica e seca/morta.
+- Limpa descritores históricos dependentes de outra forma de vida.
+- Adiciona checkpoints de persistência pós-aplicação e pré-exportação.
+- Simplifica o escopo do painel para coleta individual ou coletas do lote.
+- Define COLETAS do lote como fonte explícita para operações em lote.
+- Adiciona botão Limpar filtros.
+- Usa labels do XLSForm mais recente para formas de vida, mantendo names históricos vinculados internamente.
+- Mantém hábito restrito às formas condicionais previstas no XLSForm: bromelioide, cactacea, orquidea e samambaia.
+- Preserva o painel desativado por padrão.
+
 Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 
 ## [v2.3.0] - 2026-06-18

@@ -27,13 +27,13 @@
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
 ### Destaques da versão pública v2.3.0:
-###   - inclusão de correção em lote por múltiplas COLETAS no painel, restrita a atributos
+###   - inclusão de correção em lote de COLETAS no painel, restrita a atributos
 ###     uniformes por coleta e sem expandir para 101 operações por coleta;
 ###   - prévia auditável por COLETA, com bloqueio quando o atributo não é uniforme nas 101 linhas
 ###     ou quando o número de linhas-alvo diverge do esperado;
 ###   - cache de localização de linhas por COLETA, coleta_uuid, uuid_registro e linha_indice na aplicação
 ###     das correções, reduzindo revarreduras em lotes moderados;
-###   - auditoria resumida específica para operações em lote por múltiplas COLETAS;
+###   - auditoria resumida específica para operações em lote de COLETAS;
 ###   - revisão de interface para estabilizar o seletor de COLETAS do lote e permitir
 ###     selecionar automaticamente todas as COLETAS filtradas por UC/EA/UA/ano(s)/ciclo/campanha/triagem;
 ###   - filtros superiores hierárquicos e multisseleção: UC(s) -> EA(s) -> ano(s) ->
@@ -4704,6 +4704,336 @@ monitora_correcao_reforcar_movimentos_forma_vida <- function(dt, corr, chaves = 
 }
 
 
+### Limpeza atômica de outras formas de vida
+### -------------------------------------------------------------------------
+### Rotina transacional vetorizada para remover tokens históricos de
+### outra(s) forma(s) de vida das listas principais e limpar os campos textuais
+### dependentes correspondentes. A detecção de colunas prioriza o mapa/dicionário
+### canônico do script e usa regex conservador apenas como fallback. Não altera
+### o atributo novo "Outras plantas terrestres, líquens e/ou fungos".
+monitora_correcao_tokens_outras_formas_vida <- function() {
+  c("outra_forma_vida", "outras_formas_vida", "forma_vida_outros", "outra", "outro", "outras", "outros")
+}
+
+monitora_correcao_tokens_tipo_validos_pos_limpeza_outras <- function() {
+  c("solo_nu", "nativa", "exotica", "seca", "morta", "seca_morta", "serrapilheira", "fragmentos_botanicos", "material_inundado")
+}
+
+monitora_correcao_contem_qualquer_token_vec <- function(x, tokens) {
+  x <- as.character(x)
+  if (!length(x)) return(logical(0))
+  tokens <- unique(monitora_correcao_normalizar_nome_coluna(tokens))
+  tokens <- tokens[!is.na(tokens) & nzchar(tokens)]
+  if (!length(tokens)) return(rep(FALSE, length(x)))
+  out <- rep(FALSE, length(x))
+  for (tok in tokens) out <- out | monitora_correcao_token_presente_vec(x, tok)
+  out
+}
+
+monitora_correcao_colapsar_lista_serializada <- function(x) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[!is.na(x) & nzchar(x)]
+  if (!length(x)) return(NA_character_)
+  paste(x, collapse = "|")
+}
+
+monitora_correcao_parse_lista_serializada <- function(x) {
+  x <- as.character(x)
+  if (!length(x) || is.na(x[1L]) || !nzchar(trimws(x[1L]))) return(character(0))
+  z <- unlist(strsplit(x[1L], "[|,;]+", perl = TRUE), use.names = FALSE)
+  z <- trimws(z)
+  unique(z[!is.na(z) & nzchar(z)])
+}
+
+monitora_correcao_colunas_limpeza_outras_formas <- function(dt, dicionario = NULL) {
+  dt <- data.table::as.data.table(dt)
+  nms <- names(dt)
+  nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+  mapa <- monitora_correcao_mapa_colunas_canonicas(dt, contexto = "limpeza_outras_formas", gravar = FALSE)
+
+  listas <- mapa[papel_coluna == "lista_principal_forma_vida" & categoria %in% c("nativa", "exotica", "seca_morta"), coluna_registros_corrig]
+  listas <- unique(listas[!is.na(listas) & nzchar(listas) & listas %in% nms])
+
+  resolver_dt <- function(vals) {
+    vals <- unique(as.character(vals))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    out <- character(0)
+    for (vv in vals) {
+      hit <- nms[nms == vv]
+      if (length(hit)) out <- c(out, hit[1L])
+      vv_norm <- monitora_correcao_normalizar_nome_coluna(vv)
+      hit2 <- which(nms_norm == vv_norm)
+      if (length(hit2)) out <- c(out, nms[hit2[1L]])
+      col_res <- tryCatch(monitora_correcao_resolver_coluna(dt, vv, dicionario), error = function(e) NA_character_)
+      if (!is.na(col_res) && nzchar(col_res) && col_res %in% nms) out <- c(out, col_res)
+    }
+    unique(out[out %in% nms])
+  }
+
+  descritores <- character(0)
+  if (!is.null(dicionario) && nrow(data.table::as.data.table(dicionario)) > 0L) {
+    d <- data.table::as.data.table(dicionario)
+    for (cc in c("name", "caminho_registro", "label", "type", "list_name", "relevant")) if (!(cc %in% names(d))) d[, (cc) := NA_character_]
+    d[, texto_busca := paste(name, caminho_registro, label, type, list_name, relevant, sep = " ")]
+    d[, texto_norm := monitora_correcao_normalizar_nome_coluna(texto_busca)]
+    d[, eh_descritor_outra_forma := (
+      grepl("forma_vida_(nativa|exotica|seca_morta)_outra", texto_norm) |
+        (grepl("outr.*forma.*vida", texto_norm) & grepl("nativ|exotic|exotica|exotico|seca|morta", texto_norm))
+    ) &
+      !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|observ|obs|plantas_terrestres|liquen|liquens|fungo|fungos", texto_norm)]
+    if (any(d$eh_descritor_outra_forma, na.rm = TRUE)) {
+      cand_vals <- unique(unlist(d[eh_descritor_outra_forma == TRUE, .(name, caminho_registro, label)], use.names = FALSE))
+      descritores <- c(descritores, resolver_dt(cand_vals))
+    }
+  }
+
+  fallback_desc <- nms[(
+    (grepl("outr.*forma.*vida", nms_norm) | grepl("forma_vida.*outr", nms_norm)) &
+      grepl("nativ|exotic|exotica|exotico|seca|morta", nms_norm) &
+      !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|observ|obs|plantas_terrestres|liquen|liquens|fungo|fungos", nms_norm)
+  )]
+  descritores <- unique(c(descritores, fallback_desc))
+  descritores <- descritores[descritores %in% nms]
+
+  tipo_cols <- mapa[papel_coluna == "campo_superior_tipo_forma_vida", coluna_registros_corrig]
+  tipo_cols <- unique(tipo_cols[!is.na(tipo_cols) & nzchar(tipo_cols) & tipo_cols %in% nms])
+  chaves <- monitora_correcao_colunas_chave(dt)
+  tipo_update <- if (!is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% nms) chaves$tipo_forma_vida else if (length(tipo_cols)) tipo_cols[1L] else NA_character_
+
+  data.table::data.table(
+    classe = c(rep("lista_principal_forma_vida", length(listas)), rep("descritor_outra_forma_vida", length(descritores)), rep("campo_superior_tipo_forma_vida", length(tipo_cols))),
+    coluna = c(listas, descritores, tipo_cols),
+    categoria = c(mapa[match(listas, coluna_registros_corrig), categoria], rep(NA_character_, length(descritores)), rep(NA_character_, length(tipo_cols))),
+    usar_para_escrita_solo_nu = c(rep(FALSE, length(listas) + length(descritores)), tipo_cols == tipo_update)
+  )[!is.na(coluna) & nzchar(coluna)]
+}
+
+monitora_correcao_contar_residuos_outras_formas <- function(dt, linhas, cols_info) {
+  dt <- data.table::as.data.table(dt)
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  tokens_outra <- monitora_correcao_tokens_outras_formas_vida()
+  listas <- cols_info[classe == "lista_principal_forma_vida" & coluna %in% names(dt), coluna]
+  descritores <- cols_info[classe == "descritor_outra_forma_vida" & coluna %in% names(dt), coluna]
+  if (!length(linhas)) {
+    return(data.table::data.table(linhas_alvo = 0L, linhas_com_token_outra = 0L, celulas_com_token_outra = 0L, linhas_com_descritor = 0L, celulas_com_descritor = 0L, linhas_com_residuo_total = 0L))
+  }
+  flag_token <- rep(FALSE, length(linhas)); n_token <- 0L
+  for (cc in listas) {
+    hit <- monitora_correcao_contem_qualquer_token_vec(dt[[cc]][linhas], tokens_outra)
+    flag_token <- flag_token | hit
+    n_token <- n_token + sum(hit, na.rm = TRUE)
+  }
+  flag_desc <- rep(FALSE, length(linhas)); n_desc <- 0L
+  for (cc in descritores) {
+    hit <- !monitora_correcao_vazio_vec(dt[[cc]][linhas])
+    flag_desc <- flag_desc | hit
+    n_desc <- n_desc + sum(hit, na.rm = TRUE)
+  }
+  data.table::data.table(
+    linhas_alvo = length(linhas),
+    linhas_com_token_outra = sum(flag_token, na.rm = TRUE),
+    celulas_com_token_outra = n_token,
+    linhas_com_descritor = sum(flag_desc, na.rm = TRUE),
+    celulas_com_descritor = n_desc,
+    linhas_com_residuo_total = sum(flag_token | flag_desc, na.rm = TRUE)
+  )
+}
+
+monitora_correcao_localizar_linhas_limpeza_outras_formas <- function(dt, linha_corr, chaves = monitora_correcao_colunas_chave(dt), indice = NULL) {
+  dt <- data.table::as.data.table(dt)
+  esc <- if ("escopo_aplicacao" %in% names(linha_corr)) tolower(trimws(as.character(linha_corr$escopo_aplicacao[1L]))) else ""
+  if (is.na(esc)) esc <- ""
+  if (esc %in% c("linhas_alvo", "linhas_selecionadas")) {
+    vals <- monitora_correcao_parse_lista_serializada(linha_corr$valor_original_esperado[1L])
+    idx <- suppressWarnings(as.integer(vals))
+    idx <- idx[!is.na(idx) & idx >= 1L & idx <= nrow(dt)]
+    return(unique(idx))
+  }
+  if (esc %in% c("lote_coletas", "coletas_filtradas", "multicoletas_atomico")) {
+    if (is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) return(integer(0))
+    coletas <- monitora_correcao_parse_lista_serializada(linha_corr$coleta[1L])
+    coletas <- coletas[!is.na(coletas) & nzchar(coletas)]
+    if (!length(coletas)) return(integer(0))
+    idx <- which(as.character(dt[[chaves$coleta]]) %chin% coletas)
+    ponto <- if ("ponto_amostral" %in% names(linha_corr)) trimws(as.character(linha_corr$ponto_amostral[1L])) else ""
+    if (!is.na(ponto) && nzchar(ponto) && !is.na(chaves$ponto_amostral) && chaves$ponto_amostral %in% names(dt)) {
+      idx <- idx[as.character(dt[[chaves$ponto_amostral]][idx]) == ponto]
+    }
+    return(unique(idx))
+  }
+  unique(as.integer(monitora_correcao_localizar_linhas(dt, linha_corr, chaves, indice)))
+}
+
+monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, id_correcao = NA_character_, arquivo_correcao = NA_character_, dicionario = NULL) {
+  ### CRÍTICO: não usar as.data.table() aqui.
+  ### Em alguns fluxos, as.data.table() pode operar sobre uma cópia/local; a auditoria
+  ### fica correta, mas a alteração não persiste no objeto exportado. setDT()/referência
+  ### preserva a alteração no mesmo data.table usado pelo fluxo principal.
+  dt <- monitora_dt_referenciar(dt)
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  audit <- data.table::data.table()
+  afetacoes <- data.table::data.table(linha_indice = integer(), atributo = character())
+  if (!length(linhas)) {
+    return(list(audit = data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_linhas", mensagem = "Nenhuma linha-alvo localizada para limpeza atômica de outras formas de vida", atributo = "__limpar_outras_formas_vida__", linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao), linhas = integer(), afetacoes = afetacoes, falha = TRUE))
+  }
+  cols_info <- monitora_correcao_colunas_limpeza_outras_formas(dt, dicionario)
+  listas <- cols_info[classe == "lista_principal_forma_vida" & coluna %in% names(dt), unique(coluna)]
+  descritores <- cols_info[classe == "descritor_outra_forma_vida" & coluna %in% names(dt), unique(coluna)]
+  tipo_cols <- cols_info[classe == "campo_superior_tipo_forma_vida" & coluna %in% names(dt), unique(coluna)]
+  tipo_update <- cols_info[classe == "campo_superior_tipo_forma_vida" & usar_para_escrita_solo_nu == TRUE & coluna %in% names(dt), coluna]
+  tipo_update <- if (length(tipo_update)) tipo_update[1L] else NA_character_
+  if (!length(listas) && !length(descritores)) {
+    return(list(audit = data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_colunas", mensagem = "Nenhuma coluna de lista/descritor de outra forma de vida detectada", atributo = "__limpar_outras_formas_vida__", linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao), linhas = integer(), afetacoes = afetacoes, falha = TRUE))
+  }
+  tokens_outra <- monitora_correcao_tokens_outras_formas_vida()
+  remover_serial <- paste(tokens_outra, collapse = " ")
+  registrar <- function(col, idx, antes, depois, mensagem) {
+    idx <- as.integer(idx)
+    mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+    if (!any(mudou, na.rm = TRUE)) return(invisible(NULL))
+    idx2 <- idx[mudou]
+    audit <<- data.table::rbindlist(list(audit, data.table::data.table(
+      id_correcao = id_correcao,
+      ordem_operacao = NA_character_,
+      status = "aplicada",
+      mensagem = mensagem,
+      atributo = col,
+      linha_indice = idx2,
+      valor_antes = antes[mudou],
+      valor_depois = depois[mudou],
+      arquivo_correcao = arquivo_correcao
+    )), fill = TRUE, use.names = TRUE)
+    afetacoes <<- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = idx2, atributo = col)), fill = TRUE, use.names = TRUE)
+  }
+  resumo_antes <- monitora_correcao_contar_residuos_outras_formas(dt, linhas, cols_info)
+  for (cc in listas) {
+    antes <- as.character(dt[[cc]][linhas])
+    depois <- vapply(antes, monitora_correcao_remove_token_valor, character(1), token = remover_serial)
+    mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+    if (any(mudou, na.rm = TRUE)) {
+      data.table::set(dt, i = linhas[mudou], j = cc, value = depois[mudou])
+      registrar(cc, linhas, antes, depois, "Limpeza atômica: token(s) de outra(s) forma(s) de vida removido(s) da lista principal")
+    }
+  }
+  for (cc in descritores) {
+    antes <- as.character(dt[[cc]][linhas])
+    limpar <- !monitora_correcao_vazio_vec(antes)
+    if (any(limpar, na.rm = TRUE)) {
+      depois <- antes
+      depois[limpar] <- NA_character_
+      data.table::set(dt, i = linhas[limpar], j = cc, value = NA_character_)
+      registrar(cc, linhas, antes, depois, "Limpeza atômica: descritor textual histórico de outra forma de vida limpo")
+    }
+  }
+  has_main_after <- rep(FALSE, length(linhas))
+  for (cc in listas) has_main_after <- has_main_after | !monitora_correcao_vazio_vec(dt[[cc]][linhas])
+  has_tipo_valido <- rep(FALSE, length(linhas))
+  tokens_tipo_validos <- monitora_correcao_tokens_tipo_validos_pos_limpeza_outras()
+  for (cc in tipo_cols) has_tipo_valido <- has_tipo_valido | monitora_correcao_contem_qualquer_token_vec(dt[[cc]][linhas], tokens_tipo_validos)
+  idx_solo <- linhas[!has_main_after & !has_tipo_valido]
+  if (length(idx_solo) > 0L) {
+    if (!is.na(tipo_update) && tipo_update %in% names(dt)) {
+      antes <- as.character(dt[[tipo_update]][idx_solo])
+      depois <- vapply(antes, monitora_correcao_append_token_valor, character(1), token = "solo_nu")
+      data.table::set(dt, i = idx_solo, j = tipo_update, value = depois)
+      registrar(tipo_update, idx_solo, antes, depois, "Limpeza atômica: solo_nu acrescentado porque a remoção deixaria o ponto sem categoria válida")
+    } else {
+      audit <- data.table::rbindlist(list(audit, data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_tipo_forma_vida", mensagem = paste0(length(idx_solo), " linha(s) precisariam de solo_nu, mas tipo_forma_vida/Encostam não foi localizado"), atributo = "tipo_forma_vida", linha_indice = idx_solo, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao)), fill = TRUE, use.names = TRUE)
+    }
+  }
+  resumo_depois <- monitora_correcao_contar_residuos_outras_formas(dt, linhas, cols_info)
+  audit <- data.table::rbindlist(list(audit, data.table::data.table(
+    id_correcao = id_correcao,
+    ordem_operacao = NA_character_,
+    status = ifelse(resumo_depois$linhas_com_residuo_total[1L] == 0L, "auditoria_ok", "falha_residuo_pos_limpeza"),
+    mensagem = paste0("Limpeza atômica outras formas: linhas_alvo=", length(linhas), "; residuos_antes=", resumo_antes$linhas_com_residuo_total[1L], "; residuos_depois=", resumo_depois$linhas_com_residuo_total[1L], "; solo_nu_adicionado=", length(idx_solo)),
+    atributo = "__limpar_outras_formas_vida__",
+    linha_indice = NA_integer_,
+    valor_antes = as.character(resumo_antes$linhas_com_residuo_total[1L]),
+    valor_depois = as.character(resumo_depois$linhas_com_residuo_total[1L]),
+    arquivo_correcao = arquivo_correcao
+  )), fill = TRUE, use.names = TRUE)
+  list(audit = audit[], linhas = unique(afetacoes$linha_indice), afetacoes = afetacoes[], falha = any(audit$status %in% c("falha_residuo_pos_limpeza", "falha_sem_tipo_forma_vida", "falha_sem_colunas", "falha_sem_linhas")))
+}
+
+monitora_correcao_eh_operacao_limpeza_outras_formas <- function(corr) {
+  corr <- data.table::as.data.table(corr)
+  acao <- if ("acao" %in% names(corr)) tolower(trimws(as.character(corr$acao))) else rep("", nrow(corr))
+  tipo <- if ("tipo_correcao" %in% names(corr)) tolower(trimws(as.character(corr$tipo_correcao))) else rep("", nrow(corr))
+  acao %in% c("limpar_outras_formas_vida", "limpeza_outras_formas_vida_atomica") |
+    tipo %in% c("triagem_limpeza_outras_formas_vida_atomica", "limpeza_outras_formas_vida_atomica")
+}
+
+
+monitora_correcao_auditar_persistencia_limpeza_outras_formas <- function(dt,
+                                                                         arquivo_correcao = MONITORA_ARQUIVO_CORRECOES_CAMPOS,
+                                                                         dicionario = NULL,
+                                                                         contexto = "persistencia_limpeza_outras_formas",
+                                                                         abortar = TRUE) {
+  if (!file.exists(arquivo_correcao)) return(invisible(data.table::data.table()))
+  dt <- monitora_dt_referenciar(dt)
+  corr <- tryCatch(
+    data.table::fread(arquivo_correcao, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"),
+    error = function(e) data.table::data.table()
+  )
+  if (nrow(corr) == 0L) return(invisible(data.table::data.table()))
+  template <- monitora_correcao_template()
+  for (cc in setdiff(names(template), names(corr))) corr[, (cc) := NA_character_]
+  data.table::setDT(corr)
+  idx_limpeza <- which(monitora_correcao_eh_operacao_limpeza_outras_formas(corr))
+  if (!length(idx_limpeza)) return(invisible(data.table::data.table()))
+
+  chaves <- monitora_correcao_colunas_chave(dt)
+  indice_linhas <- monitora_correcao_criar_indice_linhas(dt, chaves)
+  linhas <- unique(unlist(lapply(idx_limpeza, function(ii) {
+    monitora_correcao_localizar_linhas_limpeza_outras_formas(dt, corr[ii], chaves, indice_linhas)
+  }), use.names = FALSE))
+  linhas <- as.integer(linhas)
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+
+  cols_info <- monitora_correcao_colunas_limpeza_outras_formas(dt, dicionario)
+  resumo <- monitora_correcao_contar_residuos_outras_formas(dt, linhas, cols_info)
+  resumo[, `:=`(
+    contexto = contexto,
+    n_operacoes_limpeza = length(idx_limpeza),
+    n_linhas_escopo = length(linhas),
+    n_colunas_lista_principal = cols_info[classe == "lista_principal_forma_vida", uniqueN(coluna)],
+    n_colunas_descritor_outra = cols_info[classe == "descritor_outra_forma_vida", uniqueN(coluna)],
+    arquivo_correcao = arquivo_correcao
+  )]
+
+  arq_ult <- file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_persistencia_limpeza_outras_formas_", contexto, "_ultima_execucao.csv"))
+  arq_log <- file.path(MONITORA_LOG_DIR, paste0("auditoria_persistencia_limpeza_outras_formas_", contexto, "_", MONITORA_EXEC_ID, ".csv"))
+  monitora_fwrite(resumo, arq_ult, na = "")
+  monitora_fwrite(resumo, arq_log, na = "")
+
+  msg <- paste0(
+    "Persistência limpeza outras formas [", contexto, "]: linhas_escopo=", length(linhas),
+    "; residuos=", resumo$linhas_com_residuo_total[1L],
+    "; tokens=", resumo$celulas_com_token_outra[1L],
+    "; descritores=", resumo$celulas_com_descritor[1L]
+  )
+  monitora_log_registrar_evento(
+    "limpeza_outras_formas_persistencia",
+    ifelse(resumo$linhas_com_residuo_total[1L] > 0L, "ERRO", "INFO"),
+    arq_ult,
+    msg,
+    "auditoria obrigatória após aplicação atômica e antes da exportação final"
+  )
+  if (exists("monitora_correcao_console_msg", mode = "function")) monitora_correcao_console_msg(msg)
+
+  if (isTRUE(abortar) && resumo$linhas_com_residuo_total[1L] > 0L) {
+    stop(paste0(
+      "Falha de persistência na limpeza atômica de outra(s) forma(s) de vida [", contexto, "]: ",
+      resumo$linhas_com_residuo_total[1L], " linha(s) ainda com resíduo no escopo limpo. Ver ", arq_ult
+    ), call. = FALSE)
+  }
+  invisible(resumo[])
+}
+
+
 monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo, corr_linha) {
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) {
     return(list(ok = FALSE, status = "falha", mensagem = "coluna de destino inexistente"))
@@ -4743,21 +5073,21 @@ monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo
 monitora_correcao_atributo_lote_multicoletas_seguro <- function(dt, col, chaves = monitora_correcao_colunas_chave(dt)) {
   col <- as.character(col)[1L]
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) {
-    return(list(ok = FALSE, status = "falha", mensagem = "atributo inexistente para lote por múltiplas COLETAS"))
+    return(list(ok = FALSE, status = "falha", mensagem = "atributo inexistente para lote de COLETAS"))
   }
   if (monitora_correcao_coluna_protegida(col)) {
     return(list(ok = FALSE, status = "bloqueada_coluna_protegida", mensagem = paste0("coluna estrutural/protegida não pode ser alterada em lote: ", col)))
   }
   papel <- monitora_correcao_papel_coluna_canonico(col)
   if (papel %in% c("lista_principal_forma_vida", "atributo_dependente_habito", "especie_nome_popular", "campo_superior_tipo_forma_vida")) {
-    return(list(ok = FALSE, status = "bloqueada_destino_semantico", mensagem = paste0("atributo com papel '", papel, "' não é elegível para lote por múltiplas COLETAS: ", col)))
+    return(list(ok = FALSE, status = "bloqueada_destino_semantico", mensagem = paste0("atributo com papel '", papel, "' não é elegível para lote de COLETAS: ", col)))
   }
   col_norm <- monitora_correcao_normalizar_nome_coluna(col)
   padroes_bloqueio <- c("ponto_amostral", "ponto_metro", "tipo_forma_vida", "forma_vida", "especie", "especies", "exotica", "nativa", "seca_morta", "encostam", "vareta")
   if (any(grepl(paste(padroes_bloqueio, collapse = "|"), col_norm, perl = TRUE))) {
-    return(list(ok = FALSE, status = "bloqueada_destino_semantico", mensagem = paste0("atributo parece ser de nível do ponto/forma de vida e foi bloqueado para lote por múltiplas COLETAS: ", col)))
+    return(list(ok = FALSE, status = "bloqueada_destino_semantico", mensagem = paste0("atributo parece ser de nível do ponto/forma de vida e foi bloqueado para lote de COLETAS: ", col)))
   }
-  list(ok = TRUE, status = "ok", mensagem = "atributo elegível para lote por múltiplas COLETAS")
+  list(ok = TRUE, status = "ok", mensagem = "atributo elegível para lote de COLETAS")
 }
 
 monitora_correcao_valores_uniformes_linhas <- function(dt, linhas, col) {
@@ -4834,9 +5164,9 @@ monitora_correcao_prevalidar_operacao <- function(dt, linha_corr, chaves, dicion
       escopo_corr <- if ("escopo_aplicacao" %in% names(linha_corr)) tolower(trimws(as.character(linha_corr$escopo_aplicacao[1]))) else ""
       if (is.na(escopo_corr)) escopo_corr <- ""
       if (!identical(escopo_corr, "coleta_inteira")) {
-        status <- "bloqueada_lote_multicoletas"; msg <- "lote por múltiplas COLETAS exige escopo_aplicacao='coleta_inteira'"
+        status <- "bloqueada_lote_multicoletas"; msg <- "lote de COLETAS exige escopo_aplicacao='coleta_inteira'"
       } else if (!(acao %in% c("update", "substituir_valor", "clear", "limpar"))) {
-        status <- "bloqueada_lote_multicoletas"; msg <- "lote por múltiplas COLETAS permite apenas substituir valor ou limpar valor"
+        status <- "bloqueada_lote_multicoletas"; msg <- "lote de COLETAS permite apenas substituir valor ou limpar valor"
       } else {
         valid_lote <- monitora_correcao_atributo_lote_multicoletas_seguro(dt, col, chaves)
         if (!isTRUE(valid_lote$ok)) {
@@ -5001,8 +5331,44 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   linhas_afetadas_vinculos <- integer(0)
   afetacoes_vinculos <- data.table::data.table(linha_indice = integer(), atributo = character())
 
-  if (!("id_correcao" %in% names(corr))) corr[, id_correcao := NA_character_]
-  corr[, grupo_correcao := fifelse(!is.na(id_correcao) & nzchar(as.character(id_correcao)), as.character(id_correcao), paste0("__linha_", ordem_tmp))]
+  ### Operações semânticas atômicas de limpeza de outras formas de vida.
+  ### São aplicadas por escopo/linhas, antes da pré-validação célula-a-célula,
+  ### para evitar expansão em centenas de operações e preservar performance.
+  falha_limpeza_outras_formas <- FALSE
+  if (nrow(corr) > 0L) {
+    idx_limpeza_outras <- which(monitora_correcao_eh_operacao_limpeza_outras_formas(corr))
+    if (length(idx_limpeza_outras) > 0L) {
+      corr_limpeza_outras <- corr[idx_limpeza_outras]
+      for (ll in seq_len(nrow(corr_limpeza_outras))) {
+        linha_limpeza <- corr_limpeza_outras[ll]
+        linhas_limpeza <- monitora_correcao_localizar_linhas_limpeza_outras_formas(dt, linha_limpeza, chaves, indice_linhas)
+        res_limpeza <- monitora_correcao_aplicar_limpeza_outras_formas_atomica(
+          dt,
+          linhas_limpeza,
+          id_correcao = linha_limpeza$id_correcao[1L],
+          arquivo_correcao = arquivo_correcao,
+          dicionario = dicionario
+        )
+        if (nrow(res_limpeza$audit) > 0L) audit <- data.table::rbindlist(list(audit, res_limpeza$audit), fill = TRUE, use.names = TRUE)
+        if (length(res_limpeza$linhas) > 0L) linhas_semantica_alvo <- unique(c(linhas_semantica_alvo, res_limpeza$linhas))
+        if (nrow(res_limpeza$afetacoes) > 0L) afetacoes_vinculos <- data.table::rbindlist(list(afetacoes_vinculos, res_limpeza$afetacoes), fill = TRUE, use.names = TRUE)
+        falha_limpeza_outras_formas <- isTRUE(falha_limpeza_outras_formas) || isTRUE(res_limpeza$falha)
+      }
+      corr <- corr[-idx_limpeza_outras]
+      corr[, ordem_tmp := seq_len(.N)]
+      monitora_log_registrar_evento(
+        "correcoes_campos",
+        ifelse(isTRUE(falha_limpeza_outras_formas), "ERRO", "INFO"),
+        arquivo_correcao,
+        paste0(nrow(corr_limpeza_outras), " operação(ões) atômica(s) de limpeza de outras formas de vida processada(s)"),
+        "operação semântica vetorizada; sem expansão por célula"
+      )
+    }
+  }
+
+  if (nrow(corr) > 0L) {
+    if (!("id_correcao" %in% names(corr))) corr[, id_correcao := NA_character_]
+    corr[, grupo_correcao := fifelse(!is.na(id_correcao) & nzchar(as.character(id_correcao)), as.character(id_correcao), paste0("__linha_", ordem_tmp))]
   pre_list <- vector("list", nrow(corr))
   for (pp in seq_len(nrow(corr))) {
     pre <- monitora_correcao_prevalidar_operacao(dt, corr[pp], chaves, dicionario, indice_linhas)
@@ -5039,6 +5405,18 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
       }
       return(dt[])
     }
+  }
+
+  }
+
+  if (isTRUE(falha_limpeza_outras_formas)) {
+    if (nrow(audit) > 0) {
+      audit <- monitora_correcao_anexar_contexto_auditoria(audit, dt, chaves)
+      saida_audit <- file.path(MONITORA_LOG_DIR, paste0("auditoria_correcoes_campos_", MONITORA_EXEC_ID, ".csv"))
+      monitora_fwrite(audit, saida_audit, na = "")
+      monitora_fwrite(audit, file.path(MONITORA_CORRECOES_DIR, "auditoria_correcoes_campos_ultima_execucao.csv"), na = "")
+    }
+    stop("Limpeza atômica de outras formas de vida falhou na auditoria pós-aplicação; ver auditoria_correcoes_campos_ultima_execucao.csv", call. = FALSE)
   }
 
   if (nrow(corr) > 0L) {
@@ -5541,11 +5919,28 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   MONITORA_TRIAGEM_CATEGORIAS_FORMA <- c("nativa", "exotica", "seca_morta")
   ### Apenas estas formas possuem atributo dependente de hábito no fluxo operacional.
   ### Todas as demais formas de vida devem ignorar/bloquear qualquer hábito selecionado.
-  MONITORA_TRIAGEM_FORMAS_CONDICIONAIS <- c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+  ### Os tokens canônicos abaixo são os names do XLSForm mais recente embutido
+  ### (21FEV25/2025): bromelioide, cactacea, orquidea e samambaia.
+  MONITORA_TRIAGEM_FORMAS_CONDICIONAIS <- c("bromelioide", "cactacea", "orquidea", "samambaia")
+  MONITORA_TRIAGEM_ALIASES_FORMAS_CONDICIONAIS <- list(
+    bromelioide = c("bromelioide", "bromelioides", "erva_bromelioide", "erva_bromelioides", "ervas_bromelioides", "bromelia", "bromelias", "bromeliacea", "bromeliaceas"),
+    cactacea = c("cactacea", "cactaceas", "cacto", "cactos"),
+    orquidea = c("orquidea", "orquideas"),
+    samambaia = c("samambaia", "samambaias")
+  )
+  monitora_painel_canonizar_forma_habito <- function(forma) {
+    z <- monitora_relatorio_exoticas_normalizar_token(as.character(forma)[1L])
+    if (is.na(z) || !nzchar(z)) return("")
+    for (canon in names(MONITORA_TRIAGEM_ALIASES_FORMAS_CONDICIONAIS)) {
+      aliases <- monitora_relatorio_exoticas_normalizar_token(MONITORA_TRIAGEM_ALIASES_FORMAS_CONDICIONAIS[[canon]])
+      if (z %in% aliases) return(canon)
+    }
+    z
+  }
   MONITORA_TRIAGEM_HABITO_CHOICES <- c("(não informado)" = "", "terrestre" = "terrestre", "epifita" = "epifita", "rupicola" = "rupicola")
   MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES <- c("(não se aplica a esta forma de vida)" = "")
   monitora_painel_forma_exige_habito <- function(forma) {
-    forma <- monitora_relatorio_exoticas_normalizar_token(as.character(forma)[1L])
+    forma <- monitora_painel_canonizar_forma_habito(forma)
     !is.na(forma) && nzchar(forma) && forma %in% MONITORA_TRIAGEM_FORMAS_CONDICIONAIS
   }
 
@@ -5621,16 +6016,168 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
   ### Performance: não tokenizar todos os registros na abertura do painel apenas
   ### para montar opções do movimento assistido. A lista fixa cobre os tokens
-  ### operacionais esperados; tokens adicionais continuam visíveis na tabela de
-  ### triagem da coleta ativa e podem ser digitados/selecionados a partir da
-  ### correção manual quando necessário.
+  ### operacionais esperados; tokens diagnósticos observados na triagem unificada
+  ### são reaproveitados porque essa tabela já foi montada antes da abertura do
+  ### painel.
   formas_exoticas_observadas <- character(0)
-  formas_mv_choices <- sort(unique(c(
-    "bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia",
-    "arbusto_acima", "arbusto_abaixo", "arvore_acima", "arvore_abaixo",
-    "graminoide", "erva_nao_graminoide", "bambu", "lianas", "palmeira",
-    formas_exoticas_observadas
-  )))
+  formas_diagnosticas_mv <- character(0)
+  if (exists("triagem_painel_unificada", inherits = FALSE)) {
+    tri_mv <- tryCatch(data.table::as.data.table(triagem_painel_unificada), error = function(e) data.table::data.table())
+    if (nrow(tri_mv) && all(c("tipo_triagem", "token_detectado") %in% names(tri_mv))) {
+      tok_mv <- tri_mv[tipo_triagem %in% c("forma_vida_desconhecida", "outras_formas_vida"), token_detectado]
+      formas_diagnosticas_mv <- unique(unlist(lapply(tok_mv, monitora_painel_split_tokens_triagem), use.names = FALSE))
+      formas_diagnosticas_mv <- formas_diagnosticas_mv[!is.na(formas_diagnosticas_mv) & nzchar(formas_diagnosticas_mv)]
+    }
+  }
+  formas_diagnosticas_mv <- setdiff(formas_diagnosticas_mv, MONITORA_TRIAGEM_TOKENS_OUTRAS)
+
+  monitora_painel_montar_choices_formas_mv <- function() {
+    ### Lista do movimento assistido apresentada por LABEL do XLSForm mais
+    ### recente (21FEV25/2025). Os names atuais e históricos ficam vinculados
+    ### internamente ao label/canônico, mas não são exibidos como opções ao
+    ### usuário. A lista é restrita às formas de vida das listas
+    ### forma_vida_nativa, forma_vida_exotica e forma_vida_seca_morta; portanto
+    ### não inclui atributos de Encostam na vareta, como serrapilheira,
+    ### fragmentos_botanicos ou material_inundado, nem forma_vida_outros.
+    op <- if (!is.null(meta_xls) && !is.null(meta_xls$opcoes)) data.table::as.data.table(meta_xls$opcoes) else data.table::data.table()
+    listas_forma <- paste0("forma_vida_", MONITORA_TRIAGEM_CATEGORIAS_FORMA)
+    tokens_excluir_mv <- unique(c(
+      MONITORA_TRIAGEM_TOKENS_OUTRAS,
+      "serrapilheira", "fragmentos_botanicos", "material_inundado",
+      "solo_nu", "nativa", "exotica", "seca", "morta", "seca_morta"
+    ))
+
+    fallback_atual <- data.table::data.table(
+      token_representativo = c(
+        "graminoide", "erva_nao_graminoide", "arbusto_abaixo", "arbusto_acima",
+        "arvore_abaixo", "arvore_acima", "bambu", "bromelioide", "cactacea",
+        "lianas", "ervas_de_passarinho", "orquidea", "palmeira", "samambaia",
+        "canela_de_ema", "desconhecida"
+      ),
+      label_exibicao = c(
+        "Erva graminoide (gramíneas, ciperáceas e juncáceas)",
+        "Erva não graminoide",
+        "Arbusto tocando a vareta a uma altura inferior a 50cm",
+        "Arbusto tocando a vareta a uma altura igual ou superior a 50cm",
+        "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+        "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+        "Bambu ou taquara",
+        "Erva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+        "Cacto",
+        "Liana, cipó ou trepadeira",
+        "Erva-de-passarinho (hemiparasita)",
+        "Orquídea",
+        "Palmeira",
+        "Samambaia",
+        "Velósia (Velloziaceae)",
+        "Forma de vida desconhecida"
+      ),
+      ordem = seq_len(16L)
+    )
+    fallback_atual[, tokens_historicos := token_representativo]
+
+    out <- fallback_atual
+    if (nrow(op) && all(c("list_name", "name", "label") %in% names(op))) {
+      op[, arquivo_xlsform_chr := if ("arquivo_xlsform" %in% names(op)) as.character(arquivo_xlsform) else ""]
+      cand <- op[list_name %in% listas_forma]
+      if (nrow(cand)) {
+        cand[, token_norm := monitora_relatorio_exoticas_normalizar_token(name)]
+        cand[, label_chr := trimws(as.character(label))]
+        cand[is.na(label_chr) | !nzchar(label_chr), label_chr := token_norm]
+        cand[, label_key := monitora_correcao_normalizar_nome_coluna(label_chr)]
+        cand[, atual := grepl("21FEV25|2025", arquivo_xlsform_chr, ignore.case = TRUE)]
+        cand <- cand[!is.na(token_norm) & nzchar(token_norm)]
+        cand <- cand[!(token_norm %in% tokens_excluir_mv)]
+
+        cand_atual <- cand[atual == TRUE]
+        if (nrow(cand_atual)) {
+          cand_atual[, ordem_atual := seq_len(.N)]
+          ### Usar os names e labels do XLSForm mais recente como canônicos.
+          atuais <- unique(cand_atual[, .(
+            token_representativo = token_norm,
+            label_exibicao = label_chr,
+            label_key = label_key,
+            ordem = ordem_atual
+          )], by = "token_representativo")
+
+          hist <- atuais[, {
+            toks <- cand[token_norm == .BY$token_representativo | label_key == .BY$label_key, token_norm]
+            toks <- sort(unique(c(toks, .BY$token_representativo)))
+            list(tokens_historicos = paste(toks, collapse = "|"))
+          }, by = .(token_representativo, label_exibicao, label_key, ordem)]
+          out <- hist[, .(token_representativo, label_exibicao, tokens_historicos, ordem)]
+        } else if (nrow(cand)) {
+          ### Fallback raro: se o XLSForm mais recente não estiver nos metadados,
+          ### usar somente tokens observados nas listas forma_vida_* históricas,
+          ### sem incluir atributos de Encostam/forma_vida_outros.
+          cand[, ordem_hist := seq_len(.N)]
+          out <- unique(cand[, .(
+            token_representativo = token_norm,
+            label_exibicao = label_chr,
+            tokens_historicos = token_norm,
+            ordem = ordem_hist
+          )], by = "token_representativo")
+        }
+      }
+    }
+
+    ### Consolidar explicitamente aliases históricos de desconhecida em uma
+    ### única opção operacional com o label atual.
+    if (nrow(out)) {
+      out[token_representativo %in% MONITORA_TRIAGEM_TOKENS_DESCONHECIDOS | grepl("desconhecid", monitora_correcao_normalizar_nome_coluna(label_exibicao)),
+          `:=`(
+            token_representativo = "desconhecida",
+            label_exibicao = "Forma de vida desconhecida",
+            tokens_historicos = paste(sort(unique(MONITORA_TRIAGEM_TOKENS_DESCONHECIDOS)), collapse = "|")
+          )]
+      out <- out[!(token_representativo %in% tokens_excluir_mv)]
+      data.table::setorder(out, ordem, label_exibicao, token_representativo)
+      out <- unique(out, by = "token_representativo")
+    }
+
+    choices <- stats::setNames(as.character(out$token_representativo), as.character(out$label_exibicao))
+    tokens_historicos <- stats::setNames(strsplit(as.character(out$tokens_historicos), "|", fixed = TRUE), as.character(out$token_representativo))
+    token_para_representativo <- stats::setNames(as.character(out$token_representativo), as.character(out$token_representativo))
+    for (ii in seq_len(nrow(out))) {
+      toks <- unlist(strsplit(as.character(out$tokens_historicos[ii]), "|", fixed = TRUE), use.names = FALSE)
+      toks <- unique(monitora_relatorio_exoticas_normalizar_token(toks))
+      toks <- toks[!is.na(toks) & nzchar(toks)]
+      if (length(toks)) token_para_representativo[toks] <- as.character(out$token_representativo[ii])
+    }
+    list(choices = choices, tokens_historicos = tokens_historicos, token_para_representativo = token_para_representativo)
+  }
+
+  formas_mv_choices_info <- monitora_painel_montar_choices_formas_mv()
+  formas_mv_choices <- formas_mv_choices_info$choices
+  formas_mv_tokens_historicos <- formas_mv_choices_info$tokens_historicos
+  formas_mv_token_para_representativo <- formas_mv_choices_info$token_para_representativo
+
+  monitora_painel_forma_representativa_mv <- function(forma) {
+    forma <- monitora_relatorio_exoticas_normalizar_token(monitora_painel_valor(forma))
+    if (!nzchar(forma)) return("")
+    z <- formas_mv_token_para_representativo[[forma]]
+    if (is.null(z) || !length(z) || is.na(z)) return(forma)
+    as.character(z)[1L]
+  }
+
+  monitora_painel_forma_tokens_historicos_mv <- function(forma) {
+    forma <- monitora_painel_forma_representativa_mv(forma)
+    if (!nzchar(forma)) return(character(0))
+    z <- formas_mv_tokens_historicos[[forma]]
+    if (is.null(z) || !length(z)) z <- forma
+    z <- unique(monitora_relatorio_exoticas_normalizar_token(z))
+    z[!is.na(z) & nzchar(z)]
+  }
+
+  monitora_painel_mv_choices_com_token <- function(token) {
+    token <- monitora_painel_valor(token)
+    choices <- formas_mv_choices
+    token_rep <- monitora_painel_forma_representativa_mv(token)
+    if (nzchar(token_rep) && !(token_rep %in% unname(choices))) {
+      choices <- c(choices, stats::setNames(token_rep, token_rep))
+    }
+    choices
+  }
 
   monitora_painel_valor_celula <- function(x, col, i) {
     if (is.na(col) || !(col %in% names(x)) || length(i) != 1L || is.na(i) || i < 1L || i > nrow(x)) return(NA_character_)
@@ -5964,17 +6511,32 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$uas_duplicadas_mesmo_ano), " com UA duplicada no mesmo ano."
   )
 
-  choices_triagem_coleta <- stats::setNames(
-    c("exoticas_com_forma_sem_sp", "exoticas_com_forma_com_sp", "erro_exoticas_sem_forma_detalhada", "formas_vida_desconhecidas", "outras_formas_vida", "uas_duplicadas_mesmo_ano"),
-    c(
-      paste0("exóticas com forma sem sp vinculada (", length(coletas_triagem_por_tipo$exoticas_com_forma_sem_sp), " coletas com ocorrência)"),
-      paste0("exóticas com forma + sp vinculada (", length(coletas_triagem_por_tipo$exoticas_com_forma_com_sp), " coletas com ocorrência)"),
-      paste0("erro: exótica sem forma de vida detalhada (", length(coletas_triagem_por_tipo$erro_exoticas_sem_forma_detalhada), " coletas com ocorrência)"),
-      paste0("formas de vida desconhecidas (", length(coletas_triagem_por_tipo$formas_vida_desconhecidas), " coletas com ocorrência)"),
-      paste0("outras formas de vida (", length(coletas_triagem_por_tipo$outras_formas_vida), " coletas com ocorrência)"),
-      paste0("UAs duplicadas no mesmo ano (", length(coletas_triagem_por_tipo$uas_duplicadas_mesmo_ano), " coletas para triagem)")
+  monitora_painel_choices_triagem_coleta <- function(vals_base = NULL) {
+    ### Monta os rótulos dos checkboxes diagnósticos com contagens restritas
+    ### ao universo de COLETAS atualmente disponível nos filtros superiores.
+    ### Quando vals_base é NULL, usa todas as COLETAS como estado inicial.
+    if (is.null(vals_base)) vals_base <- valores_coleta
+    vals_base <- unique(as.character(vals_base))
+    vals_base <- vals_base[!is.na(vals_base) & nzchar(vals_base)]
+    n_tipo <- function(nm) {
+      z <- coletas_triagem_por_tipo[[nm]]
+      if (is.null(z) || !length(vals_base)) return(0L)
+      length(intersect(vals_base, unique(as.character(z))))
+    }
+    stats::setNames(
+      c("exoticas_com_forma_sem_sp", "exoticas_com_forma_com_sp", "erro_exoticas_sem_forma_detalhada", "formas_vida_desconhecidas", "outras_formas_vida", "uas_duplicadas_mesmo_ano"),
+      c(
+        paste0("exóticas com forma sem sp vinculada (", n_tipo("exoticas_com_forma_sem_sp"), " coletas com ocorrência)"),
+        paste0("exóticas com forma + sp vinculada (", n_tipo("exoticas_com_forma_com_sp"), " coletas com ocorrência)"),
+        paste0("erro: exótica sem forma de vida detalhada (", n_tipo("erro_exoticas_sem_forma_detalhada"), " coletas com ocorrência)"),
+        paste0("formas de vida desconhecidas (", n_tipo("formas_vida_desconhecidas"), " coletas com ocorrência)"),
+        paste0("outras formas de vida (", n_tipo("outras_formas_vida"), " coletas com ocorrência)"),
+        paste0("UAs duplicadas no mesmo ano (", n_tipo("uas_duplicadas_mesmo_ano"), " coletas para triagem)")
+      )
     )
-  )
+  }
+
+  choices_triagem_coleta <- monitora_painel_choices_triagem_coleta(valores_coleta)
 
   rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table())
   painel_estado <- new.env(parent = emptyenv())
@@ -6050,22 +6612,36 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           selected = character(0)
         ),
         shiny::helpText("Nenhum critério marcado = listar todas as coletas disponíveis nos filtros gerais. Critérios marcados = listar coletas com pelo menos uma das ocorrências selecionadas."),
+        shiny::actionButton("limpar_filtros", "Limpar filtros", class = "btn-default btn-block", width = "100%"),
+        shiny::helpText("Limpa UC, EA, ano, ciclo, campanha, UA e critérios diagnósticos. Mantém a COLETA selecionada, o lote de COLETAS e as correções pendentes."),
         shiny::selectInput("coleta", "Coleta a corrigir", choices = monitora_painel_choices("(selecione uma coleta; prévia limitada a uma coleta)", valores_coleta), selected = coleta_inicial),
-        shiny::checkboxInput("usar_lote_multicoletas", "Correção em lote por múltiplas COLETAS", value = FALSE),
+        shiny::radioButtons(
+          "escopo_coletas",
+          "Escopo de COLETAS",
+          choices = c("Coleta individual" = "coleta_individual", "Coletas do lote" = "coletas_do_lote"),
+          selected = "coleta_individual"
+        ),
         shiny::selectizeInput(
           "coletas_lote",
           "COLETAS do lote",
           choices = valores_coleta,
           selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Selecione duas ou mais COLETAS dentro dos filtros atuais", plugins = list("remove_button"))
+          options = list(placeholder = "Selecione COLETAS dentro dos filtros atuais", plugins = list("remove_button"))
         ),
-        shiny::checkboxInput(
-          "usar_todas_coletas_filtradas_lote",
-          "Usar todas as COLETAS filtradas pelos filtros superiores",
-          value = FALSE
+        shiny::fluidRow(
+          shiny::column(6, shiny::actionButton("adicionar_filtradas_lote", "Adicionar filtradas ao lote", class = "btn-default")),
+          shiny::column(6, shiny::actionButton("limpar_coletas_lote", "Limpar lote", class = "btn-default"))
         ),
-        shiny::helpText("No lote multicoletas, o painel gera 1 operação por COLETA por atributo, com n_linhas_esperado=101 por padrão. Marque 'Usar todas as COLETAS filtradas' para selecionar automaticamente todas as coletas que atendem aos filtros de UC, EA, UA, ano(s), ciclo, campanha e triagem."),
+        shiny::helpText("Escopo 'Coleta individual' usa apenas a COLETA selecionada acima. Escopo 'Coletas do lote' usa exatamente as COLETAS atualmente listadas em 'COLETAS do lote'. Use 'Adicionar filtradas ao lote' para preencher o lote com as COLETAS que atendem aos filtros superiores e depois revise/remova/adicione manualmente antes de aplicar."),
+        shiny::actionButton(
+          "limpar_outras_formas_escopo",
+          "Adicionar limpeza de outra forma de vida ao escopo",
+          class = "btn-danger btn-block",
+          width = "100%",
+          style = "white-space: normal; text-align: left;"
+        ),
+        shiny::helpText("Limpeza semântica de outra(s) forma(s) de vida: remove tokens históricos nas listas nativa/exótica/seca-morta e limpa descritores dependentes. Para lote, gera uma única operação atômica para todas as COLETAS listadas em 'COLETAS do lote'."),
         shiny::actionButton("excluir_coletas_filtradas", "Adicionar exclusão das COLETAS filtradas/selecionadas", class = "btn-danger"),
         shiny::helpText("Exclusão de COLETAS: adiciona uma operação auditável por COLETA para remover todos os registros da coleta. Use com confirmação de abrangência e justificativa."),
         shiny::uiOutput("ui_ponto"),
@@ -6080,7 +6656,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::actionButton("add_corr", "Adicionar correção simples/lote"),
         shiny::hr(),
         shiny::h4("Movimento assistido de forma de vida"),
-        shiny::selectInput("mv_forma", "Forma de vida", choices = formas_mv_choices, selected = if ("arbusto_acima" %in% formas_mv_choices) "arbusto_acima" else formas_mv_choices[1]),
+        shiny::selectInput("mv_forma", "Forma de vida", choices = formas_mv_choices, selected = if ("arbusto_acima" %in% unname(formas_mv_choices)) "arbusto_acima" else unname(formas_mv_choices)[1]),
         shiny::selectInput("mv_origem", "Origem", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),
         shiny::selectInput("mv_destino", "Destino", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),
         shiny::selectInput("mv_habito", "Hábito, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = ""),
@@ -6113,11 +6689,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::column(
             4,
             shiny::actionButton("remover_outras_selecionadas", "Excluir outra(s) forma(s) de vida", class = "btn-danger"),
-            shiny::helpText("Remove o token histórico outra/outro. Se o ponto ficaria vazio, adiciona solo_nu em tipo_forma_vida antes de recalcular.")
+            shiny::helpText("Remove, nas linhas selecionadas, tokens históricos de outra(s) forma(s) de vida e limpa os descritores dependentes correspondentes. Se o ponto ficaria sem categoria válida, aplica a regra de solo_nu. A ação gera uma única operação atômica auditável.")
           )
         ),
         shiny::hr(),
-        shiny::h4("Prévia do lote por múltiplas COLETAS"),
+        shiny::h4("Prévia das COLETAS do lote"),
         shiny::uiOutput("alerta_lote_multicoletas"),
         DT::DTOutput("preview_lote_multicoletas"),
         shiny::h4("Registros selecionados"),
@@ -6132,7 +6708,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
   server <- function(input, output, session) {
     monitora_painel_atualizar_habito_select <- function(input_id, forma, selected = "") {
-      forma <- monitora_relatorio_exoticas_normalizar_token(as.character(forma)[1L])
+      forma <- monitora_painel_canonizar_forma_habito(forma)
       if (monitora_painel_forma_exige_habito(forma)) {
         selected <- monitora_painel_valor(selected)
         if (!selected %in% unname(MONITORA_TRIAGEM_HABITO_CHOICES)) selected <- ""
@@ -6150,7 +6726,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       for (id in c("filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo", "filtro_campanha", "filtro_ua")) {
         try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
       }
-      try(shiny::updateCheckboxInput(session, "usar_todas_coletas_filtradas_lote", value = FALSE), silent = TRUE)
+      try(shiny::updateRadioButtons(session, "escopo_coletas", selected = "coleta_individual"), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "coletas_lote", selected = character(0)), silent = TRUE)
       try(shiny::updateSelectInput(session, "ponto", selected = ""), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "valor_original", value = ""), silent = TRUE)
@@ -6163,6 +6739,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(monitora_painel_atualizar_habito_select("mv_habito", input$mv_forma), silent = TRUE)
       try(monitora_painel_atualizar_habito_select("triagem_habito", input$triagem_forma_valida), silent = TRUE)
       rv$ponto_alvo <- ""
+    }
+
+    monitora_painel_usar_lote_coletas <- function() {
+      ### Fonte única de escopo em v17: a operação em lote usa exatamente as
+      ### COLETAS listadas em input$coletas_lote quando escopo_coletas ==
+      ### "coletas_do_lote". Mantém fallback defensivo para filas/sessões antigas
+      ### que ainda exponham input$usar_lote_multicoletas.
+      identical(monitora_painel_valor(input$escopo_coletas), "coletas_do_lote") || isTRUE(input[["usar_lote_multicoletas"]])
     }
 
     monitora_painel_assinatura_operacoes <- function(ops) {
@@ -6526,7 +7110,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(NULL)
       }
       destino_val <- monitora_painel_valor(input$triagem_destino_desconhecida)
-      forma_val <- monitora_painel_valor(input$triagem_forma_valida)
+      forma_val <- monitora_painel_canonizar_forma_habito(monitora_painel_valor(input$triagem_forma_valida))
       habito_val <- monitora_painel_valor(input$triagem_habito)
       if (!monitora_painel_forma_exige_habito(forma_val) && nzchar(habito_val)) {
         shiny::showNotification("Hábito só pode ser informado para cactácea, erva bromelioide, orquídea ou samambaia. A correção foi bloqueada.", type = "error", duration = 10)
@@ -6536,7 +7120,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::showNotification("Escolha a lista de destino e uma forma de vida válida antes de substituir desconhecida.", type = "error", duration = 8)
         return(NULL)
       }
-      if (forma_val %in% MONITORA_TRIAGEM_FORMAS_CONDICIONAIS && !nzchar(habito_val)) {
+      if (monitora_painel_forma_exige_habito(forma_val) && !nzchar(habito_val)) {
         shiny::showNotification("A forma escolhida exige hábito: terrestre, epifita ou rupicola.", type = "error", duration = 10)
         return(NULL)
       }
@@ -6559,7 +7143,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         if (!length(campos)) { bloqueadas <- bloqueadas + 1L; next }
         dep_destino_linha <- NA_character_
         dep_destino_nao_localizado_linha <- FALSE
-        if (forma_val %in% MONITORA_TRIAGEM_FORMAS_CONDICIONAIS) {
+        if (monitora_painel_forma_exige_habito(forma_val)) {
           dep_destino_linha <- monitora_correcao_resolver_coluna_habito(
             dt, destino_val, forma_val,
             if (!is.null(meta_xls)) meta_xls$campos else NULL,
@@ -6607,7 +7191,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           token_pai = forma_val, categoria_origem = "desconhecida", categoria_destino = destino_val
         )
         ordem <- ordem + 1L
-        if (forma_val %in% MONITORA_TRIAGEM_FORMAS_CONDICIONAIS && monitora_correcao_coluna_habito_segura(dt, dep_destino_linha, destino_val, forma_val) && !identical(dep_destino_linha, col_destino)) {
+        if (monitora_painel_forma_exige_habito(forma_val) && monitora_correcao_coluna_habito_segura(dt, dep_destino_linha, destino_val, forma_val) && !identical(dep_destino_linha, col_destino)) {
           ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "triagem_substituir_desconhecida", ordem, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = dep_destino_linha, acao = "update", valor_novo = habito_val, n_esperado = 1L, n_alvo = 1L, motivo = motivo_val, token_pai = forma_val, categoria_origem = "desconhecida", categoria_destino = destino_val)
           ordem <- ordem + 1L
         }
@@ -6645,6 +7229,105 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       invisible(NULL)
     }
 
+    monitora_painel_criar_op_limpeza_outras_atomica <- function(id, linhas_alvo, escopo_val, coleta_serial = NA_character_, ponto_val = NA_character_, motivo_val = NA_character_) {
+      linhas_alvo <- unique(as.integer(linhas_alvo))
+      linhas_alvo <- linhas_alvo[!is.na(linhas_alvo) & linhas_alvo >= 1L & linhas_alvo <= nrow(dt)]
+      if (!length(linhas_alvo)) return(NULL)
+      if (!nzchar(monitora_painel_valor(motivo_val))) motivo_val <- "Limpeza atômica de outra(s) forma(s) de vida: remover tokens históricos e limpar descritores dependentes."
+      op <- monitora_correcao_criar_operacao(
+        id,
+        input$responsavel,
+        "triagem_limpeza_outras_formas_vida_atomica",
+        1L,
+        escopo_val,
+        coleta = coleta_serial,
+        ponto_amostral = ifelse(nzchar(monitora_painel_valor(ponto_val)), ponto_val, NA_character_),
+        atributo = "__limpar_outras_formas_vida__",
+        acao = "limpar_outras_formas_vida",
+        valor_original = monitora_correcao_colapsar_lista_serializada(as.character(linhas_alvo)),
+        valor_novo = "outras_formas_vida",
+        n_esperado = length(linhas_alvo),
+        n_alvo = length(linhas_alvo),
+        motivo = motivo_val,
+        token_pai = "outra",
+        categoria_origem = "outras_formas_vida",
+        categoria_destino = NA_character_,
+        tipo_triagem = "outras_formas_vida"
+      )
+      monitora_correcao_anexar_contexto_operacao(op, dt, linhas_alvo, chaves)
+    }
+
+    monitora_painel_adicionar_limpeza_outras_escopo <- function() {
+      motivo_val <- monitora_painel_valor(input$motivo)
+      if (!nzchar(motivo_val)) motivo_val <- "Limpeza atômica de outra(s) forma(s) de vida no escopo selecionado."
+      linhas_alvo <- integer(0)
+      escopo_op <- "linhas_alvo"
+      coleta_serial <- NA_character_
+      ponto_val <- monitora_painel_valor(input$ponto)
+      if (isTRUE(monitora_painel_usar_lote_coletas())) {
+        coletas <- coletas_lote_selecionadas()
+        if (!length(coletas)) {
+          shiny::showNotification("Selecione COLETAS na lista 'COLETAS do lote'.", type = "error", duration = 8)
+          return(NULL)
+        }
+        if (length(coletas) > 1L && !isTRUE(input$confirmar_abrangencia)) {
+          shiny::showNotification("Lote com múltiplas COLETAS exige confirmação de abrangência.", type = "error", duration = 8)
+          return(NULL)
+        }
+        if (is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) {
+          shiny::showNotification("Coluna COLETA não localizada; limpeza em lote bloqueada.", type = "error", duration = 8)
+          return(NULL)
+        }
+        linhas_alvo <- which(as.character(dt[[chaves$coleta]]) %chin% as.character(coletas))
+        escopo_op <- "lote_coletas"
+        coleta_serial <- monitora_correcao_colapsar_lista_serializada(coletas)
+        if (identical(input$escopo, "ponto") && nzchar(ponto_val) && !is.na(chaves$ponto_amostral) && chaves$ponto_amostral %in% names(dt)) {
+          linhas_alvo <- linhas_alvo[as.character(dt[[chaves$ponto_amostral]][linhas_alvo]) == ponto_val]
+          escopo_op <- "multicoletas_atomico"
+        }
+      } else {
+        coleta_val <- monitora_painel_valor(input$coleta)
+        if (!nzchar(coleta_val) || is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) {
+          shiny::showNotification("Selecione uma COLETA válida para a limpeza atômica.", type = "error", duration = 8)
+          return(NULL)
+        }
+        linhas_alvo <- which(as.character(dt[[chaves$coleta]]) == coleta_val)
+        coleta_serial <- coleta_val
+        escopo_op <- if (identical(input$escopo, "ponto")) "ponto" else "coleta_inteira"
+        if (identical(input$escopo, "ponto")) {
+          if (!nzchar(ponto_val) || is.na(chaves$ponto_amostral) || !(chaves$ponto_amostral %in% names(dt))) {
+            shiny::showNotification("Selecione um ponto amostral válido para escopo = ponto.", type = "error", duration = 8)
+            return(NULL)
+          }
+          linhas_alvo <- linhas_alvo[as.character(dt[[chaves$ponto_amostral]][linhas_alvo]) == ponto_val]
+        }
+        if (length(linhas_alvo) > 1L && !isTRUE(input$confirmar_abrangencia)) {
+          shiny::showNotification("Escopo com múltiplas linhas exige confirmação de abrangência.", type = "error", duration = 8)
+          return(NULL)
+        }
+      }
+      linhas_alvo <- unique(as.integer(linhas_alvo))
+      linhas_alvo <- linhas_alvo[!is.na(linhas_alvo) & linhas_alvo >= 1L & linhas_alvo <= nrow(dt)]
+      if (!length(linhas_alvo)) {
+        shiny::showNotification("Nenhuma linha-alvo localizada para limpeza atômica.", type = "error", duration = 8)
+        return(NULL)
+      }
+      cols_info <- monitora_correcao_colunas_limpeza_outras_formas(dt, if (!is.null(meta_xls)) meta_xls$campos else NULL)
+      resumo <- monitora_correcao_contar_residuos_outras_formas(dt, linhas_alvo, cols_info)
+      if (resumo$linhas_com_residuo_total[1L] == 0L) {
+        shiny::showNotification("O escopo selecionado não contém resíduos de outra(s) forma(s) de vida detectáveis.", type = "warning", duration = 8)
+        return(NULL)
+      }
+      id <- monitora_correcao_novo_id("TRIOUT_ATOM")
+      op <- monitora_painel_criar_op_limpeza_outras_atomica(id, linhas_alvo, escopo_op, coleta_serial, ponto_val, motivo_val)
+      if (is.null(op) || !nrow(op)) return(NULL)
+      n_add <- monitora_painel_adicionar_ops_pendentes(list(op), origem = "limpeza atômica outras formas de vida")
+      shiny::showNotification(paste0(n_add, " operação atômica adicionada para ", resumo$linhas_com_residuo_total[1L], " linha(s) com resíduo em ", length(linhas_alvo), " linha(s)-alvo."), type = if (n_add > 0L) "message" else "warning", duration = 10)
+      monitora_correcao_console_msg("Limpeza atômica outras formas: ", n_add, " operação adicionada; linhas_alvo=", length(linhas_alvo), "; residuos=", resumo$linhas_com_residuo_total[1L], ".")
+      monitora_painel_limpar_apos_correcao()
+      invisible(NULL)
+    }
+
     monitora_painel_adicionar_remocao_outras <- function() {
       ex <- triagem_formas_vida_coleta()
       sel <- input$tabela_exoticas_rows_selected
@@ -6662,72 +7345,30 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::showNotification("Esta ação só se aplica a linhas tipo_triagem = 'outras_formas_vida'.", type = "error", duration = 8)
         return(NULL)
       }
-      tipo_col <- chaves$tipo_forma_vida
-      ops_total <- list(); bloqueadas <- 0L; adicionou_solo <- 0L
+      linhas_total <- integer(0)
       for (aa in seq_len(nrow(r))) {
-        alvo <- r[aa]
-        linhas_globais <- monitora_painel_resolver_linhas_globais_triagem(alvo)
-        if (length(linhas_globais) != 1L) { bloqueadas <- bloqueadas + 1L; next }
-        campos <- monitora_painel_split_barra(alvo$campo_forma_vida)
-        campos <- campos[campos %in% names(dt)]
-        campos <- campos[vapply(campos, function(cc) monitora_correcao_coluna_principal_segura(dt, cc, monitora_painel_categoria_por_coluna_forma(cc)), logical(1))]
-        tokens <- intersect(monitora_painel_split_tokens_triagem(alvo$token_detectado), MONITORA_TRIAGEM_TOKENS_OUTRAS)
-        if (!length(tokens)) tokens <- "outra"
-        if (!length(campos)) { bloqueadas <- bloqueadas + 1L; next }
-        coleta_val <- monitora_painel_valor(alvo$COLETA)
-        ponto_val <- monitora_painel_valor(alvo$ponto_amostral)
-        uuid_val <- monitora_painel_valor(alvo$uuid_registro)
-        uuid_arg <- ifelse(nzchar(uuid_val), uuid_val, NA_character_)
-        ponto_arg <- ifelse(nzchar(ponto_val), ponto_val, NA_character_)
-        id <- monitora_correcao_novo_id("TRIOUT")
-        esc <- "uuid_registro"
-        motivo_val <- monitora_painel_valor(input$motivo)
-        if (!nzchar(motivo_val)) motivo_val <- "Triagem assistida: excluir token histórico de outras formas de vida; registrar solo_nu se a exclusão deixaria o ponto vazio."
-        ops <- list(); ordem <- 1L
-        remocoes <- data.table::data.table(campo = character(), token = character())
-        for (cc in campos) {
-          categoria_origem <- monitora_painel_categoria_por_coluna_forma(cc)
-          for (tok in tokens) {
-            valor_original_cc <- as.character(dt[[cc]][linhas_globais])
-            ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
-              id, input$responsavel, "triagem_remover_outras_formas_vida", ordem, esc, coleta_val,
-              uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = cc, acao = "remove_token",
-              valor_original = valor_original_cc, valor_novo = tok, n_esperado = 1L, n_alvo = 1L, motivo = motivo_val,
-              token_pai = tok, categoria_origem = categoria_origem, categoria_destino = NA_character_
-            )
-            remocoes <- data.table::rbindlist(list(remocoes, data.table::data.table(campo = cc, token = tok)), fill = TRUE, use.names = TRUE)
-            ordem <- ordem + 1L
-            if (!is.na(categoria_origem)) {
-              deps_ops <- monitora_painel_ops_limpar_dependentes_token(id, input$responsavel, "triagem_remover_outras_formas_vida", ordem, esc, coleta_val, uuid_arg, ponto_arg, tok, categoria_origem, motivo_val)
-              if (length(deps_ops)) { ops <- c(ops, deps_ops); ordem <- ordem + length(deps_ops) }
-            }
-          }
-        }
-        ponto_tem_valida <- monitora_painel_ponto_tem_categoria_valida_apos_remocao(linhas_globais, remocoes)
-        if (!isTRUE(ponto_tem_valida)) {
-          if (is.na(tipo_col) || !(tipo_col %in% names(dt))) { bloqueadas <- bloqueadas + 1L; next }
-          ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
-            id, input$responsavel, "triagem_remover_outras_formas_vida", ordem, esc, coleta_val,
-            uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = tipo_col, acao = "append_token",
-            valor_novo = "solo_nu", n_esperado = 1L, n_alvo = 1L, motivo = paste0(motivo_val, " Regra de segurança: ponto ficaria sem categoria tocando a vareta."),
-            token_pai = "solo_nu", categoria_origem = "outras_formas_vida", categoria_destino = "solo_nu"
-          )
-          ordem <- ordem + 1L
-          adicionou_solo <- adicionou_solo + 1L
-        }
-        if (!is.na(tipo_col)) {
-          ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(id, input$responsavel, "triagem_remover_outras_formas_vida", ordem, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = tipo_col, acao = "recalcular_tipo_forma_vida", n_esperado = 1L, n_alvo = 1L, motivo = motivo_val, token_pai = "outra", categoria_origem = "outras_formas_vida", categoria_destino = ifelse(ponto_tem_valida, NA_character_, "solo_nu"))
-        }
-        ops <- lapply(ops, function(op) monitora_correcao_anexar_contexto_operacao(op, dt, linhas_globais, chaves))
-        ops_total <- c(ops_total, ops)
+        linhas_total <- c(linhas_total, monitora_painel_resolver_linhas_globais_triagem(r[aa]))
       }
-      if (!length(ops_total)) {
-        shiny::showNotification(paste0("Nenhuma remoção foi adicionada. Linhas bloqueadas: ", bloqueadas, "."), type = "error", duration = 10)
+      linhas_total <- unique(as.integer(linhas_total))
+      linhas_total <- linhas_total[!is.na(linhas_total) & linhas_total >= 1L & linhas_total <= nrow(dt)]
+      if (!length(linhas_total)) {
+        shiny::showNotification("Nenhuma linha global foi localizada para as linhas selecionadas na triagem.", type = "error", duration = 8)
         return(NULL)
       }
-      n_add <- monitora_painel_adicionar_ops_pendentes(ops_total, origem = "triagem outras formas de vida")
-      shiny::showNotification(paste0(n_add, " operação(ões) adicionada(s) para excluir outras formas de vida. solo_nu previsto em ", adicionou_solo, " ponto(s). Operações duplicadas são bloqueadas imediatamente."), type = if (n_add > 0L) "message" else "warning", duration = 10)
-      monitora_correcao_console_msg("Triagem outras formas de vida: ", n_add, " operação(ões) adicionada(s); solo_nu_adicionado=", adicionou_solo, "; linhas bloqueadas=", bloqueadas, ".")
+      motivo_val <- monitora_painel_valor(input$motivo)
+      if (!nzchar(motivo_val)) motivo_val <- "Triagem assistida: limpeza atômica de outra(s) forma(s) de vida selecionadas."
+      cols_info <- monitora_correcao_colunas_limpeza_outras_formas(dt, if (!is.null(meta_xls)) meta_xls$campos else NULL)
+      resumo <- monitora_correcao_contar_residuos_outras_formas(dt, linhas_total, cols_info)
+      if (resumo$linhas_com_residuo_total[1L] == 0L) {
+        shiny::showNotification("As linhas selecionadas não contêm resíduos detectáveis de outra(s) forma(s) de vida.", type = "warning", duration = 8)
+        return(NULL)
+      }
+      id <- monitora_correcao_novo_id("TRIOUT_ATOM")
+      coleta_serial <- if (chaves$coleta %in% names(dt)) monitora_correcao_colapsar_lista_serializada(unique(as.character(dt[[chaves$coleta]][linhas_total]))) else NA_character_
+      op <- monitora_painel_criar_op_limpeza_outras_atomica(id, linhas_total, "linhas_alvo", coleta_serial, NA_character_, motivo_val)
+      n_add <- monitora_painel_adicionar_ops_pendentes(list(op), origem = "triagem outras formas de vida atômica")
+      shiny::showNotification(paste0(n_add, " operação atômica adicionada para limpar ", resumo$linhas_com_residuo_total[1L], " linha(s) selecionada(s) com outras formas de vida."), type = if (n_add > 0L) "message" else "warning", duration = 10)
+      monitora_correcao_console_msg("Triagem outras formas de vida atômica: ", n_add, " operação adicionada; linhas_alvo=", length(linhas_total), "; residuos=", resumo$linhas_com_residuo_total[1L], ".")
       monitora_painel_limpar_apos_correcao()
       invisible(NULL)
     }
@@ -6823,6 +7464,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       sort(vals_base[vals_base %in% vals_alvo])
     }
 
+    choices_triagem_coleta_filtradas <- shiny::reactive({
+      x <- dados_pre_coleta()
+      vals_base <- monitora_painel_valores_coluna(x, chaves$coleta)
+      monitora_painel_choices_triagem_coleta(vals_base)
+    })
+
     coletas_filtradas_lote <- shiny::reactive({
       x <- dados_pre_coleta()
       vals_base <- monitora_painel_valores_coluna(x, chaves$coleta)
@@ -6830,14 +7477,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     coletas_lote_selecionadas <- shiny::reactive({
-      if (!isTRUE(input$usar_lote_multicoletas)) return(character(0))
+      if (!isTRUE(monitora_painel_usar_lote_coletas())) return(character(0))
       vals_validos <- coletas_filtradas_lote()
-      if (isTRUE(input$usar_todas_coletas_filtradas_lote)) return(vals_validos)
       monitora_painel_coletas_lote_validas(input$coletas_lote, vals_validos)
     })
 
     preview_lote_multicoletas_dt <- shiny::reactive({
-      if (!isTRUE(input$usar_lote_multicoletas)) return(data.table::data.table())
+      if (!isTRUE(monitora_painel_usar_lote_coletas())) return(data.table::data.table())
       n_exp <- suppressWarnings(as.integer(input$n_esperado))
       if (!is.finite(n_exp) || n_exp < 1L) n_exp <- 101L
       monitora_painel_resumo_lote_multicoletas(dados_pre_coleta(), coletas_lote_selecionadas(), input$atributo, n_exp)
@@ -6868,6 +7514,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       monitora_painel_update_selectize_multi("filtro_ua", vals, isolate(input$filtro_ua), server = TRUE)
     }, ignoreInit = FALSE)
 
+    shiny::observeEvent(choices_triagem_coleta_filtradas(), {
+      choices_atual <- choices_triagem_coleta_filtradas()
+      selecionados <- intersect(unique(as.character(isolate(input$filtros_triagem_coleta))), unname(choices_atual))
+      shiny::updateCheckboxGroupInput(
+        session,
+        "filtros_triagem_coleta",
+        choices = choices_atual,
+        selected = selecionados
+      )
+    }, ignoreInit = FALSE)
+
     shiny::observeEvent(coletas_filtradas_lote(), {
       vals <- coletas_filtradas_lote()
       criterios <- isolate(input$filtros_triagem_coleta)
@@ -6879,22 +7536,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "(selecione uma coleta; prévia limitada a uma coleta)"
       }
       shiny::updateSelectInput(session, "coleta", choices = monitora_painel_choices(rotulo_vazio, vals), selected = selecionado)
-      selecionadas_lote <- if (isTRUE(isolate(input$usar_todas_coletas_filtradas_lote))) {
-        vals
-      } else {
-        monitora_painel_coletas_lote_validas(isolate(input$coletas_lote), vals)
-      }
+      selecionadas_lote <- monitora_painel_coletas_lote_validas(isolate(input$coletas_lote), vals)
       shiny::updateSelectizeInput(session, "coletas_lote", choices = vals, selected = selecionadas_lote, server = TRUE)
     }, ignoreInit = FALSE)
 
-    shiny::observeEvent(input$usar_todas_coletas_filtradas_lote, {
+    shiny::observeEvent(input$adicionar_filtradas_lote, {
       vals <- coletas_filtradas_lote()
-      selecionadas_lote <- if (isTRUE(input$usar_todas_coletas_filtradas_lote)) {
-        vals
-      } else {
-        monitora_painel_coletas_lote_validas(isolate(input$coletas_lote), vals)
+      if (!length(vals)) {
+        shiny::showNotification("Nenhuma COLETA atende aos filtros atuais para adicionar ao lote.", type = "warning", duration = 8)
+        return(NULL)
       }
-      shiny::updateSelectizeInput(session, "coletas_lote", choices = vals, selected = selecionadas_lote, server = TRUE)
+      shiny::updateRadioButtons(session, "escopo_coletas", selected = "coletas_do_lote")
+      shiny::updateSelectizeInput(session, "coletas_lote", choices = vals, selected = vals, server = TRUE)
+      shiny::showNotification(paste0(length(vals), " COLETA(s) filtrada(s) adicionada(s) ao lote. Revise a lista antes de aplicar."), type = "message", duration = 8)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$limpar_coletas_lote, {
+      vals <- coletas_filtradas_lote()
+      shiny::updateSelectizeInput(session, "coletas_lote", choices = vals, selected = character(0), server = TRUE)
+      shiny::showNotification("Lista de COLETAS do lote limpa.", type = "message", duration = 5)
     }, ignoreInit = TRUE)
 
     output$ui_ponto <- shiny::renderUI({
@@ -6970,8 +7630,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$alerta_lote_multicoletas <- shiny::renderUI({
-      if (!isTRUE(input$usar_lote_multicoletas)) {
-        return(shiny::div(class = "alert alert-secondary", "Lote multicoletas desativado. A correção simples usa somente a COLETA selecionada na prévia."))
+      if (!isTRUE(monitora_painel_usar_lote_coletas())) {
+        return(shiny::div(class = "alert alert-secondary", "Escopo 'Coleta individual' ativo. Operações simples usam somente a COLETA selecionada na prévia."))
       }
       resumo <- preview_lote_multicoletas_dt()
       n_sel <- length(coletas_lote_selecionadas())
@@ -6989,13 +7649,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       } else {
         paste0("Lote validado no painel: ", n_ok, " COLETA(s), ", sum(resumo$n_linhas, na.rm = TRUE), " linha(s) alvo, ", n_ok, " operação(ões) a gerar.")
       }
-      shiny::div(class = classe, shiny::strong("Prévia do lote multicoletas. "), msg)
+      shiny::div(class = classe, shiny::strong("Prévia das COLETAS do lote. "), msg)
     })
 
     output$preview_lote_multicoletas <- DT::renderDT({
       resumo <- preview_lote_multicoletas_dt()
-      if (!isTRUE(input$usar_lote_multicoletas)) {
-        return(DT::datatable(data.table::data.table(mensagem = "Ative 'Correção em lote por múltiplas COLETAS' para exibir a prévia."), rownames = FALSE))
+      if (!isTRUE(monitora_painel_usar_lote_coletas())) {
+        return(DT::datatable(data.table::data.table(mensagem = "Selecione escopo 'Coletas do lote' para exibir a prévia."), rownames = FALSE))
       }
       if (!nrow(resumo)) {
         return(DT::datatable(data.table::data.table(mensagem = "Sem COLETAS selecionadas para lote ou atributo inválido."), rownames = FALSE))
@@ -7062,6 +7722,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       DT::datatable(rv$correcoes, selection = "multiple", options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
+    shiny::observeEvent(input$limpar_filtros, {
+      for (id in c("filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo", "filtro_campanha", "filtro_ua")) {
+        try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
+      }
+      try(shiny::updateCheckboxGroupInput(session, "filtros_triagem_coleta", selected = character(0)), silent = TRUE)
+      shiny::showNotification("Filtros limpos. A COLETA selecionada, o lote e as correções pendentes foram mantidos.", type = "message", duration = 6)
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$excluir_correcoes_pendentes, {
       sel <- input$correcoes_rows_selected
       n_ops <- tryCatch(nrow(rv$correcoes), error = function(e) 0L)
@@ -7110,11 +7778,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rv$movimento_alvo <- data.table::copy(r)
       if (nzchar(coleta_sel)) shiny::updateSelectInput(session, "coleta", selected = coleta_sel)
       shiny::updateSelectInput(session, "ponto", selected = ponto_sel)
-      if (forma_sel %in% formas_mv_choices) {
-        shiny::updateSelectInput(session, "mv_forma", selected = forma_sel)
-      } else {
-        shiny::updateSelectInput(session, "mv_forma", choices = sort(unique(c(formas_mv_choices, forma_sel))), selected = forma_sel)
-      }
+      shiny::updateSelectInput(session, "mv_forma", choices = monitora_painel_mv_choices_com_token(forma_sel), selected = monitora_painel_forma_representativa_mv(forma_sel))
       shiny::updateSelectInput(session, "mv_origem", selected = "exotica")
       shiny::updateSelectInput(session, "mv_destino", selected = "nativa")
       shiny::updateRadioButtons(session, "escopo", selected = "ponto")
@@ -7151,10 +7815,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       monitora_painel_adicionar_remocao_outras()
     })
 
+    shiny::observeEvent(input$limpar_outras_formas_escopo, {
+      monitora_painel_adicionar_limpeza_outras_escopo()
+    })
+
     shiny::observeEvent(input$atributo, {
       info <- dict[atributo_coluna_registros_corrig == input$atributo]
       esc <- if (nrow(info) > 0) info$escopo_sugerido[1] else "ponto"
-      if (isTRUE(input$usar_lote_multicoletas)) {
+      if (isTRUE(monitora_painel_usar_lote_coletas())) {
         shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira")
         shiny::updateNumericInput(session, "n_esperado", value = 101)
         shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
@@ -7172,8 +7840,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
     }, ignoreInit = FALSE)
 
-    shiny::observeEvent(input$usar_lote_multicoletas, {
-      if (isTRUE(input$usar_lote_multicoletas)) {
+    shiny::observeEvent(input$escopo_coletas, {
+      if (isTRUE(monitora_painel_usar_lote_coletas())) {
         shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira")
         shiny::updateNumericInput(session, "n_esperado", value = 101)
         shiny::updateTextAreaInput(session, "valor_original", value = "")
@@ -7186,8 +7854,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     shiny::observeEvent(input$excluir_coletas_filtradas, {
-      if (!isTRUE(input$usar_lote_multicoletas)) {
-        shiny::showNotification("Ative 'Correção em lote por múltiplas COLETAS' antes de adicionar exclusões de COLETAS filtradas.", type = "error", duration = 8)
+      if (!isTRUE(monitora_painel_usar_lote_coletas())) {
+        shiny::showNotification("Selecione escopo 'Coletas do lote' antes de adicionar exclusões de COLETAS filtradas.", type = "error", duration = 8)
         return(NULL)
       }
       if (!isTRUE(input$confirmar_abrangencia) || !nzchar(monitora_painel_valor(input$motivo))) {
@@ -7196,7 +7864,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       coletas_exc <- coletas_lote_selecionadas()
       if (!length(coletas_exc)) {
-        shiny::showNotification("Nenhuma COLETA filtrada/selecionada para exclusão. Se a intenção é excluir todas as filtradas, marque 'Usar todas as COLETAS filtradas pelos filtros superiores'.", type = "error", duration = 10)
+        shiny::showNotification("Nenhuma COLETA filtrada/selecionada para exclusão. Use 'Adicionar filtradas ao lote' para preencher a lista de COLETAS do lote.", type = "error", duration = 10)
         return(NULL)
       }
       if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
@@ -7259,23 +7927,23 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(NULL)
       }
 
-      if (isTRUE(input$usar_lote_multicoletas)) {
+      if (isTRUE(monitora_painel_usar_lote_coletas())) {
         if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
           shiny::showNotification("Não foi possível identificar a coluna de coleta; lote bloqueado para evitar alteração ambígua.", type = "error", duration = 8)
           return(NULL)
         }
         coletas_lote <- coletas_lote_selecionadas()
         if (length(coletas_lote) < 2L) {
-          shiny::showNotification("Selecione duas ou mais COLETAS no campo 'COLETAS do lote' ou marque 'Usar todas as COLETAS filtradas pelos filtros superiores'.", type = "error", duration = 8)
+          shiny::showNotification("Selecione duas ou mais COLETAS no campo 'COLETAS do lote'.", type = "error", duration = 8)
           return(NULL)
         }
         if (!identical(monitora_painel_valor(input$escopo), "coleta_inteira")) {
-          shiny::showNotification("Lote por múltiplas COLETAS exige escopo 'Aplicar aos 101 registros da coleta'.", type = "error", duration = 10)
+          shiny::showNotification("Lote de COLETAS exige escopo 'Aplicar aos 101 registros da coleta'.", type = "error", duration = 10)
           return(NULL)
         }
         acao_val <- monitora_painel_valor(input$acao)
         if (!(acao_val %in% c("update", "clear"))) {
-          shiny::showNotification("Lote por múltiplas COLETAS permite apenas 'Substituir valor' ou 'Limpar valor'.", type = "error", duration = 10)
+          shiny::showNotification("Lote de COLETAS permite apenas 'Substituir valor' ou 'Limpar valor'.", type = "error", duration = 10)
           return(NULL)
         }
         if (identical(acao_val, "update") && !nzchar(monitora_painel_valor(input$valor_novo))) {
@@ -7312,7 +7980,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         ops <- vector("list", nrow(resumo_lote))
         valor_original_global <- monitora_painel_valor(input$valor_original)
         valor_novo_val <- monitora_painel_valor(input$valor_novo)
-        motivo_base <- if (nzchar(motivo_val)) motivo_val else paste0("Correção em lote por múltiplas COLETAS: atributo '", atributo_sel, "'.")
+        motivo_base <- if (nzchar(motivo_val)) motivo_val else paste0("Correção em lote de COLETAS: atributo '", atributo_sel, "'.")
         motivo_lote <- paste0(
           motivo_base,
           " [LOTE_MULTICOLETAS: ", nrow(resumo_lote), " COLETA(s); ", sum(resumo_lote$n_linhas, na.rm = TRUE),
@@ -7348,13 +8016,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           ops[[ii]] <- monitora_correcao_anexar_contexto_operacao(ops[[ii]], dt, linhas_globais, chaves)
         }
         ops <- data.table::rbindlist(ops, fill = TRUE, use.names = TRUE)
-        n_add <- monitora_painel_adicionar_ops_pendentes(ops, origem = "lote por múltiplas COLETAS")
+        n_add <- monitora_painel_adicionar_ops_pendentes(ops, origem = "lote de COLETAS")
         n_pend <- nrow(rv$correcoes)
-        monitora_correcao_console_msg("Lote multicoletas adicionado à sessão do painel: ", n_add, " operação(ões) nova(s); ", n_pend, " operação(ões) pendente(s) no total.")
+        monitora_correcao_console_msg("Lote de COLETAS adicionado à sessão do painel: ", n_add, " operação(ões) nova(s); ", n_pend, " operação(ões) pendente(s) no total.")
         shiny::showNotification(paste0("Lote adicionado: ", n_add, " operação(ões) nova(s) para ", nrow(resumo_lote), " COLETA(s). Há ", n_pend, " operação(ões) pendente(s)."), type = if (n_add > 0L) "message" else "warning", duration = 10)
         monitora_painel_limpar_apos_correcao()
-        try(shiny::updateCheckboxInput(session, "usar_lote_multicoletas", value = FALSE), silent = TRUE)
-        try(shiny::updateCheckboxInput(session, "usar_todas_coletas_filtradas_lote", value = FALSE), silent = TRUE)
+        try(shiny::updateRadioButtons(session, "escopo_coletas", selected = "coleta_individual"), silent = TRUE)
         try(shiny::updateSelectizeInput(session, "coletas_lote", selected = character(0)), silent = TRUE)
         return(NULL)
       }
@@ -7412,6 +8079,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       alvo_forma <- if (nrow(alvo) > 0L) monitora_painel_valor(alvo$forma_vida_exotica) else ""
       usar_alvo_triado <- nrow(alvo) > 0L && identical(mv_origem_val, "exotica") && identical(mv_destino_val, "nativa") && nzchar(alvo_forma)
       if (isTRUE(usar_alvo_triado)) mv_forma_val <- alvo_forma
+      mv_forma_val_original <- mv_forma_val
+      mv_forma_val <- monitora_painel_canonizar_forma_habito(mv_forma_val)
 
       x <- dados_filtrados()
       if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
@@ -7492,15 +8161,35 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       uuid_arg <- ifelse(nzchar(uuid_val), uuid_val, NA_character_)
       ponto_arg <- ifelse(nzchar(ponto_val), ponto_val, NA_character_)
       valor_original_remove <- ifelse(nzchar(valor_original_origem), valor_original_origem, NA_character_)
-      ops <- list(
-        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 1, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_origem, acao = "remove_token", valor_original = valor_original_remove, valor_novo = mv_forma_val, n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val),
-        monitora_correcao_criar_operacao(id, input$responsavel, "movimento_forma_vida_condicional", 2, esc, coleta_val, uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_destino, acao = "append_token", valor_novo = mv_forma_val, n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val)
+      tokens_origem_remover <- unique(c(
+        monitora_painel_forma_tokens_historicos_mv(mv_forma_val),
+        monitora_painel_forma_tokens_historicos_mv(mv_forma_val_original),
+        monitora_relatorio_exoticas_normalizar_token(mv_forma_val_original),
+        mv_forma_val
+      ))
+      if (!length(tokens_origem_remover)) tokens_origem_remover <- mv_forma_val
+      tokens_origem_remover <- unique(setdiff(tokens_origem_remover, MONITORA_TRIAGEM_TOKENS_OUTRAS))
+      ops <- list()
+      for (tok_remover in tokens_origem_remover) {
+        ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
+          id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val,
+          uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_origem,
+          acao = "remove_token", valor_original = valor_original_remove, valor_novo = tok_remover,
+          n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo, token_pai = tok_remover,
+          categoria_origem = mv_origem_val, categoria_destino = mv_destino_val
+        )
+      }
+      ops[[length(ops) + 1L]] <- monitora_correcao_criar_operacao(
+        id, input$responsavel, "movimento_forma_vida_condicional", length(ops) + 1L, esc, coleta_val,
+        uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = col_destino,
+        acao = "append_token", valor_novo = mv_forma_val, n_esperado = n_exp, n_alvo = length(linhas),
+        motivo = input$motivo, token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val
       )
       ### Campos inferiores vinculados pelo XLSForm: ao mover uma forma de vida,
       ### limpar todos os dependentes da origem para o token movido. Isso inclui campos
       ### de hábito, espécie/lista de espécie, "outra sp", fotos e campos históricos,
       ### conforme dependências selected(${forma_vida_<categoria>}, '<token>') embutidas.
-      deps_mov <- deps[parent_name == paste0("forma_vida_", mv_origem_val) & token == mv_forma_val]
+      deps_mov <- deps[parent_name == paste0("forma_vida_", mv_origem_val) & token %in% tokens_origem_remover]
       if (nrow(deps_mov) > 0L) {
         deps_mov_cols <- unique(vapply(deps_mov$dependent_name, function(nn) monitora_correcao_resolver_coluna(dt, nn, if (!is.null(meta_xls)) meta_xls$campos else NULL), character(1)))
         deps_mov_cols <- deps_mov_cols[!is.na(deps_mov_cols) & deps_mov_cols %in% names(dt)]
@@ -14007,6 +14696,13 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
   if (isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS) && isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE)) {
     monitora_correcao_console_msg("Aplicando correções assistidas registradas em ", MONITORA_ARQUIVO_CORRECOES_CAMPOS, ".")
     registros_corrig <- monitora_correcao_aplicar_arquivo(registros_corrig, MONITORA_ARQUIVO_CORRECOES_CAMPOS, MONITORA_META_XLSFORMS_CORRECOES$campos)
+    monitora_correcao_auditar_persistencia_limpeza_outras_formas(
+      registros_corrig,
+      MONITORA_ARQUIVO_CORRECOES_CAMPOS,
+      MONITORA_META_XLSFORMS_CORRECOES$campos,
+      contexto = "pos_aplicacao_retorno",
+      abortar = TRUE
+    )
     monitora_correcao_console_msg("Aplicação das correções assistidas concluída; seguindo para validações/estatísticas.")
     monitora_perf_registrar_checkpoint("painel_correcoes_aplicacao_arquivo", "arquivo de correções assistidas aplicado aos registros", registros_corrig)
     MONITORA_AUDITORIA_SEMANTICA_FORMAS_VIDA <- monitora_correcao_auditar_formas_vida_semantica(registros_corrig, contexto = paste0("pos_correcoes_", MONITORA_EXEC_ID), abortar = TRUE)
@@ -20108,6 +20804,18 @@ monitora_relatorio_gerar_textual_estatistico <- function(caminho = file.path(MON
 setwd(MONITORA_OUTPUT_DIR)
 
 if (exists("registros_corrig")) {
+  if (exists("MONITORA_APLICAR_CORRECOES_CAMPOS", inherits = FALSE) &&
+      isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS) &&
+      exists("MONITORA_CORRECOES_ARQUIVO_EXISTE", inherits = FALSE) &&
+      isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE)) {
+    monitora_correcao_auditar_persistencia_limpeza_outras_formas(
+      registros_corrig,
+      MONITORA_ARQUIVO_CORRECOES_CAMPOS,
+      if (exists("MONITORA_META_XLSFORMS_CORRECOES", inherits = FALSE) && !is.null(MONITORA_META_XLSFORMS_CORRECOES$campos)) MONITORA_META_XLSFORMS_CORRECOES$campos else NULL,
+      contexto = "pre_export_registros_corrig",
+      abortar = TRUE
+    )
+  }
   monitora_fwrite(registros_corrig,
          file.path("registros_corrig.csv"),
          row.names = FALSE)
