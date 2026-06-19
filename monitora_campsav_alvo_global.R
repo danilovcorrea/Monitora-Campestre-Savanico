@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.3.0
+### Versão pública: v2.3.2
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -26,7 +26,12 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.3.0:
+### Destaques da versão pública v2.3.2:
+###   - correção do botão de exclusão de COLETAS filtradas/selecionadas: a operação
+###     passa a ser tratada como remoção integral de linhas, sem tentativa de editar
+###     a coluna estrutural COLETA;
+###   - auditoria pós-exclusão bloqueia a execução se qualquer linha das COLETAS
+###     excluídas permanecer em registros_corrig;
 ###   - inclusão de correção em lote de COLETAS no painel, restrita a atributos
 ###     uniformes por coleta e sem expandir para 101 operações por coleta;
 ###   - prévia auditável por COLETA, com bloqueio quando o atributo não é uniforme nas 101 linhas
@@ -42,7 +47,7 @@
 ###   - inclusão do atributo COLETA em registros_corrig_stat, posicionado antes de UC,
 ###     para rastreabilidade das unidades estatísticas após correções/exclusões de coletas.
 ###
-### Destaques herdados da versão pública v2.2.2:
+### Destaques consolidados do script:
 ###   - validação transacional das correções, com operações obrigatórias bloqueadas
 ###     integralmente quando qualquer etapa obrigatória falha;
 ###   - triagem de exóticas por vínculo operacional estrito: Encostam=exotica + forma de vida
@@ -4174,8 +4179,8 @@ monitora_correcao_xlsforms_embutidos <- function() {
 
 
 monitora_correcao_ler_xlsforms <- function(...) {
-  ### Compatibilidade com versões anteriores: a v2.2.1 não lê XLSForms externos.
-  ### Todas as regras utilizadas pelo painel são carregadas da seção embutida acima.
+  ### Todas as regras utilizadas pelo painel são carregadas da seção embutida acima,
+  ### sem dependência de leitura externa de XLSForms durante a execução.
   monitora_correcao_xlsforms_embutidos()
 }
 
@@ -5330,6 +5335,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   audit <- data.table::data.table()
   linhas_afetadas_vinculos <- integer(0)
   afetacoes_vinculos <- data.table::data.table(linha_indice = integer(), atributo = character())
+  coletas_excluidas_aplicadas <- character(0)
 
   ### Operações semânticas atômicas de limpeza de outras formas de vida.
   ### São aplicadas por escopo/linhas, antes da pré-validação célula-a-célula,
@@ -5467,6 +5473,10 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
         )
         audit_del <- monitora_correcao_anexar_contexto_auditoria(audit_del, dt, chaves)
         audit <- data.table::rbindlist(list(audit, audit_del), fill = TRUE, use.names = TRUE)
+        coleta_excluida_val <- if ("coleta" %in% names(linha_corr)) as.character(linha_corr$coleta[1L]) else NA_character_
+        if (!is.na(coleta_excluida_val) && nzchar(trimws(coleta_excluida_val))) {
+          coletas_excluidas_aplicadas <- unique(c(coletas_excluidas_aplicadas, coleta_excluida_val))
+        }
         dt <- dt[-linhas]
         indice_linhas <- monitora_correcao_criar_indice_linhas(dt, chaves)
         linhas_semantica_alvo <- linhas_semantica_alvo[linhas_semantica_alvo <= nrow(dt)]
@@ -5589,6 +5599,36 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
         linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_,
         arquivo_correcao = arquivo_correcao
       )), fill = TRUE, use.names = TRUE)
+    }
+  }
+
+  if (length(coletas_excluidas_aplicadas) > 0L && !is.na(chaves$coleta) && chaves$coleta %in% names(dt)) {
+    coletas_excluidas_aplicadas <- unique(coletas_excluidas_aplicadas[!is.na(coletas_excluidas_aplicadas) & nzchar(trimws(coletas_excluidas_aplicadas))])
+    if (length(coletas_excluidas_aplicadas) > 0L) {
+      idx_vestigios <- which(as.character(dt[[chaves$coleta]]) %chin% coletas_excluidas_aplicadas)
+      if (length(idx_vestigios) > 0L) {
+        vestigios <- dt[idx_vestigios, .(
+          linha_indice_pos_correcoes = idx_vestigios,
+          COLETA = as.character(get(chaves$coleta))
+        )]
+        exec_id_vest <- if (exists("MONITORA_EXEC_ID", inherits = FALSE)) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")
+        arq_vest_log <- file.path(MONITORA_LOG_DIR, paste0("auditoria_exclusao_coletas_vestigios_", exec_id_vest, ".csv"))
+        arq_vest_ult <- file.path(MONITORA_CORRECOES_DIR, "auditoria_exclusao_coletas_vestigios_ultima_execucao.csv")
+        monitora_fwrite(vestigios, arq_vest_log, na = "")
+        monitora_fwrite(vestigios, arq_vest_ult, na = "")
+        monitora_log_registrar_evento(
+          "exclusao_coletas", "ERRO", arq_vest_log,
+          paste0(length(idx_vestigios), " vestígio(s) de COLETA excluída permaneceram em registros_corrig"),
+          "execução bloqueada; revisar auditoria de vestígios"
+        )
+        stop("Exclusão de COLETAS falhou: ainda há linhas das COLETAS excluídas em registros_corrig. Ver auditoria_exclusao_coletas_vestigios_ultima_execucao.csv", call. = FALSE)
+      } else {
+        monitora_log_registrar_evento(
+          "exclusao_coletas", "INFO", NA_character_,
+          paste0(length(coletas_excluidas_aplicadas), " COLETA(s) excluída(s) sem vestígios em registros_corrig"),
+          "OK"
+        )
+      }
     }
   }
 
@@ -6547,11 +6587,89 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       pageLength = 10,
       lengthMenu = list(c(10, 25, 50, 75, 100), c("10", "25", "50", "75", "100")),
       scrollX = isTRUE(scroll_x),
-      deferRender = TRUE
+      scrollCollapse = TRUE,
+      autoWidth = FALSE,
+      deferRender = TRUE,
+      columnDefs = list(list(targets = "_all", className = "monitora-dt-celula-curta")),
+      drawCallback = DT::JS(
+        "function(settings) {",
+        "  var api = this.api();",
+        "  api.cells({page: 'current'}).every(function() {",
+        "    var cell = this.node();",
+        "    if (cell) {",
+        "      var txt = $(cell).text();",
+        "      if (txt && txt.length > 30) { $(cell).attr('title', txt); }",
+        "      else { $(cell).removeAttr('title'); }",
+        "    }",
+        "  });",
+        "}"
+      )
     )
   }
 
+  monitora_painel_dt_output <- function(output_id) {
+    shiny::div(class = "monitora-painel-dt", DT::DTOutput(output_id))
+  }
+
+  monitora_painel_colunas_uuid_registro_visual <- function(nms) {
+    ### Remove apenas da visualização do painel o identificador longo do repeat
+    ### amostragem/registro/uuid. O campo permanece intacto nos dados, nas
+    ### operações, nas chaves internas, nos logs e nos arquivos exportados.
+    nms <- as.character(nms)
+    if (!length(nms)) return(character(0))
+    nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+    uuid_chave <- unique(na.omit(as.character(chaves$uuid_registro)))
+    eh_uuid_registro <- nms %in% uuid_chave |
+      nms_norm %in% c("amostragem_registro_uuid", "uuid_amostragem_registro", "uuid_registro") |
+      (grepl("uuid", nms_norm) & grepl("registro", nms_norm))
+    nms[eh_uuid_registro]
+  }
+
+  monitora_painel_ocultar_uuid_registro_visual <- function(x) {
+    ### Camada exclusivamente visual: mantém as mesmas linhas e remove somente
+    ### coluna(s) de uuid do registro antes de enviar o data.table ao DT.
+    if (is.null(x)) return(x)
+    if (!data.table::is.data.table(x)) x <- data.table::as.data.table(x)
+    cols_uuid <- monitora_painel_colunas_uuid_registro_visual(names(x))
+    cols_exibir <- setdiff(names(x), cols_uuid)
+    if (!length(cols_exibir)) return(x)
+    x[, ..cols_exibir]
+  }
+
   ui <- shiny::fluidPage(
+    shiny::tags$head(
+      shiny::tags$style(shiny::HTML("
+        .monitora-painel-dt .dataTables_wrapper {
+          width: 100%;
+        }
+        .monitora-painel-dt .dataTables_scrollBody {
+          overflow-x: auto !important;
+        }
+        .monitora-painel-dt table.dataTable {
+          table-layout: auto;
+          width: 100% !important;
+        }
+        .monitora-painel-dt table.dataTable th,
+        .monitora-painel-dt table.dataTable td {
+          max-width: 360px;
+          min-width: 70px;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          vertical-align: top;
+        }
+        .monitora-painel-dt table.dataTable th {
+          font-size: 0.92em;
+          line-height: 1.15;
+        }
+        .monitora-painel-dt table.dataTable td {
+          cursor: default;
+          line-height: 1.25;
+        }
+      "))
+    ),
     shiny::titlePanel("Painel de validação - correções assistidas de registros_corrig"),
     shiny::sidebarLayout(
       shiny::sidebarPanel(
@@ -6671,7 +6789,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::uiOutput("alerta_abrangencia"),
         shiny::h4("Triagem de formas de vida exóticas, desconhecidas e outras formas de vida nos registros selecionados"),
         shiny::uiOutput("resumo_exoticas"),
-        DT::DTOutput("tabela_exoticas"),
+        monitora_painel_dt_output("tabela_exoticas"),
         shiny::fluidRow(
           shiny::column(
             4,
@@ -6695,13 +6813,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::hr(),
         shiny::h4("Prévia das COLETAS do lote"),
         shiny::uiOutput("alerta_lote_multicoletas"),
-        DT::DTOutput("preview_lote_multicoletas"),
+        monitora_painel_dt_output("preview_lote_multicoletas"),
         shiny::h4("Registros selecionados"),
-        DT::DTOutput("tabela"),
+        monitora_painel_dt_output("tabela"),
         shiny::h4("Correções pendentes nesta sessão"),
         shiny::uiOutput("status_correcoes"),
         shiny::actionButton("excluir_correcoes_pendentes", "Excluir correção(ões) pendente(s) selecionada(s)", class = "btn-danger"),
-        DT::DTOutput("correcoes")
+        monitora_painel_dt_output("correcoes")
       )
     )
   )
@@ -6742,10 +6860,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
     monitora_painel_usar_lote_coletas <- function() {
-      ### Fonte única de escopo em v17: a operação em lote usa exatamente as
+      ### Fonte única de escopo: a operação em lote usa exatamente as
       ### COLETAS listadas em input$coletas_lote quando escopo_coletas ==
-      ### "coletas_do_lote". Mantém fallback defensivo para filas/sessões antigas
-      ### que ainda exponham input$usar_lote_multicoletas.
+      ### "coletas_do_lote". Mantém fallback defensivo para sessões que
+      ### ainda exponham input$usar_lote_multicoletas.
       identical(monitora_painel_valor(input$escopo_coletas), "coletas_do_lote") || isTRUE(input[["usar_lote_multicoletas"]])
     }
 
@@ -6816,7 +6934,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!nrow(ops)) return(0L)
       ops <- monitora_painel_agregar_operacoes_tokens(ops)
       if ("atributo_coluna_registros_corrig" %in% names(ops)) {
-        prot_op <- monitora_correcao_coluna_protegida(ops$atributo_coluna_registros_corrig)
+        acao_op <- if ("acao" %in% names(ops)) ops$acao else rep("", nrow(ops))
+        tipo_op <- if ("tipo_correcao" %in% names(ops)) ops$tipo_correcao else rep("", nrow(ops))
+        exclusao_coleta_op <- mapply(
+          function(acao_i, tipo_i) isTRUE(monitora_correcao_acao_exclusao_coleta(acao_i, tipo_i)),
+          acao_op, tipo_op,
+          USE.NAMES = FALSE
+        )
+        prot_op <- monitora_correcao_coluna_protegida(ops$atributo_coluna_registros_corrig) & !exclusao_coleta_op
         if (any(prot_op, na.rm = TRUE)) {
           n_prot <- sum(prot_op, na.rm = TRUE)
           ops <- ops[!prot_op]
@@ -7660,7 +7785,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!nrow(resumo)) {
         return(DT::datatable(data.table::data.table(mensagem = "Sem COLETAS selecionadas para lote ou atributo inválido."), rownames = FALSE))
       }
-      DT::datatable(resumo, options = monitora_painel_dt_options(), rownames = FALSE)
+      resumo_vis <- monitora_painel_ocultar_uuid_registro_visual(resumo)
+      DT::datatable(resumo_vis, options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
     triagem_formas_vida_coleta <- shiny::reactive({
@@ -7694,8 +7820,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     output$tabela_exoticas <- DT::renderDT({
       ex <- triagem_formas_vida_coleta()
       if (nrow(ex) == 0L) return(DT::datatable(data.table::data.table(mensagem = "Sem registros com forma de vida exótica, desconhecida ou outras formas de vida nos registros selecionados."), rownames = FALSE))
+      ex_vis <- monitora_painel_ocultar_uuid_registro_visual(ex)
       DT::datatable(
-        ex,
+        ex_vis,
         selection = "multiple",
         options = monitora_painel_dt_options(),
         rownames = FALSE
@@ -7706,6 +7833,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       x <- dados_filtrados()
       cols <- unique(na.omit(c(chaves$coleta, chaves$uc, chaves$ea, chaves$ano, chaves$ciclo, chaves$campanha, chaves$ua, chaves$ponto_amostral, chaves$ponto_metro, chaves$uuid_registro, input$atributo)))
       cols <- cols[cols %in% names(x)]
+      cols <- setdiff(cols, monitora_painel_colunas_uuid_registro_visual(cols))
       DT::datatable(x[, ..cols], options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
@@ -7719,7 +7847,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$correcoes <- DT::renderDT({
-      DT::datatable(rv$correcoes, selection = "multiple", options = monitora_painel_dt_options(), rownames = FALSE)
+      correcoes_vis <- monitora_painel_ocultar_uuid_registro_visual(rv$correcoes)
+      DT::datatable(correcoes_vis, selection = "multiple", options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
     shiny::observeEvent(input$limpar_filtros, {
