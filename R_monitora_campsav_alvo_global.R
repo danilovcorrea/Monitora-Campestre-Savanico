@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.4.0
+### Versão pública: v2.4.1 - registros_validados.csv e contrato XLSForm/SISMONITORA
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -14,6 +14,8 @@
 ###
 ### Saídas principais:
 ###   - registros_corrig.csv: registros padronizados, deduplicados e auditáveis;
+###   - registros_validados.csv: produto público opcional compatível com o contrato do XLSForm
+###     vigente e com a estrutura de exportação do SISMONITORA;
 ###   - registros_corrig_stat.csv: tabela estatística por COLETA, UC, UA e ano;
 ###   - output/: tabelas analíticas, gráficos, relatório textual, auditorias e arquivos
 ###     geográficos, quando habilitados;
@@ -26,7 +28,7 @@
 ###   3. Execute o script completo no RStudio ou por Rscript.
 ###   4. Ao final, consulte os produtos em output/ e os relatórios de auditoria em log/.
 ###
-### Destaques da versão pública v2.4.0:
+### Destaques da versão v2.4.1:
 ### - Modos de execução para desenvolvimento, validação e execução parcial.
 ### - Painel de correções com operações semânticas atômicas.
 ### - Exclusão de COLETAS em lote como operação única auditável.
@@ -38,6 +40,12 @@
 ### - Travas contra duplo clique e duplicidade semântica.
 ### - Auditoria de persistência pós-aplicação e pós-exportação.
 ### - Sincronização final de Encostam/tipo_forma_vida com os campos inferiores finais.
+### - registros_validados.csv opcional, gerado a partir de registros_corrig.csv final como
+###   produto público compatível com o contrato XLSForm/SISMONITORA.
+### - Sanitização de campos históricos de outras formas de vida e de forma de vida
+###   desconhecida, com auditoria específica.
+### - Sobrescrita de resumos por unidade com cabeçalho vazio quando não há registros
+###   triados, evitando arquivos residuais no output/.
 ### - Comparação pré/pós-correções robusta a diferenças de classe em relatórios auxiliares.
 
 ### Destaques consolidados do script:
@@ -134,12 +142,19 @@
 ###   - "N": não abre o painel;
 ###   - "S": abre o painel quando o pipeline chegar à etapa de correções assistidas.
 ###
-### As variáveis de ambiente MONITORA_MODO_EXECUCAO e
-### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES, quando definidas, têm prioridade sobre
+### Valores aceitos para MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS:
+###   - "N": não carrega nem executa o exportador de registros_validados.csv;
+###   - "S": gera registros_validados.csv a partir de registros_corrig final,
+###     usando schema SISMONITORA 21FEV25 embutido, aliases, derivações e auditorias.
+###
+### As variáveis de ambiente MONITORA_MODO_EXECUCAO,
+### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES e
+### MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS, quando definidas, têm prioridade sobre
 ### os valores editados abaixo. Isso facilita execução por terminal/Rscript sem
 ### modificar o arquivo. O modo "painel_e_parar" continua forçando painel = "S".
 MONITORA_MODO_EXECUCAO <- "completo"
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
 
 MONITORA_MODO_EXECUCAO <- Sys.getenv(
   "MONITORA_MODO_EXECUCAO",
@@ -172,6 +187,17 @@ if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar")) {
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
 }
+
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- Sys.getenv(
+  "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS",
+  unset = as.character(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS)[1]
+)
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- toupper(trimws(as.character(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS)[1]))
+if (!(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_GERAR_REGISTROS_VALIDADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS, "S")
+MONITORA_REGISTROS_VALIDADOS_GERADO <- FALSE
 
 MONITORA_EXECUCAO_PARCIAL <- MONITORA_MODO_EXECUCAO %in% c("ate_registros_corrig", "painel_e_parar")
 MONITORA_PARAR_APOS_REGISTROS_CORRIG <- MONITORA_MODO_EXECUCAO %in% c("ate_registros_corrig", "painel_e_parar")
@@ -5299,17 +5325,27 @@ monitora_correcao_reforcar_movimentos_forma_vida <- function(dt, corr, chaves = 
 
 ### Limpeza atômica de outras formas de vida
 ### -------------------------------------------------------------------------
-### Rotina transacional vetorizada para remover tokens históricos de
-### outra(s) forma(s) de vida das listas principais e limpar os campos textuais
-### dependentes correspondentes. A detecção de colunas prioriza o mapa/dicionário
-### canônico do script e usa regex conservador apenas como fallback. Não altera
-### o atributo novo "Outras plantas terrestres, líquens e/ou fungos".
+### Rotina transacional vetorizada para sanitizar resíduos históricos de
+### outra(s) forma(s) de vida. Contrato atual:
+### - tokens históricos de "outra" são removidos das listas antigas;
+### - descritores livres inequívocos são convertidos para tokens atuais do
+###   XLSForm 21FEV25 em forma_vida_outros;
+### - descritores ambíguos, como briófita/briofita sem especificação, não são
+###   convertidos automaticamente; são limpos como resíduo legado sem gerar token atual;
+### - campos históricos de descritor/foto correlatos são limpos sempre que a
+###   sanitização de outra forma de vida é aplicada;
+### - após a remoção/conversão, **Encostam** é reconstruído a partir das listas
+###   inferiores finais; se nenhuma categoria válida restar, recebe solo_nu.
 monitora_correcao_tokens_outras_formas_vida <- function() {
   c("outra_forma_vida", "outras_formas_vida", "forma_vida_outros", "outra", "outro", "outras", "outros")
 }
 
 monitora_correcao_tokens_tipo_validos_pos_limpeza_outras <- function() {
-  c("solo_nu", "nativa", "exotica", "seca", "morta", "seca_morta", "serrapilheira", "fragmentos_botanicos", "material_inundado")
+  ### Após remover "outra" das sublistas antigas, nativa/exotica/seca_morta só
+  ### contam como categorias efetivas se os campos inferiores correspondentes
+  ### permanecerem preenchidos. Aqui entram apenas categorias não inferíveis a
+  ### partir dessas sublistas e que podem ser preservadas no campo superior.
+  c("solo_nu", "serrapilheira", "fragmentos_botanicos", "material_inundado", "material_botanico")
 }
 
 monitora_correcao_contem_qualquer_token_vec <- function(x, tokens) {
@@ -5338,6 +5374,78 @@ monitora_correcao_parse_lista_serializada <- function(x) {
   unique(z[!is.na(z) & nzchar(z)])
 }
 
+monitora_correcao_normalizar_descritor_outra_forma <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- tolower(x)
+  x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
+  x[is.na(x)] <- ""
+  x <- gsub("[^a-z0-9]+", " ", x, perl = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+monitora_correcao_adicionar_tokens_valor <- function(valor, tokens) {
+  tokens <- monitora_correcao_tokenizar(tokens)
+  out <- valor
+  if (!length(tokens)) return(out)
+  for (tt in tokens) out <- monitora_correcao_append_token_valor(out, tt)
+  out
+}
+
+monitora_correcao_classificar_descritor_outra_forma <- function(x) {
+  x_chr <- as.character(x)
+  vazio <- monitora_correcao_vazio_vec(x_chr)
+  z <- monitora_correcao_normalizar_descritor_outra_forma(x_chr)
+  token <- rep("", length(z))
+  status <- rep("limpeza_descritor_legado_sem_conversao", length(z))
+  status[vazio] <- "vazio"
+
+  add_token <- function(cond, tok) {
+    cond[is.na(cond)] <- FALSE
+    if (!any(cond)) return(invisible(NULL))
+    token[cond] <<- vapply(token[cond], monitora_correcao_adicionar_tokens_valor, character(1), tokens = tok)
+    invisible(NULL)
+  }
+
+  ### Conversões inequívocas para tokens atuais do XLSForm 21FEV25.
+  ### "m" é aceito apenas porque a regra se aplica exclusivamente a descritores
+  ### históricos de outra forma de vida, onde o uso observado representa musgo.
+  musgo <- z %in% c("m", "musgo", "musgos", "musg9", "mugo", "mugos") |
+    grepl("(^| )musg[a-z0-9]*($| )", z, perl = TRUE) |
+    grepl("(^| )mugo[s]?($| )", z, perl = TRUE) |
+    grepl("(^| )lodo($| )", z, perl = TRUE)
+  add_token(musgo, "musgos")
+
+  hepatica <- grepl("(^| )hepatic[a-z]*($| )", z, perl = TRUE)
+  add_token(hepatica, "hepaticas")
+
+  antocero <- grepl("(^| )antocer[a-z]*($| )", z, perl = TRUE)
+  add_token(antocero, "antoceros")
+
+  liquen <- grepl("(^| )liquen[s]?($| )", z, perl = TRUE)
+  add_token(liquen, "liquens")
+
+  fungo <- grepl("(^| )(fungo[s]?|cogumelo[s]?)($| )", z, perl = TRUE)
+  add_token(fungo, "fungos")
+
+  convertido <- !vazio & nzchar(token)
+  status[convertido] <- "convertido_para_token_atual_xlsform21"
+
+  briofita <- !convertido & !vazio & (
+    grepl("(^| )briofit[a-z]*($| )", z, perl = TRUE) |
+      grepl("(^| )bryophyt[a-z]*($| )", z, perl = TRUE)
+  )
+  status[briofita] <- "limpeza_sem_conversao_briofita_termo_amplo"
+
+  data.table::data.table(
+    valor_original = x_chr,
+    valor_normalizado = z,
+    token_xlsform21 = data.table::fifelse(nzchar(token), token, NA_character_),
+    status_sanitizacao = status
+  )
+}
+
 monitora_correcao_colunas_limpeza_outras_formas <- function(dt, dicionario = NULL) {
   dt <- data.table::as.data.table(dt)
   nms <- names(dt)
@@ -5364,41 +5472,65 @@ monitora_correcao_colunas_limpeza_outras_formas <- function(dt, dicionario = NUL
   }
 
   descritores <- character(0)
+  fotos <- character(0)
+  forma_outros <- resolver_dt(c(
+    "amostragem/registro/forma_vida_outros",
+    "forma_vida_outros",
+    "Outras plantas terrestres, líquens e/ou fungos​: (amostragem/registro)",
+    "Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro)"
+  ))
+
   if (!is.null(dicionario) && nrow(data.table::as.data.table(dicionario)) > 0L) {
     d <- data.table::as.data.table(dicionario)
     for (cc in c("name", "caminho_registro", "label", "type", "list_name", "relevant")) if (!(cc %in% names(d))) d[, (cc) := NA_character_]
     d[, texto_busca := paste(name, caminho_registro, label, type, list_name, relevant, sep = " ")]
     d[, texto_norm := monitora_correcao_normalizar_nome_coluna(texto_busca)]
-    d[, eh_descritor_outra_forma := (
+    d[, eh_outra_forma_historica := (
       grepl("forma_vida_(nativa|exotica|seca_morta)_outra", texto_norm) |
         (grepl("outr.*forma.*vida", texto_norm) & grepl("nativ|exotic|exotica|exotico|seca|morta", texto_norm))
-    ) &
-      !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|observ|obs|plantas_terrestres|liquen|liquens|fungo|fungos", texto_norm)]
+    )]
+    d[, eh_foto_outra_forma := eh_outra_forma_historica & grepl("foto|imagem|image|upload|arquivo|anexo|midia|media", texto_norm)]
+    d[, eh_descritor_outra_forma := eh_outra_forma_historica &
+        !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|upload|arquivo|anexo|midia|media|plantas_terrestres|liquen|liquens|fungo|fungos", texto_norm)]
     if (any(d$eh_descritor_outra_forma, na.rm = TRUE)) {
       cand_vals <- unique(unlist(d[eh_descritor_outra_forma == TRUE, .(name, caminho_registro, label)], use.names = FALSE))
       descritores <- c(descritores, resolver_dt(cand_vals))
+    }
+    if (any(d$eh_foto_outra_forma, na.rm = TRUE)) {
+      cand_vals <- unique(unlist(d[eh_foto_outra_forma == TRUE, .(name, caminho_registro, label)], use.names = FALSE))
+      fotos <- c(fotos, resolver_dt(cand_vals))
     }
   }
 
   fallback_desc <- nms[(
     (grepl("outr.*forma.*vida", nms_norm) | grepl("forma_vida.*outr", nms_norm)) &
       grepl("nativ|exotic|exotica|exotico|seca|morta", nms_norm) &
-      !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|observ|obs|plantas_terrestres|liquen|liquens|fungo|fungos", nms_norm)
+      !grepl("especie|especies|outra_sp|_sp($|_)|foto|imagem|image|upload|arquivo|anexo|midia|media|plantas_terrestres|liquen|liquens|fungo|fungos", nms_norm)
+  )]
+  fallback_foto <- nms[(
+    (grepl("outr.*forma.*vida", nms_norm) | grepl("forma_vida.*outr", nms_norm)) &
+      grepl("nativ|exotic|exotica|exotico|seca|morta", nms_norm) &
+      grepl("foto|imagem|image|upload|arquivo|anexo|midia|media", nms_norm) &
+      !grepl("especie|especies|outra_sp|_sp($|_)", nms_norm)
   )]
   descritores <- unique(c(descritores, fallback_desc))
   descritores <- descritores[descritores %in% nms]
+  fotos <- unique(c(fotos, fallback_foto))
+  fotos <- fotos[fotos %in% nms]
+  forma_outros <- unique(forma_outros[forma_outros %in% nms])
 
   tipo_cols <- mapa[papel_coluna == "campo_superior_tipo_forma_vida", coluna_registros_corrig]
   tipo_cols <- unique(tipo_cols[!is.na(tipo_cols) & nzchar(tipo_cols) & tipo_cols %in% nms])
   chaves <- monitora_correcao_colunas_chave(dt)
   tipo_update <- if (!is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% nms) chaves$tipo_forma_vida else if (length(tipo_cols)) tipo_cols[1L] else NA_character_
 
-  data.table::data.table(
-    classe = c(rep("lista_principal_forma_vida", length(listas)), rep("descritor_outra_forma_vida", length(descritores)), rep("campo_superior_tipo_forma_vida", length(tipo_cols))),
-    coluna = c(listas, descritores, tipo_cols),
-    categoria = c(mapa[match(listas, coluna_registros_corrig), categoria], rep(NA_character_, length(descritores)), rep(NA_character_, length(tipo_cols))),
-    usar_para_escrita_solo_nu = c(rep(FALSE, length(listas) + length(descritores)), tipo_cols == tipo_update)
-  )[!is.na(coluna) & nzchar(coluna)]
+  data.table::rbindlist(list(
+    data.table::data.table(classe = "lista_principal_forma_vida", coluna = listas, categoria = mapa[match(listas, coluna_registros_corrig), categoria], usar_para_escrita_solo_nu = FALSE),
+    data.table::data.table(classe = "descritor_outra_forma_vida", coluna = descritores, categoria = NA_character_, usar_para_escrita_solo_nu = FALSE),
+    data.table::data.table(classe = "foto_outra_forma_vida", coluna = fotos, categoria = NA_character_, usar_para_escrita_solo_nu = FALSE),
+    data.table::data.table(classe = "campo_atual_forma_vida_outros", coluna = forma_outros, categoria = NA_character_, usar_para_escrita_solo_nu = FALSE),
+    data.table::data.table(classe = "campo_superior_tipo_forma_vida", coluna = tipo_cols, categoria = NA_character_, usar_para_escrita_solo_nu = tipo_cols == tipo_update)
+  ), fill = TRUE, use.names = TRUE)[!is.na(coluna) & nzchar(coluna)]
 }
 
 monitora_correcao_contar_residuos_outras_formas <- function(dt, linhas, cols_info) {
@@ -5408,8 +5540,9 @@ monitora_correcao_contar_residuos_outras_formas <- function(dt, linhas, cols_inf
   tokens_outra <- monitora_correcao_tokens_outras_formas_vida()
   listas <- cols_info[classe == "lista_principal_forma_vida" & coluna %in% names(dt), coluna]
   descritores <- cols_info[classe == "descritor_outra_forma_vida" & coluna %in% names(dt), coluna]
+  fotos <- cols_info[classe == "foto_outra_forma_vida" & coluna %in% names(dt), coluna]
   if (!length(linhas)) {
-    return(data.table::data.table(linhas_alvo = 0L, linhas_com_token_outra = 0L, celulas_com_token_outra = 0L, linhas_com_descritor = 0L, celulas_com_descritor = 0L, linhas_com_residuo_total = 0L))
+    return(data.table::data.table(linhas_alvo = 0L, linhas_com_token_outra = 0L, celulas_com_token_outra = 0L, linhas_com_descritor = 0L, celulas_com_descritor = 0L, linhas_com_foto_historica = 0L, celulas_com_foto_historica = 0L, linhas_com_residuo_total = 0L))
   }
   flag_token <- rep(FALSE, length(linhas)); n_token <- 0L
   for (cc in listas) {
@@ -5423,13 +5556,21 @@ monitora_correcao_contar_residuos_outras_formas <- function(dt, linhas, cols_inf
     flag_desc <- flag_desc | hit
     n_desc <- n_desc + sum(hit, na.rm = TRUE)
   }
+  flag_foto <- rep(FALSE, length(linhas)); n_foto <- 0L
+  for (cc in fotos) {
+    hit <- !monitora_correcao_vazio_vec(dt[[cc]][linhas])
+    flag_foto <- flag_foto | hit
+    n_foto <- n_foto + sum(hit, na.rm = TRUE)
+  }
   data.table::data.table(
     linhas_alvo = length(linhas),
     linhas_com_token_outra = sum(flag_token, na.rm = TRUE),
     celulas_com_token_outra = n_token,
     linhas_com_descritor = sum(flag_desc, na.rm = TRUE),
     celulas_com_descritor = n_desc,
-    linhas_com_residuo_total = sum(flag_token | flag_desc, na.rm = TRUE)
+    linhas_com_foto_historica = sum(flag_foto, na.rm = TRUE),
+    celulas_com_foto_historica = n_foto,
+    linhas_com_residuo_total = sum(flag_token | flag_desc | flag_foto, na.rm = TRUE)
   )
 }
 
@@ -5458,6 +5599,7 @@ monitora_correcao_localizar_linhas_limpeza_outras_formas <- function(dt, linha_c
   unique(as.integer(monitora_correcao_localizar_linhas(dt, linha_corr, chaves, indice)))
 }
 
+
 monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, id_correcao = NA_character_, arquivo_correcao = NA_character_, dicionario = NULL) {
   ### CRÍTICO: não usar as.data.table() aqui.
   ### Em alguns fluxos, as.data.table() pode operar sobre uma cópia/local; a auditoria
@@ -5474,15 +5616,26 @@ monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, 
   cols_info <- monitora_correcao_colunas_limpeza_outras_formas(dt, dicionario)
   listas <- cols_info[classe == "lista_principal_forma_vida" & coluna %in% names(dt), unique(coluna)]
   descritores <- cols_info[classe == "descritor_outra_forma_vida" & coluna %in% names(dt), unique(coluna)]
+  fotos <- cols_info[classe == "foto_outra_forma_vida" & coluna %in% names(dt), unique(coluna)]
+  forma_outros_col <- cols_info[classe == "campo_atual_forma_vida_outros" & coluna %in% names(dt), unique(coluna)]
+  forma_outros_col <- if (length(forma_outros_col)) forma_outros_col[1L] else NA_character_
+  if (is.na(forma_outros_col) || !nzchar(forma_outros_col)) {
+    forma_outros_col <- "amostragem/registro/forma_vida_outros"
+    if (!(forma_outros_col %in% names(dt))) data.table::set(dt, j = forma_outros_col, value = NA_character_)
+    cols_info <- data.table::rbindlist(list(
+      cols_info,
+      data.table::data.table(classe = "campo_atual_forma_vida_outros", coluna = forma_outros_col, categoria = NA_character_, usar_para_escrita_solo_nu = FALSE)
+    ), fill = TRUE, use.names = TRUE)
+  }
   tipo_cols <- cols_info[classe == "campo_superior_tipo_forma_vida" & coluna %in% names(dt), unique(coluna)]
   tipo_update <- cols_info[classe == "campo_superior_tipo_forma_vida" & usar_para_escrita_solo_nu == TRUE & coluna %in% names(dt), coluna]
   tipo_update <- if (length(tipo_update)) tipo_update[1L] else NA_character_
-  if (!length(listas) && !length(descritores)) {
-    return(list(audit = data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_colunas", mensagem = "Nenhuma coluna de lista/descritor de outra forma de vida detectada", atributo = "__limpar_outras_formas_vida__", linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao), linhas = integer(), afetacoes = afetacoes, falha = TRUE))
+  if (!length(listas) && !length(descritores) && !length(fotos)) {
+    return(list(audit = data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_colunas", mensagem = "Nenhuma coluna de lista/descritor/foto histórica de outra forma de vida detectada", atributo = "__limpar_outras_formas_vida__", linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao), linhas = integer(), afetacoes = afetacoes, falha = TRUE))
   }
   tokens_outra <- monitora_correcao_tokens_outras_formas_vida()
   remover_serial <- paste(tokens_outra, collapse = " ")
-  registrar <- function(col, idx, antes, depois, mensagem) {
+  registrar <- function(col, idx, antes, depois, mensagem, status = "aplicada") {
     idx <- as.integer(idx)
     mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
     if (!any(mudou, na.rm = TRUE)) return(invisible(NULL))
@@ -5490,7 +5643,7 @@ monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, 
     audit <<- data.table::rbindlist(list(audit, data.table::data.table(
       id_correcao = id_correcao,
       ordem_operacao = NA_character_,
-      status = "aplicada",
+      status = status,
       mensagem = mensagem,
       atributo = col,
       linha_indice = idx2,
@@ -5500,55 +5653,129 @@ monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, 
     )), fill = TRUE, use.names = TRUE)
     afetacoes <<- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = idx2, atributo = col)), fill = TRUE, use.names = TRUE)
   }
+  registrar_evento <- function(col, idx, antes, depois, mensagem, status = "aplicada") {
+    idx <- as.integer(idx)
+    if (!length(idx)) return(invisible(NULL))
+    audit <<- data.table::rbindlist(list(audit, data.table::data.table(
+      id_correcao = id_correcao,
+      ordem_operacao = NA_character_,
+      status = status,
+      mensagem = mensagem,
+      atributo = col,
+      linha_indice = idx,
+      valor_antes = antes,
+      valor_depois = depois,
+      arquivo_correcao = arquivo_correcao
+    )), fill = TRUE, use.names = TRUE)
+    invisible(NULL)
+  }
+
   resumo_antes <- monitora_correcao_contar_residuos_outras_formas(dt, linhas, cols_info)
+
+  ### 1) Converter descritores inequívocos para o campo atual forma_vida_outros;
+  ###    descritores sem equivalência inequívoca são limpos como resíduo legado,
+  ###    sem gerar outra_forma_vida atual e sem bloquear a sanitização.
+  for (cc in descritores) {
+    antes <- as.character(dt[[cc]][linhas])
+    cls <- monitora_correcao_classificar_descritor_outra_forma(antes)
+    conv <- cls$status_sanitizacao == "convertido_para_token_atual_xlsform21"
+    legado <- !conv & !monitora_correcao_vazio_vec(antes)
+    campo_outros_ok <- !is.na(forma_outros_col) && forma_outros_col %in% names(dt)
+
+    if (any(conv, na.rm = TRUE)) {
+      if (campo_outros_ok) {
+        idx_conv <- linhas[conv]
+        antes_outros <- as.character(dt[[forma_outros_col]][idx_conv])
+        depois_outros <- mapply(monitora_correcao_adicionar_tokens_valor, antes_outros, cls$token_xlsform21[conv], USE.NAMES = FALSE)
+        data.table::set(dt, i = idx_conv, j = forma_outros_col, value = depois_outros)
+        registrar(forma_outros_col, idx_conv, antes_outros, depois_outros, paste0("Limpeza atômica: descritor histórico de outra forma de vida convertido para token atual do XLSForm 21FEV25 a partir de ", cc))
+      } else {
+        registrar_evento("amostragem/registro/forma_vida_outros", linhas[conv], antes[conv], cls$token_xlsform21[conv], "Descritor histórico teria conversão inequívoca, mas campo atual forma_vida_outros não foi localizado", "falha_sem_campo_atual_forma_vida_outros")
+      }
+    }
+
+    if (any(legado, na.rm = TRUE)) {
+      registrar_evento(cc, linhas[legado], antes[legado], as.character(cls$status_sanitizacao[legado]), "Descritor histórico de outra forma de vida sem equivalência inequívoca no XLSForm 21FEV25; limpo como resíduo legado sem gerar token atual", "limpeza_descritor_legado_sem_conversao")
+    }
+
+    limpar <- ((conv & campo_outros_ok) | legado) & !monitora_correcao_vazio_vec(antes)
+    if (any(limpar, na.rm = TRUE)) {
+      depois <- antes
+      depois[limpar] <- NA_character_
+      data.table::set(dt, i = linhas[limpar], j = cc, value = NA_character_)
+      registrar(cc, linhas, antes, depois, "Limpeza atômica: descritor textual histórico de outra forma de vida limpo; conversões inequívocas foram migradas e demais descritores foram removidos sem conversão")
+    }
+  }
+
+  ### 2) Remover tokens históricos das listas antigas.
   for (cc in listas) {
     antes <- as.character(dt[[cc]][linhas])
     depois <- vapply(antes, monitora_correcao_remove_token_valor, character(1), token = remover_serial)
     mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
     if (any(mudou, na.rm = TRUE)) {
       data.table::set(dt, i = linhas[mudou], j = cc, value = depois[mudou])
-      registrar(cc, linhas, antes, depois, "Limpeza atômica: token(s) de outra(s) forma(s) de vida removido(s) da lista principal")
+      registrar(cc, linhas, antes, depois, "Limpeza atômica: token(s) histórico(s) de outra(s) forma(s) de vida removido(s) da lista principal")
     }
   }
-  for (cc in descritores) {
+
+  ### 3) Limpar fotos/imagens históricas correlatas, pois esses campos não fazem
+  ###    parte do contrato atual do XLSForm 21FEV25.
+  for (cc in fotos) {
     antes <- as.character(dt[[cc]][linhas])
     limpar <- !monitora_correcao_vazio_vec(antes)
     if (any(limpar, na.rm = TRUE)) {
       depois <- antes
       depois[limpar] <- NA_character_
       data.table::set(dt, i = linhas[limpar], j = cc, value = NA_character_)
-      registrar(cc, linhas, antes, depois, "Limpeza atômica: descritor textual histórico de outra forma de vida limpo")
+      registrar(cc, linhas, antes, depois, "Limpeza atômica: foto/imagem histórica de outra forma de vida limpa por não integrar o XLSForm 21FEV25")
     }
   }
-  has_main_after <- rep(FALSE, length(linhas))
-  for (cc in listas) has_main_after <- has_main_after | !monitora_correcao_vazio_vec(dt[[cc]][linhas])
-  has_tipo_valido <- rep(FALSE, length(linhas))
-  tokens_tipo_validos <- monitora_correcao_tokens_tipo_validos_pos_limpeza_outras()
-  for (cc in tipo_cols) has_tipo_valido <- has_tipo_valido | monitora_correcao_contem_qualquer_token_vec(dt[[cc]][linhas], tokens_tipo_validos)
-  idx_solo <- linhas[!has_main_after & !has_tipo_valido]
-  if (length(idx_solo) > 0L) {
-    if (!is.na(tipo_update) && tipo_update %in% names(dt)) {
-      antes <- as.character(dt[[tipo_update]][idx_solo])
-      depois <- vapply(antes, monitora_correcao_append_token_valor, character(1), token = "solo_nu")
-      data.table::set(dt, i = idx_solo, j = tipo_update, value = depois)
-      registrar(tipo_update, idx_solo, antes, depois, "Limpeza atômica: solo_nu acrescentado porque a remoção deixaria o ponto sem categoria válida")
-    } else {
-      audit <- data.table::rbindlist(list(audit, data.table::data.table(id_correcao = id_correcao, ordem_operacao = NA_character_, status = "falha_sem_tipo_forma_vida", mensagem = paste0(length(idx_solo), " linha(s) precisariam de solo_nu, mas tipo_forma_vida/Encostam não foi localizado"), atributo = "tipo_forma_vida", linha_indice = idx_solo, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao)), fill = TRUE, use.names = TRUE)
+
+  ### 4) Reconstruir o campo superior a partir dos campos inferiores finais.
+  if (!is.na(tipo_update) && tipo_update %in% names(dt)) {
+    tipo_antes <- as.character(dt[[tipo_update]][linhas])
+    n <- length(linhas)
+    tipo_novo <- rep(NA_character_, n)
+    append_vec <- function(cond, token) {
+      cond[is.na(cond)] <- FALSE
+      if (!any(cond)) return(invisible(NULL))
+      tipo_novo[cond] <<- vapply(tipo_novo[cond], monitora_correcao_append_token_valor, character(1), token = token)
+      invisible(NULL)
     }
+    for (cat in c("nativa", "exotica", "seca_morta")) {
+      cols_cat <- cols_info[classe == "lista_principal_forma_vida" & categoria == cat & coluna %in% names(dt), unique(coluna)]
+      tem_cat <- rep(FALSE, n)
+      for (cc in cols_cat) tem_cat <- tem_cat | !monitora_correcao_vazio_vec(dt[[cc]][linhas])
+      append_vec(tem_cat, cat)
+    }
+    if (!is.na(forma_outros_col) && forma_outros_col %in% names(dt)) {
+      append_vec(!monitora_correcao_vazio_vec(dt[[forma_outros_col]][linhas]), "outra_forma_vida")
+    }
+    for (tok in c("serrapilheira", "fragmentos_botanicos", "material_inundado", "material_botanico")) {
+      append_vec(monitora_correcao_token_presente_vec(tipo_antes, tok), tok)
+    }
+    sem_categoria <- monitora_correcao_vazio_vec(tipo_novo)
+    tipo_novo[sem_categoria] <- "solo_nu"
+    data.table::set(dt, i = linhas, j = tipo_update, value = tipo_novo)
+    registrar(tipo_update, linhas, tipo_antes, tipo_novo, "Limpeza atômica: campo superior de forma de vida recalculado após sanitização de outra forma de vida")
+  } else {
+    registrar_evento("tipo_forma_vida", linhas, rep(NA_character_, length(linhas)), rep(NA_character_, length(linhas)), "Campo superior tipo_forma_vida/Encostam não localizado para recálculo pós-sanitização", "falha_sem_tipo_forma_vida")
   }
+
   resumo_depois <- monitora_correcao_contar_residuos_outras_formas(dt, linhas, cols_info)
+  n_pend <- sum(audit$status %in% c("falha_sem_campo_atual_forma_vida_outros", "falha_sem_tipo_forma_vida"), na.rm = TRUE)
   audit <- data.table::rbindlist(list(audit, data.table::data.table(
     id_correcao = id_correcao,
     ordem_operacao = NA_character_,
-    status = ifelse(resumo_depois$linhas_com_residuo_total[1L] == 0L, "auditoria_ok", "falha_residuo_pos_limpeza"),
-    mensagem = paste0("Limpeza atômica outras formas: linhas_alvo=", length(linhas), "; residuos_antes=", resumo_antes$linhas_com_residuo_total[1L], "; residuos_depois=", resumo_depois$linhas_com_residuo_total[1L], "; solo_nu_adicionado=", length(idx_solo)),
+    status = ifelse(resumo_depois$linhas_com_residuo_total[1L] == 0L && n_pend == 0L, "auditoria_ok", "falha_residuo_pos_limpeza"),
+    mensagem = paste0("Limpeza atômica outras formas: linhas_alvo=", length(linhas), "; residuos_antes=", resumo_antes$linhas_com_residuo_total[1L], "; residuos_depois=", resumo_depois$linhas_com_residuo_total[1L], "; pendencias_manuais=", n_pend, "; regra_solo_nu_pos_recalculo=ativa"),
     atributo = "__limpar_outras_formas_vida__",
     linha_indice = NA_integer_,
     valor_antes = as.character(resumo_antes$linhas_com_residuo_total[1L]),
     valor_depois = as.character(resumo_depois$linhas_com_residuo_total[1L]),
     arquivo_correcao = arquivo_correcao
   )), fill = TRUE, use.names = TRUE)
-  list(audit = audit[], linhas = unique(afetacoes$linha_indice), afetacoes = afetacoes[], falha = any(audit$status %in% c("falha_residuo_pos_limpeza", "falha_sem_tipo_forma_vida", "falha_sem_colunas", "falha_sem_linhas")))
+  list(audit = audit[], linhas = unique(afetacoes$linha_indice), afetacoes = afetacoes[], falha = any(grepl("^falha", as.character(audit$status))))
 }
 
 monitora_correcao_eh_operacao_limpeza_outras_formas <- function(corr) {
@@ -6234,6 +6461,186 @@ monitora_correcao_formas_efetivas_presenca <- function(presenca) {
 }
 
 
+
+### Sanitização de dependentes históricos/atuais de forma de vida desconhecida
+### -------------------------------------------------------------------------
+### Contrato: fotos, imagens, uploads, anexos e descritores de "desconhecida"
+### só são relevantes enquanto a sublista correspondente contém o token
+### desconhecida. Quando o token é removido por movimento/triagem assistida,
+### todos os dependentes da categoria devem ser limpos, independentemente da
+### versão/fonte do XLSForm que originou a coluna.
+monitora_correcao_tokens_desconhecida <- function() {
+  c("desconhecida", "desconhecido", "indeterminada", "indeterminado", "nao_identificada", "nao_identificado", "não_identificada", "não_identificado")
+}
+
+monitora_correcao_categoria_variantes_norm <- function(categoria) {
+  categoria <- tolower(trimws(as.character(categoria)[1L]))
+  switch(
+    categoria,
+    nativa = c("nativa", "nativo", "planta_nativa", "plantas_nativas"),
+    exotica = c("exotica", "exotico", "exoticas", "exoticos", "planta_exotica", "plantas_exoticas"),
+    seca_morta = c("seca_morta", "seca", "morta", "seca_ou_morta", "seca_e_morta", "planta_seca", "planta_morta", "seca_morta"),
+    character(0)
+  )
+}
+
+monitora_correcao_colunas_desconhecida_por_categoria <- function(dt, categoria, dicionario = NULL) {
+  dt <- data.table::as.data.table(dt)
+  nms <- names(dt)
+  nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+  cat_norms <- monitora_correcao_categoria_variantes_norm(categoria)
+  cat_norms <- unique(monitora_correcao_normalizar_nome_coluna(cat_norms))
+  tem_cat <- function(z) {
+    if (!length(cat_norms)) return(rep(FALSE, length(z)))
+    out <- rep(FALSE, length(z))
+    for (cc in cat_norms) out <- out | grepl(cc, z, fixed = TRUE)
+    out
+  }
+  eh_dep <- function(z) {
+    grepl("desconhecid|indeterminad|nao_identific|nao identific|não_identific|não identific", z, perl = TRUE) &
+      tem_cat(z) &
+      grepl("foto|imagem|image|upload|arquivo|anexo|midia|media|descr|descricao|descritor|observ|obs", z, perl = TRUE) &
+      !grepl("especie|especies|outra_sp|_sp($|_)", z, perl = TRUE)
+  }
+
+  resolver_dt <- function(vals) {
+    vals <- unique(as.character(vals))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    out <- character(0)
+    for (vv in vals) {
+      hit <- nms[nms == vv]
+      if (length(hit)) out <- c(out, hit)
+      vv_norm <- monitora_correcao_normalizar_nome_coluna(vv)
+      hit2 <- which(nms_norm == vv_norm)
+      if (length(hit2)) out <- c(out, nms[hit2])
+      col_res <- tryCatch(monitora_correcao_resolver_coluna(dt, vv, dicionario), error = function(e) NA_character_)
+      if (!is.na(col_res) && nzchar(col_res) && col_res %in% nms) out <- c(out, col_res)
+    }
+    unique(out[out %in% nms])
+  }
+
+  canon <- character(0)
+  base <- paste0("foto_forma_vida_", categoria, "_desconhecida")
+  if (identical(categoria, "seca_morta")) base <- "foto_forma_vida_seca_morta_desconhecida"
+  canon <- c(
+    base, paste0(base, "02"), paste0(base, "03"),
+    paste0("amostragem/registro/", base), paste0("amostragem/registro/", base, "02"), paste0("amostragem/registro/", base, "03")
+  )
+  cols <- resolver_dt(canon)
+
+  if (!is.null(dicionario) && nrow(data.table::as.data.table(dicionario)) > 0L) {
+    d <- data.table::as.data.table(dicionario)
+    for (cc in c("name", "caminho_registro", "label", "type", "list_name", "relevant")) if (!(cc %in% names(d))) d[, (cc) := NA_character_]
+    d[, texto_busca := paste(name, caminho_registro, label, type, list_name, relevant, sep = " ")]
+    d[, texto_norm := monitora_correcao_normalizar_nome_coluna(texto_busca)]
+    d[, dep_desconhecida := eh_dep(texto_norm)]
+    if (any(d$dep_desconhecida, na.rm = TRUE)) {
+      cand_vals <- unique(unlist(d[dep_desconhecida == TRUE, .(name, caminho_registro, label)], use.names = FALSE))
+      cols <- c(cols, resolver_dt(cand_vals))
+    }
+  }
+
+  fallback <- nms[eh_dep(nms_norm)]
+  cols <- unique(c(cols, fallback))
+  cols <- cols[cols %in% nms]
+  if (!length(cols)) {
+    return(data.table::data.table(categoria = character(), coluna = character(), tipo_dependente = character(), origem_resolucao = character()))
+  }
+  tipo <- ifelse(grepl("foto|imagem|image", monitora_correcao_normalizar_nome_coluna(cols), perl = TRUE), "foto_imagem",
+                 ifelse(grepl("upload|arquivo|anexo|midia|media", monitora_correcao_normalizar_nome_coluna(cols), perl = TRUE), "arquivo_midia", "descritor_obs"))
+  data.table::data.table(
+    categoria = categoria,
+    coluna = cols,
+    tipo_dependente = tipo,
+    origem_resolucao = "xlsform_embutido_alias_label_fallback_normalizado"
+  )[]
+}
+
+monitora_correcao_auditoria_desconhecida_vazia <- function() {
+  data.table::data.table(
+    id_correcao = character(), ordem_operacao = character(), status = character(), mensagem = character(),
+    atributo = character(), linha_indice = integer(), valor_antes = character(), valor_depois = character(),
+    arquivo_correcao = character(), categoria = character(), tipo_dependente = character(), origem_resolucao = character()
+  )
+}
+
+monitora_correcao_sanitizar_dependentes_desconhecida <- function(dt, linhas = NULL, categorias = c("nativa", "exotica", "seca_morta"), id_correcao = NA_character_, ordem_operacao = NA_character_, arquivo_correcao = NA_character_, dicionario = NULL, registrar_preservadas = TRUE) {
+  dt <- monitora_dt_referenciar(dt)
+  if (is.null(linhas)) linhas <- seq_len(nrow(dt))
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  audit <- monitora_correcao_auditoria_desconhecida_vazia()
+  afetacoes <- data.table::data.table(linha_indice = integer(), atributo = character())
+  if (!length(linhas)) return(list(dt = dt[], audit = audit, afetacoes = afetacoes, falha = FALSE))
+  tokens_desc <- monitora_correcao_tokens_desconhecida()
+
+  for (cat in categorias) {
+    col_lista <- tryCatch(monitora_correcao_coluna_forma_vida(dt, cat), error = function(e) NA_character_)
+    if (is.na(col_lista) || !(col_lista %in% names(dt))) next
+    lista_vals <- as.character(dt[[col_lista]][linhas])
+    tem_desc <- monitora_correcao_contem_qualquer_token_vec(lista_vals, tokens_desc)
+    cols_dep <- monitora_correcao_colunas_desconhecida_por_categoria(dt, cat, dicionario)
+    if (!nrow(cols_dep)) next
+    for (ii in seq_len(nrow(cols_dep))) {
+      dep_col <- cols_dep$coluna[ii]
+      if (!(dep_col %in% names(dt)) || monitora_correcao_coluna_protegida(dep_col)) next
+      antes <- as.character(dt[[dep_col]][linhas])
+      preenchido <- !monitora_correcao_vazio_vec(antes)
+      limpar <- preenchido & !tem_desc
+      preservar <- preenchido & tem_desc
+      if (any(limpar, na.rm = TRUE)) {
+        idx <- linhas[limpar]
+        depois <- rep(NA_character_, length(idx))
+        data.table::set(dt, i = idx, j = dep_col, value = depois)
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = as.character(id_correcao),
+          ordem_operacao = as.character(ordem_operacao),
+          status = paste0(cols_dep$tipo_dependente[ii], "_desconhecida_limpa_token_removido"),
+          mensagem = paste0("Dependente histórico/atual de forma de vida desconhecida limpo porque a categoria ", cat, " não contém mais o token desconhecida"),
+          atributo = dep_col,
+          linha_indice = idx,
+          valor_antes = antes[limpar],
+          valor_depois = depois,
+          arquivo_correcao = as.character(arquivo_correcao),
+          categoria = cat,
+          tipo_dependente = cols_dep$tipo_dependente[ii],
+          origem_resolucao = cols_dep$origem_resolucao[ii]
+        )), fill = TRUE, use.names = TRUE)
+        afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = idx, atributo = dep_col)), fill = TRUE, use.names = TRUE)
+      }
+      if (isTRUE(registrar_preservadas) && any(preservar, na.rm = TRUE)) {
+        idxp <- linhas[preservar]
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = as.character(id_correcao),
+          ordem_operacao = as.character(ordem_operacao),
+          status = paste0(cols_dep$tipo_dependente[ii], "_desconhecida_preservada_token_ainda_presente"),
+          mensagem = paste0("Dependente de forma de vida desconhecida preservado porque a categoria ", cat, " ainda contém o token desconhecida"),
+          atributo = dep_col,
+          linha_indice = idxp,
+          valor_antes = antes[preservar],
+          valor_depois = antes[preservar],
+          arquivo_correcao = as.character(arquivo_correcao),
+          categoria = cat,
+          tipo_dependente = cols_dep$tipo_dependente[ii],
+          origem_resolucao = cols_dep$origem_resolucao[ii]
+        )), fill = TRUE, use.names = TRUE)
+      }
+    }
+  }
+  list(dt = dt[], audit = audit[], afetacoes = unique(afetacoes), falha = FALSE)
+}
+
+monitora_correcao_gravar_auditoria_sanitizacao_desconhecida <- function(audit) {
+  audit <- data.table::as.data.table(audit)
+  if (!nrow(audit)) return(invisible(audit))
+  exec_id <- if (exists("MONITORA_EXEC_ID", inherits = TRUE)) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")
+  arqs <- character(0)
+  if (exists("MONITORA_LOG_DIR", inherits = TRUE)) arqs <- c(arqs, file.path(MONITORA_LOG_DIR, paste0("auditoria_sanitizacao_forma_vida_desconhecida_", exec_id, ".csv")))
+  if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) arqs <- c(arqs, file.path(MONITORA_CORRECOES_DIR, "auditoria_sanitizacao_forma_vida_desconhecida_ultima_execucao.csv"))
+  for (aa in arqs) try(monitora_fwrite(audit, aa, na = ""), silent = TRUE)
+  invisible(audit)
+}
+
 monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linha_lote, chaves = monitora_correcao_colunas_chave(dt), indice = NULL, arquivo_correcao = NA_character_, dicionario = NULL, gravar_relatorio_ambiguidades = TRUE) {
   dt <- monitora_dt_referenciar(dt)
   linha_lote <- data.table::as.data.table(linha_lote)
@@ -6755,6 +7162,22 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
     audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Movimento atômico: hábito obrigatório preenchido no destino", atualizacao_habito$col, atualizacao_habito$idx, atualizacao_habito$antes, atualizacao_habito$depois)), fill = TRUE, use.names = TRUE)
     linhas_afetadas <- unique(c(linhas_afetadas, atualizacao_habito$idx)); afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = atualizacao_habito$idx, atributo = atualizacao_habito$col)), fill = TRUE, use.names = TRUE)
   }
+  if (any(monitora_correcao_normalizar_nome_coluna(tokens_remover) %in% monitora_correcao_normalizar_nome_coluna(monitora_correcao_tokens_desconhecida()))) {
+    res_desc_dep <- monitora_correcao_sanitizar_dependentes_desconhecida(
+      dt,
+      linhas = linhas,
+      categorias = c(origem, destino),
+      id_correcao = id_cor,
+      ordem_operacao = ordem,
+      arquivo_correcao = arquivo_correcao,
+      dicionario = dicionario,
+      registrar_preservadas = TRUE
+    )
+    dt <- res_desc_dep$dt
+    if (nrow(res_desc_dep$audit)) audit <- data.table::rbindlist(list(audit, res_desc_dep$audit), fill = TRUE, use.names = TRUE)
+    if (nrow(res_desc_dep$afetacoes)) afetacoes <- data.table::rbindlist(list(afetacoes, res_desc_dep$afetacoes), fill = TRUE, use.names = TRUE)
+    if (nrow(res_desc_dep$afetacoes)) linhas_afetadas <- unique(c(linhas_afetadas, res_desc_dep$afetacoes$linha_indice))
+  }
   tipo_col <- chaves$tipo_forma_vida
   if (!is.na(tipo_col) && tipo_col %in% names(dt)) {
     antes_tipo <- as.character(dt[[tipo_col]][linhas])
@@ -7033,6 +7456,22 @@ monitora_correcao_aplicar_triagem_desconhecida_atomica <- function(dt, linha_tri
     data.table::set(dt, i = atualizacao_habito$idx, j = atualizacao_habito$col, value = atualizacao_habito$depois)
     audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Substituição atômica: hábito obrigatório preenchido", atualizacao_habito$col, atualizacao_habito$idx, atualizacao_habito$antes, atualizacao_habito$depois)), fill = TRUE, use.names = TRUE)
     linhas_afetadas <- unique(c(linhas_afetadas, atualizacao_habito$idx)); afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = atualizacao_habito$idx, atributo = atualizacao_habito$col)), fill = TRUE, use.names = TRUE)
+  }
+  if (any(monitora_correcao_normalizar_nome_coluna(tokens_remover) %in% monitora_correcao_normalizar_nome_coluna(monitora_correcao_tokens_desconhecida()))) {
+    res_desc_dep <- monitora_correcao_sanitizar_dependentes_desconhecida(
+      dt,
+      linhas = linhas,
+      categorias = c("nativa", "exotica", "seca_morta"),
+      id_correcao = id_cor,
+      ordem_operacao = ordem,
+      arquivo_correcao = arquivo_correcao,
+      dicionario = dicionario,
+      registrar_preservadas = TRUE
+    )
+    dt <- res_desc_dep$dt
+    if (nrow(res_desc_dep$audit)) audit <- data.table::rbindlist(list(audit, res_desc_dep$audit), fill = TRUE, use.names = TRUE)
+    if (nrow(res_desc_dep$afetacoes)) afetacoes <- data.table::rbindlist(list(afetacoes, res_desc_dep$afetacoes), fill = TRUE, use.names = TRUE)
+    if (nrow(res_desc_dep$afetacoes)) linhas_afetadas <- unique(c(linhas_afetadas, res_desc_dep$afetacoes$linha_indice))
   }
   tipo_col <- chaves$tipo_forma_vida
   if (!is.na(tipo_col) && tipo_col %in% names(dt)) {
@@ -7387,6 +7826,34 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
       monitora_fwrite(audit, file.path(MONITORA_CORRECOES_DIR, "auditoria_correcoes_campos_ultima_execucao.csv"), na = "")
     }
     stop("Substituição atômica de desconhecida falhou; ver auditoria_correcoes_campos_ultima_execucao.csv", call. = FALSE)
+  }
+
+  ### Consistência pós-sanitização/triagem: dependentes históricos de forma de
+  ### vida desconhecida só podem permanecer preenchidos quando a sublista da
+  ### categoria correspondente ainda contém o token desconhecida.
+  linhas_desc_alvo <- unique(c(linhas_semantica_alvo, linhas_afetadas_vinculos))
+  linhas_desc_alvo <- linhas_desc_alvo[!is.na(linhas_desc_alvo) & linhas_desc_alvo >= 1L & linhas_desc_alvo <= nrow(dt)]
+  if (length(linhas_desc_alvo)) {
+    res_desc_cons <- monitora_correcao_sanitizar_dependentes_desconhecida(
+      dt,
+      linhas = linhas_desc_alvo,
+      categorias = c("nativa", "exotica", "seca_morta"),
+      id_correcao = "__SANITIZACAO_DESCONHECIDA_POS_CORRECOES__",
+      ordem_operacao = NA_character_,
+      arquivo_correcao = arquivo_correcao,
+      dicionario = dicionario,
+      registrar_preservadas = TRUE
+    )
+    dt <- res_desc_cons$dt
+    if (nrow(res_desc_cons$audit)) {
+      monitora_correcao_gravar_auditoria_sanitizacao_desconhecida(res_desc_cons$audit)
+      audit <- data.table::rbindlist(list(audit, res_desc_cons$audit), fill = TRUE, use.names = TRUE)
+    }
+    if (nrow(res_desc_cons$afetacoes)) {
+      afetacoes_vinculos <- data.table::rbindlist(list(afetacoes_vinculos, res_desc_cons$afetacoes), fill = TRUE, use.names = TRUE)
+      linhas_afetadas_vinculos <- unique(c(linhas_afetadas_vinculos, res_desc_cons$afetacoes$linha_indice))
+      linhas_semantica_alvo <- unique(c(linhas_semantica_alvo, res_desc_cons$afetacoes$linha_indice))
+    }
   }
 
   ### Antes de remover linhas, fixa o contexto estável das alterações já
@@ -11481,6 +11948,19 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
     }
   }
 
+  if (isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE)) &&
+      identical(basename(produto), "registros_corrig.csv") &&
+      exists("monitora_registros_validados_exportar", mode = "function")) {
+    monitora_registros_validados_exportar(
+      obj,
+      output_dir = MONITORA_OUTPUT_DIR,
+      log_dir = MONITORA_LOG_DIR,
+      exec_id = MONITORA_EXEC_ID,
+      abortar = TRUE,
+      forcar = TRUE
+    )
+  }
+
   auditoria_parcial <- data.table::data.table(
     exec_id = as.character(MONITORA_EXEC_ID),
     modo_execucao = as.character(MONITORA_MODO_EXECUCAO),
@@ -12384,6 +12864,1437 @@ monitora_auditoria_criar_resumo_achados <- function() {
   monitora_log_registrar_evento("resumo_achados_validacao", "INFO", saida_log, paste0(nrow(resumo), " achado(s) consolidado(s) para verificação/validação"), "também exportado em output/auditoria_resumo_achados_relevantes_ultima_execucao.csv")
   invisible(resumo)
 }
+
+
+### Exportação opcional: registros_validados.csv ---------------------------
+### Este bloco só é carregado quando MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S".
+### Com o padrão "N", nenhuma função desta etapa é definida nem executada.
+if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS)) {
+
+monitora_validados_schema_embutido <- function() {
+  data.table::data.table(
+    posicao = seq_len(129L),
+    atributo = c(
+      "coleta", "data_do_registro", "data_do_recebimento",
+      "ultima_edicao", "protocolo", "uc",
+      "ciclo", "campanha", "ea",
+      "ua", "usuario", "validado",
+      "validador", "data_validacao", "obs_validacao",
+      "planilha_upload", "coleta_uuid", "controle_versao",
+      "n_form_ref", "data_hora/data", "data_hora/hora",
+      "coletor/cpf", "coletor/nome", "form_veg",
+      "impact_manejo_uso/impacto_manejo_uso", "impact_manejo_uso/tipos_impacto_manejo_uso", "impact_manejo_uso/tipos_impacto_manejo_uso_outro",
+      "impact_manejo_uso/tipos_impacto_manejo_uso_descricao", "observacoes_gerais", "amostragem/ponto_inicio_transecto",
+      "amostragem/foto_ponto_inicial", "amostragem/num_placa", "amostragem/num_placa_formatado",
+      "amostragem/foto_plaqueta", "amostragem/especie", "amostragem/registro/ponto_amostral",
+      "amostragem/registro/ponto_metro", "amostragem/registro/tipo_forma_vida", "amostragem/registro/forma_serrapilheira",
+      "amostragem/registro/forma_vida_outros", "amostragem/registro/forma_vida_nativa", "amostragem/registro/forma_vida_nativa_bromelioide",
+      "amostragem/registro/forma_vida_nativa_bromelioide_sp", "amostragem/registro/forma_vida_nativa_cactacea", "amostragem/registro/forma_vida_nativa_cactacea_sp",
+      "amostragem/registro/forma_vida_nativa_orquidea", "amostragem/registro/forma_vida_nativa_orquidea_sp", "amostragem/registro/forma_vida_nativa_samambaia",
+      "amostragem/registro/forma_vida_nativa_samambaia_sp", "amostragem/registro/forma_vida_nativa_graminoide", "amostragem/registro/forma_vida_nativa_erva_nao_graminoide",
+      "amostragem/registro/forma_vida_nativa_arbusto_abaixo", "amostragem/registro/forma_vida_nativa_arbusto_acima", "amostragem/registro/forma_vida_nativa_arvore_abaixo",
+      "amostragem/registro/forma_vida_nativa_arvore_acima", "amostragem/registro/forma_vida_nativa_bambu", "amostragem/registro/forma_vida_nativa_lianas",
+      "amostragem/registro/forma_vida_nativa_ervas_de_passarinho", "amostragem/registro/forma_vida_nativa_palmeira", "amostragem/registro/forma_vida_nativa_canela_de_ema",
+      "amostragem/registro/foto_forma_vida_nativa_desconhecida", "amostragem/registro/foto_forma_vida_nativa_desconhecida02", "amostragem/registro/foto_forma_vida_nativa_desconhecida03",
+      "amostragem/registro/forma_vida_exotica", "amostragem/registro/forma_vida_exotica_bromelioide", "amostragem/registro/forma_vida_exotica_cactacea",
+      "amostragem/registro/forma_vida_exotica_orquidea", "amostragem/registro/forma_vida_exotica_samambaia", "amostragem/registro/especies_exotica_graminoide",
+      "amostragem/registro/exotica_graminoide_outra_sp", "amostragem/registro/especies_exotica_erva_nao_graminoide", "amostragem/registro/exotica_erva_outra_sp",
+      "amostragem/registro/especies_exotica_arbusto_abaixo", "amostragem/registro/exotica_arbusto_abaixo_outra_sp", "amostragem/registro/especies_exotica_arbusto_acima",
+      "amostragem/registro/exotica_arbusto_acima_outra_sp", "amostragem/registro/especies_exotica_arvore_abaixo", "amostragem/registro/exotica_arvore_abaixo_outra_sp",
+      "amostragem/registro/especies_exotica_arvore_acima", "amostragem/registro/exotica_arvore_acima_outra_sp", "amostragem/registro/especies_exotica_bambu",
+      "amostragem/registro/exotica_bambu_outra_sp", "amostragem/registro/especies_exotica_lianas", "amostragem/registro/exotica_lianas_outra_sp",
+      "amostragem/registro/especies_exotica_ervas_de_passarinho", "amostragem/registro/exotica_ervas_de_passarinho_outra_sp", "amostragem/registro/especies_exotica_palmeira",
+      "amostragem/registro/exotica_palmeira_outra_sp", "amostragem/registro/especies_exotica_bromelioide", "amostragem/registro/exotica_bromelioide_outra_sp",
+      "amostragem/registro/especies_exotica_cactacea", "amostragem/registro/exotica_cactacea_outra_sp", "amostragem/registro/especies_exotica_orquidea",
+      "amostragem/registro/exotica_orquidea_outra_sp", "amostragem/registro/especies_exotica_samambaia", "amostragem/registro/exotica_samambaia_outra_sp",
+      "amostragem/registro/especies_exotica_outros", "amostragem/registro/exotica_outros_outra_sp", "amostragem/registro/foto_forma_vida_exotica_desconhecida",
+      "amostragem/registro/foto_forma_vida_exotica_desconhecida02", "amostragem/registro/foto_forma_vida_exotica_desconhecida03", "amostragem/registro/forma_vida_seca_morta",
+      "amostragem/registro/forma_vida_seca_morta_bromelioide", "amostragem/registro/forma_vida_seca_morta_bromelioide_sp", "amostragem/registro/forma_vida_seca_morta_cactacea",
+      "amostragem/registro/forma_vida_seca_morta_cactacea_sp", "amostragem/registro/forma_vida_seca_morta_orquidea", "amostragem/registro/forma_vida_seca_morta_orquidea_sp",
+      "amostragem/registro/forma_vida_seca_morta_samambaia", "amostragem/registro/forma_vida_seca_morta_samambaia_sp", "amostragem/registro/forma_vida_seca_morta_graminoide",
+      "amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide", "amostragem/registro/forma_vida_seca_morta_arbusto_abaixo", "amostragem/registro/forma_vida_seca_morta_arbusto_acima",
+      "amostragem/registro/forma_vida_seca_mortaarvore_abaixo", "amostragem/registro/forma_vida_seca_morta_arvore_acima", "amostragem/registro/forma_vida_seca_morta_bambu",
+      "amostragem/registro/forma_vida_seca_morta_lianas", "amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho", "amostragem/registro/forma_vida_seca_morta_palmeira",
+      "amostragem/registro/forma_vida_seca_morta_canela_de_ema", "amostragem/registro/foto_forma_vida_seca_morta_desconhecida", "amostragem/registro/foto_forma_vida_seca_morta_desconhecida02",
+      "amostragem/registro/foto_forma_vida_seca_morta_desconhecida03", "amostragem/registro/observacao", "amostragem/registro/uuid",
+      "amostragem/ponto_fim_transecto", "amostragem/foto_ponto_final", "uuid"
+    ),
+    formato = c(
+      "inteiro_texto", "datetime_iso_espaco", "datetime_iso_espaco", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "uuid_texto", "inteiro_texto", "texto", "data_iso", "hora_hms_millis_tz", "inteiro_texto_zero_esquerda", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "inteiro_texto_zero_esquerda",
+      "inteiro_texto_zero_esquerda", "texto", "texto", "inteiro_texto", "numero_texto_ponto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "texto", "texto", "texto",
+      "texto", "texto", "texto", "texto", "texto", "uuid_texto", "texto", "texto",
+      "uuid_texto"
+    ),
+    largura = as.integer(c(
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, 11L, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, 3L, 4L, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_,
+      NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_, NA_integer_
+    )),
+    obrigatorio_valor = c(
+      TRUE, TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE,
+      FALSE, FALSE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE, FALSE, FALSE, TRUE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, TRUE,
+      TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+      FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, TRUE
+    ),
+    nivel = c(
+      rep("coleta", 35L),
+      rep("registro", 91L),
+      rep("coleta", 3L)
+    )
+  )
+}
+
+monitora_validados_aliases_xlsform_historico <- function() {
+  list(
+    "coleta" = c("COLETA"),
+    "data_do_registro" = c("DATA DO REGISTRO"),
+    "data_do_recebimento" = c("DATA DO RECEBIMENTO"),
+    "ultima_edicao" = c("ULTIMA EDICAO"),
+    "protocolo" = c("PROTOCOLO"),
+    "uc" = c("UC"),
+    "ciclo" = c("CICLO"),
+    "campanha" = c("CAMPANHA"),
+    "ea" = c("EA"),
+    "ua" = c("UA"),
+    "usuario" = c("USUARIO"),
+    "validado" = c("VALIDADO"),
+    "validador" = c("VALIDADO POR"),
+    "data_validacao" = c("DATA VALIDAÇÃO", "DATA VALIDACAO", "data validacao"),
+    "obs_validacao" = c("OBS VALIDAÇÃO", "OBS VALIDACAO", "obs validacao"),
+    "planilha_upload" = c("PLANILHA_UPLOAD"),
+    "coleta_uuid" = c("COLETA_UUID", "uuid_coleta", "UUID_COLETA"),
+    "controle_versao" = c("CONTROLE_VERSAO"),
+    "n_form_ref" = c("N_FORM_REF"),
+    "data_hora/data" = c("Data (data_hora)"),
+    "data_hora/hora" = c("Horário (data_hora)"),
+    "coletor/cpf" = c("cpf", "CPF", "CPF (coletor)", "cpf (coletor)"),
+    "coletor/nome" = c("nome", "NOME", "Nome (coletor)", "nome (coletor)"),
+    "form_veg" = c("Qual a formação vegetacional onde está situado o transecto?"),
+    "impact_manejo_uso/impacto_manejo_uso" = c("Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)"),
+    "impact_manejo_uso/tipos_impacto_manejo_uso" = c("Qual(is)? (impact_manejo_uso)"),
+    "impact_manejo_uso/tipos_impacto_manejo_uso_outro" = c("Outros tipos de manejo ou uso: (impact_manejo_uso)"),
+    "impact_manejo_uso/tipos_impacto_manejo_uso_descricao" = c("Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)"),
+    "observacoes_gerais" = c("Descreva observações gerais do transecto, caso necessário:"),
+    "amostragem/ponto_inicio_transecto" = c("Coordenada inicial da amostragem (amostragem)", "amostragem/registro/ponto_inicio_transecto"),
+    "amostragem/foto_ponto_inicial" = c("Foto do ponto inicial do transecto (amostragem)", "amostragem/registro/foto_ponto_inicial"),
+    "amostragem/num_placa" = c("Número da plaqueta (amostragem)", "amostragem/registro/num_placa"),
+    "amostragem/num_placa_formatado" = c("amostragem/registro/num_placa_formatado", "num_placa_formatado", "num_placa_formatado (amostragem)", "num_placa_formatado (amostragem/registro)", "Número da plaqueta formatado", "Número da plaqueta formatado (amostragem)", "Número da plaqueta formatado (amostragem/registro)"),
+    "amostragem/foto_plaqueta" = c("amostragem/registro/foto_plaqueta", "foto_plaqueta", "Foto da plaqueta", "Foto da plaqueta (amostragem)", "Foto da plaqueta (amostragem/registro)"),
+    "amostragem/especie" = c("amostragem/registro/especie", "especie", "Espécies em campo?", "Espécies em campo? (amostragem)", "Espécies em campo? (amostragem/registro)"),
+    "amostragem/registro/ponto_amostral" = c("ponto_amostral (amostragem/registro)"),
+    "amostragem/registro/ponto_metro" = c("ponto_metro (amostragem/registro)"),
+    "amostragem/registro/tipo_forma_vida" = c("**Encostam** na vareta: (amostragem/registro)"),
+    "amostragem/registro/forma_serrapilheira" = c("Materiais botânicos em decomposição no solo observados: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_outros" = c("forma_vida_outros", "Outras plantas terrestres, líquens e/ou fungos​: (amostragem/registro)", "Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa" = c("Formas de vida de plantas <span style=\"\"color:red\"\">nativas:</span> (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_bromelioide" = c("A erva bromelioide observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_bromelioide_sp" = c("Espécie ou nome popular (Erva bromelioide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_cactacea" = c("A cactácea observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_cactacea_sp" = c("Espécie ou nome popular (Cactácea) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_orquidea" = c("A orquídea observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_orquidea_sp" = c("Espécie ou nome popular (Orquídea) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_samambaia" = c("Espécie ou nome popular (Samambaia) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_graminoide" = c("Espécie ou nome popular (Erva graminoide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_erva_nao_graminoide" = c("Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arbusto_abaixo" = c("Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arbusto_acima" = c("Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_bambu" = c("Espécie ou nome popular (Bambu) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_lianas" = c("Espécie ou nome popular (Lianas) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_ervas_de_passarinho" = c("Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_palmeira" = c("Espécie ou nome popular (Palmeira) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_canela_de_ema" = c("Espécie ou nome popular (Velósia) (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_nativa_desconhecida" = c("Foto da forma de vida desconhecida de planta nativa: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_nativa_desconhecida02" = c("foto_forma_vida_nativa_desconhecida02", "Foto da forma de vida desconhecida de planta nativa 02: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_nativa_desconhecida03" = c("foto_forma_vida_nativa_desconhecida03", "Foto da forma de vida desconhecida de planta nativa 03: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_exotica" = c("Formas de vida de plantas <span style=\"\"color:red\"\">exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/forma_vida_exotica_bromelioide" = c("A erva bromelioide observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_cactacea" = c("A cactácea observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_orquidea" = c("A orquídea observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_samambaia" = c("forma_vida_exotica_samambaia", "A samambaia <span style=\"color:red\">exótica</span> observada é: (amostragem/registro)", "A samambaia <span style=\"\"color:red\"\">exótica</span> observada é: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_graminoide" = c("**Espécies** de <span style=\"\"color:red\"\"> graminóides exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_graminoide_outra_sp" = c("Outra espécie de erva graminoide exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_erva_nao_graminoide" = c("**Espécies** de <span style=\"\"color:red\"\"> ervas não graminóides exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_erva_outra_sp" = c("Outra espécie de erva não graminoide exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arbusto_abaixo" = c("**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"),
+    "amostragem/registro/exotica_arbusto_abaixo_outra_sp" = c("Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arbusto_acima" = c("**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro)"),
+    "amostragem/registro/exotica_arbusto_acima_outra_sp" = c("Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arvore_abaixo" = c("**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"),
+    "amostragem/registro/exotica_arvore_abaixo_outra_sp" = c("Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arvore_acima" = c("**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"),
+    "amostragem/registro/exotica_arvore_acima_outra_sp" = c("Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_bambu" = c("**Espécies** de <span style=\"\"color:red\"\"> bambus exóticos:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_bambu_outra_sp" = c("Outra espécie de bambu exótico: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_lianas" = c("**Espécies** de <span style=\"\"color:red\"\"> lianas exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_lianas_outra_sp" = c("exotica_lianas_outra_sp", "Outra espécie de liana exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_ervas_de_passarinho" = c("especies_exotica_ervas_de_passarinho", "**Espécies** de <span style=\"color:red\"> ervas-de-passarinho exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_ervas_de_passarinho_outra_sp" = c("exotica_ervas_de_passarinho_outra_sp", "Outra espécie de erva-de-passarinho exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_palmeira" = c("**Espécies** de <span style=\"\"color:red\"\"> palmeiras exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_palmeira_outra_sp" = c("Outra espécie de palmeira exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_bromelioide" = c("especies_exotica_bromelioide", "**Espécies** de <span style=\"color:red\"> ervas bromelioides exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_bromelioide_outra_sp" = c("exotica_bromelioide_outra_sp", "Outra espécie de erva bromelioide exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_cactacea" = c("**Espécies** de <span style=\"\"color:red\"\"> cactáceas exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_cactacea_outra_sp" = c("Outra espécie de cactácea exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_orquidea" = c("**Espécies** de <span style=\"\"color:red\"\"> orquídeas exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_orquidea_outra_sp" = c("Outra espécie de orquídea exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_samambaia" = c("**Espécies** de <span style=\"\"color:red\"\"> samambaias exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_samambaia_outra_sp" = c("Outra espécie de samambaia exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_outros" = c("**Espécies** de <span style=\"\"color:red\"\"> outros exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_outros_outra_sp" = c("Outra espécie exótica: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_exotica_desconhecida" = c("Foto da forma de vida desconhecida de planta exótica: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_exotica_desconhecida02" = c("foto_forma_vida_exotica_desconhecida02", "Foto da forma de vida desconhecida de planta exótica 02: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_exotica_desconhecida03" = c("foto_forma_vida_exotica_desconhecida03", "Foto da forma de vida desconhecida de planta exótica 03: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta" = c("Formas de vida de plantas <span style=\"\"color:red\"\">secas ou mortas:</span> (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_bromelioide" = c("A erva bromelioide observada é: (amostragem/registro).2"),
+    "amostragem/registro/forma_vida_seca_morta_cactacea" = c("A cactácea observada é: (amostragem/registro).2"),
+    "amostragem/registro/forma_vida_seca_morta_orquidea" = c("A orquídea observada é: (amostragem/registro).2"),
+    "amostragem/registro/foto_forma_vida_seca_morta_desconhecida" = c("Foto da forma de vida desconhecida de planta seca ou morta: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_seca_morta_desconhecida02" = c("foto_forma_vida_seca_morta_desconhecida02", "Foto da forma de vida desconhecida de planta seca ou morta 02: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_seca_morta_desconhecida03" = c("foto_forma_vida_seca_morta_desconhecida03", "Foto da forma de vida desconhecida de planta seca ou morta 03: (amostragem/registro)"),
+    "amostragem/registro/observacao" = c("Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)"),
+    "amostragem/registro/uuid" = c("uuid (amostragem/registro)"),
+    "amostragem/ponto_fim_transecto" = c("Coordenada final da amostragem (amostragem)", "amostragem/registro/ponto_fim_transecto"),
+    "amostragem/foto_ponto_final" = c("Foto do ponto final do transecto (amostragem)", "amostragem/registro/foto_ponto_final")
+  )
+}
+
+
+monitora_validados_aliases_adicionais <- function() {
+  list(
+    "n_form_ref" = c("Formulário de referência", "Formulario de referencia", "formulario_referencia"),
+    "planilha_upload" = c("planilha_upload", "PLANILHA_UPLOAD", "origem_planilha", "MONITORA_TIPO_ENTRADA"),
+    "coletor/nome" = c("COLETORES", "Coletores", "coletor/nome", "Nome do coletor", "Nome do coletor (coletor)"),
+    "amostragem/especie" = c("Haverá identificação de espécie ou outro nível taxonômico? (amostragem)", "Havera identificacao de especie ou outro nivel taxonomico? (amostragem)"),
+    "amostragem/registro/forma_vida_nativa_bromelioide" = c("A erva bromelioide <span style=\"\"color:red\"\">nativa</span> observada é: (amostragem/registro)", "A bromélia <span style=\"\"color:red\"\">nativa</span> observada é: (amostragem/registro)", "A bromélia observada é: (amostragem/registro)", "Selecione se a bromélia observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_cactacea" = c("O cacto <span style=\"\"color:red\"\">nativo</span> observado é: (amostragem/registro)", "A cactácea observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_orquidea" = c("A orquídea <span style=\"\"color:red\"\">nativa</span> observada é: (amostragem/registro)", "Selecione se a orquidea observada é: (amostragem/registro)", "A orquídea observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_samambaia" = c("A samambaia <span style=\"\"color:red\"\">nativa</span> observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_bromelioide_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva bromelioide nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Bromelioide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_cactacea_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Cacto nativo </span>) (amostragem/registro)", "Espécie ou nome popular (Cactácea) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_orquidea_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Orquídea nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Orquídea) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_samambaia_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Samambaia nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Samambaia) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_graminoide" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva graminoide nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Graminoide) (amostragem/registro)", "Espécie ou nome popular (Erva graminoide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_erva_nao_graminoide" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva não graminoide nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arbusto_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto nativo</span> tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)", "Espécie ou nome popular (Arbusto abaixo de 0,5m de altura) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arbusto_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto nativo</span> tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)", "Espécie ou nome popular (Arbusto acima de 0,5m de altura) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_lianas" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Liana nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Lianas) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_canela_de_ema" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Velloziaceae nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Velósia) (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_nativa_desconhecida02" = c("Outra foto da forma de vida desconhecida de planta nativa, caso ache necessário: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_nativa_desconhecida03" = c("Outra foto da forma de vida desconhecida de planta nativa, caso ache necessário: (amostragem/registro)__dup1", "outra foto da forma de vida desconhecida de planta nativa, caso ache necessário: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_exotica_bromelioide" = c("A erva bromelioide <span style=\"\"color:red\"\">exótica</span> observada é: (amostragem/registro)", "A erva bromelioide observada é: (amostragem/registro).1", "A bromélia observada é: (amostragem/registro).1", "Selecione se a bromélia observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_cactacea" = c("O cacto <span style=\"\"color:red\"\">exótico</span> observado é: (amostragem/registro)", "A cactácea observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_orquidea" = c("A orquídea <span style=\"\"color:red\"\">exótica</span> observada é: (amostragem/registro)", "A orquídea observada é: (amostragem/registro).1", "Selecione se a orquidea observada é: (amostragem/registro).1"),
+    "amostragem/registro/forma_vida_exotica_samambaia" = c("A samambaia <span style=\"\"color:red\"\">exótica</span> observada é: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_ervas_de_passarinho" = c("**Espécies** de <span style=\"\"color:red\"\"> ervas-de-passarinho (hemiparasita) exóticas:</span> (amostragem/registro)", "**Espécies** de <span style=\"\"color:red\"\"> ervas-de-passarinho exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_cactacea" = c("**Espécies** de <span style=\"\"color:red\"\"> cacto exótico:</span> (amostragem/registro)", "**Espécies** de <span style=\"\"color:red\"\"> cactáceas exóticas:</span> (amostragem/registro)"),
+    "amostragem/registro/exotica_cactacea_outra_sp" = c("Outra espécie de cacto exótico: (amostragem/registro)", "Outra espécie de cactácea exótica: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arbusto_abaixo" = c("**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> abaixo de 0,5m de altura: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arbusto_acima" = c("**Espécies** de <span style=\"\"color:red\"\"> arbustos exóticos</span> acima de 0,5m de altura: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arvore_abaixo" = c("**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> abaixo de 5cm diâmetro: (amostragem/registro)"),
+    "amostragem/registro/especies_exotica_arvore_acima" = c("**Espécies** de <span style=\"\"color:red\"\"> árvores exóticas</span> acima de 5cm diâmetro: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_exotica_desconhecida02" = c("Outra foto da forma de vida desconhecida de planta exótica, caso ache necessário: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_exotica_desconhecida03" = c("Outra foto da forma de vida desconhecida de planta exótica, caso ache necessário: (amostragem/registro)__dup1"),
+    "amostragem/registro/forma_vida_seca_morta_bromelioide" = c("A erva bromelioide <span style=\"\"color:red\"\">seca ou morta</span> observada é: (amostragem/registro)", "A erva bromelioide observada é: (amostragem/registro).2", "A bromélia observada é: (amostragem/registro).2", "Selecione se a bromélia observada é: (amostragem/registro).2"),
+    "amostragem/registro/forma_vida_seca_morta_cactacea" = c("O cacto <span style=\"\"color:red\"\">seco ou morto</span> observado é: (amostragem/registro)", "A cactácea observada é: (amostragem/registro).2"),
+    "amostragem/registro/forma_vida_seca_morta_orquidea" = c("A orquídea <span style=\"\"color:red\"\">seca ou morta</span> observada é: (amostragem/registro)", "A orquídea observada é: (amostragem/registro).2", "Selecione se a orquidea observada é: (amostragem/registro).2"),
+    "amostragem/registro/forma_vida_seca_morta_samambaia" = c("A samambaia <span style=\"\"color:red\"\">seca ou morta</span> observada é: (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_bromelioide_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva bromelioide seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_cactacea_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Cacto seco ou morto</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_orquidea_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Orquídea seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_samambaia_sp" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Samambaia seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_graminoide" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva graminoide seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva não graminoide seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_arbusto_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto seco ou morto</span> tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_arbusto_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto seco ou morto</span> tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_mortaarvore_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore seca ou morta</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_arvore_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\"> Árvore seca ou morta</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore seca ou morta</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_bambu" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Bambu seco ou morto</span> ) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_lianas" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Liana seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva-de-passarinho seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_palmeira" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Palmeira seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_seca_morta_canela_de_ema" = c("Espécie ou nome popular (<span style=\"\"color:red\"\"> Velloziaceae seca ou morta</span>) (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_seca_morta_desconhecida02" = c("Outra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário: (amostragem/registro)"),
+    "amostragem/registro/foto_forma_vida_seca_morta_desconhecida03" = c("Outra foto da forma de vida desconhecida de planta seca ou morta, caso ache necessário: (amostragem/registro)__dup1"),
+    "amostragem/registro/observacao" = c("Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)", "observacao (amostragem/registro)")
+  )
+}
+
+
+monitora_validados_opcao_ativa <- function() {
+  opcao <- get0("MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS", ifnotfound = "N", inherits = TRUE)
+  opcao <- toupper(trimws(as.character(opcao)[1]))
+  identical(opcao, "S")
+}
+
+monitora_validados_limpar_ausencia_saida <- function(x) {
+  y <- as.character(x)
+  y[is.na(y)] <- ""
+  y <- trimws(y)
+  z <- tolower(y)
+  y[z %in% c("", "na", "n/a", "null", "nan") | y %in% c("---")] <- ""
+  y
+}
+
+monitora_validados_normalizar_nome <- function(x) {
+  x <- as.character(x)
+  x <- gsub("<[^>]+>", " ", x, perl = TRUE)
+  x <- gsub("&nbsp;", " ", x, fixed = TRUE)
+  x <- gsub("[​-‍﻿]", "", x, perl = TRUE)
+  y <- suppressWarnings(iconv(x, from = "", to = "ASCII//TRANSLIT"))
+  y[is.na(y)] <- x[is.na(y)]
+  y <- tolower(y)
+  y <- gsub("__dup[0-9]+$", "", y, perl = TRUE)
+  y <- gsub("\\.[0-9]+$", "", y, perl = TRUE)
+  y <- gsub("[^a-z0-9]+", "_", y, perl = TRUE)
+  y <- gsub("_+", "_", y, perl = TRUE)
+  y <- gsub("^_|_$", "", y, perl = TRUE)
+  y
+}
+
+monitora_validados_unir_aliases <- function(a, b) {
+  out <- a
+  for (nm in names(b)) {
+    out[[nm]] <- unique(c(out[[nm]], b[[nm]]))
+  }
+  out
+}
+
+monitora_validados_aliases <- function() {
+  monitora_validados_unir_aliases(
+    monitora_validados_aliases_xlsform_historico(),
+    monitora_validados_aliases_adicionais()
+  )
+}
+
+monitora_validados_colunas_versãos <- function(col_template) {
+  aliases <- monitora_validados_aliases()
+  cand <- unique(c(
+    col_template,
+    aliases[[col_template]],
+    toupper(col_template),
+    gsub("_", " ", col_template, fixed = TRUE),
+    gsub("/", " ", col_template, fixed = TRUE)
+  ))
+  cand[!is.na(cand) & nzchar(cand)]
+}
+
+monitora_validados_resolver_coluna <- function(nomes_dt, col_template) {
+  if (is.null(nomes_dt) || !length(nomes_dt)) return(NA_character_)
+  cand <- monitora_validados_colunas_versãos(col_template)
+  hit <- cand[cand %in% nomes_dt]
+  if (length(hit)) return(hit[1])
+  nomes_lower <- tolower(nomes_dt)
+  for (cc in cand) {
+    hit_i <- which(nomes_lower == tolower(cc))
+    if (length(hit_i)) return(nomes_dt[hit_i[1]])
+  }
+  nomes_norm <- monitora_validados_normalizar_nome(nomes_dt)
+  cand_norm <- monitora_validados_normalizar_nome(cand)
+  hit_i <- match(cand_norm, nomes_norm, nomatch = 0L)
+  hit_i <- hit_i[hit_i > 0L]
+  if (length(hit_i)) return(nomes_dt[hit_i[1]])
+  NA_character_
+}
+
+monitora_validados_primeira_coluna <- function(dt, candidatos) {
+  for (cc in candidatos) {
+    col <- monitora_validados_resolver_coluna(names(dt), cc)
+    if (!is.na(col) && col %in% names(dt)) return(col)
+  }
+  NA_character_
+}
+
+monitora_validados_pegar <- function(dt, candidatos, n = nrow(dt)) {
+  col <- monitora_validados_primeira_coluna(dt, candidatos)
+  if (is.na(col) || !(col %in% names(dt))) return(list(valor = rep("", n), coluna = NA_character_))
+  list(valor = monitora_validados_limpar_ausencia_saida(dt[[col]]), coluna = col)
+}
+
+monitora_validados_formatar_valor <- function(x, formato = "texto", largura = NA_integer_) {
+  y <- monitora_validados_limpar_ausencia_saida(x)
+  vazio <- !nzchar(y)
+  if (identical(formato, "datetime_iso_espaco")) {
+    y[!vazio] <- gsub("T", " ", y[!vazio], fixed = TRUE)
+    y[!vazio] <- sub("^([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+([0-9]{2}:[0-9]{2}:[0-9]{2}).*$", "\\1 \\2", y[!vazio], perl = TRUE)
+    y[!vazio & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", y, perl = TRUE)] <- paste0(y[!vazio & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", y, perl = TRUE)], " 00:00:00")
+  } else if (identical(formato, "data_iso")) {
+    idx_dt <- !vazio & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}", y, perl = TRUE)
+    y[idx_dt] <- sub("^([0-9]{4}-[0-9]{2}-[0-9]{2}).*$", "\\1", y[idx_dt], perl = TRUE)
+  } else if (identical(formato, "hora_hms_millis_tz")) {
+    yy <- y[!vazio]
+    hms <- sub("^.*?([0-9]{2}:[0-9]{2}:[0-9]{2}).*$", "\\1", yy, perl = TRUE)
+    ok_hms <- grepl("^[0-9]{2}:[0-9]{2}:[0-9]{2}$", hms, perl = TRUE)
+    yy[ok_hms] <- paste0(hms[ok_hms], ".000-03:00")
+    y[!vazio] <- yy
+  } else if (identical(formato, "inteiro_texto_zero_esquerda")) {
+    idx <- !vazio & grepl("^[0-9]+(\\.0+)?$", y, perl = TRUE)
+    dig <- sub("\\.0+$", "", y[idx], perl = TRUE)
+    if (!is.na(largura) && largura > 1L && length(dig)) {
+      dig <- paste0(vapply(pmax(0L, largura - nchar(dig)), function(nz) paste(rep("0", nz), collapse = ""), character(1)), dig)
+    }
+    y[idx] <- dig
+  } else if (identical(formato, "inteiro_texto")) {
+    idx <- !vazio & grepl("^[0-9]+(\\.0+)?$", y, perl = TRUE)
+    y[idx] <- sub("\\.0+$", "", y[idx], perl = TRUE)
+  } else if (identical(formato, "numero_texto_ponto")) {
+    y[!vazio] <- gsub(",", ".", y[!vazio], fixed = TRUE)
+    y[!vazio] <- sub("^([0-9]+)\\.0+$", "\\1", y[!vazio], perl = TRUE)
+  }
+  y[is.na(y)] <- ""
+  y
+}
+
+monitora_validados_hex8_num <- function(num) {
+  digs <- strsplit("0123456789abcdef", "", fixed = TRUE)[[1]]
+  vapply(num, function(z) {
+    z <- floor(as.numeric(z) %% 4294967296)
+    out <- rep("0", 8L)
+    for (ii in 8L:1L) {
+      r <- z %% 16
+      out[ii] <- digs[r + 1L]
+      z <- floor(z / 16)
+    }
+    paste0(out, collapse = "")
+  }, character(1))
+}
+
+monitora_validados_hash32 <- function(x, salt = "") {
+  x <- paste0(as.character(salt), "||", as.character(x))
+  vapply(x, function(s) {
+    raw <- charToRaw(enc2utf8(s))
+    h <- 2166136261
+    if (length(raw)) {
+      for (bb in as.integer(raw)) {
+        h <- bitwXor(as.integer(h %% 2147483647), as.integer(bb))
+        h <- (as.numeric(h) * 16777619) %% 4294967296
+      }
+    }
+    monitora_validados_hex8_num(h)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+monitora_validados_uuid_deterministico <- function(chave, nivel = "registro") {
+  chave <- monitora_validados_limpar_ausencia_saida(chave)
+  chave[!nzchar(chave)] <- paste0("sem_chave_", seq_along(chave))
+  h1 <- monitora_validados_hash32(chave, paste0(nivel, "_1"))
+  h2 <- monitora_validados_hash32(chave, paste0(nivel, "_2"))
+  h3 <- monitora_validados_hash32(chave, paste0(nivel, "_3"))
+  h4 <- monitora_validados_hash32(chave, paste0(nivel, "_4"))
+  h5 <- monitora_validados_hash32(chave, paste0(nivel, "_5"))
+  paste0(h1, "-", substr(h2, 1L, 4L), "-", substr(h3, 1L, 4L), "-", substr(h4, 1L, 4L), "-", h5, substr(h2, 5L, 8L))
+}
+
+monitora_validados_uuid_valido <- function(x) {
+  x <- monitora_validados_limpar_ausencia_saida(x)
+  nzchar(x) & grepl("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", x, perl = TRUE)
+}
+
+monitora_validados_chave_coleta <- function(dt) {
+  n <- nrow(dt)
+  campos <- c("PROTOCOLO", "UC", "CICLO", "CAMPANHA", "EA", "UA", "COLETA")
+  vals <- lapply(campos, function(cc) {
+    col <- monitora_validados_primeira_coluna(dt, c(cc, tolower(cc)))
+    if (!is.na(col) && col %in% names(dt)) monitora_validados_limpar_ausencia_saida(dt[[col]]) else rep("", n)
+  })
+  do.call(paste, c(vals, sep = "|"))
+}
+
+monitora_validados_chave_registro <- function(dt) {
+  n <- nrow(dt)
+  campos <- list(
+    c("PROTOCOLO", "protocolo"), c("UC", "uc"), c("CICLO", "ciclo"), c("CAMPANHA", "campanha"),
+    c("EA", "ea"), c("UA", "ua"), c("COLETA", "coleta"),
+    c("ponto_amostral (amostragem/registro)", "amostragem/registro/ponto_amostral"),
+    c("ponto_metro (amostragem/registro)", "amostragem/registro/ponto_metro")
+  )
+  vals <- lapply(campos, function(cands) {
+    col <- monitora_validados_primeira_coluna(dt, cands)
+    if (!is.na(col) && col %in% names(dt)) monitora_validados_limpar_ausencia_saida(dt[[col]]) else rep("", n)
+  })
+  do.call(paste, c(vals, sep = "|"))
+}
+
+monitora_validados_uuid_por_coleta_ou_sintetico <- function(dt, alvo = c("coleta_uuid", "uuid")) {
+  alvo <- match.arg(alvo)
+  n <- nrow(dt)
+  coleta <- monitora_validados_pegar(dt, c("COLETA", "coleta"), n)$valor
+  chave_coleta <- monitora_validados_chave_coleta(dt)
+  candidatos <- if (identical(alvo, "coleta_uuid")) {
+    c("coleta_uuid", "COLETA_UUID", "uuid_coleta", "UUID_COLETA")
+  } else {
+    c("uuid", "UUID_COLETA_FORMULARIO", "uuid_formulario", "uuid_coleta_formulario")
+  }
+  col <- monitora_validados_primeira_coluna(dt, candidatos)
+  if (!is.na(col) && col %in% names(dt)) {
+    v <- monitora_validados_limpar_ausencia_saida(dt[[col]])
+    aux <- data.table::data.table(coleta = coleta, valor = v)
+    aux <- aux[nzchar(coleta) & nzchar(valor)]
+    if (nrow(aux)) {
+      card <- aux[, .(n_valores = data.table::uniqueN(valor)), by = coleta]
+      if (nrow(card[n_valores > 1L]) == 0L && all(monitora_validados_uuid_valido(aux$valor))) {
+        return(list(valor = v, coluna = col, estrategia = "mapeada_uuid_unico_por_coleta"))
+      }
+    }
+  }
+  v <- monitora_validados_uuid_deterministico(chave_coleta, paste0(alvo, "_deterministico"))
+  list(valor = v, coluna = NA_character_, estrategia = paste0("sintetizada_", alvo, "_deterministico_por_coleta"))
+}
+
+monitora_validados_uuid_registro_ou_sintetico <- function(dt) {
+  n <- nrow(dt)
+  candidatos <- c("amostragem/registro/uuid", "uuid (amostragem/registro)", "UUID_REGISTRO", "uuid_registro", "UUID")
+  for (cc in candidatos) {
+    col <- monitora_validados_primeira_coluna(dt, cc)
+    if (!is.na(col) && col %in% names(dt)) {
+      v <- monitora_validados_limpar_ausencia_saida(dt[[col]])
+      ok <- nzchar(v) & !grepl("\\|", v, fixed = FALSE) & monitora_validados_uuid_valido(v)
+      if (all(ok) && data.table::uniqueN(v) == length(v)) {
+        return(list(valor = v, coluna = col, estrategia = "mapeada_uuid_unico_por_registro"))
+      }
+    }
+  }
+  v <- monitora_validados_uuid_deterministico(monitora_validados_chave_registro(dt), "uuid_registro_deterministico")
+  list(valor = v, coluna = NA_character_, estrategia = "sintetizada_uuid_deterministico_por_registro")
+}
+
+monitora_validados_derive_datetime <- function(dt, alvo = c("data_do_registro", "data_do_recebimento")) {
+  alvo <- match.arg(alvo)
+  n <- nrow(dt)
+  direto <- monitora_validados_pegar(dt, c(alvo, toupper(alvo), gsub("_", " ", alvo, fixed = TRUE)), n)
+  v <- monitora_validados_formatar_valor(direto$valor, "datetime_iso_espaco")
+  if (any(nzchar(v))) return(list(valor = v, coluna = direto$coluna, estrategia = "mapeada_datetime"))
+  if (identical(alvo, "data_do_registro")) {
+    rec <- monitora_validados_pegar(dt, c("data_do_recebimento", "DATA DO RECEBIMENTO", "Data do recebimento"), n)
+    v <- monitora_validados_formatar_valor(rec$valor, "datetime_iso_espaco")
+    if (any(nzchar(v))) return(list(valor = v, coluna = rec$coluna, estrategia = "derivada_de_data_do_recebimento"))
+  }
+  data <- monitora_validados_pegar(dt, c("data_hora/data", "Data (data_hora)", "DATA_MONITORA_PARSEADA"), n)
+  hora <- monitora_validados_pegar(dt, c("data_hora/hora", "Horário (data_hora)", "Hora (data_hora)"), n)
+  d <- monitora_validados_formatar_valor(data$valor, "data_iso")
+  h <- monitora_validados_formatar_valor(hora$valor, "hora_hms_millis_tz")
+  h <- sub("^([0-9]{2}:[0-9]{2}:[0-9]{2}).*$", "\\1", h, perl = TRUE)
+  h[!grepl("^[0-9]{2}:[0-9]{2}:[0-9]{2}$", h, perl = TRUE)] <- "00:00:00"
+  v <- ifelse(nzchar(d), paste(d, h), "")
+  list(valor = v, coluna = paste(c(data$coluna, hora$coluna)[!is.na(c(data$coluna, hora$coluna))], collapse = " + "), estrategia = "derivada_de_data_hora_campo")
+}
+
+monitora_validados_derive_data_hora <- function(dt, alvo = c("data", "hora")) {
+  alvo <- match.arg(alvo)
+  n <- nrow(dt)
+  if (identical(alvo, "data")) {
+    cols <- c("data_hora/data", "Data (data_hora)", "DATA_MONITORA_PARSEADA", "data_do_registro", "DATA DO REGISTRO", "DATA DO RECEBIMENTO")
+    p <- monitora_validados_pegar(dt, cols, n)
+    return(list(valor = monitora_validados_formatar_valor(p$valor, "data_iso"), coluna = p$coluna, estrategia = ifelse(is.na(p$coluna), "sem_origem", "mapeada_ou_derivada_data")))
+  }
+  cols <- c("data_hora/hora", "Horário (data_hora)", "Hora (data_hora)", "data_do_registro", "DATA DO REGISTRO", "DATA DO RECEBIMENTO")
+  p <- monitora_validados_pegar(dt, cols, n)
+  v <- monitora_validados_formatar_valor(p$valor, "hora_hms_millis_tz")
+  if (!any(nzchar(v))) v <- rep("00:00:00.000-03:00", n)
+  list(valor = v, coluna = p$coluna, estrategia = ifelse(is.na(p$coluna), "sintetizada_hora_padrao_00", "mapeada_ou_derivada_hora"))
+}
+
+monitora_validados_numero_ua <- function(dt, n = nrow(dt)) {
+  ua <- monitora_validados_pegar(dt, c("UA", "ua"), n)
+  v <- monitora_validados_limpar_ausencia_saida(ua$valor)
+  out <- rep("", n)
+  idx <- nzchar(v) & grepl("UA[-_ ]*0*[0-9]+", toupper(v), perl = TRUE)
+  if (any(idx)) {
+    out[idx] <- sub("^.*UA[-_ ]*0*([0-9]+).*$", "\\1", toupper(v[idx]), perl = TRUE)
+  }
+  list(valor = out, coluna = ua$coluna)
+}
+
+monitora_validados_coalesce_vetor <- function(..., n) {
+  vals <- list(...)
+  out <- rep("", n)
+  for (vv in vals) {
+    vv <- monitora_validados_limpar_ausencia_saida(vv)
+    idx <- !nzchar(out) & nzchar(vv)
+    if (any(idx)) out[idx] <- vv[idx]
+  }
+  out
+}
+
+monitora_validados_derivar_num_placa <- function(dt, alvo = c("num_placa", "num_placa_formatado")) {
+  alvo <- match.arg(alvo)
+  n <- nrow(dt)
+  p_fmt <- monitora_validados_pegar(dt, c("Número da plaqueta formatado (amostragem)", "amostragem/num_placa_formatado"), n)
+  p_num <- monitora_validados_pegar(dt, c("Número da plaqueta (amostragem)", "amostragem/num_placa"), n)
+  p_ua <- monitora_validados_numero_ua(dt, n)
+  if (identical(alvo, "num_placa")) {
+    v <- monitora_validados_coalesce_vetor(p_num$valor, p_fmt$valor, p_ua$valor, n = n)
+    v <- monitora_validados_formatar_valor(v, "inteiro_texto_zero_esquerda", 3L)
+    origem <- paste(unique(c(p_num$coluna, p_fmt$coluna, p_ua$coluna)[!is.na(c(p_num$coluna, p_fmt$coluna, p_ua$coluna))]), collapse = " + ")
+    return(list(valor = v, coluna = origem, estrategia = "mapeada_ou_derivada_num_placa_por_ua"))
+  }
+  v <- monitora_validados_coalesce_vetor(p_fmt$valor, p_num$valor, p_ua$valor, n = n)
+  v <- monitora_validados_formatar_valor(v, "inteiro_texto_zero_esquerda", 4L)
+  origem <- paste(unique(c(p_fmt$coluna, p_num$coluna, p_ua$coluna)[!is.na(c(p_fmt$coluna, p_num$coluna, p_ua$coluna))]), collapse = " + ")
+  list(valor = v, coluna = origem, estrategia = "mapeada_ou_derivada_num_placa_formatado_por_ua")
+}
+
+
+monitora_validados_norm_ascii <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  y <- iconv(x, from = "", to = "ASCII//TRANSLIT", sub = "")
+  y[is.na(y)] <- ""
+  y <- tolower(y)
+  y <- gsub("[^a-z0-9]+", "_", y, perl = TRUE)
+  y <- gsub("^_+|_+$", "", y, perl = TRUE)
+  y
+}
+
+monitora_validados_xlsform21_meta <- function() {
+  if (exists("monitora_correcao_xlsforms_embutidos", mode = "function")) {
+    meta <- monitora_correcao_xlsforms_embutidos()
+  } else {
+    meta <- list(campos = data.table::data.table(), opcoes = data.table::data.table(), dependencias = data.table::data.table(), arquivos = data.table::data.table())
+  }
+  if (is.null(meta$campos)) meta$campos <- data.table::data.table()
+  if (is.null(meta$opcoes)) meta$opcoes <- data.table::data.table()
+  meta$campos <- data.table::as.data.table(meta$campos)
+  meta$opcoes <- data.table::as.data.table(meta$opcoes)
+  meta
+}
+
+monitora_validados_xlsform21_campo <- function(atributo, meta = NULL) {
+  if (is.null(meta)) meta <- monitora_validados_xlsform21_meta()
+  campos <- data.table::as.data.table(meta$campos)
+  if (!nrow(campos)) return(data.table::data.table())
+  for (cc in c("arquivo_xlsform", "name", "caminho_registro", "tipo_base", "list_name")) if (!(cc %in% names(campos))) campos[, (cc) := ""]
+  alvo_nome <- sub("^.*/", "", as.character(atributo)[1])
+  alvo_caminho <- as.character(atributo)[1]
+  campos[grepl("21FEV25", arquivo_xlsform) & (name == alvo_nome | caminho_registro == alvo_caminho)]
+}
+
+monitora_validados_xlsform21_mapa_lista <- function(lista, meta = NULL) {
+  if (is.null(meta)) meta <- monitora_validados_xlsform21_meta()
+  op <- data.table::as.data.table(meta$opcoes)
+  if (!nrow(op)) return(data.table::data.table(norm = character(), name = character(), list_name = character()))
+  for (cc in c("arquivo_xlsform", "list_name", "name", "label")) if (!(cc %in% names(op))) op[, (cc) := ""]
+  lista <- as.character(lista)[1]
+  op <- op[grepl("21FEV25", arquivo_xlsform) & list_name == lista & nzchar(name)]
+  if (!nrow(op)) return(data.table::data.table(norm = character(), name = character(), list_name = character()))
+  base <- data.table::rbindlist(list(
+    op[, .(norm = monitora_validados_norm_ascii(name), name = as.character(name), list_name = lista)],
+    op[, .(norm = monitora_validados_norm_ascii(label), name = as.character(name), list_name = lista)]
+  ), fill = TRUE)
+  ## Aliases históricos e variações frequentes vindas de registros_corrig/planilhas.
+  extras <- data.table::data.table(norm = character(), name = character(), list_name = character())
+  add <- function(norm, name) data.table::data.table(norm = monitora_validados_norm_ascii(norm), name = name, list_name = lista)
+  if (identical(lista, "form_veg")) {
+    extras <- data.table::rbindlist(list(extras, add(c("campestre", "Campestre"), "campestre"), add(c("savanica", "savânica", "Savanica", "Savânica"), "savanica")), fill = TRUE)
+  }
+  if (identical(lista, "impacto_manejo_uso")) {
+    extras <- data.table::rbindlist(list(extras, add(c("nao", "não", "Nao", "Não"), "não"), add(c("sim", "Sim"), "sim")), fill = TRUE)
+  }
+  if (identical(lista, "especie")) {
+    extras <- data.table::rbindlist(list(extras, add(c("nao", "não", "Nao", "Não"), "nao"), add(c("sim", "Sim"), "sim")), fill = TRUE)
+  }
+  if (lista %in% c("forma_vida_nativa", "forma_vida_exotica", "forma_vida_seca_morta")) {
+    extras <- data.table::rbindlist(list(extras, add(c("erva_bromelioide", "bromelia", "bromelioide"), "bromelioide"), add(c("outra", "outra_forma_vida"), "")), fill = TRUE)
+  }
+  if (identical(lista, "forma_vida_outros")) {
+    extras <- data.table::rbindlist(list(extras, add(c("Musgos (\"lodo\")", "Musgos (\"\"lodo\"\")", "musgos lodo", "musgos"), "musgos"), add(c("Hepáticas (possuem filídios ou talóides)", "hepaticas", "hepaticas possuem filidios ou taloides"), "hepaticas")), fill = TRUE)
+  }
+  if (identical(lista, "tipos_impacto_manejo_uso")) {
+    extras <- data.table::rbindlist(list(extras, add(c("Extrativismo", "extrativismo"), "extrativismo"), add(c("Outros", "outros"), "outros")), fill = TRUE)
+  }
+  ans <- data.table::rbindlist(list(base, extras), fill = TRUE)
+  ans <- ans[nzchar(norm) & !is.na(name)]
+  data.table::setorderv(ans, c("list_name", "norm", "name"))
+  unique(ans, by = c("list_name", "norm"))
+}
+
+monitora_validados_xlsform21_choices <- function(lista, meta = NULL) {
+  if (is.null(meta)) meta <- monitora_validados_xlsform21_meta()
+  op <- data.table::as.data.table(meta$opcoes)
+  if (!nrow(op)) return(character(0))
+  for (cc in c("arquivo_xlsform", "list_name", "name")) if (!(cc %in% names(op))) op[, (cc) := ""]
+  unique(as.character(op[grepl("21FEV25", arquivo_xlsform) & list_name == as.character(lista)[1] & nzchar(name), name]))
+}
+
+monitora_validados_normalizar_select_vetor <- function(x, lista, multiple = TRUE, meta = NULL) {
+  x0 <- monitora_validados_limpar_ausencia_saida(x)
+  if (!length(x0)) return(character(0))
+  mapa <- monitora_validados_xlsform21_mapa_lista(lista, meta)
+  choices <- monitora_validados_xlsform21_choices(lista, meta)
+  if (!length(choices)) return(x0)
+  choices_placeholder <- length(choices) <= 2L && all(choices %in% c("num_key", "label"))
+  if (isTRUE(choices_placeholder)) return(x0)
+  env <- new.env(parent = emptyenv())
+  for (ii in seq_len(nrow(mapa))) assign(mapa$norm[ii], mapa$name[ii], envir = env)
+  choice_order <- stats::setNames(seq_along(choices), choices)
+  norm_one <- function(v) {
+    v <- monitora_validados_limpar_ausencia_saida(v)
+    if (!nzchar(v)) return("")
+    nv <- monitora_validados_norm_ascii(v)
+    if (exists(nv, envir = env, inherits = FALSE)) {
+      vv <- get(nv, envir = env, inherits = FALSE)
+      if (!is.na(vv) && nzchar(vv)) return(vv)
+      return("")
+    }
+    if (!isTRUE(multiple)) {
+      ## select_one não deve ser quebrado por palavras: isso corrompia valores como
+      ## nomes completos de UC ("Floresta Nacional...") quando a lista do XLSForm
+      ## usa placeholders/dinâmica. Sem correspondência exata, preserva o valor.
+      return(v)
+    }
+    partes <- unlist(strsplit(gsub("[|;,]+", " ", v, perl = TRUE), "\\s+", perl = TRUE), use.names = FALSE)
+    partes <- partes[nzchar(partes)]
+    if (!length(partes)) return("")
+    out <- character(0)
+    for (pp in partes) {
+      np <- monitora_validados_norm_ascii(pp)
+      val <- if (exists(np, envir = env, inherits = FALSE)) get(np, envir = env, inherits = FALSE) else pp
+      if (!is.na(val) && nzchar(val)) out <- c(out, val)
+    }
+    out <- unique(out[nzchar(out)])
+    if (!length(out)) return("")
+    ord <- choice_order[out]
+    out <- out[order(ifelse(is.na(ord), length(choices) + seq_along(out), ord))]
+    paste(out, collapse = " ")
+  }
+  vals <- unique(x0)
+  res <- vapply(vals, norm_one, character(1), USE.NAMES = FALSE)
+  unname(res[match(x0, vals)])
+}
+
+monitora_validados_tem_token <- function(x, token) {
+  x <- monitora_validados_limpar_ausencia_saida(x)
+  grepl(paste0("(^| )", token, "( |$)"), x, perl = TRUE)
+}
+
+monitora_validados_adicionar_token <- function(x, token, lista_ordem = NULL) {
+  x <- monitora_validados_limpar_ausencia_saida(x)
+  tem <- monitora_validados_tem_token(x, token)
+  y <- ifelse(tem, x, trimws(paste(x, token)))
+  if (!is.null(lista_ordem) && length(lista_ordem)) {
+    y <- monitora_validados_ordenar_multiselect(y, lista_ordem)
+  }
+  y
+}
+
+monitora_validados_remover_token <- function(x, token, lista_ordem = NULL) {
+  x <- monitora_validados_limpar_ausencia_saida(x)
+  vals <- unique(x)
+  limpa <- function(v) {
+    if (!nzchar(v)) return("")
+    p <- unlist(strsplit(v, "\\s+", perl = TRUE), use.names = FALSE)
+    p <- p[nzchar(p) & p != token]
+    if (!length(p)) return("")
+    if (!is.null(lista_ordem) && length(lista_ordem)) {
+      ord <- stats::setNames(seq_along(lista_ordem), lista_ordem)[p]
+      p <- p[order(ifelse(is.na(ord), length(lista_ordem) + seq_along(p), ord))]
+    }
+    paste(unique(p), collapse = " ")
+  }
+  res <- vapply(vals, limpa, character(1), USE.NAMES = FALSE)
+  unname(res[match(x, vals)])
+}
+
+monitora_validados_ordenar_multiselect <- function(x, lista_ordem) {
+  x <- monitora_validados_limpar_ausencia_saida(x)
+  vals <- unique(x)
+  ordem <- stats::setNames(seq_along(lista_ordem), lista_ordem)
+  f <- function(v) {
+    if (!nzchar(v)) return("")
+    p <- unique(unlist(strsplit(v, "\\s+", perl = TRUE), use.names = FALSE))
+    p <- p[nzchar(p)]
+    if (!length(p)) return("")
+    ord <- ordem[p]
+    p <- p[order(ifelse(is.na(ord), length(lista_ordem) + seq_along(p), ord))]
+    paste(p, collapse = " ")
+  }
+  res <- vapply(vals, f, character(1), USE.NAMES = FALSE)
+  unname(res[match(x, vals)])
+}
+
+monitora_validados_campos_dependentes_categoria <- function(cols, categoria) {
+  pref <- paste0("amostragem/registro/forma_vida_", categoria, "_")
+  grep(paste0("^", pref), cols, value = TRUE)
+}
+
+monitora_validados_aplicar_regras_xlsform21 <- function(out, schema) {
+  meta <- monitora_validados_xlsform21_meta()
+  cols <- names(out)
+  ajustes <- vector("list", 32L)
+  kk <- 0L
+  registrar <- function(regra, atributo, n_ajustes, detalhe = "") {
+    if (!is.finite(n_ajustes) || n_ajustes <= 0L) return(invisible(NULL))
+    kk <<- kk + 1L
+    ajustes[[kk]] <<- data.table::data.table(regra = regra, atributo = atributo, n_ajustes = as.integer(n_ajustes), detalhe = detalhe)
+    invisible(NULL)
+  }
+  ## 1. Normalização de campos select_one/select_multiple para os names do XLSForm 21FEV25.
+  for (att in cols) {
+    campo <- monitora_validados_xlsform21_campo(att, meta)
+    if (!nrow(campo)) next
+    campo <- campo[1L]
+    if (!(campo$tipo_base %in% c("select_one", "select_multiple")) || !nzchar(campo$list_name)) next
+    antes <- out[[att]]
+    depois <- monitora_validados_normalizar_select_vetor(antes, campo$list_name, multiple = identical(campo$tipo_base, "select_multiple"), meta = meta)
+    registrar("normalizacao_dominio_xlsform21", att, sum(antes != depois, na.rm = TRUE), campo$list_name)
+    data.table::set(out, j = att, value = depois)
+  }
+  tipo_col <- "amostragem/registro/tipo_forma_vida"
+  tipo_choices <- monitora_validados_xlsform21_choices("tipo_forma_vida", meta)
+  if (tipo_col %in% cols) {
+    tipo <- out[[tipo_col]]
+    ## Remover token histórico indevido em sublistas e mapear bromelioide.
+    for (cc in c("amostragem/registro/forma_vida_nativa", "amostragem/registro/forma_vida_exotica", "amostragem/registro/forma_vida_seca_morta")) {
+      if (cc %in% cols) {
+        antes <- out[[cc]]
+        depois <- monitora_validados_remover_token(antes, "serrapilheira", monitora_validados_xlsform21_choices(sub("^.*/", "", cc), meta))
+        depois <- monitora_validados_remover_token(depois, "outra", monitora_validados_xlsform21_choices(sub("^.*/", "", cc), meta))
+        registrar("remocao_token_invalido_sublista_forma_vida", cc, sum(antes != depois, na.rm = TRUE), "serrapilheira/outra")
+        data.table::set(out, j = cc, value = depois)
+      }
+    }
+    nativa <- if ("amostragem/registro/forma_vida_nativa" %in% cols) nzchar(out[["amostragem/registro/forma_vida_nativa"]]) else rep(FALSE, nrow(out))
+    exotica <- if ("amostragem/registro/forma_vida_exotica" %in% cols) nzchar(out[["amostragem/registro/forma_vida_exotica"]]) else rep(FALSE, nrow(out))
+    seca <- if ("amostragem/registro/forma_vida_seca_morta" %in% cols) nzchar(out[["amostragem/registro/forma_vida_seca_morta"]]) else rep(FALSE, nrow(out))
+    serr <- if ("amostragem/registro/forma_serrapilheira" %in% cols) nzchar(out[["amostragem/registro/forma_serrapilheira"]]) else rep(FALSE, nrow(out))
+    outros <- if ("amostragem/registro/forma_vida_outros" %in% cols) nzchar(out[["amostragem/registro/forma_vida_outros"]]) else rep(FALSE, nrow(out))
+    antes_tipo <- tipo
+    solo_original <- monitora_validados_tem_token(tipo, "solo_nu")
+    serr_original <- monitora_validados_tem_token(tipo, "serrapilheira")
+    outra_original <- monitora_validados_tem_token(tipo, "outra_forma_vida")
+    ## Reconstroi o multiselect superior a partir dos campos inferiores já
+    ## normalizados para o XLSForm 21FEV25. Isso remove categorias históricas
+    ## que ficaram sem sublista válida, como seca_morta/exotica com sublista
+    ## apenas "serrapilheira", e migra "outra" histórica para outra_forma_vida.
+    tipo_novo <- rep("", nrow(out))
+    tipo_novo <- ifelse(serr | serr_original, monitora_validados_adicionar_token(tipo_novo, "serrapilheira", tipo_choices), tipo_novo)
+    tipo_novo <- ifelse(nativa, monitora_validados_adicionar_token(tipo_novo, "nativa", tipo_choices), tipo_novo)
+    tipo_novo <- ifelse(exotica, monitora_validados_adicionar_token(tipo_novo, "exotica", tipo_choices), tipo_novo)
+    tipo_novo <- ifelse(seca, monitora_validados_adicionar_token(tipo_novo, "seca_morta", tipo_choices), tipo_novo)
+    tipo_novo <- ifelse(outros | outra_original, monitora_validados_adicionar_token(tipo_novo, "outra_forma_vida", tipo_choices), tipo_novo)
+    tem_alguma_categoria <- nzchar(tipo_novo)
+    tipo_novo <- ifelse(!tem_alguma_categoria & solo_original, monitora_validados_adicionar_token(tipo_novo, "solo_nu", tipo_choices), tipo_novo)
+    tem_solo <- monitora_validados_tem_token(tipo_novo, "solo_nu")
+    tem_outro_tipo <- Reduce(`|`, lapply(c("serrapilheira", "nativa", "exotica", "seca_morta", "outra_forma_vida"), function(tt) monitora_validados_tem_token(tipo_novo, tt)))
+    tipo_novo <- ifelse(tem_solo & tem_outro_tipo, monitora_validados_remover_token(tipo_novo, "solo_nu", tipo_choices), tipo_novo)
+    registrar("sincronizacao_tipo_forma_vida_com_campos_inferiores", tipo_col, sum(antes_tipo != tipo_novo, na.rm = TRUE), "reconstroi a partir dos campos inferiores XLSForm 21FEV25; remove categorias sem sublista valida")
+    tipo <- tipo_novo
+    data.table::set(out, j = tipo_col, value = tipo)
+    ## Relevance de serrapilheira/outros e categorias principais.
+    if ("amostragem/registro/forma_serrapilheira" %in% cols) {
+      antes <- out[["amostragem/registro/forma_serrapilheira"]]
+      rel <- monitora_validados_tem_token(tipo, "serrapilheira")
+      depois <- ifelse(rel & !nzchar(antes), "serrapilheira", ifelse(rel, antes, ""))
+      registrar("relevance_forma_serrapilheira", "amostragem/registro/forma_serrapilheira", sum(antes != depois, na.rm = TRUE), "selected(tipo_forma_vida, 'serrapilheira')")
+      data.table::set(out, j = "amostragem/registro/forma_serrapilheira", value = depois)
+    }
+    if ("amostragem/registro/forma_vida_outros" %in% cols) {
+      antes <- out[["amostragem/registro/forma_vida_outros"]]
+      rel <- monitora_validados_tem_token(tipo, "outra_forma_vida")
+      depois <- ifelse(rel, antes, "")
+      registrar("relevance_forma_vida_outros", "amostragem/registro/forma_vida_outros", sum(antes != depois, na.rm = TRUE), "selected(tipo_forma_vida, 'outra_forma_vida')")
+      data.table::set(out, j = "amostragem/registro/forma_vida_outros", value = depois)
+    }
+    for (cat in c("nativa", "exotica", "seca_morta")) {
+      main <- paste0("amostragem/registro/forma_vida_", cat)
+      if (!(main %in% cols)) next
+      rel <- monitora_validados_tem_token(tipo, cat)
+      antes <- out[[main]]
+      depois <- ifelse(rel, antes, "")
+      registrar("relevance_lista_principal_forma_vida", main, sum(antes != depois, na.rm = TRUE), paste0("selected(tipo_forma_vida, '", cat, "')"))
+      data.table::set(out, j = main, value = depois)
+      dep_cols <- monitora_validados_campos_dependentes_categoria(cols, cat)
+      if (length(dep_cols)) {
+        for (dc in dep_cols) {
+          antes_dep <- out[[dc]]
+          form <- sub(paste0("^amostragem/registro/forma_vida_", cat, "_"), "", dc)
+          form <- sub("_sp$", "", form)
+          rel_dep <- rel & monitora_validados_tem_token(out[[main]], form)
+          depois_dep <- ifelse(rel_dep, antes_dep, "")
+          registrar("relevance_dependente_forma_vida", dc, sum(antes_dep != depois_dep, na.rm = TRUE), paste0("selected(", main, ", '", form, "')"))
+          data.table::set(out, j = dc, value = depois_dep)
+        }
+      }
+    }
+  }
+  ## 2. Relevance de impactos/manejo.
+  impact_col <- "impact_manejo_uso/impacto_manejo_uso"
+  tipos_col <- "impact_manejo_uso/tipos_impacto_manejo_uso"
+  if (impact_col %in% cols) {
+    impact <- out[[impact_col]]
+    tipos <- if (tipos_col %in% cols) out[[tipos_col]] else rep("", nrow(out))
+    antes <- impact
+    impact <- ifelse(nzchar(tipos), "sim", ifelse(!nzchar(impact), "não", impact))
+    registrar("sincronizacao_impacto_com_tipos", impact_col, sum(antes != impact, na.rm = TRUE), "tipos preenchidos implicam impacto=sim; vazio implica não")
+    data.table::set(out, j = impact_col, value = impact)
+    if (tipos_col %in% cols) {
+      antes_t <- out[[tipos_col]]
+      depois_t <- ifelse(impact == "sim", antes_t, "")
+      registrar("relevance_tipos_impacto_manejo_uso", tipos_col, sum(antes_t != depois_t, na.rm = TRUE), "${impacto_manejo_uso}=sim")
+      data.table::set(out, j = tipos_col, value = depois_t)
+    }
+    for (cc in c("impact_manejo_uso/tipos_impacto_manejo_uso_descricao", "impact_manejo_uso/tipos_impacto_manejo_uso_outro")) {
+      if (cc %in% cols) {
+        antes_c <- out[[cc]]
+        if (identical(cc, "impact_manejo_uso/tipos_impacto_manejo_uso_outro") && tipos_col %in% cols) {
+          rel_c <- impact == "sim" & monitora_validados_tem_token(out[[tipos_col]], "outros")
+        } else {
+          rel_c <- impact == "sim"
+        }
+        depois_c <- ifelse(rel_c, antes_c, "")
+        registrar("relevance_impacto_manejo_uso_dependente", cc, sum(antes_c != depois_c, na.rm = TRUE), "relevance XLSForm 21FEV25")
+        data.table::set(out, j = cc, value = depois_c)
+      }
+    }
+  }
+  ajustes_dt <- if (kk) data.table::rbindlist(ajustes[seq_len(kk)], fill = TRUE) else data.table::data.table(regra = character(), atributo = character(), n_ajustes = integer(), detalhe = character())
+  list(out = out, ajustes = ajustes_dt, meta = meta)
+}
+
+monitora_validados_validar_dominios_xlsform21 <- function(out, schema, meta = NULL) {
+  if (is.null(meta)) meta <- monitora_validados_xlsform21_meta()
+  problemas <- vector("list", ncol(out))
+  k <- 0L
+  for (att in names(out)) {
+    campo <- monitora_validados_xlsform21_campo(att, meta)
+    if (!nrow(campo)) next
+    campo <- campo[1L]
+    if (!(campo$tipo_base %in% c("select_one", "select_multiple")) || !nzchar(campo$list_name)) next
+    choices <- monitora_validados_xlsform21_choices(campo$list_name, meta)
+    if (!length(choices)) next
+    ## Listas dinâmicas do XLSForm embutido aparecem como placeholders
+    ## (num_key/label). O domínio real vem do Sismonitora/base operacional,
+    ## portanto não deve bloquear o CSV validado.
+    choices_placeholder <- length(choices) <= 2L && all(choices %in% c("num_key", "label"))
+    if (isTRUE(choices_placeholder)) next
+    x <- monitora_validados_limpar_ausencia_saida(out[[att]])
+    vals <- unique(x[nzchar(x)])
+    if (!length(vals)) next
+    if (identical(campo$tipo_base, "select_one")) {
+      invalid <- setdiff(vals, choices)
+      exemplos_invalidos <- invalid
+    } else {
+      toks <- unique(unlist(strsplit(vals, "\\s+", perl = TRUE), use.names = FALSE))
+      toks <- toks[nzchar(toks)]
+      invalid <- setdiff(toks, choices)
+      exemplos_invalidos <- vals[grepl(paste(invalid, collapse = "|"), vals, perl = TRUE)]
+    }
+    if (length(invalid)) {
+      k <- k + 1L
+      motivo <- if (identical(att, "amostragem/registro/forma_vida_outros")) {
+        "residuo_outra_forma_vida_sem_sanitizacao_previa"
+      } else {
+        "token_fora_dominio_xlsform21"
+      }
+      problemas[[k]] <- data.table::data.table(
+        atributo = att, list_name = campo$list_name, tipo_base = campo$tipo_base,
+        n_tokens_invalidos = length(invalid), tokens_invalidos = paste(utils::head(invalid, 20L), collapse = " | "),
+        exemplos = paste(utils::head(exemplos_invalidos, 5L), collapse = " | "),
+        bloqueante = TRUE, motivo_bloqueio = motivo
+      )
+    }
+  }
+  if (!k) return(data.table::data.table(atributo = character(), list_name = character(), tipo_base = character(), n_tokens_invalidos = integer(), tokens_invalidos = character(), exemplos = character(), bloqueante = logical(), motivo_bloqueio = character()))
+  data.table::rbindlist(problemas[seq_len(k)], fill = TRUE)
+}
+
+monitora_validados_validar_condicionais_xlsform21 <- function(out) {
+  problemas <- list()
+  k <- 0L
+  add <- function(regra, atributo, idx, detalhe = "") {
+    n <- sum(idx, na.rm = TRUE)
+    if (!n) return(invisible(NULL))
+    k <<- k + 1L
+    exemplos <- ""
+    if ("coleta" %in% names(out)) exemplos <- paste(utils::head(out[["coleta"]][which(idx)], 10L), collapse = " | ")
+    problemas[[k]] <<- data.table::data.table(regra = regra, atributo = atributo, n_problemas = as.integer(n), exemplos_coleta = exemplos, detalhe = detalhe, bloqueante = TRUE, motivo_bloqueio = regra)
+    invisible(NULL)
+  }
+  tipo_col <- "amostragem/registro/tipo_forma_vida"
+  if (tipo_col %in% names(out)) {
+    tipo <- out[[tipo_col]]
+    tem_solo <- monitora_validados_tem_token(tipo, "solo_nu")
+    tem_outro <- Reduce(`|`, lapply(c("serrapilheira", "nativa", "exotica", "seca_morta", "outra_forma_vida"), function(tt) monitora_validados_tem_token(tipo, tt)))
+    add("solo_nu_com_outra_categoria", tipo_col, tem_solo & tem_outro, "solo_nu é exclusivo")
+    pares <- list(
+      serrapilheira = "amostragem/registro/forma_serrapilheira",
+      outra_forma_vida = "amostragem/registro/forma_vida_outros",
+      nativa = "amostragem/registro/forma_vida_nativa",
+      exotica = "amostragem/registro/forma_vida_exotica",
+      seca_morta = "amostragem/registro/forma_vida_seca_morta"
+    )
+    for (tok in names(pares)) {
+      cc <- pares[[tok]]
+      if (cc %in% names(out)) {
+        add("campo_obrigatorio_relevante_vazio", cc, monitora_validados_tem_token(tipo, tok) & !nzchar(out[[cc]]), paste0("selected(tipo_forma_vida, '", tok, "')"))
+        add("campo_irrelevante_preenchido", cc, !monitora_validados_tem_token(tipo, tok) & nzchar(out[[cc]]), paste0("not selected(tipo_forma_vida, '", tok, "')"))
+      }
+    }
+  }
+  impact_col <- "impact_manejo_uso/impacto_manejo_uso"
+  tipos_col <- "impact_manejo_uso/tipos_impacto_manejo_uso"
+  if (impact_col %in% names(out) && tipos_col %in% names(out)) {
+    impact <- out[[impact_col]]
+    tipos <- out[[tipos_col]]
+    add("tipos_impacto_obrigatorio_quando_impacto_sim", tipos_col, impact == "sim" & !nzchar(tipos), "${impacto_manejo_uso}=sim")
+    add("tipos_impacto_irrelevante_quando_impacto_nao", tipos_col, impact != "sim" & nzchar(tipos), "${impacto_manejo_uso}!=sim")
+  }
+  if (!k) return(data.table::data.table(regra = character(), atributo = character(), n_problemas = integer(), exemplos_coleta = character(), detalhe = character(), bloqueante = logical(), motivo_bloqueio = character()))
+  data.table::rbindlist(problemas[seq_len(k)], fill = TRUE)
+}
+
+
+
+monitora_validados_auditar_sanitizacao_desconhecida <- function(out) {
+  out <- data.table::as.data.table(out)
+  cols <- names(out)
+  categorias <- c("nativa", "exotica", "seca_morta")
+  problemas <- vector("list", length(categorias) * 3L)
+  kk <- 0L
+  normaliza <- function(x) {
+    x <- as.character(x); x[is.na(x)] <- ""; x <- tolower(x); x <- iconv(x, from = "", to = "ASCII//TRANSLIT"); x[is.na(x)] <- ""; gsub("[^a-z0-9]+", "_", x, perl = TRUE)
+  }
+  for (cat in categorias) {
+    main <- paste0("amostragem/registro/forma_vida_", cat)
+    if (!(main %in% cols)) next
+    tem_desc <- monitora_validados_tem_token(out[[main]], "desconhecida")
+    nms_norm <- normaliza(cols)
+    cat_pat <- if (identical(cat, "seca_morta")) "seca.*morta|seca_ou_morta|seca_e_morta" else cat
+    dep_cols <- cols[
+      grepl("desconhecid|indeterminad|nao_identific|nao_identificado", nms_norm, perl = TRUE) &
+        grepl(cat_pat, nms_norm, perl = TRUE) &
+        grepl("foto|imagem|image|upload|arquivo|anexo|midia|media|descr|descricao|descritor|observ|obs", nms_norm, perl = TRUE)
+    ]
+    dep_cols <- setdiff(dep_cols, main)
+    for (dc in dep_cols) {
+      preenchido <- nzchar(monitora_validados_limpar_ausencia_saida(out[[dc]]))
+      viol <- preenchido & !tem_desc
+      if (any(viol, na.rm = TRUE)) {
+        kk <- kk + 1L
+        problemas[[kk]] <- data.table::data.table(
+          tipo = "dependente_desconhecida_preenchido_sem_token",
+          categoria = cat,
+          atributo = dc,
+          n_linhas = sum(viol, na.rm = TRUE),
+          exemplos = paste(utils::head(which(viol), 10L), collapse = " | "),
+          motivo_bloqueio = "foto/descritor de forma de vida desconhecida preenchido sem token desconhecida na categoria correspondente"
+        )
+      }
+    }
+  }
+  if (kk) data.table::rbindlist(problemas[seq_len(kk)], fill = TRUE, use.names = TRUE) else data.table::data.table(tipo = character(), categoria = character(), atributo = character(), n_linhas = integer(), exemplos = character(), motivo_bloqueio = character())
+}
+
+monitora_validados_auditar_sanitizacao_outras_formas <- function(out, meta = NULL) {
+  ## Diagnóstico específico para resíduos de versões antigas do XLSForm.
+  ## Nas primeiras versões, "outra forma de vida" permitia texto livre em campos
+  ## descritivos. Na versão 21FEV25, esses campos/textos livres não fazem parte
+  ## do contrato final de registros_validados.csv. Portanto, valores como
+  ## "Musgo", "M" ou erros de digitação não são convertidos automaticamente em
+  ## tokens atuais; devem ser triados pela rotina de sanitização antes da
+  ## exportação final.
+  vazio <- data.table::data.table(
+    COLETA = character(), UC = character(), CICLO = character(), CAMPANHA = character(),
+    EA = character(), UA = character(), ponto_amostral = character(), ponto_metro = character(),
+    atributo = character(), valor_residual = character(), tokens_invalidos = character(),
+    motivo_bloqueio = character(), orientacao = character()
+  )
+  att <- "amostragem/registro/forma_vida_outros"
+  if (!(att %in% names(out))) return(vazio)
+  if (is.null(meta)) meta <- monitora_validados_xlsform21_meta()
+  choices <- monitora_validados_xlsform21_choices("forma_vida_outros", meta)
+  if (!length(choices)) return(vazio)
+  x <- monitora_validados_limpar_ausencia_saida(out[[att]])
+  vals <- unique(x[nzchar(x)])
+  if (!length(vals)) return(vazio)
+  tokenizar <- function(v) {
+    toks <- unlist(strsplit(gsub("[|;,]+", " ", v, perl = TRUE), "\\s+", perl = TRUE), use.names = FALSE)
+    unique(toks[nzchar(toks)])
+  }
+  invalidos_por_valor <- vapply(vals, function(v) {
+    inv <- setdiff(tokenizar(v), choices)
+    if (!length(inv)) "" else paste(inv, collapse = " | ")
+  }, character(1), USE.NAMES = FALSE)
+  inv_map <- stats::setNames(invalidos_por_valor, vals)
+  inv_linha <- unname(inv_map[x])
+  inv_linha[is.na(inv_linha)] <- ""
+  idx <- which(nzchar(x) & nzchar(inv_linha))
+  if (!length(idx)) return(vazio)
+  pegar <- function(cc) if (cc %in% names(out)) as.character(out[[cc]]) else rep("", nrow(out))
+  data.table::data.table(
+    COLETA = pegar("coleta")[idx],
+    UC = pegar("uc")[idx],
+    CICLO = pegar("ciclo")[idx],
+    CAMPANHA = pegar("campanha")[idx],
+    EA = pegar("estacao_amostral")[idx],
+    UA = pegar("unidade_amostral")[idx],
+    ponto_amostral = pegar("amostragem/registro/ponto_amostral")[idx],
+    ponto_metro = pegar("amostragem/registro/ponto_metro")[idx],
+    atributo = att,
+    valor_residual = x[idx],
+    tokens_invalidos = inv_linha[idx],
+    motivo_bloqueio = "residuo_outra_forma_vida_sem_sanitizacao_previa",
+    orientacao = "Aplicar a rotina de sanitização/triagem de outra forma de vida em registros_corrig antes de gerar registros_validados.csv; não converter texto livre legado automaticamente."
+  )
+}
+
+monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, largura) {
+  n <- nrow(dt)
+  if (identical(atributo, "data_do_registro")) return(monitora_validados_derive_datetime(dt, "data_do_registro"))
+  if (identical(atributo, "data_do_recebimento")) return(monitora_validados_derive_datetime(dt, "data_do_recebimento"))
+  if (identical(atributo, "data_hora/data")) return(monitora_validados_derive_data_hora(dt, "data"))
+  if (identical(atributo, "data_hora/hora")) return(monitora_validados_derive_data_hora(dt, "hora"))
+  if (identical(atributo, "coleta_uuid")) return(monitora_validados_uuid_por_coleta_ou_sintetico(dt, "coleta_uuid"))
+  if (identical(atributo, "uuid")) return(monitora_validados_uuid_por_coleta_ou_sintetico(dt, "uuid"))
+  if (identical(atributo, "amostragem/registro/uuid")) return(monitora_validados_uuid_registro_ou_sintetico(dt))
+
+  ## Campos de controle/domínio do XLSForm alvo 21FEV25.
+  ## Devem ser resolvidos antes do mapeamento genérico, pois registros_corrig
+  ## pode conter "NA" textual, protocolo histórico ou proveniência interna.
+  if (identical(atributo, "validado")) {
+    p <- monitora_validados_pegar(dt, c("validado", "VALIDADO"), n)
+    v <- monitora_validados_limpar_ausencia_saida(p$valor)
+    v[!nzchar(v)] <- "nao"
+    v <- tolower(v)
+    v[!(v %in% c("sim", "nao"))] <- "nao"
+    return(list(valor = v, coluna = p$coluna, estrategia = "mapeada_ou_sintetizada_padrao_nao"))
+  }
+  if (identical(atributo, "controle_versao")) {
+    p <- monitora_validados_pegar(dt, c("controle_versao", "CONTROLE_VERSAO"), n)
+    v <- monitora_validados_formatar_valor(p$valor, "inteiro_texto")
+    v[!nzchar(v)] <- "2025022101"
+    return(list(valor = v, coluna = p$coluna, estrategia = "mapeada_ou_sintetizada_versao_xlsform_21FEV25"))
+  }
+  if (identical(atributo, "protocolo")) {
+    return(list(valor = rep("PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25", n), coluna = NA_character_, estrategia = "sintetizada_protocolo_xlsform_21FEV25"))
+  }
+  if (identical(atributo, "planilha_upload")) {
+    tipo <- monitora_validados_pegar(dt, c("MONITORA_TIPO_ENTRADA", "planilha_upload"), n)
+    tv <- tolower(monitora_validados_limpar_ausencia_saida(tipo$valor))
+    v <- ifelse(grepl("planilha|digital", tv, perl = TRUE), "sim", "nao")
+    return(list(valor = v, coluna = tipo$coluna, estrategia = "sintetizada_dominio_planilha_upload"))
+  }
+  if (identical(atributo, "amostragem/num_placa")) {
+    return(monitora_validados_derivar_num_placa(dt, "num_placa"))
+  }
+  if (identical(atributo, "amostragem/num_placa_formatado")) {
+    return(monitora_validados_derivar_num_placa(dt, "num_placa_formatado"))
+  }
+  if (identical(atributo, "amostragem/registro/forma_vida_outros")) {
+    ## XLSForm 21FEV25 promove "outra forma de vida" para categoria própria
+    ## (outra_forma_vida). Dados históricos podem trazer esse conteúdo nos
+    ## campos "Outra forma de vida de planta nativa/seca..."; preservar e
+    ## normalizar esses valores antes das regras de relevance.
+    atual <- monitora_validados_pegar(dt, c(
+      "amostragem/registro/forma_vida_outros",
+      "Outras plantas terrestres, líquens e/ou fungos\u200b: (amostragem/registro)",
+      "Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro)"
+    ), n)
+    hist_nat <- monitora_validados_pegar(dt, c(
+      "Outra forma de vida de planta nativa: (amostragem/registro)",
+      "amostragem/registro/forma_vida_nativa_outra"
+    ), n)
+    hist_seca <- monitora_validados_pegar(dt, c(
+      "Outra forma de vida de planta seca e/ou morta: (amostragem/registro)",
+      "Outra forma de vida de planta seca ou morta: (amostragem/registro)",
+      "amostragem/registro/forma_vida_seca_morta_outra"
+    ), n)
+    hist_exot <- monitora_validados_pegar(dt, c(
+      "Outra forma de vida de planta exótica: (amostragem/registro)",
+      "Outra forma de vida de planta exotica: (amostragem/registro)",
+      "amostragem/registro/forma_vida_exotica_outra"
+    ), n)
+    v <- monitora_validados_coalesce_vetor(atual$valor, hist_nat$valor, hist_seca$valor, hist_exot$valor, n = n)
+    origem <- paste(unique(c(atual$coluna, hist_nat$coluna, hist_seca$coluna, hist_exot$coluna)[!is.na(c(atual$coluna, hist_nat$coluna, hist_seca$coluna, hist_exot$coluna))]), collapse = " + ")
+    return(list(valor = v, coluna = origem, estrategia = "mapeada_ou_derivada_outras_formas_historicas"))
+  }
+  if (identical(atributo, "amostragem/registro/forma_serrapilheira")) {
+    atual <- monitora_validados_pegar(dt, c(
+      "amostragem/registro/forma_serrapilheira",
+      "Materiais botânicos em decomposição no solo observados: (amostragem/registro)",
+      "Material botânico em decomposição no solo observado: (amostragem/registro)"
+    ), n)
+    tipo <- monitora_validados_pegar(dt, c(
+      "amostragem/registro/tipo_forma_vida",
+      "**Encostam** na vareta: (amostragem/registro)"
+    ), n)
+    nat <- monitora_validados_pegar(dt, c("amostragem/registro/forma_vida_nativa", "Formas de vida de plantas <span style=\"\"color:red\"\">nativas:</span> (amostragem/registro)"), n)
+    exo <- monitora_validados_pegar(dt, c("amostragem/registro/forma_vida_exotica", "Formas de vida de plantas <span style=\"\"color:red\"\">exóticas:</span> (amostragem/registro)"), n)
+    seca <- monitora_validados_pegar(dt, c("amostragem/registro/forma_vida_seca_morta", "Formas de vida de plantas <span style=\"\"color:red\"\">secas ou mortas:</span> (amostragem/registro)"), n)
+    v <- monitora_validados_limpar_ausencia_saida(atual$valor)
+    contem_serrapilheira <- monitora_validados_tem_token(tipo$valor, "serrapilheira") |
+      monitora_validados_tem_token(nat$valor, "serrapilheira") |
+      monitora_validados_tem_token(exo$valor, "serrapilheira") |
+      monitora_validados_tem_token(seca$valor, "serrapilheira")
+    idx <- !nzchar(v) & contem_serrapilheira
+    if (any(idx)) v[idx] <- "serrapilheira"
+    origem <- paste(unique(c(atual$coluna, tipo$coluna, nat$coluna, exo$coluna, seca$coluna)[!is.na(c(atual$coluna, tipo$coluna, nat$coluna, exo$coluna, seca$coluna))]), collapse = " + ")
+    return(list(valor = v, coluna = origem, estrategia = "mapeada_ou_derivada_serrapilheira_historica"))
+  }
+  if (identical(atributo, "amostragem/especie")) return(list(valor = rep("sim", n), coluna = NA_character_, estrategia = "sintetizada_padrao_sim"))
+
+  col <- monitora_validados_resolver_coluna(names(dt), atributo)
+  if (!is.na(col) && col %in% names(dt)) {
+    return(list(valor = monitora_validados_formatar_valor(dt[[col]], formato, largura), coluna = col, estrategia = "mapeada"))
+  }
+
+  list(valor = rep("", n), coluna = NA_character_, estrategia = "opcional_sem_origem_vazio")
+}
+
+monitora_validados_validar_formatos_saida <- function(out, schema) {
+  problemas <- vector("list", nrow(schema))
+  k <- 0L
+  for (ii in seq_len(nrow(schema))) {
+    col <- schema$atributo[ii]
+    fmt <- schema$formato[ii]
+    x <- as.character(out[[col]])
+    x <- x[!is.na(x) & nzchar(x)]
+    ok <- TRUE
+    if (length(x)) {
+      if (identical(fmt, "datetime_iso_espaco")) ok <- all(grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$", x, perl = TRUE))
+      if (identical(fmt, "data_iso")) ok <- all(grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", x, perl = TRUE))
+      if (identical(fmt, "hora_hms_millis_tz")) ok <- all(grepl("^[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}[-+][0-9]{2}:[0-9]{2}$", x, perl = TRUE))
+      if (identical(fmt, "inteiro_texto")) ok <- all(grepl("^[0-9]+$", x, perl = TRUE))
+      if (identical(fmt, "inteiro_texto_zero_esquerda")) ok <- all(grepl("^[0-9]+$", x, perl = TRUE) & (is.na(schema$largura[ii]) | nchar(x) >= schema$largura[ii]))
+      if (identical(fmt, "numero_texto_ponto")) ok <- all(grepl("^[0-9]+(\\.[0-9]+)?$", x, perl = TRUE))
+      if (identical(fmt, "uuid_texto")) ok <- all(monitora_validados_uuid_valido(x))
+    }
+    if (!isTRUE(ok)) {
+      k <- k + 1L
+      problemas[[k]] <- data.table::data.table(
+        posicao = schema$posicao[ii], atributo = col, formato_esperado = fmt,
+        n_valores_nao_vazios = length(x), exemplos = paste(utils::head(unique(x), 5L), collapse = " | "),
+        bloqueante = TRUE, motivo_bloqueio = "formato_incompativel"
+      )
+    }
+  }
+  if (!k) {
+    return(data.table::data.table(
+      posicao = integer(), atributo = character(), formato_esperado = character(),
+      n_valores_nao_vazios = integer(), exemplos = character(),
+      bloqueante = logical(), motivo_bloqueio = character()
+    ))
+  }
+  data.table::rbindlist(problemas[seq_len(k)], fill = TRUE)
+}
+
+monitora_validados_auditar_cardinalidade <- function(out) {
+  coleta <- out[["coleta"]]
+  aux <- data.table::data.table(
+    atributo = c("coleta_uuid", "uuid", "amostragem/registro/uuid"),
+    nivel_esperado = c("um_valor_por_coleta", "um_valor_por_coleta", "um_valor_por_linha"),
+    status = "ok",
+    n_problemas = 0L,
+    detalhe = ""
+  )
+  for (att in c("coleta_uuid", "uuid")) {
+    dt <- data.table::data.table(coleta = coleta, valor = out[[att]])
+    bad <- dt[nzchar(coleta) & nzchar(valor), .(n_valores = data.table::uniqueN(valor)), by = coleta][n_valores > 1L]
+    aux[atributo == att, `:=`(status = if (nrow(bad)) "falha" else "ok", n_problemas = nrow(bad), detalhe = if (nrow(bad)) paste(utils::head(bad$coleta, 5L), collapse = " | ") else "")]
+  }
+  vreg <- out[["amostragem/registro/uuid"]]
+  dup <- sum(duplicated(vreg[nzchar(vreg)]))
+  vaz <- sum(!nzchar(vreg))
+  aux[atributo == "amostragem/registro/uuid", `:=`(status = if ((dup + vaz) > 0L) "falha" else "ok", n_problemas = dup + vaz, detalhe = paste0("duplicados=", dup, "; vazios=", vaz))]
+  aux
+}
+
+monitora_registros_validados_exportar <- function(registros_corrig,
+                                                  output_dir = MONITORA_OUTPUT_DIR,
+                                                  log_dir = MONITORA_LOG_DIR,
+                                                  exec_id = MONITORA_EXEC_ID,
+                                                  abortar = TRUE,
+                                                  forcar = FALSE) {
+  if (!monitora_validados_opcao_ativa()) return(invisible(NULL))
+  if (isTRUE(get0("MONITORA_REGISTROS_VALIDADOS_GERADO", ifnotfound = FALSE, inherits = TRUE)) && !isTRUE(forcar)) {
+    return(invisible(get0("MONITORA_REGISTROS_VALIDADOS_ULTIMA_AUDITORIA", ifnotfound = NULL, inherits = TRUE)))
+  }
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório para registros_validados.csv.", call. = FALSE)
+  registros_corrig <- data.table::as.data.table(registros_corrig)
+  schema <- monitora_validados_schema_embutido()
+  cols <- schema$atributo
+  n <- nrow(registros_corrig)
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
+
+  out <- data.table::as.data.table(stats::setNames(rep(list(rep("", n)), length(cols)), cols))
+  auditoria <- vector("list", length(cols))
+  for (ii in seq_along(cols)) {
+    col_tpl <- cols[ii]
+    res <- monitora_validados_derivar_ou_mapear_coluna(registros_corrig, col_tpl, schema$formato[ii], schema$largura[ii])
+    novo <- monitora_validados_formatar_valor(res$valor, schema$formato[ii], schema$largura[ii])
+    data.table::set(out, j = col_tpl, value = novo)
+    estrategia_res <- if (is.null(res$estrategia) || is.na(res$estrategia) || !nzchar(as.character(res$estrategia)[1])) "mapeada" else as.character(res$estrategia)[1]
+    auditoria[[ii]] <- data.table::data.table(
+      posicao = schema$posicao[ii], atributo = col_tpl,
+      coluna_origem_registros_corrig = ifelse(is.null(res$coluna) || is.na(res$coluna) || !nzchar(res$coluna), NA_character_, as.character(res$coluna)),
+      estrategia = estrategia_res,
+      status_mapeamento = if (any(nzchar(novo))) estrategia_res else "opcional_sem_origem_vazio",
+      formato_esperado = schema$formato[ii], largura = schema$largura[ii], obrigatorio_valor = schema$obrigatorio_valor[ii],
+      n_linhas_saida = n, n_vazios_saida = sum(!nzchar(novo)), n_distintos_saida = data.table::uniqueN(novo[nzchar(novo)]),
+      exemplos = paste(utils::head(unique(novo[nzchar(novo)]), 5L), collapse = " | "),
+      bloqueante = FALSE, motivo_bloqueio = ""
+    )
+  }
+  data.table::setcolorder(out, cols)
+  auditoria <- data.table::rbindlist(auditoria, fill = TRUE, use.names = TRUE)
+
+  regras_xlsform21 <- monitora_validados_aplicar_regras_xlsform21(out, schema)
+  out <- regras_xlsform21$out
+  ajustes_xlsform21 <- regras_xlsform21$ajustes
+  meta_xlsform21 <- regras_xlsform21$meta
+
+  ## Recalcula métricas da auditoria de mapeamento após normalização/relevance.
+  for (ii in seq_len(nrow(auditoria))) {
+    aa <- auditoria$atributo[ii]
+    vv <- monitora_validados_limpar_ausencia_saida(out[[aa]])
+    data.table::set(auditoria, i = ii, j = "n_vazios_saida", value = sum(!nzchar(vv)))
+    data.table::set(auditoria, i = ii, j = "n_distintos_saida", value = data.table::uniqueN(vv[nzchar(vv)]))
+    data.table::set(auditoria, i = ii, j = "exemplos", value = paste(utils::head(unique(vv[nzchar(vv)]), 5L), collapse = " | "))
+  }
+
+  vazias_obrig <- auditoria[obrigatorio_valor == TRUE & n_vazios_saida > 0L]
+  if (nrow(vazias_obrig)) {
+    vazias_obrig[, `:=`(bloqueante = TRUE, motivo_bloqueio = "atributo_obrigatorio_vazio_apos_interpretacao")]
+    auditoria[vazias_obrig, on = .(posicao, atributo), `:=`(bloqueante = TRUE, motivo_bloqueio = i.motivo_bloqueio)]
+  }
+
+  problemas_fmt <- monitora_validados_validar_formatos_saida(out, schema)
+  card <- monitora_validados_auditar_cardinalidade(out)
+  problemas_card <- card[status != "ok"]
+
+  chave_dupl <- out[, .N, by = .(coleta, ponto_amostral = `amostragem/registro/ponto_amostral`)][nzchar(coleta) & nzchar(ponto_amostral) & N > 1L]
+  problemas_chave <- data.table::data.table(
+    tipo = character(), n_problemas = integer(), exemplos = character()
+  )
+  if (nrow(chave_dupl)) {
+    problemas_chave <- data.table::data.table(
+      tipo = "duplicidade_coleta_ponto_amostral",
+      n_problemas = nrow(chave_dupl),
+      exemplos = paste(utils::head(paste(chave_dupl$coleta, chave_dupl$ponto_amostral, sep = ":"), 10L), collapse = " | ")
+    )
+  }
+
+  problemas_dom <- monitora_validados_validar_dominios_xlsform21(out, schema, meta_xlsform21)
+  problemas_cond <- monitora_validados_validar_condicionais_xlsform21(out)
+  problemas_sanitizacao_outras <- monitora_validados_auditar_sanitizacao_outras_formas(out, meta_xlsform21)
+  problemas_sanitizacao_desconhecida <- monitora_validados_auditar_sanitizacao_desconhecida(out)
+
+  caminhos <- list(
+    mapeamento_log = file.path(log_dir, paste0("auditoria_registros_validados_mapeamento_", exec_id, ".csv")),
+    mapeamento_out = file.path(output_dir, "auditoria_registros_validados_mapeamento.csv"),
+    formatos_log = file.path(log_dir, paste0("auditoria_registros_validados_formatos_", exec_id, ".csv")),
+    dominios_log = file.path(log_dir, paste0("auditoria_registros_validados_xlsform_dominios_", exec_id, ".csv")),
+    condicionais_log = file.path(log_dir, paste0("auditoria_registros_validados_xlsform_condicionais_", exec_id, ".csv")),
+    sanitizacao_outras_log = file.path(log_dir, paste0("auditoria_registros_validados_sanitizacao_outras_formas_", exec_id, ".csv")),
+    sanitizacao_desconhecida_log = file.path(log_dir, paste0("auditoria_registros_validados_sanitizacao_desconhecida_", exec_id, ".csv")),
+    ajustes_xlsform21_log = file.path(log_dir, paste0("auditoria_registros_validados_xlsform_ajustes_", exec_id, ".csv")),
+    cardinalidade_log = file.path(log_dir, paste0("auditoria_registros_validados_uuid_cardinalidade_", exec_id, ".csv")),
+    chave_log = file.path(log_dir, paste0("auditoria_registros_validados_chaves_", exec_id, ".csv")),
+    resumo_log = file.path(log_dir, paste0("auditoria_registros_validados_resumo_", exec_id, ".csv")),
+    resumo_out = file.path(output_dir, "auditoria_registros_validados_resumo.csv")
+  )
+  data.table::fwrite(auditoria, caminhos$mapeamento_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(auditoria, caminhos$mapeamento_out, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_fmt, caminhos$formatos_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_dom, caminhos$dominios_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_cond, caminhos$condicionais_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_sanitizacao_outras, caminhos$sanitizacao_outras_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_sanitizacao_desconhecida, caminhos$sanitizacao_desconhecida_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(ajustes_xlsform21, caminhos$ajustes_xlsform21_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(card, caminhos$cardinalidade_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(problemas_chave, caminhos$chave_log, sep = ",", quote = "auto", na = "")
+
+  n_bloq <- nrow(vazias_obrig) + nrow(problemas_fmt) + nrow(problemas_dom) + nrow(problemas_cond) + nrow(problemas_card) + nrow(problemas_chave) + nrow(problemas_sanitizacao_desconhecida)
+  resumo <- data.table::data.table(
+    exec_id = as.character(exec_id), produto = "registros_validados.csv",
+    schema = "SISMONITORA_21FEV25_embutido_com_regras_xlsform21",
+    n_linhas_registros_corrig = nrow(registros_corrig), n_linhas_saida = nrow(out),
+    n_colunas_schema = length(cols), n_colunas_saida = ncol(out),
+    n_colunas_mapeadas_ou_derivadas = auditoria[n_vazios_saida < n_linhas_saida, .N],
+    n_colunas_opcionais_vazias = auditoria[n_vazios_saida == n_linhas_saida & obrigatorio_valor == FALSE, .N],
+    n_ajustes_xlsform21 = if (nrow(ajustes_xlsform21)) sum(ajustes_xlsform21$n_ajustes) else 0L,
+    n_linhas_sanitizacao_outras_formas_pendente = nrow(problemas_sanitizacao_outras),
+    n_linhas_sanitizacao_desconhecida_pendente = nrow(problemas_sanitizacao_desconhecida),
+    n_bloqueios_formatos = nrow(problemas_fmt),
+    n_bloqueios_dominios_xlsform21 = nrow(problemas_dom),
+    n_bloqueios_condicionais_xlsform21 = nrow(problemas_cond),
+    n_bloqueios_sanitizacao_outras_formas = as.integer(nrow(problemas_sanitizacao_outras) > 0L),
+    n_bloqueios_sanitizacao_desconhecida = nrow(problemas_sanitizacao_desconhecida),
+    n_bloqueios = n_bloq,
+    auditoria_mapeamento = normalizePath(caminhos$mapeamento_log, winslash = "/", mustWork = FALSE),
+    auditoria_formatos = normalizePath(caminhos$formatos_log, winslash = "/", mustWork = FALSE),
+    auditoria_dominios_xlsform21 = normalizePath(caminhos$dominios_log, winslash = "/", mustWork = FALSE),
+    auditoria_condicionais_xlsform21 = normalizePath(caminhos$condicionais_log, winslash = "/", mustWork = FALSE),
+    auditoria_sanitizacao_outras_formas = normalizePath(caminhos$sanitizacao_outras_log, winslash = "/", mustWork = FALSE),
+    auditoria_sanitizacao_desconhecida = normalizePath(caminhos$sanitizacao_desconhecida_log, winslash = "/", mustWork = FALSE),
+    auditoria_ajustes_xlsform21 = normalizePath(caminhos$ajustes_xlsform21_log, winslash = "/", mustWork = FALSE),
+    auditoria_cardinalidade = normalizePath(caminhos$cardinalidade_log, winslash = "/", mustWork = FALSE),
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  )
+  data.table::fwrite(resumo, caminhos$resumo_log, sep = ",", quote = "auto", na = "")
+  data.table::fwrite(resumo, caminhos$resumo_out, sep = ",", quote = "auto", na = "")
+
+  if (n_bloq > 0L) {
+    msg <- paste0(
+      "registros_validados.csv bloqueado: ", n_bloq,
+      " problema(s) bloqueante(s) após interpretação de registros_corrig e regras XLSForm 21FEV25. ",
+      if (nrow(problemas_sanitizacao_outras) > 0L) "Há resíduos de outra forma de vida de versões antigas sem sanitização prévia. " else "",
+      if (nrow(problemas_sanitizacao_desconhecida) > 0L) "Há foto/descritor de forma de vida desconhecida preenchido sem token desconhecida na categoria correspondente. " else "",
+      "Auditorias: ",
+      caminhos$mapeamento_log, "; ", caminhos$formatos_log, "; ", caminhos$dominios_log, "; ", caminhos$condicionais_log, "; ", caminhos$sanitizacao_outras_log, "; ", caminhos$sanitizacao_desconhecida_log, "; ", caminhos$cardinalidade_log
+    )
+    if (isTRUE(abortar)) stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
+    return(invisible(list(auditoria = auditoria, resumo = resumo)))
+  }
+
+  caminho_saida <- file.path(output_dir, "registros_validados.csv")
+  data.table::fwrite(out, caminho_saida, sep = ",", quote = "auto", na = "", bom = FALSE)
+  header_saida <- names(data.table::fread(caminho_saida, sep = ",", nrows = 0, encoding = "UTF-8", check.names = FALSE, showProgress = FALSE, data.table = TRUE))
+  if (!identical(header_saida, cols)) {
+    stop("Cabeçalho de registros_validados.csv difere do schema SISMONITORA embutido; exportação bloqueada.", call. = FALSE)
+  }
+  MONITORA_REGISTROS_VALIDADOS_GERADO <<- TRUE
+  MONITORA_REGISTROS_VALIDADOS_ULTIMA_AUDITORIA <<- list(produto = caminho_saida, auditoria = auditoria, resumo = resumo)
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    monitora_log_registrar_evento("registros_validados_exportado", "INFO", caminho_saida, paste0("registros_validados.csv gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "schema embutido; entrada=registros_corrig")
+  }
+  invisible(MONITORA_REGISTROS_VALIDADOS_ULTIMA_AUDITORIA)
+}
+
+}
+### Fim da exportação opcional: registros_validados.csv ---------------------
 
 monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL) {
   # Deduplicação semântica com tabela auxiliar estreita.
@@ -16475,9 +18386,27 @@ monitora_relatorio_formas_vida_token_gravar <- function(registros, output_dir = 
     vazio <- data.table::data.table()
     for (cc in colunas_saida) data.table::set(vazio, j = cc, value = character(0))
     monitora_fwrite(vazio, file.path(output_dir, paste0("registros_", nome_base, ".csv")), na = "")
-    resumo <- data.table::data.table(metrica = c("registros_totais_avaliados", "registros_triados", "colunas_forma_vida_avaliadas"), valor = c(as.character(n_total), "0", as.character(length(forma_cols))))
+
+    ### Mesmo sem registros triados, o resumo por unidade deve ser sobrescrito.
+    ### Isso evita reaproveitamento acidental de arquivos residuais de execuções
+    ### anteriores em output/.
+    resumo_unidade_vazio <- data.table::data.table(
+      UC = character(),
+      CICLO = character(),
+      CAMPANHA = character(),
+      EA = character(),
+      UA = character(),
+      registros = integer(),
+      pontos_amostrais = integer()
+    )
+    monitora_fwrite(resumo_unidade_vazio, file.path(output_dir, paste0("resumo_", nome_base, "_por_unidade.csv")), na = "")
+
+    resumo <- data.table::data.table(
+      metrica = c("registros_totais_avaliados", "registros_triados", "colunas_forma_vida_avaliadas", "arquivo_tabela_registros", "arquivo_resumo_por_unidade"),
+      valor = c(as.character(n_total), "0", as.character(length(forma_cols)), paste0("registros_", nome_base, ".csv"), paste0("resumo_", nome_base, "_por_unidade.csv"))
+    )
     monitora_fwrite(resumo, file.path(output_dir, paste0("resumo_", nome_base, ".csv")), na = "")
-    writeLines(c(titulo, paste0("Execução: ", if (exists("MONITORA_EXEC_ID")) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")), "", paste0("Nenhum registro com token(s) alvo [", paste(tokens_norm, collapse = "; "), "] foi identificado.")), file.path(output_dir, paste0("relatorio_ocorrencia_", nome_base, ".txt")), useBytes = TRUE)
+    writeLines(c(titulo, paste0("Execução: ", if (exists("MONITORA_EXEC_ID")) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")), "", paste0("Nenhum registro com token(s) alvo [", paste(tokens_norm, collapse = "; "), "] foi identificado."), "", "Tabelas gravadas:", paste0("- registros_", nome_base, ".csv"), paste0("- resumo_", nome_base, "_por_unidade.csv")), file.path(output_dir, paste0("relatorio_ocorrencia_", nome_base, ".txt")), useBytes = TRUE)
     return(invisible(resumo))
   }
   d_saida <- monitora_relatorio_exoticas_preparar_saida(d, colunas_saida)
@@ -17400,6 +19329,43 @@ if (isTRUE(MONITORA_PARAR_APOS_REGISTROS_CORRIG)) {
 }
 
 if (!isTRUE(MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE)) {
+
+### Exportação antecipada dos registros corrigidos/validados -----------------
+### Esta etapa ocorre depois das correções finais e antes das estatísticas,
+### evitando gasto computacional adicional caso registros_validados.csv esteja
+### ativo e alguma inconsistência estrutural bloqueante seja detectada.
+if (exists("registros_corrig")) {
+  dir.create(MONITORA_OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+  caminho_registros_corrig_preanalises <- file.path(MONITORA_OUTPUT_DIR, "registros_corrig.csv")
+  monitora_fwrite(registros_corrig, caminho_registros_corrig_preanalises, row.names = FALSE)
+  if (exists("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE) &&
+      nrow(MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA) > 0L &&
+      exists("monitora_correcao_auditar_persistencia_operacoes", mode = "function")) {
+    registros_corrig_pre_lido <- tryCatch(data.table::fread(caminho_registros_corrig_preanalises, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) NULL)
+    if (!is.null(registros_corrig_pre_lido)) {
+      monitora_correcao_auditar_persistencia_operacoes(
+        registros_corrig_pre_lido,
+        MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA,
+        chaves = monitora_correcao_colunas_chave(registros_corrig_pre_lido),
+        coletas_excluidas = if (exists("MONITORA_COLETAS_EXCLUIDAS_CORRECOES_ULTIMA", inherits = TRUE)) MONITORA_COLETAS_EXCLUIDAS_CORRECOES_ULTIMA else character(),
+        contexto = "pos_export_pre_analises_registros_corrig",
+        abortar = TRUE
+      )
+    }
+  }
+  if (isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE)) &&
+      exists("monitora_registros_validados_exportar", mode = "function")) {
+    monitora_registros_validados_exportar(
+      registros_corrig,
+      output_dir = MONITORA_OUTPUT_DIR,
+      log_dir = MONITORA_LOG_DIR,
+      exec_id = MONITORA_EXEC_ID,
+      abortar = TRUE,
+      forcar = TRUE
+    )
+    monitora_perf_registrar_checkpoint("exportacao_registros_validados", "schema SISMONITORA embutido aplicado a registros_corrig final", registros_corrig)
+  }
+}
 
 ### Construção das tabelas estatísticas
 
@@ -23502,6 +25468,17 @@ if (exists("registros_corrig")) {
       )
     }
   }
+  if (isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE)) &&
+      exists("monitora_registros_validados_exportar", mode = "function")) {
+    monitora_registros_validados_exportar(
+      registros_corrig,
+      output_dir = MONITORA_OUTPUT_DIR,
+      log_dir = MONITORA_LOG_DIR,
+      exec_id = MONITORA_EXEC_ID,
+      abortar = TRUE,
+      forcar = FALSE
+    )
+  }
   monitora_relatorio_exoticas_gravar(registros_corrig, MONITORA_OUTPUT_DIR)
 }
 
@@ -25719,8 +27696,11 @@ monitora_auditar_produtos_finais <- function() {
   espera_rel_painel <- isTRUE(monitora_global_get("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", FALSE)) && isTRUE(monitora_global_get("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", TRUE)) &&
     isTRUE(monitora_global_get("MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS", FALSE))
 
+  espera_registros_validados <- isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_VALIDADOS", FALSE))
+
   produtos <- list(
     produto_linha("registros_corrig.csv", file.path(out_dir, "registros_corrig.csv"), "arquivo", TRUE, TRUE, 1L, "base corrigida final"),
+    produto_linha("registros_validados.csv", file.path(out_dir, "registros_validados.csv"), "arquivo", espera_registros_validados, espera_registros_validados, 1L, "produto opcional no schema SISMONITORA 21FEV25"),
     produto_linha("registros_corrig_stat.csv", file.path(out_dir, "registros_corrig_stat.csv"), "arquivo", TRUE, TRUE, 1L, "base estatística final"),
     produto_linha("relatorio_execucao_ultima_execucao.csv", file.path(out_dir, "relatorio_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "log consolidado da última execução"),
     produto_linha("performance_execucao_ultima_execucao.csv", file.path(out_dir, "performance_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "performance consolidada da última execução"),
