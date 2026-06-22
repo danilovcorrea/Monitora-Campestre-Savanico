@@ -1,3 +1,18 @@
+## Versão pública v2.4.1
+
+A versão `v2.4.1` mantém `registros_corrig.csv` como versão canônica corrigida, auditável e usada pelo pipeline, e acrescenta `registros_validados.csv` como produto público opcional compatível com o contrato do XLSForm vigente e com a estrutura de exportação do SISMONITORA.
+
+Principais pontos da versão:
+
+- `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"` permanece como padrão público.
+- Com `"S"`, `registros_validados.csv` é gerado a partir de `registros_corrig.csv` final, sem template externo.
+- O produto validado usa o XLSForm vigente como contrato semântico e o formato de exportação do SISMONITORA como contrato de estrutura, ordem e serialização.
+- Foram ampliadas as auditorias de schema, formatos, domínios XLSForm, condicionais, chaves, UUIDs e sanitizações.
+- A sanitização de outras formas de vida foi consolidada para fontes históricas, com conversão apenas de descritores inequívocos e limpeza auditada de resíduos legados.
+- A sanitização de fotos e descritores de forma de vida desconhecida preserva esses campos apenas quando o token `desconhecida` permanece na categoria correspondente.
+- Resumos por unidade vazios são sobrescritos com cabeçalho vazio, evitando arquivos residuais em `output/`.
+
+
 # Monitora Campestre-Savânico — Alvo Global
 
 <!-- MONITORA_RELEASE_ATUAL_START -->
@@ -21,18 +36,6 @@ O padrão público permanece:
 
 - `MONITORA_MODO_EXECUCAO <- "completo"`
 - `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`
-
-
-### Principais recursos da versão `v2.4.1`
-
-  * Mantém `registros_corrig.csv` como versão canônica corrigida, auditável e usada pelo pipeline.
-  * Acrescenta `registros_validados.csv` opcional como versão pública compatível com o contrato do XLSForm vigente e com a estrutura de exportação do SISMONITORA.
-  * Mantém `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"` como padrão público.
-  * Com `"S"`, gera `registros_validados.csv` a partir de `registros_corrig.csv` final, sem template externo.
-  * Amplia auditorias de schema, formatos, domínios XLSForm, condicionais, chaves, UUIDs e sanitizações.
-  * Consolida a sanitização de outras formas de vida em fontes históricas, com conversão apenas de descritores inequívocos e limpeza de resíduos legados sem conversão.
-  * Consolida a sanitização de dependentes de forma de vida desconhecida, preservando fotos e descritores apenas quando o token `desconhecida` ainda está presente.
-  * Corrige a sobrescrita de resumos por unidade vazios para evitar arquivos residuais em `output/`.
 
 ### Principais recursos da versão `v2.4.0`
 
