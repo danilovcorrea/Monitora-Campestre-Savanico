@@ -18,7 +18,7 @@ Principais pontos da versão:
 <!-- MONITORA_RELEASE_ATUAL_START -->
 ## Versão atual
 
-**Versão pública atual:** `v2.4.0`
+**Versão pública atual:** `v2.4.1`
 
 **Script principal:** `monitora_campsav_alvo_global_v2.4.1.R`
 
