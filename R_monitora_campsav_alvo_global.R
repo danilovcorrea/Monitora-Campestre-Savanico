@@ -1,6 +1,6 @@
 ### Script de tratamento e análise de dados do Alvo Global do Componente Campestre Savânico do
 ### Programa Monitora
-### Versão pública: v2.4.2 - integridade de correções assistidas e controle de entrada
+### Versão pública: v2.4.2 - integridade de entrada, datas e correções assistidas
 ###
 ### Finalidade:
 ###   Ler, padronizar, auditar, deduplicar e analisar registros do SISMONITORA para o alvo
@@ -83,7 +83,7 @@
 ###     aplicação auditável por CSV longo de correções;
 ###   - metadados dos XLSForms 2022, 2023, 2024 e 2025 embutidos no script,
 ###     sem dependência de arquivos externos para regras do painel;
-###   - opção explícita no código para abertura do painel de correções: editar MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N";
+###   - opção explícita no código para abertura do painel de correções: editar MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S" ou "N";
 ###   - correção da harmonização XLSForm: campos inferiores só atualizam superiores
 ###     quando foram alterados na correção atual, evitando reintroduzir tokens residuais
 ###     como exotica após movimentos exótica -> nativa;
@@ -186,7 +186,7 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- Sys.getenv(
 )
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES)[1]))
 if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar")) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -19689,7 +19689,7 @@ if (!exists("MONITORA_CORRECOES_DIR", inherits = FALSE)) {
 
 ### A decisão sobre abertura do painel já foi tomada no início do script.
 ### Neste ponto, o painel só será carregado se MONITORA_ABRIR_PAINEL_CORRECOES = TRUE,
-### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N".
+### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S" ou "N".
 if (!exists("MONITORA_VALIDAR_CONDICIONAIS_CORRECOES", inherits = FALSE)) MONITORA_VALIDAR_CONDICIONAIS_CORRECOES <- TRUE
 if (!exists("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", TRUE)
 if (!exists("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_POS_CORRECOES <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", TRUE)
