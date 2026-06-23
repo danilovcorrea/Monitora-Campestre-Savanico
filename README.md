@@ -4,7 +4,7 @@
 
 **Versão pública atual:** `v2.4.1`
 
-**Script principal:** `monitora_campsav_alvo_global_v2.4.1.R`
+**Script principal:** `monitora_campsav_alvo_global_v2.4.2.R`
 
 A versão `v2.4.1` mantém `registros_corrig.csv` como versão canônica corrigida, auditável e usada pelo pipeline, e acrescenta `registros_validados.csv` como produto público opcional compatível com o contrato do XLSForm vigente e com a estrutura de exportação do SISMONITORA.
 
@@ -118,7 +118,7 @@ Esse arquivo registra a receita das alterações, em formato longo, e não subst
 - [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública equivalente do script atual.
 - [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia do script atual na estrutura interna do projeto.
 - [`R_monitora_campsav_alvo_global.R`](R_monitora_campsav_alvo_global.R): cópia pública equivalente.
-- [`monitora_campsav_alvo_global_v2.4.1.R`](monitora_campsav_alvo_global_v2.4.1.R): cópia versionada da versão pública atual.
+- [`monitora_campsav_alvo_global_v2.4.2.R`](monitora_campsav_alvo_global_v2.4.2.R): cópia versionada da versão pública atual.
 - [`releases/v2.4.1/`](releases/v2.4.1/): cópia congelada da versão pública `v2.4.1`.
 - [`release_assets/v2.4.1/`](release_assets/v2.4.1/): artefatos auxiliares da publicação pública.
 - [`archive/versoes_historicas/`](archive/versoes_historicas/): versões históricas anteriores ao versionamento público semântico.
@@ -137,7 +137,7 @@ Rscript monitora_campsav_alvo_global.R
 Também é possível executar a versão pública específica:
 
 ```bash
-Rscript monitora_campsav_alvo_global_v2.4.1.R
+Rscript monitora_campsav_alvo_global_v2.4.2.R
 ```
 
 ## Requisitos de R

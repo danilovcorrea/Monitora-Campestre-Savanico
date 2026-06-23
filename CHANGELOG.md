@@ -1,3 +1,16 @@
+## v2.4.2 - 2026-06-23
+
+### Corrigido
+- Recálculo de `DATA_MONITORA_PARSEADA` e `ANO` após alteração de `Data (data_hora)`.
+- Autorização controlada de recálculos derivados de data na auditoria de colunas protegidas.
+- Remoção de aliases indevidos de `Data (data_hora)`, especialmente `data_do_registro`.
+- Preenchimento automático do valor original esperado para atributos de data e atributos de COLETA.
+- Exclusão auditável de uma única COLETA no painel.
+
+### Alterado
+- Controle de entrada no painel com validação por tipo de atributo e domínio XLSForm/SISMONITORA.
+- Restrições de operação por atributo, preservando operações atômicas e performance com `data.table`.
+
 ## v2.4.1 - registros_validados e contrato XLSForm/SISMONITORA
 
 - Mantém `registros_corrig.csv` como versão canônica corrigida e auditável.
