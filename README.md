@@ -1,8 +1,18 @@
 # Monitora Campestre-Savânico — Alvo Global
 
-## Versão atual
+## Versão pública atual
 
-**Versão pública atual:** `v2.4.2`
+- Versão: `v2.5.0`
+- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.0.R`](monitora_campsav_alvo_global_v2.5.0.R)
+- Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
+- Modo padrão de execução pública: `MONITORA_MODO_EXECUCAO <- "completo"` e `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`.
+- Para curadoria assistida, usar `MONITORA_MODO_EXECUCAO <- "painel_e_parar"`.
+- Para reabrir painel sem reconstruir tudo, usar `MONITORA_MODO_EXECUCAO <- "abrir_painel_cache"` após uma execução que tenha gerado cache.
+- Para continuar uma curadoria a partir de `registros_corrig.csv`, usar `MONITORA_MODO_EXECUCAO <- "painel_incremental_registros_corrig"` com um único `registros_corrig*.csv` em `input/`.
+
+## Versão anterior
+
+**Versão pública anterior:** `v2.4.2`
 
 **Script principal:** `monitora_campsav_alvo_global_v2.4.2.R`
 

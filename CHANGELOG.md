@@ -1,16 +1,23 @@
-## v2.4.2 - 2026-06-23
+## [v2.5.0] - 2026-06-24
 
-### Corrigido
-- Recálculo de `DATA_MONITORA_PARSEADA` e `ANO` após alteração de `Data (data_hora)`.
-- Autorização controlada de recálculos derivados de data na auditoria de colunas protegidas.
-- Remoção de aliases indevidos de `Data (data_hora)`, especialmente `data_do_registro`.
-- Preenchimento automático do valor original esperado para atributos de data e atributos de COLETA.
-- Exclusão auditável de uma única COLETA no painel.
-- Sincronização das cópias públicas do script e sanitização completa da publicação.
+### Adicionado
+- Validação espacial de COLETAS com consenso robusto por UC/EA/UA, alertas, pendências, comparação pré/pós e correções auditáveis no painel.
+- Modos de execução para curadoria assistida, reabertura por cache e continuidade incremental a partir de `registros_corrig.csv`.
+- Regra obrigatória de uso exclusivo da pasta `input/` para arquivos de entrada.
+- Painel com diagnóstico de escopo vazio, mapa espacial independente e operações de sessão isoladas.
+- Suporte a coordenadas manuais com altitude e acurácia opcionais, com auditoria.
 
 ### Alterado
-- Controle de entrada no painel com validação por tipo de atributo e domínio XLSForm/SISMONITORA.
-- Restrições de operação por atributo, preservando operações atômicas e performance com `data.table`.
+- Relatórios de apoio do painel passaram a usar triagem vetorizada por regex/data.table.
+- Reabertura por cache passou a ignorar correções antigas em `input/` e aplicar somente correções criadas na sessão atual.
+- Comentários e instruções operacionais foram consolidados para uso por bolsistas e manutenção humana/IA.
+
+### Corrigido
+- Evitado uso de metadados de registro como data de campo quando existem campos `data_hora`.
+- Comparação espacial pré/pós agora materializa colunas derivadas antes da ordenação.
+- Relatórios/auditorias pós-correções passam a ser gravados de forma defensiva em modos curtos.
+
+## v2.4.2 - 2026-06-23
 
 ## v2.4.1 - registros_validados e contrato XLSForm/SISMONITORA
 
