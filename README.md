@@ -25,36 +25,23 @@ A versão `v2.5.0` consolida a validação espacial de COLETAS e a curadoria ass
 
 ## Versão anterior
 
-A versão pública imediatamente anterior foi `v2.4.2`. O detalhamento histórico das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub. O README deve priorizar a versão pública atual e o uso operacional do script.
-
-## Principais recursos da versão `v2.4.2`
-
-- Sincroniza todas as cópias públicas do script.
-- Corrige o recálculo de `DATA_MONITORA_PARSEADA` e `ANO` após alteração auditável de `Data (data_hora)`.
-- Remove `data_do_registro` como alias de `Data (data_hora)`.
-- Mantém `data_do_registro`, `data_do_recebimento` e `ultima_edicao` como metadados protegidos.
-- Fortalece o controle de entrada no painel de correções assistidas com base nos metadados XLSForm/SISMONITORA.
-- Restringe operações de token a atributos compatíveis com listas.
-- Bloqueia edição direta de atributos derivados/protegidos.
-- Permite exclusão auditável de uma única COLETA ou lote de COLETAS.
-- Atualiza automaticamente o valor original esperado ao mudar COLETA, filtros superiores, atributo, escopo ou ponto.
-- Preserva a lógica de operações atômicas e o uso de `data.table`.
+A versão pública imediatamente anterior foi `v2.4.2`. O histórico detalhado das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub.
 
 ## Modos de execução
 
-- `completo`: executa todo o pipeline.
+Configure `MONITORA_MODO_EXECUCAO` no início do script conforme o objetivo da rodada.
+
+- `completo`: executa todo o pipeline, com bases tratadas, auditorias, estatísticas, relatórios e gráficos.
 - `sem_png`: executa o pipeline sem exportar PNGs.
 - `estatisticas_sem_graficos`: mantém tabelas estatísticas e relatório textual, sem gráficos e KML.
 - `ate_registros_corrig`: grava `registros_corrig.csv` sem abrir o painel e encerra de forma controlada.
 - `painel_e_parar`: abre o painel, aplica correções salvas e encerra após gravar `registros_corrig.csv`.
+- `abrir_painel_cache`: reabre o painel a partir do cache pré-painel, sem reconstruir toda a leitura e sem reaplicar correções antigas em `input/`.
+- `painel_incremental_registros_corrig`: abre o painel a partir de um `registros_corrig.csv` já produzido pelo script, colocado em `input/`, para continuar a curadoria.
 
-O padrão público permanece:
+O padrão público permanece seguro: `MONITORA_MODO_EXECUCAO <- "completo"`, `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`, `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"` e `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"`.
 
-```r
-MONITORA_MODO_EXECUCAO <- "completo"
-MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
-MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
-```
+Para usar o painel com validação espacial, ajuste deliberadamente `MONITORA_MODO_EXECUCAO <- "painel_e_parar"` e `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"`.
 
 ## Finalidade
 
@@ -64,19 +51,20 @@ O script aceita dados brutos e arquivos já tratados em execuções anteriores, 
 
 ## Entradas aceitas
 
-Coloque os arquivos no subdiretório `input/` ou no mesmo diretório do script. O uso de `input/` é recomendado para evitar confusão com produtos antigos.
+Coloque os arquivos de entrada exclusivamente no subdiretório `input/`, no mesmo diretório do script. Essa regra evita confusão entre dados de entrada, produtos antigos e arquivos gerados em execuções anteriores.
+
+Arquivos de entrada colocados na raiz da pasta do script não devem ser usados. Caso seja necessário reaproveitar um produto anterior, copie deliberadamente o arquivo adequado para `input/`.
 
 Entradas reconhecidas:
 
 - arquivos ZIP exportados individualmente pelo SISMONITORA;
 - arquivos ZIP, CSV ou XLSX de exportação em lote;
-- arquivos `registros_corrig*.csv` gerados por execuções anteriores do próprio script, quando usados deliberadamente como nova entrada;
-- arquivo `input/correcoes_campos.csv`, quando gerado pelo painel e usado para reaplicação auditável das correções.
+- arquivos `registros_corrig*.csv` gerados por execuções anteriores do próprio script, quando usados deliberadamente no modo `painel_incremental_registros_corrig`;
+- arquivo `input/correcoes_campos.csv`, quando usado deliberadamente para reaplicação auditável de correções.
 
 O script não exige extração manual dos ZIPs. As extrações recursivas são feitas em `extracted/`.
 
 ## Saídas principais
-
 Na raiz do projeto ou no diretório de execução:
 
 - `registros_corrig.csv`: versão canônica corrigida, padronizada, deduplicada e auditável;
@@ -139,9 +127,9 @@ Esse arquivo registra a receita das alterações, em formato longo, e não subst
 - [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública equivalente do script atual.
 - [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia do script atual na estrutura interna do projeto.
 - [`R_monitora_campsav_alvo_global.R`](R_monitora_campsav_alvo_global.R): cópia pública equivalente.
-- [`monitora_campsav_alvo_global_v2.4.2.R`](monitora_campsav_alvo_global_v2.4.2.R): cópia versionada da versão pública atual.
-- [`releases/v2.4.2/`](releases/v2.4.2/): cópia congelada da versão pública `v2.4.2`.
-- [`release_assets/v2.4.2/`](release_assets/v2.4.2/): artefatos auxiliares da publicação pública.
+- [`monitora_campsav_alvo_global_v2.5.0.R`](monitora_campsav_alvo_global_v2.5.0.R): cópia versionada da versão pública atual.
+- [`releases/v2.5.0/`](releases/v2.5.0/): cópia congelada da versão pública `v2.5.0`.
+- [`release_assets/v2.5.0/`](release_assets/v2.5.0/): artefatos auxiliares da publicação pública.
 - [`archive/versoes_historicas/`](archive/versoes_historicas/): versões históricas anteriores ao versionamento público semântico.
 - [`docs/`](docs/): documentação auxiliar, incluindo versionamento e uso de IA, quando presente.
 - [`tools/`](tools/): ferramentas auxiliares de auditoria e revisão, quando presentes.
@@ -158,7 +146,7 @@ Rscript monitora_campsav_alvo_global.R
 Também é possível executar a versão pública específica:
 
 ```bash
-Rscript monitora_campsav_alvo_global_v2.4.2.R
+Rscript monitora_campsav_alvo_global_v2.5.0.R
 ```
 
 ## Requisitos de R
@@ -275,7 +263,7 @@ Mais detalhes em:
 - [`LICENSE`](LICENSE): licença do projeto.
 - [`docs/uso_de_ia.md`](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
 - [`docs/versionamento.md`](docs/versionamento.md): notas de versionamento, quando disponível.
-- [`releases/v2.4.2/`](releases/v2.4.2/): cópia congelada da versão pública atual.
+- [`releases/v2.5.0/`](releases/v2.5.0/): cópia congelada da versão pública atual.
 
 ## Licença
 
