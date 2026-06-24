@@ -1,7 +1,7 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.0
+### Versão do script: 2.5.1
 ###
 ### Finalidade
 ###   Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -205,7 +205,7 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OP
 if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar") ||
     identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache") ||
     identical(MONITORA_MODO_EXECUCAO, "painel_incremental_registros_corrig")) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -9077,14 +9077,14 @@ MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(
   "S"
 )
 
-MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.0"
+MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.1"
 if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA <- "S"
 }
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.0."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.1."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {

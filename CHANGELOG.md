@@ -1,5 +1,16 @@
 ## [v2.5.0] - 2026-06-24
 
+## [v2.5.1] - 2026-06-24
+
+### Corrigido
+- Corrige a abertura obrigatória do painel nos modos `painel_e_parar`, `abrir_painel_cache` e `painel_incremental_registros_corrig`.
+- Mantém os defaults públicos seguros, mas garante que modos de painel acionem `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"` internamente.
+- Evita que datasets com duplicatas `UC+UA+ANO` sigam para a trava pós-correções sem permitir curadoria no painel.
+
+### Mantido
+- Mantidos os comentários revisados da publicação `v2.5.0`.
+- Mantidas as funcionalidades de validação espacial, cache pré-painel e continuidade incremental.
+
 ### Adicionado
 - Validação espacial de COLETAS com consenso robusto por UC/EA/UA, alertas, pendências, comparação pré/pós e correções auditáveis no painel.
 - Modos de execução para curadoria assistida, reabertura por cache e continuidade incremental a partir de `registros_corrig.csv`.

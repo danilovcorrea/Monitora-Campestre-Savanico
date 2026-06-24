@@ -2,8 +2,8 @@
 
 ## Versão pública atual
 
-- Versão: `v2.5.0`
-- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.0.R`](monitora_campsav_alvo_global_v2.5.0.R)
+- Versão: `v2.5.1`
+- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.1.R`](monitora_campsav_alvo_global_v2.5.1.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
 - Modo padrão de execução pública: `MONITORA_MODO_EXECUCAO <- "completo"` e `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`.
 - Para curadoria assistida, usar `MONITORA_MODO_EXECUCAO <- "painel_e_parar"`.
@@ -12,20 +12,17 @@
 
 ## Principais recursos da versão atual
 
-A versão `v2.5.0` consolida a validação espacial de COLETAS e a curadoria assistida no painel, mantendo a execução pública segura por padrão.
+A versão `v2.5.1` é um hotfix da série `v2.5.x`. Ela mantém os comentários revisados e corrige a abertura obrigatória do painel nos modos de curadoria.
 
-- Validação espacial por `UC + EA + UA`, com consenso robusto, alertas, pendências e comparação pré/pós-painel.
-- Aba espacial no painel, com mapa, diagnóstico de COLETAS e correções auditáveis.
-- Modo `painel_e_parar` para revisar, corrigir e gerar `registros_corrig.csv` antes das análises completas.
-- Modo `abrir_painel_cache` para reabrir o painel a partir do cache pré-painel, sem reaplicar correções antigas.
-- Modo `painel_incremental_registros_corrig` para continuar a curadoria a partir de um `registros_corrig.csv` já produzido pelo script.
-- Regra operacional: arquivos de entrada devem ficar exclusivamente em `input/`.
-- Suporte a coordenadas manuais com altitude e acurácia opcionais, registradas em auditoria.
-- Comentários internos revisados para orientar bolsistas, manutenção humana e manutenção assistida por IA.
+- Corrige a regra interna que deve forçar `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"` quando `MONITORA_MODO_EXECUCAO` está em `painel_e_parar`, `abrir_painel_cache` ou `painel_incremental_registros_corrig`.
+- Mantém o padrão público seguro: execução `completo`, painel desligado e validação espacial desligada, até ajuste deliberado pelo usuário.
+- Preserva a validação espacial de COLETAS por `UC + EA + UA`, com consenso robusto, alertas, pendências e comparação pré/pós-painel.
+- Preserva o painel de curadoria, o cache pré-painel e a continuidade incremental por `registros_corrig.csv`.
+- Mantém a regra operacional de arquivos de entrada exclusivamente em `input/`.
 
 ## Versão anterior
 
-A versão pública imediatamente anterior foi `v2.4.2`. O histórico detalhado das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub.
+A versão pública imediatamente anterior foi `v2.5.0`. O histórico detalhado das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub.
 
 ## Modos de execução
 
@@ -39,9 +36,21 @@ Configure `MONITORA_MODO_EXECUCAO` no início do script conforme o objetivo da r
 - `abrir_painel_cache`: reabre o painel a partir do cache pré-painel, sem reconstruir toda a leitura e sem reaplicar correções antigas em `input/`.
 - `painel_incremental_registros_corrig`: abre o painel a partir de um `registros_corrig.csv` já produzido pelo script, colocado em `input/`, para continuar a curadoria.
 
-O padrão público permanece seguro: `MONITORA_MODO_EXECUCAO <- "completo"`, `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`, `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"` e `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"`.
+O padrão público permanece seguro:
 
-Para usar o painel com validação espacial, ajuste deliberadamente `MONITORA_MODO_EXECUCAO <- "painel_e_parar"` e `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"`.
+```r
+MONITORA_MODO_EXECUCAO <- "completo"
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
+```
+
+Para usar o painel com validação espacial, ajuste deliberadamente:
+
+```r
+MONITORA_MODO_EXECUCAO <- "painel_e_parar"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
+```
 
 ## Finalidade
 
