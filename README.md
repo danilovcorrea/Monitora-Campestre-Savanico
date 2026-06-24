@@ -10,13 +10,22 @@
 - Para reabrir painel sem reconstruir tudo, usar `MONITORA_MODO_EXECUCAO <- "abrir_painel_cache"` após uma execução que tenha gerado cache.
 - Para continuar uma curadoria a partir de `registros_corrig.csv`, usar `MONITORA_MODO_EXECUCAO <- "painel_incremental_registros_corrig"` com um único `registros_corrig*.csv` em `input/`.
 
+## Principais recursos da versão atual
+
+A versão `v2.5.0` consolida a validação espacial de COLETAS e a curadoria assistida no painel, mantendo a execução pública segura por padrão.
+
+- Validação espacial por `UC + EA + UA`, com consenso robusto, alertas, pendências e comparação pré/pós-painel.
+- Aba espacial no painel, com mapa, diagnóstico de COLETAS e correções auditáveis.
+- Modo `painel_e_parar` para revisar, corrigir e gerar `registros_corrig.csv` antes das análises completas.
+- Modo `abrir_painel_cache` para reabrir o painel a partir do cache pré-painel, sem reaplicar correções antigas.
+- Modo `painel_incremental_registros_corrig` para continuar a curadoria a partir de um `registros_corrig.csv` já produzido pelo script.
+- Regra operacional: arquivos de entrada devem ficar exclusivamente em `input/`.
+- Suporte a coordenadas manuais com altitude e acurácia opcionais, registradas em auditoria.
+- Comentários internos revisados para orientar bolsistas, manutenção humana e manutenção assistida por IA.
+
 ## Versão anterior
 
-**Versão pública anterior:** `v2.4.2`
-
-**Script principal:** `monitora_campsav_alvo_global_v2.4.2.R`
-
-A versão `v2.4.2` consolida as correções de integridade de entrada, datas e correções assistidas, mantendo `registros_corrig.csv` como base canônica do pipeline e `registros_validados.csv` como produto público opcional compatível com o contrato XLSForm/SISMONITORA.
+A versão pública imediatamente anterior foi `v2.4.2`. O detalhamento histórico das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub. O README deve priorizar a versão pública atual e o uso operacional do script.
 
 ## Principais recursos da versão `v2.4.2`
 
