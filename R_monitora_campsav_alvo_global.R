@@ -1,7 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.2
+### Versão do script: 2.5.3
+### Versão pública: v2.5.3
 ###
 ### Finalidade
 ###   Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -158,6 +159,22 @@ MONITORA_OPCAO_RELATORIOS_SUPORTE_TOKEN_REGEX_VETORIZADO <- "S"
 MONITORA_OPCAO_CHECKPOINTS_GRANULARES_CORRECOES <- "S"
 MONITORA_OPCAO_SALVAR_CACHE_PAINEL <- "S"
 MONITORA_OPCAO_USAR_CACHE_PAINEL <- "S"
+
+### Barra de progresso -------------------------------------------------------
+### "auto" usa cli quando disponível e mantém txtProgressBar como fallback.
+### Valores aceitos: "auto", "cli" ou "txt". Também pode ser definido por
+### variável de ambiente MONITORA_PROGRESSO_BACKEND.
+MONITORA_PROGRESSO_BACKEND <- "cli"
+MONITORA_PROGRESSO_CLI_MANTER_HISTORICO <- "N"
+MONITORA_PROGRESSO_CLI_FALLBACK_TXT <- "N"
+### Layout cli:
+### - "barra_completa": mostra barra visual, percentual, contador, ETA, decorrido e status;
+### - "compacto": prioriza ETA/status em uma linha no console estreito do RStudio;
+### - "barra": preserva uma barra visual longa com nome da execução;
+### - "tres_linhas": legado experimental; pode não renderizar bem no RStudio.
+MONITORA_PROGRESSO_CLI_LAYOUT <- "barra_completa"
+MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS <- 180L
+MONITORA_PROGRESSO_CLI_LARGURA <- 180L
 
 ### Retomada do painel por cache ---------------------------------------------
 ### Padrão seguro: "N". Se MONITORA_MODO_EXECUCAO = "abrir_painel_cache", o script
@@ -325,6 +342,22 @@ library("dplyr")
 if (!require("data.table"))
   install.packages("data.table")
 library("data.table")
+
+### Pacote do backend moderno de barra de progresso -------------------------
+### Segue a mesma lógica dos demais pacotes: checa, instala se ausente e carrega.
+### O backend padrão permanece cli; MONITORA_PROGRESSO_BACKEND ainda pode ser
+### sobrescrito por variável de ambiente com "cli", "auto" ou "txt".
+if (!require("cli"))
+  install.packages("cli")
+library("cli")
+MONITORA_CLI_DISPONIVEL <- requireNamespace("cli", quietly = TRUE)
+MONITORA_PROGRESSO_BACKEND <- tolower(trimws(Sys.getenv(
+  "MONITORA_PROGRESSO_BACKEND",
+  unset = as.character(MONITORA_PROGRESSO_BACKEND)[1]
+)))
+if (!(MONITORA_PROGRESSO_BACKEND %in% c("auto", "cli", "txt"))) {
+  MONITORA_PROGRESSO_BACKEND <- "cli"
+}
 
 
 ### Escrita padronizada de produtos tabulares -------------------------------
@@ -647,7 +680,7 @@ monitora_privacidade_caminho_relativo <- function(path, base_dir = MONITORA_BASE
 }
 
 monitora_privacidade_caminho_entrada <- function(path) {
-  ## Evita materializar /home, /mnt/windows, OneDrive, nomes de usuário ou
+  ## Evita materializar caminhos locais, nomes de usuário ou pastas de execução nos relatórios.
   ## estrutura local completa. Quando possível, mantém caminho relativo à pasta
   ## do projeto; caso contrário, preserva apenas o nome do arquivo.
   monitora_privacidade_caminho_relativo(path, MONITORA_BASE_DIR)
@@ -660,7 +693,7 @@ monitora_privacidade_padrao_sensivel <- function(x) {
     grepl("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", x, ignore.case = TRUE, perl = TRUE) |
     grepl("https?://|www\\.", x, ignore.case = TRUE, perl = TRUE) |
     grepl("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", x, ignore.case = TRUE, perl = TRUE) |
-    grepl("/home/|/mnt/windows/|C:/Users|C:\\\\Users|OneDrive", x, ignore.case = TRUE, perl = TRUE)
+    grepl("(^[[:alpha:]]:[/\\])|(^/)", x, perl = TRUE)
 }
 
 monitora_privacidade_coluna_sensivel <- function(nome) {
@@ -2463,8 +2496,8 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
@@ -2564,8 +2597,8 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\t",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_ervas_de_passarinho\tamostragem/registro/forma_vida_nativa_ervas_de_passarinho\ttext\ttext\t\tEspécie ou nome popular (Erva-de-passarinho)\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'ervas_de_passarinho')\t",
@@ -2793,8 +2826,8 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_erva_nao_graminoide\tamostragem/registro/forma_vida_nativa_erva_nao_graminoide\ttext\ttext\t\tEspécie ou nome popular (Erva não graminoide)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'erva_nao_graminoide')\t",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arbusto_abaixo\tamostragem/registro/forma_vida_nativa_arbusto_abaixo\ttext\ttext\t\tEspécie ou nome popular (Arbusto abaixo de 0,5m de altura)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\t",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arbusto_acima\tamostragem/registro/forma_vida_nativa_arbusto_acima\ttext\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\t",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_abaixo\tamostragem/registro/forma_vida_nativa_arvore_abaixo\ttext\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\t",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_arvore_acima\tamostragem/registro/forma_vida_nativa_arvore_acima\ttext\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\t",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bambu\tamostragem/registro/forma_vida_nativa_bambu\ttext\ttext\t\tEspécie ou nome popular (Bambu)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\t",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_cactacea\tamostragem/registro/forma_vida_nativa_cactacea\ttext\ttext\t\tEspécie ou nome popular (Cactácea)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\t",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_lianas\tamostragem/registro/forma_vida_nativa_lianas\ttext\ttext\t\tEspécie ou nome popular (Lianas)\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'lianas')\t",
@@ -2846,14 +2879,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -2863,14 +2896,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Velloziaceae)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -2879,14 +2912,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -3148,7 +3181,7 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
@@ -3188,55 +3221,55 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tnativa\tPlantas nativas",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tVelósia (Canela-de-ema ou candombá)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\toutra\tOutra forma de vida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tdesconhecida\tForma de vida desconhecida",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (que se desenvolve sobre outras plantas)",
@@ -3481,7 +3514,7 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
@@ -3525,14 +3558,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tserrapilheira\tSerrapilheira (matéria orgânica em decomposição no solo composta por folhas, cascas, etc)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tfragmentos_botanicos\tTroncos, galhos, ramos ou outras partes lenhosas não fragmentadas",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_serrapilheira\tmaterial_inundado\tMatéria orgânica inundável (turfa, batume ou matéria orgânica subaquática)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcactacea\tCacto",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -3541,14 +3574,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tcanela_de_ema\tVelósia (Velloziaceae)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tcactacea\tCacto",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -3556,14 +3589,14 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tdesconhecida\tForma de vida desconhecida",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tgraminoide\tErva graminoide (gramíneas, ciperáceas e juncáceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto tocando a vareta a uma altura inferior a 50cm",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto tocando a vareta a uma altura igual ou superior a 50cm",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tbromelioide\tErva bromelioide (bromeliáceas, apiáceas, eriocauláceas)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tcactacea\tCacto",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tlianas\tLiana, cipó ou trepadeira",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (hemiparasita)",
@@ -3841,7 +3874,7 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tpinus_oocarpa_arv_exot_acima\t50 - Pinus (Pinus oocarpa)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tmelia_azedarach_arv_exot_acima\t51 - Sinamomo (Melia azedarach)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tsalix_rubens_arv_exot_acima\t52 - Vimeiro (Salix x rubens)",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\texotica_arvore_acima_outra_sp\tOutra espécie de árvore com tronco igual ou maior que 5cm de diâmetro a 30cm do solo (D30)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tphyllostachys_aurea_exotica_bambu\t01 - Bambu-de-jardim (Phyllostachys aurea)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tphyllostachys_bambusoides_exotica_bambu\t02 - Bambu-gigante (Phyllostachys bambusoides)",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tbambusa_vulgaris_exotica_bambu\t03 - Bambu-verde (Bambusa vulgaris)",
@@ -3883,54 +3916,54 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\texotica\tPlantas exóticas",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tseca_morta\tPlantas secas ou mortas",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\terva_nao_graminoide\tErva não graminoide",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_acima\tArbusto acima de 0,5m de altura",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbambu\tBambu ou taquara",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcactacea\tCactácea",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tlianas\tLianas (cipós, trepadeiras)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\torquidea\tOrquídea",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tpalmeira\tPalmeira",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tsamambaia\tSamambaia",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcanela_de_ema\tCanela-de-ema ou candombá",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tcanela_de_ema\tCanela-de-ema ou candombá",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\toutra\tOutra forma de vida",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\terva_nao_graminoide\tErva não graminoide",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarbusto_acima\tArbusto acima de 0,5m de altura",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbambu\tBambu ou taquara",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tcactacea\tCactácea",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tlianas\tLianas (cipós, trepadeiras)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\torquidea\tOrquídea",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tpalmeira\tPalmeira",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tsamambaia\tSamambaia",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\toutra\tOutra forma de vida",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tserrapilheira\tSerrapilheira ou folhiço (partes de plantas em decomposição no solo)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tgraminoide\tGraminoide (gramíneas, ciperáceas e juncáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\terva_nao_graminoide\tErva não graminoide",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarbusto_abaixo\tArbusto abaixo de 0,5m de altura",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarbusto_acima\tArbusto acima de 0,5m de altura",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_abaixo\tÁrvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tarvore_acima\tÁrvore acima de 5cm de diâmetro a 30 cm do solo (D30)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbambu\tBambu ou taquara",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tbromelioide\tBromelioide (bromélias e apiáceas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tcactacea\tCactácea",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tlianas\tLianas (cipós, trepadeiras)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tervas_de_passarinho\tErva-de-passarinho (parasitas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\torquidea\tOrquídea",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tpalmeira\tPalmeira",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tsamambaia\tSamambaia",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tCanela-de-ema ou candombá",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tcanela_de_ema\tCanela-de-ema ou candombá",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\toutra\tOutra forma de vida",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide\tepifita\tEpífita (espécies que se desenvolvem sobre outras plantas)",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa_bromelioide\tterrestre\tTerrestre",
@@ -4212,10 +4245,10 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
@@ -4326,10 +4359,10 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
-    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30))\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tmodulo\tavancado\tforma_vida_nativa_lianas\ttext\t\tEspécie ou nome popular (Lianas)\t\tselected(${modulo}, 'avancado') and selected(${forma_vida_nativa}, 'lianas')\txlsform_embutido",
@@ -4599,10 +4632,10 @@ monitora_correcao_xlsforms_embutidos <- function() {
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_abaixo\tforma_vida_nativa_arbusto_abaixo\ttext\t\tEspécie ou nome popular (Arbusto abaixo de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_abaixo')\txlsform_embutido",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarbusto_acima\tforma_vida_nativa_arbusto_acima\ttext\t\tEspécie ou nome popular (Arbusto acima de 0,5m de altura)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arbusto_acima')\txlsform_embutido",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
-    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_abaixo\tforma_vida_nativa_arvore_abaixo\ttext\t\tEspécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_abaixo')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
+    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tarvore_acima\tforma_vida_nativa_arvore_acima\ttext\t\tEspécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30))\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'arvore_acima')\txlsform_embutido",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tbambu\tforma_vida_nativa_bambu\ttext\t\tEspécie ou nome popular (Bambu)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'bambu')\txlsform_embutido",
     "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies\tsim\tforma_vida_nativa_cactacea\ttext\t\tEspécie ou nome popular (Cactácea)\t\tselected(${especies}, 'sim') and selected(${forma_vida_nativa}, 'cactacea')\txlsform_embutido",
@@ -9256,14 +9289,14 @@ MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(
   "S"
 )
 
-MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.2"
+MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.3"
 if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA <- "S"
 }
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.2."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.3.5.3."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -9722,7 +9755,7 @@ monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one
   data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
 }
 
-monitora_esp_marcar_candidatas_outras_uas <- function(validacao, consensos, raio_m) {
+monitora_esp_marcar_publicas_outras_uas <- function(validacao, consensos, raio_m) {
   v <- data.table::as.data.table(data.table::copy(validacao))
   if (!nrow(v) || !nrow(consensos)) return(v)
   pend_status <- c("pendencia_inicio_divergente", "pendencia_fim_divergente", "pendencia_ambos_divergentes", "possivel_transecto_invertido")
@@ -9731,33 +9764,33 @@ monitora_esp_marcar_candidatas_outras_uas <- function(validacao, consensos, raio
   if (!nrow(pend) || !nrow(cons)) return(v)
   cons <- cons[, .(
     UC,
-    EA_candidata = EA,
-    UA_candidata = UA,
-    n_coletas_consenso_candidata = n_coletas_consenso,
-    inicio_lat_candidata = inicio_lat_consenso,
-    inicio_lon_candidata = inicio_lon_consenso,
-    fim_lat_candidata = fim_lat_consenso,
-    fim_lon_candidata = fim_lon_consenso
+    EA_publica = EA,
+    UA_publica = UA,
+    n_coletas_consenso_publica = n_coletas_consenso,
+    inicio_lat_publica = inicio_lat_consenso,
+    inicio_lon_publica = inicio_lon_consenso,
+    fim_lat_publica = fim_lat_consenso,
+    fim_lon_publica = fim_lon_consenso
   )]
   cand <- cons[pend, on = "UC", allow.cartesian = TRUE, nomatch = 0L]
-  cand <- cand[!(monitora_esp_norm_chr(EA) == monitora_esp_norm_chr(EA_candidata) & monitora_esp_norm_chr(UA) == monitora_esp_norm_chr(UA_candidata))]
+  cand <- cand[!(monitora_esp_norm_chr(EA) == monitora_esp_norm_chr(EA_publica) & monitora_esp_norm_chr(UA) == monitora_esp_norm_chr(UA_publica))]
   if (!nrow(cand)) return(v)
   cand[, `:=`(
-    dist_inicio_ua_candidata_m = monitora_esp_dist_m(inicio_lat, inicio_lon, inicio_lat_candidata, inicio_lon_candidata),
-    dist_fim_ua_candidata_m = monitora_esp_dist_m(fim_lat, fim_lon, fim_lat_candidata, fim_lon_candidata),
-    dist_inicio_ua_candidata_invertida_m = monitora_esp_dist_m(inicio_lat, inicio_lon, fim_lat_candidata, fim_lon_candidata),
-    dist_fim_ua_candidata_invertida_m = monitora_esp_dist_m(fim_lat, fim_lon, inicio_lat_candidata, inicio_lon_candidata)
+    dist_inicio_ua_publica_m = monitora_esp_dist_m(inicio_lat, inicio_lon, inicio_lat_publica, inicio_lon_publica),
+    dist_fim_ua_publica_m = monitora_esp_dist_m(fim_lat, fim_lon, fim_lat_publica, fim_lon_publica),
+    dist_inicio_ua_publica_invertida_m = monitora_esp_dist_m(inicio_lat, inicio_lon, fim_lat_publica, fim_lon_publica),
+    dist_fim_ua_publica_invertida_m = monitora_esp_dist_m(fim_lat, fim_lon, inicio_lat_publica, inicio_lon_publica)
   )]
   cand[, `:=`(
-    dist_par_ua_candidata_m = pmax(dist_inicio_ua_candidata_m, dist_fim_ua_candidata_m, na.rm = FALSE),
-    dist_par_ua_candidata_invertida_m = pmax(dist_inicio_ua_candidata_invertida_m, dist_fim_ua_candidata_invertida_m, na.rm = FALSE)
+    dist_par_ua_publica_m = pmax(dist_inicio_ua_publica_m, dist_fim_ua_publica_m, na.rm = FALSE),
+    dist_par_ua_publica_invertida_m = pmax(dist_inicio_ua_publica_invertida_m, dist_fim_ua_publica_invertida_m, na.rm = FALSE)
   )]
-  cand[, dist_par_ua_candidata_melhor_m := pmin(dist_par_ua_candidata_m, dist_par_ua_candidata_invertida_m, na.rm = TRUE)]
-  cand <- cand[is.finite(dist_par_ua_candidata_melhor_m) & dist_par_ua_candidata_melhor_m <= as.numeric(raio_m)]
+  cand[, dist_par_ua_publica_melhor_m := pmin(dist_par_ua_publica_m, dist_par_ua_publica_invertida_m, na.rm = TRUE)]
+  cand <- cand[is.finite(dist_par_ua_publica_melhor_m) & dist_par_ua_publica_melhor_m <= as.numeric(raio_m)]
   if (!nrow(cand)) return(v)
-  data.table::setorder(cand, id_coleta_espacial, dist_par_ua_candidata_melhor_m)
+  data.table::setorder(cand, id_coleta_espacial, dist_par_ua_publica_melhor_m)
   best <- cand[, .SD[1L], by = id_coleta_espacial]
-  cols_add <- c("EA_candidata", "UA_candidata", "n_coletas_consenso_candidata", "dist_par_ua_candidata_melhor_m", "dist_par_ua_candidata_m", "dist_par_ua_candidata_invertida_m")
+  cols_add <- c("EA_publica", "UA_publica", "n_coletas_consenso_publica", "dist_par_ua_publica_melhor_m", "dist_par_ua_publica_m", "dist_par_ua_publica_invertida_m")
   v[best, on = "id_coleta_espacial", (cols_add) := mget(paste0("i.", cols_add))]
   v[best, on = "id_coleta_espacial", status_espacial := "possivel_ua_trocada"]
   v[]
@@ -9782,7 +9815,7 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
     orientacao_cluster = i.orientacao_cluster,
     distancia_medoid_cluster_m = i.distancia_medoid_cluster_m
   )]
-  val <- monitora_esp_marcar_candidatas_outras_uas(val, cons$consensos, raio_m = raio_m)
+  val <- monitora_esp_marcar_publicas_outras_uas(val, cons$consensos, raio_m = raio_m)
   val[status_espacial == "pendencia_ambos_divergentes" & (is.na(cluster_principal) | cluster_principal != TRUE) & is.finite(cluster_tamanho) & cluster_tamanho >= as.integer(min_n), status_espacial := "serie_temporal_secundaria_sugerir_nova_ua"]
   usar_acc <- monitora_esp_cfg_bool(MONITORA_USAR_ACURACIA_GPS_NA_TRIAGEM, TRUE)
   if (isTRUE(usar_acc)) {
@@ -9814,7 +9847,7 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
   sugestoes <- c(
     validada_espacialmente = "sem ação",
     validada_com_alerta_raio_rigoroso = "validada no raio operacional; revisar apenas se houver outro indício",
-    possivel_ua_trocada = "avaliar se a COLETA foi realizada no local da UA candidata",
+    possivel_ua_trocada = "avaliar se a COLETA foi realizada no local da UA publica",
     possivel_transecto_invertido = "avaliar inversão de vergalhão inicial/final",
     pendencia_inicio_divergente = "revisar ou copiar coordenada do vergalhão inicial",
     pendencia_fim_divergente = "revisar ou copiar coordenada do vergalhão final",
@@ -15175,6 +15208,55 @@ monitora_recurso_memoria_sistema <- function() {
     swap_free_mb = round(get_kb("SwapFree") / 1024, 1)
   )
 }
+monitora_recurso_energia_windows <- function() {
+  out <- data.table(
+    energia_fonte = NA_character_,
+    energia_bateria_status_codigo = NA_character_,
+    energia_bateria_carga_pct = NA_real_,
+    energia_plano = NA_character_,
+    energia_diagnostico_disponivel = FALSE
+  )
+  if (!identical(.Platform$OS.type, "windows")) return(out)
+  ps <- Sys.which("powershell")
+  if (is.na(ps) || !nzchar(ps)) ps <- Sys.which("powershell.exe")
+  if (is.na(ps) || !nzchar(ps)) return(out)
+  cmd <- paste(
+    "$bat = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1;",
+    "$scheme = ''; try { $scheme = (powercfg /GETACTIVESCHEME) -join ' ' } catch {};",
+    "if ($bat) { Write-Output ('battery_status=' + $bat.BatteryStatus); Write-Output ('charge_pct=' + $bat.EstimatedChargeRemaining) } else { Write-Output 'battery_status=NA'; Write-Output 'charge_pct=NA' };",
+    "Write-Output ('power_scheme=' + $scheme)",
+    sep = " "
+  )
+  linhas <- tryCatch(system2(ps, c("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd), stdout = TRUE, stderr = FALSE), error = function(e) character())
+  if (!length(linhas)) return(out)
+  kv <- strsplit(linhas, "=", fixed = TRUE)
+  getv <- function(k) {
+    hit <- vapply(kv, function(z) length(z) >= 2L && identical(z[1], k), logical(1))
+    if (!any(hit)) return(NA_character_)
+    paste(kv[[which(hit)[1L]]][-1], collapse = "=")
+  }
+  status <- getv("battery_status")
+  carga <- suppressWarnings(as.numeric(getv("charge_pct")))
+  plano <- getv("power_scheme")
+  fonte <- if (is.na(status) || !nzchar(status) || identical(status, "NA")) {
+    "sem_bateria_ou_indisponivel"
+  } else if (status %in% c("2", "6", "7", "8", "9")) {
+    "tomada_ou_carregando"
+  } else if (status %in% c("1", "3", "4", "5", "11")) {
+    "bateria_ou_descarga"
+  } else {
+    "indefinida"
+  }
+  out[, `:=`(
+    energia_fonte = fonte,
+    energia_bateria_status_codigo = status,
+    energia_bateria_carga_pct = carga,
+    energia_plano = plano,
+    energia_diagnostico_disponivel = TRUE
+  )]
+  out
+}
+
 monitora_recurso_deve_gc <- function() {
   if (identical(MONITORA_GC_MODO, "agressivo")) return(TRUE)
   if (identical(MONITORA_GC_MODO, "desligado")) return(FALSE)
@@ -15206,11 +15288,12 @@ MONITORA_RECURSO_HARDWARE <- cbind(
     cpu_cores_r = parallel::detectCores(logical = FALSE),
     data_table_threads = data.table::getDTthreads()
   ),
-  monitora_recurso_memoria_sistema()
+  monitora_recurso_memoria_sistema(),
+  monitora_recurso_energia_windows()
 )
 monitora_fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")))
 monitora_fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_OUTPUT_DIR, "hardware_memoria_ultima_execucao.csv"))
-monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_RECURSO_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_RECURSO_HARDWARE$swap_total_mb), "usar para diagnosticar estouro de RAM")
+monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_RECURSO_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_RECURSO_HARDWARE$swap_total_mb, "; energia_fonte=", MONITORA_RECURSO_HARDWARE$energia_fonte, "; plano_energia=", MONITORA_RECURSO_HARDWARE$energia_plano), "usar para diagnosticar RAM, tomada/bateria e plano de energia")
 
 
 ### Controlador dinâmico de recursos
@@ -15416,18 +15499,121 @@ monitora_recurso_gravar_controle <- function() {
 monitora_recurso_controlar("inicio_controlador_recursos", force_log = TRUE)
 
 ### Barra de progresso e atualização de execução
-### A barra é textual para funcionar tanto no RStudio quanto no terminal/Rscript.
-### O progresso usa marcos absolutos ponderados por etapas típicas de execução.
-### Isso evita que a barra chegue a 100% antes do fim, evita recuos e separa claramente
-### o registro [PERF] da indicação visual de progresso.
+### A barra preserva a lógica textual/ponderada atual, mas permite backend visual
+### moderno via cli quando disponível. A arquitetura continua baseada em marcos
+### absolutos de 0 a 10000, evitando 100% prematuro, recuos e perda da separação
+### entre logs [PERF] e indicação visual de progresso. Por padrão, usa cli;
+### fallback para utils::txtProgressBar() só ocorre se solicitado por ambiente.
 MONITORA_PROGRESSO_HABILITADO <- monitora_cfg_env_bool("MONITORA_PROGRESSO_HABILITADO", TRUE)
 MONITORA_SUPRIMIR_MENSAGENS_GRAFICOS <- monitora_cfg_env_bool("MONITORA_SUPRIMIR_MENSAGENS_GRAFICOS", TRUE)
+
+MONITORA_PROGRESSO_BACKEND <- tolower(trimws(Sys.getenv(
+  "MONITORA_PROGRESSO_BACKEND",
+  unset = as.character(monitora_global_get("MONITORA_PROGRESSO_BACKEND", "cli"))[1]
+)))
+if (!(MONITORA_PROGRESSO_BACKEND %in% c("auto", "cli", "txt"))) MONITORA_PROGRESSO_BACKEND <- "cli"
+
+MONITORA_PROGRESSO_CLI_MANTER_HISTORICO <- toupper(trimws(Sys.getenv(
+  "MONITORA_PROGRESSO_CLI_MANTER_HISTORICO",
+  unset = as.character(monitora_global_get("MONITORA_PROGRESSO_CLI_MANTER_HISTORICO", "N"))[1]
+)))
+if (!(MONITORA_PROGRESSO_CLI_MANTER_HISTORICO %in% c("S", "N"))) MONITORA_PROGRESSO_CLI_MANTER_HISTORICO <- "N"
+
+MONITORA_PROGRESSO_CLI_FALLBACK_TXT <- toupper(trimws(Sys.getenv(
+  "MONITORA_PROGRESSO_CLI_FALLBACK_TXT",
+  unset = as.character(monitora_global_get("MONITORA_PROGRESSO_CLI_FALLBACK_TXT", "N"))[1]
+)))
+if (!(MONITORA_PROGRESSO_CLI_FALLBACK_TXT %in% c("S", "N"))) MONITORA_PROGRESSO_CLI_FALLBACK_TXT <- "N"
+
+MONITORA_PROGRESSO_CLI_LAYOUT <- tolower(trimws(Sys.getenv(
+  "MONITORA_PROGRESSO_CLI_LAYOUT",
+  unset = as.character(monitora_global_get("MONITORA_PROGRESSO_CLI_LAYOUT", "barra_completa"))[1]
+)))
+if (!(MONITORA_PROGRESSO_CLI_LAYOUT %in% c("barra_completa", "tres_linhas", "compacto", "barra"))) MONITORA_PROGRESSO_CLI_LAYOUT <- "barra_completa"
+
+MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS <- monitora_cfg_env_int(
+  "MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS",
+  suppressWarnings(as.integer(monitora_global_get("MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS", 180L)))
+)
+if (is.na(MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS) || MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS < 40L) {
+  MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS <- 180L
+}
+
+MONITORA_PROGRESSO_CLI_LARGURA <- monitora_cfg_env_int(
+  "MONITORA_PROGRESSO_CLI_LARGURA",
+  suppressWarnings(as.integer(monitora_global_get("MONITORA_PROGRESSO_CLI_LARGURA", 180L)))
+)
+if (is.na(MONITORA_PROGRESSO_CLI_LARGURA) || MONITORA_PROGRESSO_CLI_LARGURA < 100L) {
+  MONITORA_PROGRESSO_CLI_LARGURA <- 180L
+}
+
 MONITORA_PROGRESSO_TOTAL <- 10000L
 MONITORA_PROGRESSO_LIMITE_PRE_FINAL <- 9950L
 MONITORA_PROGRESSO_VALOR <- 0L
 MONITORA_PROGRESSO_PB <- NULL
+MONITORA_PROGRESSO_BACKEND_ATIVO <- NA_character_
+MONITORA_PROGRESSO_CLI_DISPONIVEL <- isTRUE(monitora_global_get("MONITORA_CLI_DISPONIVEL", FALSE)) || requireNamespace("cli", quietly = TRUE)
+MONITORA_PROGRESSO_CLI_FALHOU <- FALSE
+MONITORA_PROGRESSO_CLI_AVISO_AUSENTE_EMITIDO <- FALSE
 MONITORA_PROGRESSO_ULTIMA_ETAPA <- NA_character_
+MONITORA_PROGRESSO_ULTIMO_STATUS <- NA_character_
 MONITORA_PROGRESSO_LOOPS <- new.env(parent = emptyenv())
+MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG <- monitora_cfg_env_num("MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG", 0.35)
+if (is.na(MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG) || MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG < 0.05) {
+  MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG <- 0.35
+}
+MONITORA_PROGRESSO_RENDER_MIN_DELTA <- monitora_cfg_env_int("MONITORA_PROGRESSO_RENDER_MIN_DELTA", 20L)
+if (is.na(MONITORA_PROGRESSO_RENDER_MIN_DELTA) || MONITORA_PROGRESSO_RENDER_MIN_DELTA < 1L) {
+  MONITORA_PROGRESSO_RENDER_MIN_DELTA <- 20L
+}
+MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG <- monitora_cfg_env_num("MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG", 1.5)
+if (is.na(MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG) || MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG < 0.10) {
+  MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG <- 1.5
+}
+MONITORA_PROGRESSO_ULTIMO_VALOR_RENDERIZADO <- -1L
+MONITORA_PROGRESSO_ULTIMO_STATUS_RENDERIZADO <- NA_character_
+MONITORA_PROGRESSO_ULTIMO_RENDER_TS <- Sys.time() - 3600
+MONITORA_PROGRESSO_ULTIMO_FLUSH_TS <- Sys.time() - 3600
+
+if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
+  MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
+    "{pb_spin} {cli::pb_bar} {pb_percent} ",
+    "[{pb_current}/{pb_total}] ETA:{pb_eta} dec:{pb_elapsed} | {pb_status}"
+  )
+  MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
+    "{col_green(symbol$tick)} {cli::pb_bar} 100% ",
+    "[{pb_current}/{pb_total}] em {pb_elapsed} | execução concluída"
+  )
+} else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra")) {
+  MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
+    "{pb_spin} {pb_name} {cli::pb_bar} {pb_percent} ",
+    "[{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}"
+  )
+  MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
+    "{col_green(symbol$tick)} {pb_name} concluída: {pb_percent} ",
+    "[{pb_current}/{pb_total}] em {pb_elapsed}."
+  )
+} else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "tres_linhas")) {
+  MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
+    "{pb_spin} {pb_percent} [{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}\n",
+    "{cli::pb_bar}\n",
+    "decorrido:{pb_elapsed}"
+  )
+  MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
+    "{col_green(symbol$tick)} 100% [{pb_current}/{pb_total}] em {pb_elapsed} | execução concluída\n",
+    "{cli::pb_bar}\n",
+    "decorrido:{pb_elapsed}"
+  )
+} else {
+  MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
+    "{pb_spin} {pb_percent} [{pb_current}/{pb_total}] ",
+    "ETA:{pb_eta} | {pb_status}"
+  )
+  MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
+    "{col_green(symbol$tick)} 100% [{pb_current}/{pb_total}] ",
+    "em {pb_elapsed} | execução concluída"
+  )
+}
 
 # Marcos absolutos, em unidades de 0 a 10000.
 # Calibração aproximada por tempo de parede observado:
@@ -15486,6 +15672,7 @@ MONITORA_PROGRESSO_ALVO_CHECKPOINT <- c(
   estatistica_composicao_linha_base = 6160L,
   exportacao_tabelas_csv = 6750L,
   relatorios_auditoria = 6850L,
+  preparacao_objetos_graficos = 7550L,
   exportacao_graficos_png_concluida = 9550L,
   exportacao_graficos_png_ignorada = 9550L,
   exportacao_kml_preparacao_coordenadas = 9650L,
@@ -15501,15 +15688,138 @@ MONITORA_PROGRESSO_FAIXA_LOOPS <- list(
   estatistica_categoria_linha_base = c(inicio = 6040L, fim = 6080L),
   estatistica_composicao_ano_a_ano = c(inicio = 6080L, fim = 6120L),
   estatistica_composicao_linha_base = c(inicio = 6120L, fim = 6160L),
-  exportacao_png = c(inicio = 6850L, fim = 9550L)
+  grafico_editorial_teste_pareado = c(inicio = 7480L, fim = 7500L),
+  grafico_editorial_gerar = c(inicio = 7500L, fim = 7520L),
+  grafico_painel_ano_inicial = c(inicio = 7520L, fim = 7550L),
+  exportacao_png = c(inicio = 7550L, fim = 9550L)
 )
+
+monitora_progresso_backend_resolver <- function() {
+  if (!isTRUE(MONITORA_PROGRESSO_HABILITADO)) return("desligado")
+  backend <- as.character(MONITORA_PROGRESSO_BACKEND)[1]
+  if (is.na(backend) || !(backend %in% c("auto", "cli", "txt"))) backend <- "cli"
+
+  cli_ok <- isTRUE(MONITORA_PROGRESSO_CLI_DISPONIVEL) &&
+    !isTRUE(MONITORA_PROGRESSO_CLI_FALHOU) &&
+    requireNamespace("cli", quietly = TRUE)
+
+  if (identical(backend, "cli") && !cli_ok) {
+    msg <- "MONITORA_PROGRESSO_BACKEND = 'cli', mas o backend cli está indisponível ou falhou."
+    if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
+      if (!isTRUE(MONITORA_PROGRESSO_CLI_AVISO_AUSENTE_EMITIDO)) {
+        message(msg, " Usando utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'.")
+        MONITORA_PROGRESSO_CLI_AVISO_AUSENTE_EMITIDO <<- TRUE
+      }
+      return("txt")
+    }
+    stop(msg, " Instale o pacote 'cli' ou use MONITORA_PROGRESSO_BACKEND='auto'/'txt'.", call. = FALSE)
+  }
+
+  if (identical(backend, "txt")) return("txt")
+  if (identical(backend, "cli") && cli_ok) return("cli")
+  if (identical(backend, "auto") && cli_ok) return("cli")
+  "txt"
+}
+
+monitora_progresso_texto_valido <- function(x) {
+  x <- as.character(x)[1]
+  !is.na(x) && nzchar(trimws(x))
+}
+
+monitora_progresso_limitar_texto <- function(x, max_chars = 120L) {
+  x <- as.character(x)[1]
+  if (is.na(x) || !nzchar(trimws(x))) return(NA_character_)
+  x <- trimws(gsub("[\r\n\t]+", " ", x))
+  max_chars <- suppressWarnings(as.integer(max_chars))[1]
+  if (is.na(max_chars) || max_chars < 20L) max_chars <- 120L
+  if (nchar(x, type = "chars", allowNA = FALSE) > max_chars) {
+    x <- paste0(substr(x, 1L, max_chars - 3L), "...")
+  }
+  x
+}
+
+monitora_progresso_status <- function(etapa = NA_character_, detalhe = NA_character_) {
+  etapa <- as.character(etapa)[1]
+  detalhe <- as.character(detalhe)[1]
+  partes <- character(0)
+  if (monitora_progresso_texto_valido(etapa)) partes <- c(partes, etapa)
+  if (monitora_progresso_texto_valido(detalhe)) partes <- c(partes, detalhe)
+  if (!length(partes)) partes <- "processando"
+  partes <- gsub("_", " ", partes, fixed = TRUE)
+  monitora_progresso_limitar_texto(
+    paste(partes, collapse = " | "),
+    MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS
+  )
+}
+
+monitora_progresso_iniciar_txt <- function() {
+  MONITORA_PROGRESSO_BACKEND_ATIVO <<- "txt"
+  MONITORA_PROGRESSO_PB <<- utils::txtProgressBar(min = 0, max = MONITORA_PROGRESSO_TOTAL, style = 3)
+  utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
+  invisible(TRUE)
+}
+
+monitora_progresso_iniciar_cli <- function() {
+  manter_historico <- identical(MONITORA_PROGRESSO_CLI_MANTER_HISTORICO, "S")
+  largura_cli <- max(
+    suppressWarnings(as.integer(MONITORA_PROGRESSO_CLI_LARGURA))[1],
+    suppressWarnings(as.integer(getOption("width", 80L)))[1],
+    na.rm = TRUE
+  )
+  if (!is.finite(largura_cli) || is.na(largura_cli)) largura_cli <- 180L
+  tryCatch(options(cli.progress_show_after = 0, cli.width = largura_cli), error = function(e) NULL)
+  pb <- tryCatch(
+    cli::cli_progress_bar(
+      name = "Execução geral",
+      status = "início",
+      type = "custom",
+      total = MONITORA_PROGRESSO_TOTAL,
+      format = MONITORA_PROGRESSO_CLI_FORMAT,
+      format_done = MONITORA_PROGRESSO_CLI_FORMAT_DONE,
+      clear = !manter_historico,
+      auto_terminate = FALSE,
+      .envir = .GlobalEnv
+    ),
+    error = function(e) {
+      MONITORA_PROGRESSO_CLI_FALHOU <<- TRUE
+      msg <- paste0("Falha ao iniciar barra cli. Motivo: ", conditionMessage(e))
+      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
+        message(msg, " Usando utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'.")
+        return(NULL)
+      }
+      stop(msg, call. = FALSE)
+    }
+  )
+  if (is.null(pb)) return(monitora_progresso_iniciar_txt())
+  MONITORA_PROGRESSO_BACKEND_ATIVO <<- "cli"
+  MONITORA_PROGRESSO_PB <<- pb
+  tryCatch(
+    cli::cli_progress_update(id = MONITORA_PROGRESSO_PB, set = MONITORA_PROGRESSO_VALOR, status = "início", force = TRUE, .envir = .GlobalEnv),
+    error = function(e) {
+      MONITORA_PROGRESSO_CLI_FALHOU <<- TRUE
+      msg <- paste0("Falha ao atualizar barra cli. Motivo: ", conditionMessage(e))
+      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
+        message(msg, " Usando utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'.")
+        MONITORA_PROGRESSO_PB <<- NULL
+        return(monitora_progresso_iniciar_txt())
+      }
+      stop(msg, call. = FALSE)
+    }
+  )
+  invisible(TRUE)
+}
 
 monitora_progresso_iniciar <- function() {
   if (!isTRUE(MONITORA_PROGRESSO_HABILITADO)) return(invisible(FALSE))
   if (is.null(MONITORA_PROGRESSO_PB)) {
-    MONITORA_PROGRESSO_PB <<- utils::txtProgressBar(min = 0, max = MONITORA_PROGRESSO_TOTAL, style = 3)
-    utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
-    tryCatch(flush.console(), error = function(e) NULL)
+    backend <- monitora_progresso_backend_resolver()
+    if (identical(backend, "cli")) monitora_progresso_iniciar_cli() else monitora_progresso_iniciar_txt()
+    if (identical(MONITORA_PROGRESSO_BACKEND_ATIVO, "cli")) {
+      message("[PROGRESSO] backend ativo: ", MONITORA_PROGRESSO_BACKEND_ATIVO, " | layout: ", MONITORA_PROGRESSO_CLI_LAYOUT)
+    } else {
+      message("[PROGRESSO] backend ativo: ", MONITORA_PROGRESSO_BACKEND_ATIVO)
+    }
+    monitora_progresso_flush(force = TRUE)
   }
   invisible(TRUE)
 }
@@ -15519,27 +15829,103 @@ monitora_progresso_percentual <- function() {
   round(100 * min(MONITORA_PROGRESSO_VALOR, MONITORA_PROGRESSO_TOTAL) / MONITORA_PROGRESSO_TOTAL, 1)
 }
 
-monitora_progresso_nova_linha <- function() {
+monitora_progresso_nova_linha <- function(force = FALSE) {
   if (isTRUE(MONITORA_PROGRESSO_HABILITADO) && !is.null(MONITORA_PROGRESSO_PB)) {
+    # Não redesenha a barra aqui: o checkpoint já atualizou o backend.
+    # A quebra de linha preserva a legibilidade dos [PERF] sem duplicar custo de console.
     cat("\n")
-    tryCatch(flush.console(), error = function(e) NULL)
+    monitora_progresso_flush(force = isTRUE(force))
   }
   invisible(TRUE)
 }
 
-monitora_progresso_definir_valor <- function(valor, etapa = NA_character_, finalizar = FALSE) {
+monitora_progresso_elapsed_seg <- function(ts) {
+  out <- suppressWarnings(as.numeric(difftime(Sys.time(), ts, units = "secs")))
+  if (is.na(out) || !is.finite(out)) out <- Inf
+  out
+}
+
+monitora_progresso_flush <- function(force = FALSE) {
+  if (!isTRUE(force) && monitora_progresso_elapsed_seg(MONITORA_PROGRESSO_ULTIMO_FLUSH_TS) < MONITORA_PROGRESSO_FLUSH_MIN_INTERVALO_SEG) {
+    return(invisible(FALSE))
+  }
+  MONITORA_PROGRESSO_ULTIMO_FLUSH_TS <<- Sys.time()
+  tryCatch(flush.console(), error = function(e) NULL)
+  invisible(TRUE)
+}
+
+monitora_progresso_deve_renderizar <- function(status = NA_character_, force = FALSE, finalizar = FALSE) {
+  if (isTRUE(force) || isTRUE(finalizar)) return(TRUE)
+  if (is.na(MONITORA_PROGRESSO_ULTIMO_VALOR_RENDERIZADO) || MONITORA_PROGRESSO_ULTIMO_VALOR_RENDERIZADO < 0L) return(TRUE)
+  delta <- abs(MONITORA_PROGRESSO_VALOR - MONITORA_PROGRESSO_ULTIMO_VALOR_RENDERIZADO)
+  if (delta >= MONITORA_PROGRESSO_RENDER_MIN_DELTA) return(TRUE)
+  if (monitora_progresso_elapsed_seg(MONITORA_PROGRESSO_ULTIMO_RENDER_TS) >= MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG) return(TRUE)
+  FALSE
+}
+
+monitora_progresso_registrar_render <- function(status = NA_character_) {
+  MONITORA_PROGRESSO_ULTIMO_VALOR_RENDERIZADO <<- MONITORA_PROGRESSO_VALOR
+  MONITORA_PROGRESSO_ULTIMO_STATUS_RENDERIZADO <<- as.character(status)[1]
+  MONITORA_PROGRESSO_ULTIMO_RENDER_TS <<- Sys.time()
+  invisible(TRUE)
+}
+
+monitora_progresso_atualizar_backend <- function(status = NA_character_, force = FALSE) {
+  if (is.null(MONITORA_PROGRESSO_PB)) return(invisible(FALSE))
+  if (identical(MONITORA_PROGRESSO_BACKEND_ATIVO, "cli")) {
+    ok <- tryCatch({
+      cli::cli_progress_update(
+        id = MONITORA_PROGRESSO_PB,
+        set = MONITORA_PROGRESSO_VALOR,
+        status = status,
+        force = isTRUE(force),
+        .envir = .GlobalEnv
+      )
+      TRUE
+    }, error = function(e) {
+      MONITORA_PROGRESSO_CLI_FALHOU <<- TRUE
+      structure(FALSE, monitora_cli_erro = conditionMessage(e))
+    })
+    if (!isTRUE(ok)) {
+      motivo <- attr(ok, "monitora_cli_erro")
+      if (is.null(motivo) || is.na(motivo)) motivo <- "erro não informado"
+      tryCatch(cli::cli_progress_done(id = MONITORA_PROGRESSO_PB, result = "failed", .envir = .GlobalEnv), error = function(e) NULL)
+      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
+        message("Falha durante atualização da barra cli; alternando para utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'. Motivo: ", motivo)
+        MONITORA_PROGRESSO_PB <<- NULL
+        monitora_progresso_iniciar_txt()
+        utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
+      } else {
+        stop("Falha durante atualização da barra cli. Motivo: ", motivo, call. = FALSE)
+      }
+    }
+  } else {
+    utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
+  }
+  invisible(TRUE)
+}
+
+monitora_progresso_definir_valor <- function(valor, etapa = NA_character_, detalhe = NA_character_, finalizar = FALSE, force = FALSE) {
   if (!isTRUE(MONITORA_PROGRESSO_HABILITADO)) return(NA_real_)
   monitora_progresso_iniciar()
   valor <- suppressWarnings(as.integer(round(valor)))
   if (is.na(valor)) valor <- MONITORA_PROGRESSO_VALOR
   limite <- if (isTRUE(finalizar)) MONITORA_PROGRESSO_TOTAL else MONITORA_PROGRESSO_LIMITE_PRE_FINAL
   # Nunca permite recuo da barra; apenas avança até o limite aplicável.
-  MONITORA_PROGRESSO_VALOR <<- max(MONITORA_PROGRESSO_VALOR, max(0L, min(limite, valor)))
+  valor_novo <- max(MONITORA_PROGRESSO_VALOR, max(0L, min(limite, valor)))
+  MONITORA_PROGRESSO_VALOR <<- valor_novo
   MONITORA_PROGRESSO_ULTIMA_ETAPA <<- as.character(etapa)[1]
-  if (!is.null(MONITORA_PROGRESSO_PB)) {
-    utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
+  MONITORA_PROGRESSO_ULTIMO_STATUS <<- monitora_progresso_status(etapa, detalhe)
+  renderizar <- monitora_progresso_deve_renderizar(
+    status = MONITORA_PROGRESSO_ULTIMO_STATUS,
+    force = isTRUE(force),
+    finalizar = isTRUE(finalizar)
+  )
+  if (isTRUE(renderizar)) {
+    monitora_progresso_atualizar_backend(status = MONITORA_PROGRESSO_ULTIMO_STATUS, force = isTRUE(force) || isTRUE(finalizar))
+    monitora_progresso_registrar_render(MONITORA_PROGRESSO_ULTIMO_STATUS)
+    monitora_progresso_flush(force = isTRUE(force) || isTRUE(finalizar))
   }
-  tryCatch(flush.console(), error = function(e) NULL)
   monitora_progresso_percentual()
 }
 
@@ -15559,7 +15945,7 @@ monitora_progresso_avancar_etapa <- function(etapa, detalhe = NA_character_) {
   if (!isTRUE(MONITORA_PROGRESSO_HABILITADO)) return(NA_real_)
   alvo <- monitora_progresso_alvo_checkpoint(etapa)
   if (is.na(alvo)) return(monitora_progresso_percentual())
-  monitora_progresso_definir_valor(alvo, etapa = etapa, finalizar = FALSE)
+  monitora_progresso_definir_valor(alvo, etapa = etapa, detalhe = detalhe, finalizar = FALSE, force = TRUE)
 }
 
 monitora_progresso_loop_configurar <- function(id, total, peso = NULL, descricao = NA_character_) {
@@ -15582,7 +15968,8 @@ monitora_progresso_loop_configurar <- function(id, total, peso = NULL, descricao
     list(total = total, inicio = inicio, fim = fim, atual = 0L, descricao = as.character(descricao)[1]),
     envir = MONITORA_PROGRESSO_LOOPS
   )
-  monitora_progresso_definir_valor(inicio, etapa = id, finalizar = FALSE)
+  detalhe <- if (monitora_progresso_texto_valido(descricao)) paste0("0/", total, ": ", descricao) else paste0("0/", total)
+  monitora_progresso_definir_valor(inicio, etapa = id, detalhe = detalhe, finalizar = FALSE, force = TRUE)
   invisible(TRUE)
 }
 
@@ -15602,7 +15989,8 @@ monitora_progresso_loop_avancar <- function(id, atual = NULL, incremento = 1L, d
   fracao <- if (loop$total > 0L) loop$atual / loop$total else 1
   alvo <- loop$inicio + floor((loop$fim - loop$inicio) * fracao)
   assign(id, loop, envir = MONITORA_PROGRESSO_LOOPS)
-  monitora_progresso_definir_valor(alvo, etapa = id, finalizar = FALSE)
+  if (!monitora_progresso_texto_valido(detalhe)) detalhe <- paste0(loop$atual, "/", loop$total)
+  monitora_progresso_definir_valor(alvo, etapa = id, detalhe = detalhe, finalizar = FALSE, force = loop$atual >= loop$total)
 }
 
 # Chamadas preservadas não alteram denominador nem imprimem mensagens.
@@ -15618,13 +16006,17 @@ monitora_progresso_avancar <- function(incremento = 1L, etapa = NA_character_, d
 
 monitora_progresso_finalizar <- function() {
   if (!isTRUE(MONITORA_PROGRESSO_HABILITADO)) return(invisible(FALSE))
-  monitora_progresso_definir_valor(MONITORA_PROGRESSO_TOTAL, etapa = "fim_execucao", finalizar = TRUE)
+  monitora_progresso_definir_valor(MONITORA_PROGRESSO_TOTAL, etapa = "fim_execucao", detalhe = "finalização controlada", finalizar = TRUE, force = TRUE)
   if (!is.null(MONITORA_PROGRESSO_PB)) {
-    tryCatch(close(MONITORA_PROGRESSO_PB), error = function(e) NULL)
+    if (identical(MONITORA_PROGRESSO_BACKEND_ATIVO, "cli") && requireNamespace("cli", quietly = TRUE)) {
+      tryCatch(cli::cli_progress_done(id = MONITORA_PROGRESSO_PB, result = "done", .envir = .GlobalEnv), error = function(e) NULL)
+    } else {
+      tryCatch(close(MONITORA_PROGRESSO_PB), error = function(e) NULL)
+    }
     MONITORA_PROGRESSO_PB <<- NULL
   }
   message("[PROGRESSO] execução concluída: 100%")
-  tryCatch(flush.console(), error = function(e) NULL)
+  monitora_progresso_flush(force = TRUE)
   invisible(TRUE)
 }
 
@@ -17692,8 +18084,8 @@ monitora_validados_aliases_xlsform_historico <- function() {
     "amostragem/registro/forma_vida_nativa_erva_nao_graminoide" = c("Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_arbusto_abaixo" = c("Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_arbusto_acima" = c("Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)"),
-    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
-    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_bambu" = c("Espécie ou nome popular (Bambu) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_lianas" = c("Espécie ou nome popular (Lianas) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_ervas_de_passarinho" = c("Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)"),
@@ -17773,8 +18165,8 @@ monitora_validados_aliases_adicionais <- function() {
     "amostragem/registro/forma_vida_nativa_erva_nao_graminoide" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Erva não graminoide nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Erva não graminoide) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_arbusto_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto nativo</span> tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)", "Espécie ou nome popular (Arbusto abaixo de 0,5m de altura) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_arbusto_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Arbusto nativo</span> tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)", "Espécie ou nome popular (Arbusto acima de 0,5m de altura) (amostragem/registro)"),
-    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
-    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_abaixo" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
+    "amostragem/registro/forma_vida_nativa_arvore_acima" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Árvore nativa</span> com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)", "Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_lianas" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Liana nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Lianas) (amostragem/registro)"),
     "amostragem/registro/forma_vida_nativa_canela_de_ema" = c("Espécie ou nome popular (<span style=\"\"color:red\"\">Velloziaceae nativa</span>) (amostragem/registro)", "Espécie ou nome popular (Velósia) (amostragem/registro)"),
     "amostragem/registro/foto_forma_vida_nativa_desconhecida02" = c("Outra foto da forma de vida desconhecida de planta nativa, caso ache necessário: (amostragem/registro)"),
@@ -19275,6 +19667,33 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
   ua_col <- if (!is.null(chaves$ua) && !is.na(chaves$ua) && chaves$ua %in% names(dt)) chaves$ua else if ("UA" %in% names(dt)) "UA" else NA_character_
   ano_col <- if (!is.null(chaves$ano) && !is.na(chaves$ano) && chaves$ano %in% names(dt)) chaves$ano else if ("ANO" %in% names(dt)) "ANO" else NA_character_
   uc_col <- if (!is.null(chaves$uc) && !is.na(chaves$uc) && chaves$uc %in% names(dt)) chaves$uc else if ("UC" %in% names(dt)) "UC" else NA_character_
+  fase_segura <- gsub("[^A-Za-z0-9_]+", "_", as.character(fase))
+  saida_log_vazio <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
+  saida_out_vazio <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_ultima_execucao.csv"))
+
+  aud_vazio_template <- function() {
+    data.table::data.table(
+      UC = character(), UA = character(), ANO = character(),
+      n_coletas = integer(), n_linhas = integer(), coletas = character(),
+      coleta_uuid = character(), EAs = character(), ciclos = character(), campanhas = character(),
+      arquivos = character(), tipos_entrada = character(), datas_data_hora = character(),
+      DATA_MONITORA_PARSEADA = character(), ANO_recalculado_de_Data = character(),
+      n_linhas_ano_divergente = integer(), linhas_ano_divergente = character(),
+      linhas_indice = character(), acao_recomendada = character()
+    )
+  }
+
+  gravar_vazio <- function(motivo) {
+    aud_vazio <- aud_vazio_template()
+    try(monitora_fwrite(aud_vazio, saida_log_vazio, na = ""), silent = TRUE)
+    try(monitora_fwrite(aud_vazio, saida_out_vazio, na = ""), silent = TRUE)
+    if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
+      try(monitora_fwrite(aud_vazio, file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
+    }
+    monitora_log_registrar_evento("coletas_ua_ano_duplicadas", "INFO", saida_log_vazio, motivo, "CSV vazio gravado para auditoria pós-correções")
+    aud_vazio
+  }
+
   if (any(is.na(c(coleta_col, ua_col, ano_col, uc_col)))) {
     monitora_log_registrar_evento(
       "coletas_ua_ano_duplicadas",
@@ -19285,56 +19704,104 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
     )
     return(data.table::data.table())
   }
+
   norm <- function(x) {
+    # Normalização mínima e rápida para chaves de auditoria. Evita stringr::str_squish()
+    # sobre dezenas de milhares de linhas quando a auditoria geralmente retorna vazia.
     x <- as.character(x)
-    x <- stringr::str_squish(x)
+    x <- trimws(x)
     x[is.na(x) | !nzchar(x)] <- NA_character_
     toupper(x)
   }
-  data_col <- if (!is.null(chaves$data_hora) && !is.na(chaves$data_hora) && chaves$data_hora %in% names(dt)) chaves$data_hora else NA_character_
-  data_val <- if (!is.na(data_col)) as.character(dt[[data_col]]) else rep(NA_character_, nrow(dt))
-  data_parseada_val <- if ("DATA_MONITORA_PARSEADA" %in% names(dt)) as.character(dt[["DATA_MONITORA_PARSEADA"]]) else rep(NA_character_, nrow(dt))
-  ano_recalc_val <- if (!is.na(data_col) && exists("monitora_data_parsear", mode = "function")) as.character(lubridate::year(monitora_data_parsear(dt[[data_col]]))) else rep(NA_character_, nrow(dt))
+  norm_coleta <- function(x) {
+    x <- as.character(x)
+    x <- trimws(x)
+    x[is.na(x) | !nzchar(x)] <- NA_character_
+    x
+  }
+
+  # Caminho rápido real: usa vetores base para detectar se existe mais de uma
+  # COLETA por UC+UA+ANO. Em bases sem conflito, retorna antes de qualquer
+  # data.table::unique(), join, parse de data ou montagem de contexto detalhado.
+  v_uc <- norm(dt[[uc_col]])
+  v_ua <- norm(dt[[ua_col]])
+  v_ano <- norm(dt[[ano_col]])
+  v_coleta <- norm_coleta(dt[[coleta_col]])
+  valido <- !is.na(v_uc) & !is.na(v_ua) & !is.na(v_ano) & !is.na(v_coleta)
+  if (!any(valido)) {
+    rm(v_uc, v_ua, v_ano, v_coleta, valido)
+    return(gravar_vazio(paste0("Nenhuma linha elegível para auditoria de COLETA duplicada por UC+UA+ANO detectada em ", fase)))
+  }
+
+  idx_validos <- which(valido)
+  chave_coleta <- paste(v_uc[valido], v_ua[valido], v_ano[valido], v_coleta[valido], sep = "
+")
+  manter_coleta_unica <- !duplicated(chave_coleta)
+  grupo_unico <- paste(v_uc[valido][manter_coleta_unica], v_ua[valido][manter_coleta_unica], v_ano[valido][manter_coleta_unica], sep = "
+")
+  grupo_duplicado_flag <- duplicated(grupo_unico) | duplicated(grupo_unico, fromLast = TRUE)
+  if (!any(grupo_duplicado_flag)) {
+    rm(v_uc, v_ua, v_ano, v_coleta, valido, idx_validos, chave_coleta, manter_coleta_unica, grupo_unico, grupo_duplicado_flag)
+    return(gravar_vazio(paste0("Nenhuma COLETA duplicada por UC+UA+ANO detectada em ", fase)))
+  }
+
+  grupos_chave <- unique(grupo_unico[grupo_duplicado_flag])
   aux <- data.table::data.table(
-    linha_indice = seq_len(nrow(dt)),
-    UC = norm(dt[[uc_col]]),
-    UA = norm(dt[[ua_col]]),
-    ANO = norm(dt[[ano_col]]),
-    ANO_recalculado_de_Data = norm(ano_recalc_val),
-    diverge_ano_data = norm(dt[[ano_col]]) != norm(ano_recalc_val),
-    COLETA = as.character(dt[[coleta_col]]),
-    Data_data_hora = data_val,
-    DATA_MONITORA_PARSEADA = data_parseada_val
+    linha_indice = idx_validos,
+    UC = v_uc[valido],
+    UA = v_ua[valido],
+    ANO = v_ano[valido],
+    COLETA = v_coleta[valido]
   )
-  aux[is.na(ANO_recalculado_de_Data), diverge_ano_data := FALSE]
-  aux <- aux[!is.na(UC) & !is.na(UA) & !is.na(ANO) & !is.na(COLETA) & nzchar(trimws(COLETA))]
-  if (!nrow(aux)) return(data.table::data.table())
-  grupos <- aux[, .(n_coletas = data.table::uniqueN(COLETA), n_linhas = .N), by = .(UC, UA, ANO)][n_coletas > 1L]
-  fase_segura <- gsub("[^A-Za-z0-9_]+", "_", as.character(fase))
-  saida_log_vazio <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
-  saida_out_vazio <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_ultima_execucao.csv"))
+  aux[, MONITORA_GRUPO_UA_ANO := paste(UC, UA, ANO, sep = "
+")]
+  det <- aux[MONITORA_GRUPO_UA_ANO %in% grupos_chave]
+  grupos <- det[, .(n_linhas = .N, n_coletas = data.table::uniqueN(COLETA)), by = .(UC, UA, ANO)][n_coletas > 1L]
   if (!nrow(grupos)) {
-    aud_vazio <- data.table::data.table(UC = character(), UA = character(), ANO = character(), n_coletas = integer(), n_linhas = integer(), coletas = character(), coleta_uuid = character(), EAs = character(), ciclos = character(), campanhas = character(), arquivos = character(), tipos_entrada = character(), datas_data_hora = character(), DATA_MONITORA_PARSEADA = character(), ANO_recalculado_de_Data = character(), n_linhas_ano_divergente = integer(), linhas_ano_divergente = character(), linhas_indice = character(), acao_recomendada = character())
-    try(monitora_fwrite(aud_vazio, saida_log_vazio, na = ""), silent = TRUE)
-    try(monitora_fwrite(aud_vazio, saida_out_vazio, na = ""), silent = TRUE)
-    if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) try(monitora_fwrite(aud_vazio, file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
-    monitora_log_registrar_evento("coletas_ua_ano_duplicadas", "INFO", saida_log_vazio, paste0("Nenhuma COLETA duplicada por UC+UA+ANO detectada em ", fase), "CSV vazio gravado para auditoria pós-correções")
-    return(aud_vazio)
+    rm(v_uc, v_ua, v_ano, v_coleta, valido, idx_validos, chave_coleta, manter_coleta_unica, grupo_unico, grupo_duplicado_flag, grupos_chave, aux, det, grupos)
+    return(gravar_vazio(paste0("Nenhuma COLETA duplicada por UC+UA+ANO detectada em ", fase)))
   }
-  det <- aux[grupos, on = .(UC, UA, ANO), nomatch = 0L]
-  contexto_col <- function(col, nome) {
-    if (!is.null(chaves[[nome]]) && !is.na(chaves[[nome]]) && chaves[[nome]] %in% names(dt)) as.character(dt[[chaves[[nome]]]]) else rep(NA_character_, nrow(dt))
+  det <- det[grupos, on = .(UC, UA, ANO), nomatch = 0L]
+  det[, MONITORA_GRUPO_UA_ANO := NULL]
+  rm(v_uc, v_ua, v_ano, v_coleta, valido, idx_validos, chave_coleta, manter_coleta_unica, grupo_unico, grupo_duplicado_flag, grupos_chave)
+  idx <- det$linha_indice
+  n_idx <- length(idx)
+
+  contexto_col <- function(nome) {
+    if (!is.null(chaves[[nome]]) && !is.na(chaves[[nome]]) && chaves[[nome]] %in% names(dt)) {
+      as.character(dt[[chaves[[nome]]]][idx])
+    } else {
+      rep(NA_character_, n_idx)
+    }
   }
-  ctx <- data.table::data.table(
-    linha_indice = seq_len(nrow(dt)),
-    EA = contexto_col(NULL, "ea"),
-    CICLO = contexto_col(NULL, "ciclo"),
-    CAMPANHA = contexto_col(NULL, "campanha"),
-    coleta_uuid = contexto_col(NULL, "coleta_uuid"),
-    arquivo_origem = if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_ARQUIVO_ENTRADA"]]) else if (".id" %in% names(dt)) as.character(dt[[".id"]]) else NA_character_,
-    tipo_entrada = if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_TIPO_ENTRADA"]]) else NA_character_
-  )
-  det <- ctx[det, on = "linha_indice"]
+
+  data_col <- if (!is.null(chaves$data_hora) && !is.na(chaves$data_hora) && chaves$data_hora %in% names(dt)) chaves$data_hora else NA_character_
+  data_val <- if (!is.na(data_col)) as.character(dt[[data_col]][idx]) else rep(NA_character_, n_idx)
+  data_parseada_val <- if ("DATA_MONITORA_PARSEADA" %in% names(dt)) as.character(dt[["DATA_MONITORA_PARSEADA"]][idx]) else rep(NA_character_, n_idx)
+
+  ano_recalc_val <- rep(NA_character_, n_idx)
+  if ("DATA_MONITORA_PARSEADA" %in% names(dt)) {
+    ano_recalc_val <- tryCatch(as.character(lubridate::year(as.Date(dt[["DATA_MONITORA_PARSEADA"]][idx]))), error = function(e) rep(NA_character_, n_idx))
+  }
+  if (all(is.na(ano_recalc_val)) && !is.na(data_col) && exists("monitora_data_parsear", mode = "function")) {
+    ano_recalc_val <- tryCatch(as.character(lubridate::year(monitora_data_parsear(dt[[data_col]][idx]))), error = function(e) rep(NA_character_, n_idx))
+  }
+  ano_recalc_norm <- norm(ano_recalc_val)
+
+  det[, `:=`(
+    Data_data_hora = data_val,
+    DATA_MONITORA_PARSEADA = data_parseada_val,
+    ANO_recalculado_de_Data = ano_recalc_norm,
+    diverge_ano_data = ANO != ano_recalc_norm,
+    EA = contexto_col("ea"),
+    CICLO = contexto_col("ciclo"),
+    CAMPANHA = contexto_col("campanha"),
+    coleta_uuid = contexto_col("coleta_uuid"),
+    arquivo_origem = if ("MONITORA_ARQUIVO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_ARQUIVO_ENTRADA"]][idx]) else if (".id" %in% names(dt)) as.character(dt[[".id"]][idx]) else rep(NA_character_, n_idx),
+    tipo_entrada = if ("MONITORA_TIPO_ENTRADA" %in% names(dt)) as.character(dt[["MONITORA_TIPO_ENTRADA"]][idx]) else rep(NA_character_, n_idx)
+  )]
+  det[is.na(ANO_recalculado_de_Data), diverge_ano_data := FALSE]
+
   aud <- det[, .(
     n_coletas = data.table::uniqueN(COLETA),
     n_linhas = .N,
@@ -19354,6 +19821,7 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
     acao_recomendada = "Resolver no painel: corrigir Data (data_hora), excluir COLETA equivocada, corrigir UA da COLETA ou revisar metadados superiores. Se Data (data_hora) for corrigida, DATA_MONITORA_PARSEADA e ANO são recalculados antes da trava pós-correções."
   ), by = .(UC, UA, ANO)]
   data.table::setorder(aud, UC, UA, ANO)
+
   saida_log <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
   saida_out <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_ultima_execucao.csv"))
   try(monitora_fwrite(aud, saida_log, na = ""), silent = TRUE)
@@ -19361,6 +19829,7 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
   if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
     try(monitora_fwrite(aud, file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
   }
+
   msg <- paste0(
     nrow(aud), " combinação(ões) UC+UA+ANO com mais de uma COLETA detectada(s) em ", fase,
     ". Esses casos NÃO são deduplicados automaticamente, pois podem indicar UA selecionada incorretamente ou reamostragem indevida da mesma UA no mesmo ano. ",
@@ -19794,7 +20263,7 @@ for (xlsx_file in xlsx_files) {
   csv_file <- sub("\\.xlsx$", ".csv", xlsx_file, ignore.case = TRUE)
   if (!file.exists(csv_file)) {
     data <- read_excel(xlsx_file)
-    utils::write.csv(monitora_sanitizar_ausencias_produto(data), file = csv_file, row.names = FALSE, na = "NA")
+    data.table::fwrite(data.table::as.data.table(monitora_sanitizar_ausencias_produto(data)), file = csv_file, na = "NA")
     monitora_log_registrar_evento("conversao_xlsx", "INFO", xlsx_file, paste0("convertido para ", csv_file), "OK")
   } else {
     monitora_log_registrar_evento("conversao_xlsx", "INFO", xlsx_file, paste0("CSV ja existente: ", csv_file), "mantido")
@@ -20309,10 +20778,10 @@ if ("amostragem/registro/forma_vida_nativa_arbusto_acima" %in% colnames(registro
   monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_arbusto_acima", "Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)")
 }
 if ("amostragem/registro/forma_vida_nativa_arvore_abaixo" %in% colnames(registros_corrig)) {
-  monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_arvore_abaixo", "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)")
+  monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_arvore_abaixo", "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)")
 }
 if ("amostragem/registro/forma_vida_nativa_arvore_acima" %in% colnames(registros_corrig)) {
-  monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_arvore_acima", "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)")
+  monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_arvore_acima", "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)")
 }
 if ("amostragem/registro/forma_vida_nativa_bambu" %in% colnames(registros_corrig)) {
   monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_vida_nativa_bambu", "Espécie ou nome popular (Bambu) (amostragem/registro)")
@@ -20687,12 +21156,12 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
@@ -20700,19 +21169,19 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm" = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
       "Cacto" = "cactacea",
       "Liana, cipó ou trepadeira" = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)" = "ervas_de_passarinho",
@@ -20721,17 +21190,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm " = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
       "Bambu ou taquara " = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
       "Cacto " = "cactacea",
       "Liana, cipó ou trepadeira " = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) " = "ervas_de_passarinho",
@@ -20740,17 +21209,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
       "Bambu ou taquara," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
       "Cacto," = "cactacea",
       "Liana, cipó ou trepadeira," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)," = "ervas_de_passarinho",
@@ -20759,17 +21228,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm ," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
       "Bambu ou taquara ," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
       "Cacto ," = "cactacea",
       "Liana, cipó ou trepadeira ," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) ," = "ervas_de_passarinho",
@@ -20778,13 +21247,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -20802,9 +21271,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -20837,12 +21306,12 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
@@ -20850,19 +21319,19 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm" = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
       "Cacto" = "cactacea",
       "Liana, cipó ou trepadeira" = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)" = "ervas_de_passarinho",
@@ -20871,17 +21340,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm " = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
       "Bambu ou taquara " = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
       "Cacto " = "cactacea",
       "Liana, cipó ou trepadeira " = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) " = "ervas_de_passarinho",
@@ -20890,17 +21359,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
       "Bambu ou taquara," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
       "Cacto," = "cactacea",
       "Liana, cipó ou trepadeira," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)," = "ervas_de_passarinho",
@@ -20909,17 +21378,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm ," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
       "Bambu ou taquara ," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
       "Cacto ," = "cactacea",
       "Liana, cipó ou trepadeira ," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) ," = "ervas_de_passarinho",
@@ -20928,13 +21397,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -20952,9 +21421,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -20987,12 +21456,12 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Arbusto acima de 0,5m de altura," = "arbusto_acima",
       "Arbusto abaixo de 0,5m de altura" = "arbusto_abaixo",
       "Arbusto acima de 0,5m de altura" = "arbusto_acima",
-      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore abaixo de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore acima de 5cm de diâmetro a 30 cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
+      "Bromelioide \\(bromélias e apiáceas\\)" = "erva_bromelioide",
       "Cactácea" = "cactacea",
-      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
+      "Lianas \\(cipós, trepadeiras\\)" = "lianas",
       "Erva-de-passarinho \\(parasitas\\)" = "ervas_de_passarinho",
       "Orquídea" = "orquidea",
       "Palmeira" = "palmeira",
@@ -21000,19 +21469,19 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Padronização de valores exportados como rótulo.
-      
+
       ## Correção de rótulo.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm" = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)" = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)" = "arvore_acima",
       "Bambu ou taquara" = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)" = "erva_bromelioide",
       "Cacto" = "cactacea",
       "Liana, cipó ou trepadeira" = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)" = "ervas_de_passarinho",
@@ -21021,17 +21490,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm " = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) " = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) " = "arvore_acima",
       "Bambu ou taquara " = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) " = "erva_bromelioide",
       "Cacto " = "cactacea",
       "Liana, cipó ou trepadeira " = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) " = "ervas_de_passarinho",
@@ -21040,17 +21509,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-      
+
       ## Correção de rótulo seguido de vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\)," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\)," = "arvore_acima",
       "Bambu ou taquara," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\)," = "erva_bromelioide",
       "Cacto," = "cactacea",
       "Liana, cipó ou trepadeira," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\)," = "ervas_de_passarinho",
@@ -21059,17 +21528,17 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-      
+
       ## Correção de rótulo seguido de espaço e vírgula.
-      
-      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
+
+      "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
       "Arbusto tocando a vareta a uma altura igual ou superior a 50cm ," = "arbusto_acima",
-      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
-      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
+      "Árvore com diâmetro do tronco menor que 5cm a 30cm do solo \\(D30\\) ," = "arvore_abaixo",
+      "Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo \\(D30\\) ," = "arvore_acima",
       "Bambu ou taquara ," = "bambu",
-      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
+      "Erva bromelioide \\(bromeliáceas, apiáceas, eriocauláceas\\) ," = "erva_bromelioide",
       "Cacto ," = "cactacea",
       "Liana, cipó ou trepadeira ," = "lianas",
       "Erva-de-passarinho \\(hemiparasita\\) ," = "ervas_de_passarinho",
@@ -21078,13 +21547,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-      
+
       ## Correção de nome padronizado.
-      
+
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-      
+
       ## Correção de nome padronizado seguido de vírgula.
-      
+
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -21102,9 +21571,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-      
+
       ## Correção de nome padronizado seguido de espaço e vírgula.
-      
+
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -21823,15 +22292,15 @@ registros_corrig$`Espécie ou nome popular (Arbusto tocando a vareta a uma altur
     )
   )
 
-# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))
+# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30))
 
-if (is.null(registros_corrig[['Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)']]))
-  set(registros_corrig, j = 'Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)', value = NA_character_)
+if (is.null(registros_corrig[['Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)']]))
+  set(registros_corrig, j = 'Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
-  set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
+if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
+  set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <- 
+registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
   fcase(
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
     fcase(
@@ -21841,7 +22310,7 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco men
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro`,
+        registros_corrig$`Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro`,
         sep = fixed("|"),-1
       )
     ),
@@ -21853,7 +22322,7 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco men
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
+        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
         sep = fixed("|"),-1
       )
     ),
@@ -21865,22 +22334,22 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco men
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
+        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
         sep = fixed("|"),-1
       )
     )
   )
 
-# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do
+# Nativa Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do
 # solo (D30))
 
-if (is.null(registros_corrig[['Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)']]))
-  set(registros_corrig, j = 'Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)', value = NA_character_)
+if (is.null(registros_corrig[['Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)']]))
+  set(registros_corrig, j = 'Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
-  set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
+if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
+  set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
+registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
   fcase(
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
     fcase(
@@ -21890,7 +22359,7 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igu
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)`,
+        registros_corrig$`Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro)`,
         sep = fixed("|"),-1
       )
     ),
@@ -21902,7 +22371,7 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igu
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
+        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
         sep = fixed("|"),-1
       )
     ),
@@ -21914,7 +22383,7 @@ registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igu
         negate = FALSE
       ),
       word(
-        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
+        registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)`,
         sep = fixed("|"),-1
       )
     )
@@ -24027,7 +24496,10 @@ MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES <- data.table::data.table()
 
 ### Correção sistemática de ponto_metro é leve e independe do painel/XLSForm.
 registros_corrig <- monitora_correcao_corrigir_ponto_metro(registros_corrig)
+monitora_perf_registrar_checkpoint("correcao_ponto_metro", "correção/normalização sistemática de ponto_metro antes do painel", registros_corrig)
 MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pre_correcoes", abortar = FALSE)
+monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pre_correcoes", "triagem pré-correções para múltiplas COLETAS na mesma UC+UA+ANO", registros_corrig)
+MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS <- FALSE
 
 if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
   monitora_esp_msg("Gerando validação espacial pré-painel.")
@@ -24200,7 +24672,33 @@ if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherit
   monitora_perf_registrar_checkpoint("validacao_espacial_pos_painel", "relatórios espaciais pós-painel gerados", registros_corrig)
 }
 
-MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pos_correcoes", abortar = TRUE)
+MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS <- isFALSE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS) &&
+  !isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE)) &&
+  exists("MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES", inherits = FALSE)
+
+if (isTRUE(MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS)) {
+  MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES <- data.table::copy(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES)
+  fase_segura_reuso <- "pos_correcoes"
+  saida_log_reuso <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura_reuso, "_", MONITORA_EXEC_ID, ".csv"))
+  saida_out_reuso <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura_reuso, "_ultima_execucao.csv"))
+  try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, saida_log_reuso, na = ""), silent = TRUE)
+  try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, saida_out_reuso, na = ""), silent = TRUE)
+  if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
+    try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "auditoria_coletas_ua_ano_duplicadas_pos_correcoes.csv"), na = ""), silent = TRUE)
+  }
+  if (nrow(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES) > 0) {
+    stop("COLETAS com UA duplicada no mesmo ANO não resolvidas. Auditoria pré-correções reutilizada como pós-correções porque não houve painel/correções/validação espacial.", call. = FALSE)
+  }
+  monitora_log_registrar_evento(
+    "coletas_ua_ano_duplicadas",
+    "INFO",
+    saida_log_reuso,
+    "Auditoria pós-correções reutilizada da auditoria pré-correções: painel/correções e validação espacial estavam desativados, sem mutação dos registros entre as fases.",
+    "otimização segura da trava UC+UA+ANO"
+  )
+} else {
+  MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pos_correcoes", abortar = TRUE)
+}
 monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pos_correcoes", "trava pós-correções para múltiplas COLETAS na mesma UC+UA+ANO", registros_corrig)
 
 monitora_perf_registrar_checkpoint("painel_correcoes_campos", "correções assistidas avaliadas/aplicadas quando habilitadas", registros_corrig)
@@ -24632,6 +25130,166 @@ monitora_plot_criar_sem_dados <- function(titulo = "Gráfico não gerado", mensa
     ggplot2::theme_void()
 }
 
+
+### Helpers data.table para preparação tabular dos gráficos -------------------
+
+### Otimizam melt/agregações/atualizações sem alterar objetos ggplot, rótulos,
+### modos de execução ou produtos seletivos. Mantêm compatibilidade com tibbles,
+### data.frames e data.tables gerados em etapas anteriores.
+monitora_dt_as_dt_ref <- function(x) {
+  if (is.null(x)) return(data.table::data.table())
+  if (data.table::is.data.table(x)) return(x)
+  data.table::as.data.table(x)
+}
+
+monitora_dt_copy_if <- function(x, copiar = FALSE) {
+  x <- monitora_dt_as_dt_ref(x)
+  if (isTRUE(copiar)) data.table::copy(x) else x
+}
+
+monitora_plot_cols_cachear <- function(dt) {
+  dt <- monitora_dt_as_dt_ref(dt)
+  nms <- names(dt)
+  data.table::data.table(
+    grupo = c("nativa", "exotica", "seca_morta", "material_botanico"),
+    padrao = c("^nativa_", "^exot_", "^seca_morta_", "^mat_bot_"),
+    n_colunas = c(
+      sum(grepl("^nativa_", nms)),
+      sum(grepl("^exot_", nms)),
+      sum(grepl("^seca_morta_", nms)),
+      sum(grepl("^mat_bot_", nms))
+    ),
+    colunas = I(list(
+      grep("^nativa_", nms, value = TRUE),
+      grep("^exot_", nms, value = TRUE),
+      grep("^seca_morta_", nms, value = TRUE),
+      grep("^mat_bot_", nms, value = TRUE)
+    ))
+  )
+}
+
+monitora_plot_cols_cache_get <- function(cache, grupo, dt = NULL, pattern = NULL) {
+  if (!is.null(cache) && nrow(cache) && "grupo" %in% names(cache) && "colunas" %in% names(cache)) {
+    idx <- which(cache$grupo == grupo)
+    if (length(idx)) return(as.character(cache$colunas[[idx[1L]]]))
+  }
+  if (!is.null(dt) && !is.null(pattern)) return(grep(pattern, names(dt), value = TRUE))
+  character()
+}
+
+monitora_plot_recode_material_botanico <- function(x) {
+  x <- as.character(x)
+  data.table::fcase(
+    x == "mat_bot_serrapilheira", "serrapilheira",
+    x == "mat_bot_fragmentos_botanicos", "fragmentos_botanicos",
+    x == "mat_bot_material_inundado", "material_inundado",
+    default = x
+  )
+}
+
+monitora_plot_resumo_proporcao_dt <- function(dt, measure_cols, complexo = FALSE, filtrar_positivos = FALSE, recode_material_botanico = FALSE) {
+  dt <- monitora_dt_as_dt_ref(dt)
+  id_cols <- intersect(c("UC", "UA", "ANO", "form_veg"), names(dt))
+  measure_cols <- intersect(unique(as.character(measure_cols)), names(dt))
+  schema <- data.table::data.table(
+    ANO = integer(), form_veg = character(), categoria = character(),
+    n = numeric(), n_UA = integer(), prop = numeric(), categoria_label = character()
+  )
+  if (length(id_cols) < 4L || !length(measure_cols)) return(schema)
+  ## `melt.data.table` avisa quando measure.vars misturam integer/numeric.
+  ## Como estes campos são contagens/coberturas, a coerção numérica explícita
+  ## antes do melt preserva o resultado esperado e mantém a execução sem aviso.
+  tmp_melt <- data.table::as.data.table(dt[, c(id_cols, measure_cols), with = FALSE])
+  tmp_melt[, (measure_cols) := lapply(.SD, function(x) suppressWarnings(as.numeric(x))), .SDcols = measure_cols]
+  long <- data.table::melt(
+    tmp_melt,
+    id.vars = id_cols,
+    measure.vars = measure_cols,
+    variable.name = "categoria",
+    value.name = "soma",
+    variable.factor = FALSE
+  )
+  rm(tmp_melt)
+  if (isTRUE(recode_material_botanico)) long[, categoria := monitora_plot_recode_material_botanico(categoria)]
+  long[, ua_key__monitora := paste(UC, UA, sep = "_")]
+  out <- long[, .(
+    n = sum(soma, na.rm = TRUE),
+    n_UA = data.table::uniqueN(ua_key__monitora)
+  ), by = .(ANO, form_veg, categoria)]
+  out[, prop := {
+    total_n <- sum(n, na.rm = TRUE)
+    if (is.finite(total_n) && total_n > 0) n / total_n else NA_real_
+  }, by = .(ANO, form_veg)]
+  out[, categoria_label := monitora_plot_rotulo_categoria(categoria)]
+  if (isTRUE(filtrar_positivos)) out <- out[n > 0]
+  out <- monitora_plot_adicionar_rotulo_proporcao(out, complexo = complexo)
+  data.table::setorder(out, ANO, form_veg, categoria)
+  out[]
+}
+
+monitora_plot_resumo_cobertura_dt <- function(dt, measure_cols, complexo = FALSE, filtrar_positivos = FALSE, recode_material_botanico = FALSE, layout = c("layout", "complexa")) {
+  layout <- match.arg(layout)
+  dt <- monitora_dt_as_dt_ref(dt)
+  id_cols <- intersect(c("UC", "UA", "ANO", "form_veg"), names(dt))
+  measure_cols <- intersect(unique(as.character(measure_cols)), names(dt))
+  schema <- data.table::data.table(
+    ANO = integer(), form_veg = character(), n_UA = integer(), categoria = character(),
+    n = numeric(), categoria_label = character(), veg_cover = numeric(), se = numeric(),
+    ci_lower = numeric(), ci_upper = numeric()
+  )
+  if (length(id_cols) < 4L || !length(measure_cols)) return(schema)
+  ## `melt.data.table` avisa quando measure.vars misturam integer/numeric.
+  ## Como estes campos são contagens/coberturas, a coerção numérica explícita
+  ## antes do melt preserva o resultado esperado e mantém a execução sem aviso.
+  tmp_melt <- data.table::as.data.table(dt[, c(id_cols, measure_cols), with = FALSE])
+  tmp_melt[, (measure_cols) := lapply(.SD, function(x) suppressWarnings(as.numeric(x))), .SDcols = measure_cols]
+  long <- data.table::melt(
+    tmp_melt,
+    id.vars = id_cols,
+    measure.vars = measure_cols,
+    variable.name = "categoria",
+    value.name = "soma",
+    variable.factor = FALSE
+  )
+  rm(tmp_melt)
+  if (isTRUE(recode_material_botanico)) long[, categoria := monitora_plot_recode_material_botanico(categoria)]
+  long[, ua_key__monitora := paste(UC, UA, sep = "_")]
+  out <- long[, .(
+    n = sum(soma, na.rm = TRUE),
+    n_UA = data.table::uniqueN(ua_key__monitora)
+  ), by = .(ANO, form_veg, categoria)]
+  data.table::setcolorder(out, intersect(c("ANO", "form_veg", "n_UA", "categoria", "n"), names(out)))
+  out[, categoria_label := monitora_plot_rotulo_categoria(categoria)]
+  out[, total_points__monitora := n_UA * 101]
+  out[, p__monitora := data.table::fifelse(total_points__monitora > 0, n / total_points__monitora, NA_real_)]
+  ## data.table não permite usar, no mesmo `:=`, uma coluna recém-criada
+  ## (`se`) em outra expressão do mesmo bloco. Mantemos a avaliação por
+  ## referência, mas em duas etapas, preservando o resultado original.
+  out[, `:=`(
+    veg_cover = round(p__monitora * 100, 1),
+    se = sqrt(p__monitora * (1 - p__monitora) / total_points__monitora) * 100
+  )]
+  out[, `:=`(
+    ci_lower = round((p__monitora - 1.96 * se / 100) * 100, 1),
+    ci_upper = round((p__monitora + 1.96 * se / 100) * 100, 1)
+  )]
+  out[, c("p__monitora", "total_points__monitora") := NULL]
+  if (isTRUE(filtrar_positivos)) out <- out[n > 0]
+  if (identical(layout, "complexa")) {
+    out <- monitora_plot_adicionar_rotulo_cobertura_complexa(out)
+  } else {
+    out <- monitora_plot_adicionar_rotulo_cobertura_layout(out, complexo = complexo)
+  }
+  data.table::setorder(out, ANO, form_veg, categoria)
+  out[]
+}
+
+monitora_plot_filtrar_form_veg_dt <- function(dt, valores = c("Campestre", "Savânica"), copiar = FALSE) {
+  dt <- monitora_dt_copy_if(dt, copiar = copiar)
+  if (!"form_veg" %in% names(dt)) return(dt[0])
+  dt[form_veg %in% valores]
+}
+
 ## Converte nomes técnicos usados nos objetos analíticos em rótulos curtos para exibição nos
 ## gráficos.
 ## As colunas originais são preservadas para manter compatibilidade com as demais etapas do script.
@@ -24754,11 +25412,11 @@ monitora_plot_rotulo_categoria <- function(x) {
     base <- stringr::str_remove(base, "^exot_")
     base <- stringr::str_remove(base, "^seca_morta_")
 
-    out_faltantes <- dplyr::case_when(
-      stringr::str_starts(y, "nativa_") ~ unname(labels_nativas[base]),
-      stringr::str_starts(y, "exot_") ~ unname(labels_exoticas[base]),
-      stringr::str_starts(y, "seca_morta_") ~ unname(labels_secas_mortas[base]),
-      TRUE ~ unname(labels_formas_vida[base])
+    out_faltantes <- data.table::fcase(
+      startsWith(y, "nativa_"), unname(labels_nativas[base]),
+      startsWith(y, "exot_"), unname(labels_exoticas[base]),
+      startsWith(y, "seca_morta_"), unname(labels_secas_mortas[base]),
+      default = unname(labels_formas_vida[base])
     )
 
     faltantes_sem_label <- is.na(out_faltantes) & !is.na(base)
@@ -26200,30 +26858,24 @@ monitora_perf_registrar_checkpoint("inicio_analises", "início dos blocos analí
 
 if (isTRUE(MONITORA_GERAR_OBJETOS_GRAFICOS)) {
 
+MONITORA_PLOT_COLS_CACHE <- monitora_plot_cols_cachear(registros_corrig_stat)
+MONITORA_PLOT_COLS_NATIVA <- monitora_plot_cols_cache_get(MONITORA_PLOT_COLS_CACHE, "nativa", registros_corrig_stat, "^nativa_")
+MONITORA_PLOT_COLS_EXOTICA <- monitora_plot_cols_cache_get(MONITORA_PLOT_COLS_CACHE, "exotica", registros_corrig_stat, "^exot_")
+MONITORA_PLOT_COLS_SECA_MORTA <- monitora_plot_cols_cache_get(MONITORA_PLOT_COLS_CACHE, "seca_morta", registros_corrig_stat, "^seca_morta_")
+MONITORA_PLOT_COLS_MATERIAL_BOTANICO <- monitora_plot_cols_cache_get(MONITORA_PLOT_COLS_CACHE, "material_botanico", registros_corrig_stat, "^mat_bot_")
+
 ## reg_corrig_stat_summarise_p1
 
 if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     monitora_any_sum_cols_match(registros_corrig_stat, "sum_lenhosa")) {
-  reg_corrig_stat_summarise_p1 <- registros_corrig_stat %>%
-    dplyr::select(any_of(c(
-      "UC", "UA", "ANO", "form_veg", "sum_herbacea", "sum_lenhosa"
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = c(sum_herbacea, sum_lenhosa)
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_"))
-    ) %>%
-    dplyr::mutate(prop = prop.table(n)) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria))
-  reg_corrig_stat_summarise_p1 <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_p1, complexo = FALSE)
-  
-  plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
-    subset(., form_veg == "Campestre") %>%
+  reg_corrig_stat_summarise_p1 <- monitora_plot_resumo_proporcao_dt(
+    registros_corrig_stat,
+    measure_cols = c("sum_herbacea", "sum_lenhosa"),
+    complexo = FALSE,
+    filtrar_positivos = FALSE
+  )
+
+  plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo <- reg_corrig_stat_summarise_p1[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -26235,9 +26887,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  dados_p1_camp_rotulos <- reg_corrig_stat_summarise_p1 %>%
-    subset(., form_veg == "Campestre") %>%
+
+  dados_p1_camp_rotulos <- reg_corrig_stat_summarise_p1[form_veg == "Campestre"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.001)
 
   plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo <- dados_p1_camp_rotulos %>%
@@ -26253,9 +26904,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p1_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo <- reg_corrig_stat_summarise_p1 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo <- reg_corrig_stat_summarise_p1[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -26267,9 +26917,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  dados_p1_sav_rotulos <- reg_corrig_stat_summarise_p1 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  dados_p1_sav_rotulos <- reg_corrig_stat_summarise_p1[form_veg == "Savânica"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.001)
 
   plot_p1.2.2_prop_rel_herb_lenh_sav_com_rotulo <- dados_p1_sav_rotulos %>%
@@ -26291,43 +26940,22 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
 
 if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
     monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_lenh")) {
-  reg_corrig_stat_summarise_p1_presence <- registros_corrig_stat %>%
-    select(any_of(c("UC", "UA", "ANO", "form_veg", "sum_presence_herb", "sum_presence_lenh"))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = c(sum_presence_herb, sum_presence_lenh)
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    relocate(n_UA, .after = form_veg) %>%
-    mutate(
-      total_points = n_UA * 101,
-      p = n / total_points,
-      veg_cover = round(p * 100, 1),
-      se = sqrt(p * (1 - p) / total_points) * 100,
-      ci_lower = round((p - 1.96 * se / 100) * 100, 1),
-      ci_upper = round((p + 1.96 * se / 100) * 100, 1)
-    ) %>%
-    select(-p, -total_points)
-  
-  
-  reg_corrig_stat_summarise_p1_presence <- monitora_plot_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_p1_presence, complexo = FALSE)
-  
+  reg_corrig_stat_summarise_p1_presence <- monitora_plot_resumo_cobertura_dt(
+    registros_corrig_stat,
+    measure_cols = c("sum_presence_herb", "sum_presence_lenh"),
+    complexo = FALSE,
+    filtrar_positivos = FALSE,
+    layout = "layout"
+  )
+
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-  
+
   # Calcular limite do eixo x
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-  
+
   # Gráfico COM rótulos
   plot_p1.3.1_veg_cover_herb_lenh_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>% 
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p1_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26359,11 +26987,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-  
+
   # Gráfico SEM rótulos
   plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p1_presence %>% 
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p1_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26391,12 +27018,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-  
+
   rm(x_max)
-  
-  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo, 
-       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo, 
-       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo, 
+
+  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo,
+       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo,
+       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo,
        plot_p1.2.2_prop_rel_herb_lenh_sav_com_rotulo,
        plot_p1.3.1_veg_cover_herb_lenh_com_rotulo,
        plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo)
@@ -26412,87 +27039,28 @@ monitora_perf_registrar_checkpoint("analise_herbaceas_lenhosas", "proporção/co
 
 ## reg_corrig_stat_summarise_p2
 
-reg_corrig_stat_summarise_p2 <- registros_corrig_stat %>%
-  dplyr::select(any_of(
-    c(
-      "UC",
-      "UA",
-      "ANO",
-      "form_veg",
-      "sum_nativa",
-      "sum_exotica",
-      "sum_seca_morta",
-      "material_botanico",
-      "solo_nu"
-    )
-  )) %>%
-  pivot_longer(
-    names_to = "categoria",
-    values_to = "soma",
-    cols = -c("UC", "UA", "ANO", "form_veg")
-  ) %>%
-  group_by(ANO, form_veg, categoria) %>%
-  dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_"))
-    ) %>%
-  dplyr::mutate(prop = prop.table(n)) %>%
-  dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-  filter(n > 0)
-reg_corrig_stat_summarise_p2 <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_p2, complexo = FALSE)
+reg_corrig_stat_summarise_p2 <- monitora_plot_resumo_proporcao_dt(
+  registros_corrig_stat,
+  measure_cols = c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "solo_nu"),
+  complexo = FALSE,
+  filtrar_positivos = TRUE
+)
 
 ## Presença das categorias gerais.
 
-reg_corrig_stat_summarise_p2_presence <- registros_corrig_stat %>%
-  select(any_of(c(
-    "UC", 
-    "UA", 
-    "ANO", 
-    "form_veg", 
-    "sum_presence_nativa",
-    "sum_presence_exotica",
-    "sum_presence_seca_morta",
-    "material_botanico",
-    "solo_nu"
-  ))) %>%
-  pivot_longer(
-    cols = any_of(c(
-      "sum_presence_nativa",
-      "sum_presence_exotica",
-      "sum_presence_seca_morta",
-      "material_botanico",
-      "solo_nu"
-    )),
-    names_to = "categoria",
-    values_to = "soma"
-  ) %>%
-  group_by(ANO, form_veg, categoria) %>%
-  summarise(
-    n = sum(soma, na.rm = TRUE),
-    n_UA = n_distinct(paste(UC, UA, sep = "_")),
-    .groups = "drop"
-  ) %>%
-  dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-  relocate(n_UA, .after = form_veg) %>%
-  mutate(
-    total_points = n_UA * 101,
-    p = n / total_points,
-    veg_cover = round(p * 100, 1),
-    se = sqrt(p * (1 - p) / total_points) * 100,
-    ci_lower = round((p - 1.96 * se / 100) * 100, 1),
-    ci_upper = round((p + 1.96 * se / 100) * 100, 1)
-  ) %>%
-  select(-p, -total_points)
-
-
-reg_corrig_stat_summarise_p2_presence <- monitora_plot_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_p2_presence, complexo = FALSE)
+reg_corrig_stat_summarise_p2_presence <- monitora_plot_resumo_cobertura_dt(
+  registros_corrig_stat,
+  measure_cols = c("sum_presence_nativa", "sum_presence_exotica", "sum_presence_seca_morta", "material_botanico", "solo_nu"),
+  complexo = FALSE,
+  filtrar_positivos = FALSE,
+  layout = "layout"
+)
 
 # Calcular limite do eixo x dinamicamente com alternativa segura
 x_max2 <- monitora_safe_xmax(reg_corrig_stat_summarise_p2_presence$veg_cover, mult = 1.15, fallback = 1)
 
 # Filtra formações para os gráficos facetados; se o filtro ficar vazio, gera gráfico substituto
-p2_presence_form_veg <- reg_corrig_stat_summarise_p2_presence %>%
-  filter(form_veg %in% c("Campestre", "Savânica"))
+p2_presence_form_veg <- monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p2_presence)
 
 if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
   # Gráfico com rótulos
@@ -26501,7 +27069,7 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-    
+
     geom_errorbar(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
@@ -26509,14 +27077,14 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       orientation = "y",
       color = "black"
     ) +
-    
+
     monitora_plot_camadas_rotulos_cobertura_externos(
       complexo = FALSE,
       tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
-    
+
     facet_wrap(~form_veg) +
-    
+
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -26524,24 +27092,24 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-    
+
     scale_fill_brewer(palette = "Set2") +
-    
+
     monitora_plot_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    
+
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
-  
+
   # Gráfico sem rótulos
   plot_p2.3.2_veg_cover_categ_sem_rotulo <- ggplot(
     p2_presence_form_veg,
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-    
+
     geom_errorbar(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
@@ -26549,9 +27117,9 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       orientation = "y",
       color = "black"
     ) +
-    
+
     facet_wrap(~form_veg) +
-    
+
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -26559,15 +27127,15 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-    
+
     scale_fill_brewer(palette = "Set2") +
-    
+
     monitora_plot_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-    
+
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
 } else {
   plot_p2.3.1_veg_cover_categ_com_rotulo <- monitora_plot_criar_sem_dados(
@@ -26580,78 +27148,28 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
 ## Sínteses específicas por tipo de material botânico em decomposição no solo.
 ## Como forma_serrapilheira é select_multiple, um mesmo ponto pode contribuir
 ## para mais de um tipo específico de material.
-mat_bot_stat_cols <- grep("^mat_bot_", names(registros_corrig_stat), value = TRUE)
+mat_bot_stat_cols <- MONITORA_PLOT_COLS_MATERIAL_BOTANICO
 if (length(mat_bot_stat_cols) > 0) {
-  reg_corrig_stat_summarise_material_botanico <- registros_corrig_stat %>%
-    dplyr::select(any_of(c("UC", "UA", "ANO", "form_veg", mat_bot_stat_cols))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = any_of(mat_bot_stat_cols)
-    ) %>%
-    mutate(
-      categoria = dplyr::recode(
-        categoria,
-        "mat_bot_serrapilheira" = "serrapilheira",
-        "mat_bot_fragmentos_botanicos" = "fragmentos_botanicos",
-        "mat_bot_material_inundado" = "material_inundado",
-        .default = categoria
-      )
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    group_by(ANO, form_veg) %>%
-    dplyr::mutate(prop = prop.table(n)) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    ungroup() %>%
-    filter(n > 0)
-  reg_corrig_stat_summarise_material_botanico <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_material_botanico, complexo = FALSE)
+  reg_corrig_stat_summarise_material_botanico <- monitora_plot_resumo_proporcao_dt(
+    registros_corrig_stat,
+    measure_cols = mat_bot_stat_cols,
+    complexo = FALSE,
+    filtrar_positivos = TRUE,
+    recode_material_botanico = TRUE
+  )
 
-  reg_corrig_stat_summarise_material_botanico_presence <- registros_corrig_stat %>%
-    dplyr::select(any_of(c("UC", "UA", "ANO", "form_veg", mat_bot_stat_cols))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = any_of(mat_bot_stat_cols)
-    ) %>%
-    mutate(
-      categoria = dplyr::recode(
-        categoria,
-        "mat_bot_serrapilheira" = "serrapilheira",
-        "mat_bot_fragmentos_botanicos" = "fragmentos_botanicos",
-        "mat_bot_material_inundado" = "material_inundado",
-        .default = categoria
-      )
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    relocate(n_UA, .after = form_veg) %>%
-    mutate(
-      total_points = n_UA * 101,
-      cobertura = n / total_points,
-      cobertura_percent = cobertura * 100,
-      veg_cover = round(cobertura_percent, 1),
-      se = sqrt(cobertura * (1 - cobertura) / total_points) * 100,
-      ci_lower = round((cobertura - 1.96 * se / 100) * 100, 1),
-      ci_upper = round((cobertura + 1.96 * se / 100) * 100, 1)
-    ) %>%
-    filter(n > 0)
+  reg_corrig_stat_summarise_material_botanico_presence <- monitora_plot_resumo_cobertura_dt(
+    registros_corrig_stat,
+    measure_cols = mat_bot_stat_cols,
+    complexo = FALSE,
+    filtrar_positivos = TRUE,
+    recode_material_botanico = TRUE,
+    layout = "layout"
+  )
 
-  reg_corrig_stat_summarise_material_botanico_presence <- monitora_plot_adicionar_rotulo_cobertura_layout(reg_corrig_stat_summarise_material_botanico_presence, complexo = FALSE)
-  
   x_max_mat <- monitora_safe_xmax(reg_corrig_stat_summarise_material_botanico_presence$veg_cover, mult = 1.15, fallback = 1)
 
-  plot_p2m.1.1_prop_rel_material_botanico_camp_sem_rotulo <- reg_corrig_stat_summarise_material_botanico %>%
-    subset(., form_veg == "Campestre") %>%
+  plot_p2m.1.1_prop_rel_material_botanico_camp_sem_rotulo <- reg_corrig_stat_summarise_material_botanico[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -26663,8 +27181,7 @@ if (length(mat_bot_stat_cols) > 0) {
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
 
-  dados_p2m_camp_rotulos <- reg_corrig_stat_summarise_material_botanico %>%
-    subset(., form_veg == "Campestre") %>%
+  dados_p2m_camp_rotulos <- reg_corrig_stat_summarise_material_botanico[form_veg == "Campestre"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
   plot_p2m.1.2_prop_rel_material_botanico_camp_com_rotulo <- dados_p2m_camp_rotulos %>%
@@ -26680,8 +27197,7 @@ if (length(mat_bot_stat_cols) > 0) {
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p2m_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
 
-  plot_p2m.2.1_prop_rel_material_botanico_sav_sem_rotulo <- reg_corrig_stat_summarise_material_botanico %>%
-    subset(., form_veg == "Savânica") %>%
+  plot_p2m.2.1_prop_rel_material_botanico_sav_sem_rotulo <- reg_corrig_stat_summarise_material_botanico[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -26693,8 +27209,7 @@ if (length(mat_bot_stat_cols) > 0) {
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
 
-  dados_p2m_sav_rotulos <- reg_corrig_stat_summarise_material_botanico %>%
-    subset(., form_veg == "Savânica") %>%
+  dados_p2m_sav_rotulos <- reg_corrig_stat_summarise_material_botanico[form_veg == "Savânica"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
   plot_p2m.2.2_prop_rel_material_botanico_sav_com_rotulo <- dados_p2m_sav_rotulos %>%
@@ -26711,8 +27226,7 @@ if (length(mat_bot_stat_cols) > 0) {
     monitora_plot_theme_proporcao_publicavel()
 
   plot_p2m.3.1_veg_cover_material_botanico_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_material_botanico_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_material_botanico_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26744,8 +27258,7 @@ if (length(mat_bot_stat_cols) > 0) {
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max_mat)), clip = "on")
 
   plot_p2m.3.2_veg_cover_material_botanico_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_material_botanico_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_material_botanico_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26774,8 +27287,7 @@ if (length(mat_bot_stat_cols) > 0) {
 }
 
 
-plot_p2.1.1_prop_rel_categ_camp_sem_rotulo <- reg_corrig_stat_summarise_p2 %>%
-  subset(., form_veg == "Campestre") %>%
+plot_p2.1.1_prop_rel_categ_camp_sem_rotulo <- reg_corrig_stat_summarise_p2[form_veg == "Campestre"] %>%
   ggplot(aes(prop, ANO, fill = categoria_label)) +
   geom_col() +
   labs(
@@ -26790,8 +27302,7 @@ em formações campestres",
     monitora_plot_theme_proporcao_publicavel()
 
 
-dados_p2_camp_rotulos <- reg_corrig_stat_summarise_p2 %>%
-  subset(., form_veg == "Campestre") %>%
+dados_p2_camp_rotulos <- reg_corrig_stat_summarise_p2[form_veg == "Campestre"] %>%
   monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
 plot_p2.1.2_prop_rel_categ_camp_com_rotulo <- dados_p2_camp_rotulos %>%
@@ -26809,8 +27320,7 @@ em formações campestres",
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p2_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
 
-plot_p2.2.1_prop_rel_categ_sav_sem_rotulo <- reg_corrig_stat_summarise_p2 %>%
-  subset(., form_veg == "Savânica") %>%
+plot_p2.2.1_prop_rel_categ_sav_sem_rotulo <- reg_corrig_stat_summarise_p2[form_veg == "Savânica"] %>%
   ggplot(aes(prop, ANO, fill = categoria_label)) +
   geom_col() +
   labs(
@@ -26824,8 +27334,7 @@ em formações savânicas",
   scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
 
-dados_p2_sav_rotulos <- reg_corrig_stat_summarise_p2 %>%
-  subset(., form_veg == "Savânica") %>%
+dados_p2_sav_rotulos <- reg_corrig_stat_summarise_p2[form_veg == "Savânica"] %>%
   monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
 plot_p2.2.1_prop_rel_categ_sav_com_rotulo <- dados_p2_sav_rotulos %>%
@@ -26843,9 +27352,9 @@ em formações savânicas",
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p2_sav_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
 
-list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo, 
-     plot_p2.1.2_prop_rel_categ_camp_com_rotulo, 
-     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo, 
+list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo,
+     plot_p2.1.2_prop_rel_categ_camp_com_rotulo,
+     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo,
      plot_p2.2.1_prop_rel_categ_sav_com_rotulo,
      plot_p2.3.1_veg_cover_categ_com_rotulo,
      plot_p2.3.2_veg_cover_categ_sem_rotulo)
@@ -26858,63 +27367,31 @@ monitora_perf_registrar_checkpoint("analise_categorias_nativa_exotica_seca_mater
 
 ## reg_corrig_stat_summarise_p3
 
-if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
-  reg_corrig_stat_summarise_p3 <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_"))
-    ) %>%
-    dplyr::mutate(prop = prop.table(n)) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria))
-  reg_corrig_stat_summarise_p3 <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_p3, complexo = TRUE)
-  
+if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
+  reg_corrig_stat_summarise_p3 <- monitora_plot_resumo_proporcao_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_NATIVA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE
+  )
+
   ## Presença de formas de vida nativas.
-  
-  reg_corrig_stat_summarise_p3_presence <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "nativa_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    relocate(n_UA, .after = form_veg) %>%
-    mutate(
-      total_points = n_UA * 101,
-      p = n / total_points,
-      veg_cover = round(p * 100, 1),
-      se = sqrt(p * (1 - p) / total_points) * 100,
-      ci_lower = round((p - 1.96 * se / 100) * 100, 1),
-      ci_upper = round((p + 1.96 * se / 100) * 100, 1)
-    ) %>%
-    select(-p, -total_points)
-  reg_corrig_stat_summarise_p3_presence <- monitora_plot_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p3_presence)
-  
+
+  reg_corrig_stat_summarise_p3_presence <- monitora_plot_resumo_cobertura_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_NATIVA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE,
+    layout = "complexa"
+  )
+
     # Limite X dinâmico
   x_max3 <- monitora_safe_xmax(reg_corrig_stat_summarise_p3_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
 # Gráfico com rótulos
-  
+
   plot_p3.3.1_veg_cover_nat_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p3_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p3_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26945,10 +27422,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   plot_p3.3.2_veg_cover_nat_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p3_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p3_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -26974,11 +27450,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
 # Gráfico sem rótulos
-  
-  plot_p3.1.1_prop_rel_nat_camp_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
-    subset(., form_veg == "Campestre") %>%
+
+  plot_p3.1.1_prop_rel_nat_camp_sem_rotulo <- reg_corrig_stat_summarise_p3[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -26990,9 +27465,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  dados_p3_camp_rotulos <- reg_corrig_stat_summarise_p3 %>%
-    subset(., form_veg == "Campestre") %>%
+
+  dados_p3_camp_rotulos <- reg_corrig_stat_summarise_p3[form_veg == "Campestre"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
   plot_p3.1.2_prop_rel_nat_camp_com_rotulo <- dados_p3_camp_rotulos %>%
@@ -27008,9 +27482,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p3_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p3.2.1_prop_rel_nat_sav_sem_rotulo <- reg_corrig_stat_summarise_p3 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  plot_p3.2.1_prop_rel_nat_sav_sem_rotulo <- reg_corrig_stat_summarise_p3[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -27022,9 +27495,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  dados_p3_sav_rotulos <- reg_corrig_stat_summarise_p3 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  dados_p3_sav_rotulos <- reg_corrig_stat_summarise_p3[form_veg == "Savânica"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
   plot_p3.2.2_prop_rel_nat_sav_com_rotulo <- dados_p3_sav_rotulos %>%
@@ -27040,10 +27512,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "nativa_")) {
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p3_sav_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo, 
-       plot_p3.1.2_prop_rel_nat_camp_com_rotulo, 
-       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo, 
+
+  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo,
+       plot_p3.1.2_prop_rel_nat_camp_com_rotulo,
+       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo,
        plot_p3.2.2_prop_rel_nat_sav_com_rotulo,
        plot_p3.3.1_veg_cover_nat_com_rotulo,
        plot_p3.3.2_veg_cover_nat_sem_rotulo)
@@ -27058,63 +27530,31 @@ monitora_perf_registrar_checkpoint("analise_formas_vida_nativas", "proporção/c
 
 ## reg_corrig_stat_summarise_p4
 
-if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
-  reg_corrig_stat_summarise_p4 <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_"))
-    ) %>%
-    dplyr::mutate(prop = prop.table(n)) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria))
-  reg_corrig_stat_summarise_p4 <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_p4, complexo = TRUE)
-  
+if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
+  reg_corrig_stat_summarise_p4 <- monitora_plot_resumo_proporcao_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_EXOTICA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE
+  )
+
   ## Presença de formas de vida exóticas.
-  
-  reg_corrig_stat_summarise_p4_presence <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "exot_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    relocate(n_UA, .after = form_veg) %>%
-    mutate(
-      total_points = n_UA * 101,
-      p = n / total_points,
-      veg_cover = round(p * 100, 1),
-      se = sqrt(p * (1 - p) / total_points) * 100,
-      ci_lower = round((p - 1.96 * se / 100) * 100, 1),
-      ci_upper = round((p + 1.96 * se / 100) * 100, 1)
-    ) %>%
-    select(-p, -total_points)
-  reg_corrig_stat_summarise_p4_presence <- monitora_plot_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p4_presence)
-  
-  
+
+  reg_corrig_stat_summarise_p4_presence <- monitora_plot_resumo_cobertura_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_EXOTICA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE,
+    layout = "complexa"
+  )
+
+
   # Limite X dinâmico
   x_max4 <- monitora_safe_xmax(reg_corrig_stat_summarise_p4_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
   # Gráfico com rótulos
   plot_p4.3.1_veg_cover_exot_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p4_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p4_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -27145,10 +27585,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   plot_p4.3.2_veg_cover_exot_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p4_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p4_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -27174,11 +27613,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   # Gráfico sem rótulos
-  
-  plot_p4.1.1_prop_rel_exot_camp_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
-    subset(., form_veg == "Campestre") %>%
+
+  plot_p4.1.1_prop_rel_exot_camp_sem_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -27190,10 +27628,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  
-  plot_p4.1.2_prop_rel_exot_camp_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
-    subset(., form_veg == "Campestre") %>%
+
+
+  plot_p4.1.2_prop_rel_exot_camp_com_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     geom_text(aes(label = rotulo_prop_plot),
@@ -27211,10 +27648,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  
-  plot_p4.2.1_prop_rel_exot_sav_sem_rotulo <- reg_corrig_stat_summarise_p4 %>%
-    subset(., form_veg == "Savânica") %>%
+
+
+  plot_p4.2.1_prop_rel_exot_sav_sem_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -27226,9 +27662,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p4.2.2_prop_rel_exot_sav_com_rotulo <- reg_corrig_stat_summarise_p4 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  plot_p4.2.2_prop_rel_exot_sav_com_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     geom_text(aes(label = rotulo_prop_plot),
@@ -27246,9 +27681,9 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "exot_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
+
   rm(x_max4)
-  
+
   list(plot_p4.1.1_prop_rel_exot_camp_sem_rotulo,
        plot_p4.1.2_prop_rel_exot_camp_com_rotulo,
        plot_p4.2.1_prop_rel_exot_sav_sem_rotulo,
@@ -27265,63 +27700,31 @@ monitora_perf_registrar_checkpoint("analise_formas_vida_exoticas", "proporção/
 
 ### reg_corrig_stat_summarise_p5
 
-if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
-  reg_corrig_stat_summarise_p5 <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    dplyr::summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_"))
-    ) %>%
-    dplyr::mutate(prop = prop.table(n)) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria))
-  reg_corrig_stat_summarise_p5 <- monitora_plot_adicionar_rotulo_proporcao(reg_corrig_stat_summarise_p5, complexo = TRUE)
-  
+if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
+  reg_corrig_stat_summarise_p5 <- monitora_plot_resumo_proporcao_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_SECA_MORTA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE
+  )
+
   ## Presença de formas de vida secas ou mortas.
-  
-  reg_corrig_stat_summarise_p5_presence <- registros_corrig_stat %>%
-    dplyr::select(., UC, UA, ANO, form_veg, which((
-      str_detect(colnames(registros_corrig_stat), "seca_morta_", negate = FALSE)
-    ))) %>%
-    pivot_longer(
-      names_to = "categoria",
-      values_to = "soma",
-      cols = -c("UC", "UA", "ANO", "form_veg")
-    ) %>%
-    group_by(ANO, form_veg, categoria) %>%
-    summarise(
-      n = sum(soma, na.rm = TRUE),
-      n_UA = n_distinct(paste(UC, UA, sep = "_")),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(categoria_label = monitora_plot_rotulo_categoria(categoria)) %>%
-    relocate(n_UA, .after = form_veg) %>%
-    mutate(
-      total_points = n_UA * 101,
-      p = n / total_points,
-      veg_cover = round(p * 100, 1),
-      se = sqrt(p * (1 - p) / total_points) * 100,
-      ci_lower = round((p - 1.96 * se / 100) * 100, 1),
-      ci_upper = round((p + 1.96 * se / 100) * 100, 1)
-    ) %>%
-    select(-p, -total_points)
-  reg_corrig_stat_summarise_p5_presence <- monitora_plot_adicionar_rotulo_cobertura_complexa(reg_corrig_stat_summarise_p5_presence)
-  
-  
+
+  reg_corrig_stat_summarise_p5_presence <- monitora_plot_resumo_cobertura_dt(
+    registros_corrig_stat,
+    measure_cols = MONITORA_PLOT_COLS_SECA_MORTA,
+    complexo = TRUE,
+    filtrar_positivos = FALSE,
+    layout = "complexa"
+  )
+
+
   # Limite X dinâmico
   x_max5 <- monitora_safe_xmax(reg_corrig_stat_summarise_p5_presence$veg_cover, mult = 1.15, fallback = 1)
-  
+
   # Gráfico com rótulos
   plot_p5.3.1_veg_cover_seca_morta_com_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p5_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p5_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -27352,11 +27755,10 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-  
+
   # Gráfico sem rótulos
   plot_p5.3.2_seca_morta_sem_rotulo <- ggplot(
-    reg_corrig_stat_summarise_p5_presence %>%
-      filter(form_veg %in% c("Campestre", "Savânica")),
+    monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p5_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -27385,8 +27787,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
 
   #
 
-    plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo <- reg_corrig_stat_summarise_p5 %>%
-    subset(., form_veg == "Campestre") %>%
+    plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -27397,9 +27798,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
-    subset(., form_veg == "Campestre") %>%
+
+  plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     geom_text(aes(label = rotulo_prop_plot),
@@ -27416,9 +27816,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo <- reg_corrig_stat_summarise_p5 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     labs(
@@ -27429,9 +27828,8 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
-  plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo <- reg_corrig_stat_summarise_p5 %>%
-    subset(., form_veg == "Savânica") %>%
+
+  plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
     geom_text(aes(label = rotulo_prop_plot),
@@ -27448,16 +27846,16 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "seca_morta_")) {
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-  
+
   rm(x_max5)
-  
-  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo, 
-       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo, 
-       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo, 
+
+  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo,
+       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo,
+       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo,
        plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo,
        plot_p5.3.1_veg_cover_seca_morta_com_rotulo,
        plot_p5.3.2_seca_morta_sem_rotulo)
-  
+
 }
 
 ### remoção de objetos não mais necessários:
@@ -27516,6 +27914,11 @@ MONITORA_STAT_BASELINE_ATIVO <- tolower(Sys.getenv("MONITORA_STAT_BASELINE_ATIVO
 MONITORA_STAT_BASELINE_MODO <- Sys.getenv("MONITORA_STAT_BASELINE_MODO", "acumulada_anterior")
 MONITORA_STAT_BASELINE_MIN_ANOS <- suppressWarnings(as.integer(Sys.getenv("MONITORA_STAT_BASELINE_MIN_ANOS", "2")))
 MONITORA_STAT_BASELINE_MOSTRAR_APENAS_MUDANCA <- tolower(Sys.getenv("MONITORA_STAT_BASELINE_MOSTRAR_APENAS_MUDANCA", "true")) %in% c("true", "1", "yes", "sim")
+MONITORA_STAT_REPRODUTIBILIDADE_ATIVA <- tolower(Sys.getenv("MONITORA_STAT_REPRODUTIBILIDADE_ATIVA", "true")) %in% c("true", "1", "yes", "sim")
+MONITORA_STAT_SEMENTE_BASE <- suppressWarnings(as.integer(Sys.getenv("MONITORA_STAT_SEMENTE_BASE", "20260625")))
+MONITORA_STAT_RNG_KIND <- Sys.getenv("MONITORA_STAT_RNG_KIND", "Mersenne-Twister")
+MONITORA_STAT_RNG_NORMAL_KIND <- Sys.getenv("MONITORA_STAT_RNG_NORMAL_KIND", "Inversion")
+MONITORA_STAT_RNG_SAMPLE_KIND <- Sys.getenv("MONITORA_STAT_RNG_SAMPLE_KIND", "Rejection")
 
 if (is.na(MONITORA_STAT_ALPHA) || MONITORA_STAT_ALPHA <= 0 || MONITORA_STAT_ALPHA >= 1) MONITORA_STAT_ALPHA <- 0.05
 if (is.na(MONITORA_STAT_MARGEM_PP) || MONITORA_STAT_MARGEM_PP < 0) MONITORA_STAT_MARGEM_PP <- 5
@@ -27528,6 +27931,38 @@ if (is.na(MONITORA_STAT_COMP_MIN_DIST) || MONITORA_STAT_COMP_MIN_DIST < 0) MONIT
 if (is.na(MONITORA_STAT_PERM_CHUNK) || MONITORA_STAT_PERM_CHUNK < 100L) MONITORA_STAT_PERM_CHUNK <- 1000L
 if (is.na(MONITORA_STAT_BASELINE_MIN_ANOS) || MONITORA_STAT_BASELINE_MIN_ANOS < 1L) MONITORA_STAT_BASELINE_MIN_ANOS <- 2L
 if (!identical(MONITORA_STAT_BASELINE_MODO, "acumulada_anterior")) MONITORA_STAT_BASELINE_MODO <- "acumulada_anterior"
+if (is.na(MONITORA_STAT_SEMENTE_BASE) || MONITORA_STAT_SEMENTE_BASE <= 0L) MONITORA_STAT_SEMENTE_BASE <- 20260625L
+if (MONITORA_STAT_SEMENTE_BASE >= .Machine$integer.max) MONITORA_STAT_SEMENTE_BASE <- as.integer(MONITORA_STAT_SEMENTE_BASE %% (.Machine$integer.max - 1L))
+if (MONITORA_STAT_SEMENTE_BASE <= 0L) MONITORA_STAT_SEMENTE_BASE <- 20260625L
+if (isTRUE(MONITORA_STAT_REPRODUTIBILIDADE_ATIVA)) {
+  tryCatch(
+    RNGkind(kind = MONITORA_STAT_RNG_KIND, normal.kind = MONITORA_STAT_RNG_NORMAL_KIND, sample.kind = MONITORA_STAT_RNG_SAMPLE_KIND),
+    error = function(e) NULL
+  )
+}
+
+MONITORA_STAT_SEMENTE_MSG <- paste0(
+  "Monte Carlo reprodutível ",
+  if (isTRUE(MONITORA_STAT_REPRODUTIBILIDADE_ATIVA)) "ativo" else "inativo",
+  "; semente_base=", MONITORA_STAT_SEMENTE_BASE,
+  "; RNG=", MONITORA_STAT_RNG_KIND, "/", MONITORA_STAT_RNG_NORMAL_KIND, "/", MONITORA_STAT_RNG_SAMPLE_KIND,
+  "."
+)
+message("[estatistica_mudanca] ", MONITORA_STAT_SEMENTE_MSG)
+tryCatch(
+  {
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento(
+        "estatistica_monte_carlo_reprodutibilidade",
+        "INFO",
+        NA_character_,
+        MONITORA_STAT_SEMENTE_MSG,
+        "a semente é derivada por comparação para bootstrap e permutação, preservando reprodutibilidade sem depender da ordem global das chamadas"
+      )
+    }
+  },
+  error = function(e) NULL
+)
 
 monitora_stat_registrar_msg <- function(...) {
   if (isTRUE(MONITORA_STAT_VERBOSE)) message("[estatistica_mudanca] ", paste0(..., collapse = ""))
@@ -27569,6 +28004,28 @@ monitora_stat_definir_iteracoes_efetivas <- function(n_solicitado, tipo = c("per
 
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
+}
+
+monitora_stat_derivar_semente <- function(...) {
+  partes <- unlist(list(...), recursive = TRUE, use.names = FALSE)
+  partes <- as.character(partes)
+  partes[is.na(partes)] <- "NA"
+  texto <- paste(c(as.character(MONITORA_STAT_SEMENTE_BASE), partes), collapse = "|")
+  ints <- utf8ToInt(enc2utf8(texto))
+  hash <- 0
+  if (length(ints)) {
+    for (vv in ints) hash <- (hash * 131 + as.numeric(vv)) %% 2147483647
+  }
+  seed <- as.integer((as.numeric(MONITORA_STAT_SEMENTE_BASE) + hash) %% 2147483647)
+  if (is.na(seed) || seed <= 0L) seed <- 20260625L
+  seed
+}
+
+monitora_stat_ativar_semente <- function(...) {
+  if (!isTRUE(MONITORA_STAT_REPRODUTIBILIDADE_ATIVA)) return(invisible(NA_integer_))
+  seed <- monitora_stat_derivar_semente(...)
+  set.seed(seed)
+  invisible(seed)
 }
 
 monitora_stat_calcular_p_permutacao_pareada <- function(dif, n_perm = MONITORA_STAT_PERM) {
@@ -27717,73 +28174,111 @@ monitora_stat_classificar_mudanca_categoria <- function(res, contexto = c("ano_a
 
 monitora_stat_comparar_anos_consecutivos <- function(long_dt) {
   # Compara cada ano-alvo com a medição imediatamente anterior disponível
-  # dentro de cada UC. Isso evita comparações globais sem sobreposição amostral
-  # quando uma UC não foi monitorada em anos estritamente consecutivos.
+  # dentro de cada UC. Versão otimizada: a montagem dos pares é vetorizada por
+  # joins data.table; bootstrap, permutação, FDR e classificação são preservados.
   if (is.null(long_dt) || nrow(long_dt) == 0) return(data.table::data.table())
   long_dt <- data.table::as.data.table(long_dt)
-  out <- vector("list", 0)
+  req <- c("grupo_grafico", "tipo_metrica", "form_veg", "categoria", "categoria_label", "UC", "UA", "ANO", "valor")
+  faltantes <- setdiff(req, names(long_dt))
+  if (length(faltantes)) stop("monitora_stat_comparar_anos_consecutivos: coluna(s) ausente(s): ", paste(faltantes, collapse = ", "), call. = FALSE)
+
+  dt <- long_dt[, ..req]
+  dt[, ANO := suppressWarnings(as.integer(ANO))]
+  dt[, valor := suppressWarnings(as.numeric(valor))]
+  dt <- dt[!is.na(UC) & !is.na(UA) & !is.na(ANO)]
+  if (!nrow(dt)) return(data.table::data.table())
+
+  keys_g <- c("grupo_grafico", "tipo_metrica", "form_veg", "categoria", "categoria_label")
+  anos_uc <- unique(dt[, c(keys_g, "UC", "ANO"), with = FALSE])
+  data.table::setorder(anos_uc, grupo_grafico, tipo_metrica, form_veg, categoria, categoria_label, UC, ANO)
+  anos_uc[, ano_1 := data.table::shift(ANO, type = "lag"), by = c(keys_g, "UC")]
+  pares_uc <- anos_uc[!is.na(ano_1), c(keys_g, "UC", "ano_1", "ANO"), with = FALSE]
+  data.table::setnames(pares_uc, "ANO", "ano_2")
+  pares_uc[, `:=`(ano_1 = as.integer(ano_1), ano_2 = as.integer(ano_2))]
+  if (!nrow(pares_uc)) return(data.table::data.table())
+
+  combos <- pares_uc[, .(
+    ano_1_min = min(ano_1, na.rm = TRUE),
+    anos_referencia = paste(sort(unique(ano_1)), collapse = ";")
+  ), by = c(keys_g, "ano_2")]
+  data.table::setorder(combos, grupo_grafico, tipo_metrica, form_veg, categoria, ano_2)
+
+  dt1 <- dt[, c(keys_g, "UC", "UA", "ANO", "valor"), with = FALSE]
+  dt2 <- data.table::copy(dt1)
+  data.table::setnames(dt1, c("ANO", "valor"), c("ano_1", "valor_1"))
+  data.table::setnames(dt2, c("ANO", "valor"), c("ano_2", "valor_2"))
+
+  tmp <- merge(
+    pares_uc,
+    dt2,
+    by = c(keys_g, "UC", "ano_2"),
+    all = FALSE,
+    allow.cartesian = TRUE,
+    sort = FALSE
+  )
+  par <- merge(
+    tmp,
+    dt1,
+    by = c(keys_g, "UC", "UA", "ano_1"),
+    all = FALSE,
+    allow.cartesian = TRUE,
+    sort = FALSE
+  )
+  if (nrow(par)) data.table::setkeyv(par, c(keys_g, "ano_2"))
+
+  out <- vector("list", nrow(combos))
   idx <- 0L
-  grupos <- unique(long_dt[, .(grupo_grafico, tipo_metrica, form_veg, categoria, categoria_label)])
-  monitora_progresso_loop_configurar("estatistica_categoria_ano_a_ano", nrow(grupos), descricao = "estatística por categoria: ano a ano")
-  for (ii in seq_len(nrow(grupos))) {
-    g <- grupos[ii]
-    sub <- long_dt[
-      grupo_grafico == g$grupo_grafico &
-        tipo_metrica == g$tipo_metrica &
-        form_veg == g$form_veg &
-        categoria == g$categoria
-    ]
-    anos_uc <- unique(sub[, .(UC, ANO)])
-    anos_uc <- anos_uc[!is.na(UC) & !is.na(ANO)]
-    data.table::setorder(anos_uc, UC, ANO)
-    anos_uc[, ano_1 := data.table::shift(ANO, type = "lag"), by = UC]
-    pares_uc <- anos_uc[!is.na(ano_1), .(UC, ano_1 = as.integer(ano_1), ano_2 = as.integer(ANO))]
-    if (nrow(pares_uc) == 0) next
-    anos_alvo <- sort(unique(pares_uc$ano_2))
-    for (y2 in anos_alvo) {
-      pares_y <- pares_uc[ano_2 == y2]
-      par_lista <- vector("list", nrow(pares_y))
-      for (jj in seq_len(nrow(pares_y))) {
-        u <- pares_y$UC[jj]
-        y1 <- pares_y$ano_1[jj]
-        a <- sub[UC == u & ANO == y1, .(UC, UA, valor_1 = valor)]
-        b <- sub[UC == u & ANO == y2, .(UC, UA, valor_2 = valor)]
-        if (!nrow(a) || !nrow(b)) next
-        data.table::setkeyv(a, c("UC", "UA"))
-        data.table::setkeyv(b, c("UC", "UA"))
-        par_lista[[jj]] <- b[a, nomatch = 0L][, `:=`(ano_1_uc = y1, ano_2 = y2)]
-      }
-      par <- data.table::rbindlist(par_lista, fill = TRUE)
-      n_pares <- nrow(par)
-      dif <- par$valor_2 - par$valor_1
-      efeito <- if (n_pares > 0) mean(dif, na.rm = TRUE) else NA_real_
-      ci <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_calcular_ic_bootstrap(dif) else c(NA_real_, NA_real_)
-      p_val <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_calcular_p_permutacao_pareada(dif) else NA_real_
-      idx <- idx + 1L
-      out[[idx]] <- data.table::data.table(
-        grupo_grafico = g$grupo_grafico,
-        tipo_metrica = g$tipo_metrica,
-        form_veg = g$form_veg,
-        categoria = g$categoria,
-        categoria_label = g$categoria_label,
-        ano_1 = if (n_pares > 0) min(par$ano_1_uc, na.rm = TRUE) else min(pares_y$ano_1, na.rm = TRUE),
-        ano_2 = y2,
-        anos_referencia = paste(sort(unique(pares_y$ano_1)), collapse = ";"),
-        comparacao = "medicao_anterior_disponivel_por_UC",
-        n_UC_pareadas = uniqueN(par$UC),
-        n_UA_pareadas = n_pares,
-        media_ano_1 = if (n_pares > 0) mean(par$valor_1, na.rm = TRUE) else NA_real_,
-        media_ano_2 = if (n_pares > 0) mean(par$valor_2, na.rm = TRUE) else NA_real_,
-        diferenca = efeito,
-        diferenca_pp = efeito * 100,
-        ci95_lower = ci[1],
-        ci95_upper = ci[2],
-        ci95_lower_pp = ci[1] * 100,
-        ci95_upper_pp = ci[2] * 100,
-        p_valor_perm_pareado = p_val
-      )
+  monitora_progresso_loop_configurar("estatistica_categoria_ano_a_ano", nrow(combos), descricao = "estatística por categoria: ano a ano")
+  for (ii in seq_len(nrow(combos))) {
+    g <- combos[ii]
+    if (nrow(par)) {
+      par_i <- par[
+        grupo_grafico == g$grupo_grafico &
+          tipo_metrica == g$tipo_metrica &
+          form_veg == g$form_veg &
+          categoria == g$categoria &
+          categoria_label == g$categoria_label &
+          ano_2 == g$ano_2
+      ]
+    } else {
+      par_i <- data.table::data.table()
     }
-    monitora_progresso_loop_avancar("estatistica_categoria_ano_a_ano", atual = ii, detalhe = paste0(ii, "/", nrow(grupos)))
+    n_pares <- nrow(par_i)
+    dif <- par_i$valor_2 - par_i$valor_1
+    efeito <- if (n_pares > 0) mean(dif, na.rm = TRUE) else NA_real_
+    stat_id <- paste(g$grupo_grafico, g$tipo_metrica, g$form_veg, g$categoria, g$categoria_label, g$ano_2, g$anos_referencia, sep = "|")
+    ci <- if (n_pares >= MONITORA_STAT_MIN_PARES) {
+      monitora_stat_ativar_semente("mudanca_categoria_ano_a_ano_boot", stat_id)
+      monitora_stat_calcular_ic_bootstrap(dif)
+    } else c(NA_real_, NA_real_)
+    p_val <- if (n_pares >= MONITORA_STAT_MIN_PARES) {
+      monitora_stat_ativar_semente("mudanca_categoria_ano_a_ano_perm", stat_id)
+      monitora_stat_calcular_p_permutacao_pareada(dif)
+    } else NA_real_
+    idx <- idx + 1L
+    out[[idx]] <- data.table::data.table(
+      grupo_grafico = g$grupo_grafico,
+      tipo_metrica = g$tipo_metrica,
+      form_veg = g$form_veg,
+      categoria = g$categoria,
+      categoria_label = g$categoria_label,
+      ano_1 = if (n_pares > 0) min(par_i$ano_1, na.rm = TRUE) else g$ano_1_min,
+      ano_2 = g$ano_2,
+      anos_referencia = g$anos_referencia,
+      comparacao = "medicao_anterior_disponivel_por_UC",
+      n_UC_pareadas = data.table::uniqueN(par_i$UC),
+      n_UA_pareadas = n_pares,
+      media_ano_1 = if (n_pares > 0) mean(par_i$valor_1, na.rm = TRUE) else NA_real_,
+      media_ano_2 = if (n_pares > 0) mean(par_i$valor_2, na.rm = TRUE) else NA_real_,
+      diferenca = efeito,
+      diferenca_pp = efeito * 100,
+      ci95_lower = ci[1],
+      ci95_upper = ci[2],
+      ci95_lower_pp = ci[1] * 100,
+      ci95_upper_pp = ci[2] * 100,
+      p_valor_perm_pareado = p_val
+    )
+    monitora_progresso_loop_avancar("estatistica_categoria_ano_a_ano", atual = ii, detalhe = paste0(ii, "/", nrow(combos)))
   }
   res <- data.table::rbindlist(out, fill = TRUE)
   if (nrow(res) == 0) return(res)
@@ -27886,8 +28381,15 @@ monitora_stat_comparar_linha_base <- function(long_dt) {
       dif <- par$valor_ano - par$valor_linha_base
       efeito <- if (n_pares > 0) mean(dif, na.rm = TRUE) else NA_real_
       testavel <- n_pares >= MONITORA_STAT_MIN_PARES && n_anos_base >= MONITORA_STAT_BASELINE_MIN_ANOS
-      ci <- if (testavel) monitora_stat_calcular_ic_bootstrap(dif) else c(NA_real_, NA_real_)
-      p_val <- if (testavel) monitora_stat_calcular_p_permutacao_pareada(dif) else NA_real_
+      stat_id <- paste(g$grupo_grafico, g$tipo_metrica, g$form_veg, g$categoria, g$categoria_label, y2, paste(base_anos, collapse = ";"), sep = "|")
+      ci <- if (testavel) {
+        monitora_stat_ativar_semente("mudanca_categoria_linha_base_boot", stat_id)
+        monitora_stat_calcular_ic_bootstrap(dif)
+      } else c(NA_real_, NA_real_)
+      p_val <- if (testavel) {
+        monitora_stat_ativar_semente("mudanca_categoria_linha_base_perm", stat_id)
+        monitora_stat_calcular_p_permutacao_pareada(dif)
+      } else NA_real_
       idx <- idx + 1L
       out[[idx]] <- data.table::data.table(
         grupo_grafico = g$grupo_grafico,
@@ -28070,8 +28572,15 @@ monitora_stat_comparar_composicao_anos_consecutivos <- function(long_dt) {
         dist_centroid <- NA_real_
         bray_medio <- NA_real_
       }
-      ci <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_calcular_ic_bootstrap_composicao(dif_mat) else c(NA_real_, NA_real_)
-      p_val <- if (n_pares >= MONITORA_STAT_MIN_PARES) monitora_stat_calcular_p_permutacao_multivariada_pareada(dif_mat) else NA_real_
+      stat_id <- paste(g$grupo_grafico, g$tipo_metrica, g$form_veg, y2, paste(sort(unique(pares_y$ano_1)), collapse = ";"), paste(cats_presentes, collapse = ";"), sep = "|")
+      ci <- if (n_pares >= MONITORA_STAT_MIN_PARES) {
+        monitora_stat_ativar_semente("composicao_ano_a_ano_boot", stat_id)
+        monitora_stat_calcular_ic_bootstrap_composicao(dif_mat)
+      } else c(NA_real_, NA_real_)
+      p_val <- if (n_pares >= MONITORA_STAT_MIN_PARES) {
+        monitora_stat_ativar_semente("composicao_ano_a_ano_perm", stat_id)
+        monitora_stat_calcular_p_permutacao_multivariada_pareada(dif_mat)
+      } else NA_real_
       idx_out <- idx_out + 1L
       out[[idx_out]] <- data.table::data.table(
         grupo_grafico = g$grupo_grafico,
@@ -28183,8 +28692,15 @@ monitora_stat_comparar_composicao_linha_base <- function(long_dt) {
         bray_medio <- NA_real_
       }
       testavel <- n_pares >= MONITORA_STAT_MIN_PARES && n_anos_base >= MONITORA_STAT_BASELINE_MIN_ANOS
-      ci <- if (testavel) monitora_stat_calcular_ic_bootstrap_composicao(dif_mat) else c(NA_real_, NA_real_)
-      p_val <- if (testavel) monitora_stat_calcular_p_permutacao_multivariada_pareada(dif_mat) else NA_real_
+      stat_id <- paste(g$grupo_grafico, g$tipo_metrica, g$form_veg, y2, paste(base_anos, collapse = ";"), paste(cats_presentes, collapse = ";"), sep = "|")
+      ci <- if (testavel) {
+        monitora_stat_ativar_semente("composicao_linha_base_boot", stat_id)
+        monitora_stat_calcular_ic_bootstrap_composicao(dif_mat)
+      } else c(NA_real_, NA_real_)
+      p_val <- if (testavel) {
+        monitora_stat_ativar_semente("composicao_linha_base_perm", stat_id)
+        monitora_stat_calcular_p_permutacao_multivariada_pareada(dif_mat)
+      } else NA_real_
       idx_out <- idx_out + 1L
       out[[idx_out]] <- data.table::data.table(
         grupo_grafico = g$grupo_grafico,
@@ -29491,8 +30007,8 @@ if (exists("registros_corrig_stat")) {
   MONITORA_STAT_COMPOSICAO_LINHA_BASE <- monitora_stat_comparar_composicao_linha_base(MONITORA_STAT_SERIES_UA_ANO)
   monitora_stat_controlar_recursos_execucao("estatistica_composicao_linha_base_concluida", risco = "normal", objeto = MONITORA_STAT_COMPOSICAO_LINHA_BASE, force_log = TRUE)
   MONITORA_STAT_CONFIG <- data.table::data.table(
-    parametro = c("alpha", "margem_equivalencia_pp", "efeito_minimo_pp", "min_UA_pareadas", "bootstrap_reamostragens_solicitadas", "permutacoes_monte_carlo_solicitadas", "perm_chunk", "recursos_adaptativo", "margem_composicao_dist_hellinger", "efeito_minimo_composicao_dist_hellinger", "baseline_ativo", "baseline_modo", "baseline_min_anos", "baseline_mostrar_apenas_mudanca"),
-    valor = c(MONITORA_STAT_ALPHA, MONITORA_STAT_MARGEM_PP, MONITORA_STAT_MIN_EFEITO_PP, MONITORA_STAT_MIN_PARES, MONITORA_STAT_BOOT, MONITORA_STAT_PERM, MONITORA_STAT_PERM_CHUNK, MONITORA_STAT_RECURSOS_ADAPTATIVO, MONITORA_STAT_COMP_MARGEM_DIST, MONITORA_STAT_COMP_MIN_DIST, MONITORA_STAT_BASELINE_ATIVO, MONITORA_STAT_BASELINE_MODO, MONITORA_STAT_BASELINE_MIN_ANOS, MONITORA_STAT_BASELINE_MOSTRAR_APENAS_MUDANCA)
+    parametro = c("alpha", "margem_equivalencia_pp", "efeito_minimo_pp", "min_UA_pareadas", "bootstrap_reamostragens_solicitadas", "permutacoes_monte_carlo_solicitadas", "perm_chunk", "recursos_adaptativo", "margem_composicao_dist_hellinger", "efeito_minimo_composicao_dist_hellinger", "baseline_ativo", "baseline_modo", "baseline_min_anos", "baseline_mostrar_apenas_mudanca", "reprodutibilidade_ativa", "semente_base_monte_carlo", "rng_kind", "rng_normal_kind", "rng_sample_kind"),
+    valor = c(MONITORA_STAT_ALPHA, MONITORA_STAT_MARGEM_PP, MONITORA_STAT_MIN_EFEITO_PP, MONITORA_STAT_MIN_PARES, MONITORA_STAT_BOOT, MONITORA_STAT_PERM, MONITORA_STAT_PERM_CHUNK, MONITORA_STAT_RECURSOS_ADAPTATIVO, MONITORA_STAT_COMP_MARGEM_DIST, MONITORA_STAT_COMP_MIN_DIST, MONITORA_STAT_BASELINE_ATIVO, MONITORA_STAT_BASELINE_MODO, MONITORA_STAT_BASELINE_MIN_ANOS, MONITORA_STAT_BASELINE_MOSTRAR_APENAS_MUDANCA, MONITORA_STAT_REPRODUTIBILIDADE_ATIVA, MONITORA_STAT_SEMENTE_BASE, MONITORA_STAT_RNG_KIND, MONITORA_STAT_RNG_NORMAL_KIND, MONITORA_STAT_RNG_SAMPLE_KIND)
   )
   monitora_stat_registrar_msg("comparações por categoria concluídas: ", nrow(MONITORA_STAT_MUDANCA_ANO_A_ANO), " linhas")
   monitora_stat_registrar_msg("comparações contra linha de base concluídas: ", nrow(MONITORA_STAT_MUDANCA_LINHA_BASE), " linhas")
@@ -30539,6 +31055,8 @@ monitora_perf_registrar_checkpoint("relatorios_auditoria", "gravação dos relat
 
 if (isTRUE(MONITORA_GERAR_OBJETOS_GRAFICOS)) {
 
+monitora_progresso_definir_valor(6880L, etapa = "preparacao_objetos_graficos", detalhe = "iniciando preparação pós-estatística dos gráficos", force = TRUE)
+
 ### Exportação dos gráficos.
 
 
@@ -30732,7 +31250,9 @@ monitora_editorial_testar_pareado_periodo_categoria <- function(long_dt) {
   out <- vector("list", 0)
   idx <- 0L
   grupos <- unique(long_dt[, .(grupo_grafico, tipo_metrica, form_veg, categoria, categoria_label)])
+  monitora_progresso_loop_configurar("grafico_editorial_teste_pareado", nrow(grupos), descricao = "testes pareados dos gráficos editoriais")
   for (ii in seq_len(nrow(grupos))) {
+    monitora_progresso_loop_avancar("grafico_editorial_teste_pareado", atual = ii, detalhe = paste0(ii, "/", nrow(grupos)))
     g <- grupos[ii]
     sub <- long_dt[
       grupo_grafico == g$grupo_grafico &
@@ -31066,7 +31586,7 @@ monitora_plot_editorial_criar <- function(dados, grupo_grafico, tipo_metrica, es
 
     if ("periodo_pareado" %in% names(dados_prop)) {
       dados_prop[, form_veg_original := as.character(form_veg)]
-      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")] 
+      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")]
     }
 
     dados_prop <- monitora_plot_preparar_rotulos_proporcao_obrigatorios(
@@ -31290,8 +31810,10 @@ monitora_plot_editorial_gerar_graficos_temporais <- function(series_dt) {
   idx <- 0L
   grupos <- unique(series_dt[, .(grupo_grafico, tipo_metrica)])
   data.table::setorder(grupos, grupo_grafico, tipo_metrica)
+  monitora_progresso_loop_configurar("grafico_editorial_gerar", nrow(grupos), descricao = "geração dos gráficos editoriais")
 
   for (ii in seq_len(nrow(grupos))) {
+    monitora_progresso_loop_avancar("grafico_editorial_gerar", atual = ii, detalhe = paste0(ii, "/", nrow(grupos)))
     grupo <- grupos$grupo_grafico[ii]
     metrica <- grupos$tipo_metrica[ii]
     base <- series_dt[grupo_grafico == grupo & tipo_metrica == metrica]
@@ -31349,6 +31871,7 @@ monitora_plot_editorial_gerar_graficos_temporais <- function(series_dt) {
   unique(nomes)
 }
 
+monitora_progresso_definir_valor(7480L, etapa = "preparacao_objetos_graficos", detalhe = "montando gráficos editoriais temporais", force = TRUE)
 monitora_editorial_plot_names <- character(0)
 if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
   monitora_stat_registrar_msg("rodando testes pareados específicos para gráficos editoriais período a período")
@@ -31374,7 +31897,11 @@ monitora_painel_ano_inicial_filtrar_series <- function(series_dt) {
   out <- vector("list", 0)
   idx <- 0L
   grupos_form <- unique(dt[, .(grupo_grafico, tipo_metrica, form_veg)])
-  for (ano_inicio in anos[-length(anos)]) {
+  anos_loop <- anos[-length(anos)]
+  monitora_progresso_loop_configurar("grafico_painel_ano_inicial", length(anos_loop), descricao = "preparação de painéis amostrais por ano inicial")
+  for (ano_i in seq_along(anos_loop)) {
+    ano_inicio <- anos_loop[[ano_i]]
+    monitora_progresso_loop_avancar("grafico_painel_ano_inicial", atual = ano_i, detalhe = paste0(ano_i, "/", length(anos_loop), ": ano inicial ", ano_inicio))
     for (ii in seq_len(nrow(grupos_form))) {
       gf <- grupos_form[ii]
       base <- dt[
@@ -31609,6 +32136,7 @@ monitora_exportar_tabela_painel_ano_inicial <- function(dt, arquivo) {
   invisible(TRUE)
 }
 
+monitora_progresso_definir_valor(7520L, etapa = "preparacao_objetos_graficos", detalhe = "montando gráficos por painel amostral", force = TRUE)
 monitora_painel_ano_inicial_plot_names <- character(0)
 if (exists("MONITORA_STAT_SERIES_UA_ANO") && is.data.frame(MONITORA_STAT_SERIES_UA_ANO) && nrow(MONITORA_STAT_SERIES_UA_ANO) > 0) {
   MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL <- monitora_painel_ano_inicial_filtrar_series(MONITORA_STAT_SERIES_UA_ANO)

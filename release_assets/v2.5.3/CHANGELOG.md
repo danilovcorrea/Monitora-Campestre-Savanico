@@ -393,3 +393,4 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 - Separa checkpoints de correção de ponto metro e auditorias de COLETAS duplicadas para diagnóstico de performance.
 - Mantém como padrão público `MONITORA_MODO_EXECUCAO <- "completo"` e opções auxiliares desligadas por segurança.
 - Preserva compatibilidade com os produtos finais da versão pública anterior.
+

@@ -21169,11 +21169,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -21190,9 +21190,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -21209,9 +21209,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -21228,9 +21228,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -21247,13 +21247,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -21271,9 +21271,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -21319,11 +21319,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -21340,9 +21340,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -21359,9 +21359,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -21378,9 +21378,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -21397,13 +21397,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -21421,9 +21421,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -21469,11 +21469,11 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Velósia \\(Canela-de-ema ou candombá\\)" = "canela_de_ema",
       "Outra forma de vida" = "outra",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Padronização de valores exportados como rótulo.
-
+      
       ## Correção de rótulo.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)" = "graminoide",
       "Erva não graminoide" = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm" = "arbusto_abaixo",
@@ -21490,9 +21490,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia" = "samambaia",
       "Velósia \\(Velloziaceae\\)" = "canela_de_ema",
       "Forma de vida desconhecida" = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) " = "graminoide",
       "Erva não graminoide " = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm " = "arbusto_abaixo",
@@ -21509,9 +21509,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia " = "samambaia",
       "Velósia \\(Velloziaceae\\) " = "canela_de_ema",
       "Forma de vida desconhecida " = "desconhecida",
-
+      
       ## Correção de rótulo seguido de vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\)," = "graminoide",
       "Erva não graminoide," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm," = "arbusto_abaixo",
@@ -21528,9 +21528,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia," = "samambaia",
       "Velósia \\(Velloziaceae\\)," = "canela_de_ema",
       "Forma de vida desconhecida," = "desconhecida",
-
+      
       ## Correção de rótulo seguido de espaço e vírgula.
-
+      
       "Erva graminoide \\(gramíneas, ciperáceas e juncáceas\\) ," = "graminoide",
       "Erva não graminoide ," = "erva_nao_graminoide",
       "Arbusto tocando a vareta a uma altura inferior a 50cm ," = "arbusto_abaixo",
@@ -21547,13 +21547,13 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "Samambaia ," = "samambaia",
       "Velósia \\(Velloziaceae\\) ," = "canela_de_ema",
       "Forma de vida desconhecida ," = "desconhecida",
-
+      
       ## Correção de nome padronizado.
-
+      
       "(?<!erva_)bromelioide" = "erva_bromelioide",
-
+      
       ## Correção de nome padronizado seguido de vírgula.
-
+      
       "graminoide," = "graminoide",
       "erva_nao_graminoide," = "erva_nao_graminoide",
       "arbusto_abaixo," = "arbusto_abaixo",
@@ -21571,9 +21571,9 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
       "samambaia," = "samambaia",
       "canela_de_ema," = "canela_de_ema",
       "desconhecida," = "desconhecida",
-
+      
       ## Correção de nome padronizado seguido de espaço e vírgula.
-
+      
       "graminoide ," = "graminoide",
       "erva_nao_graminoide ," = "erva_nao_graminoide",
       "arbusto_abaixo ," = "arbusto_abaixo",
@@ -22300,7 +22300,7 @@ if (is.null(registros_corrig[['Espécie ou nome popular (Árvore abaixo de 5cm d
 if (is.null(registros_corrig[['Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)']]))
   set(registros_corrig, j = 'Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)', value = NA_character_)
 
-registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <-
+registros_corrig$`Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)` <- 
   fcase(
     registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
     fcase(
@@ -26874,7 +26874,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     complexo = FALSE,
     filtrar_positivos = FALSE
   )
-
+  
   plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo <- reg_corrig_stat_summarise_p1[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -26887,7 +26887,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   dados_p1_camp_rotulos <- reg_corrig_stat_summarise_p1[form_veg == "Campestre"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.001)
 
@@ -26904,7 +26904,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p1_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo <- reg_corrig_stat_summarise_p1[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -26917,7 +26917,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_herbacea") ||
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   dados_p1_sav_rotulos <- reg_corrig_stat_summarise_p1[form_veg == "Savânica"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.001)
 
@@ -26947,12 +26947,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
     filtrar_positivos = FALSE,
     layout = "layout"
   )
-
+  
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-
+  
   # Calcular limite do eixo x
   x_max <- max(reg_corrig_stat_summarise_p1_presence$veg_cover, na.rm = TRUE) * 1.15
-
+  
   # Gráfico COM rótulos
   plot_p1.3.1_veg_cover_herb_lenh_com_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p1_presence),
@@ -26987,7 +26987,7 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-
+  
   # Gráfico SEM rótulos
   plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p1_presence),
@@ -27018,12 +27018,12 @@ if (monitora_any_sum_cols_match(registros_corrig_stat, "sum_presence_herb") ||
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max)), clip = "on")
-
+  
   rm(x_max)
-
-  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo,
-       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo,
-       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo,
+  
+  list(plot_p1.1.1_prop_rel_herb_lenh_camp_sem_rotulo, 
+       plot_p1.1.2_prop_rel_herb_lenh_camp_com_rotulo, 
+       plot_p1.2.1_prop_rel_herb_lenh_sav_sem_rotulo, 
        plot_p1.2.2_prop_rel_herb_lenh_sav_com_rotulo,
        plot_p1.3.1_veg_cover_herb_lenh_com_rotulo,
        plot_p1.3.2_veg_cover_herb_lenh_sem_rotulo)
@@ -27069,7 +27069,7 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-
+    
     geom_errorbar(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
@@ -27077,14 +27077,14 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       orientation = "y",
       color = "black"
     ) +
-
+    
     monitora_plot_camadas_rotulos_cobertura_externos(
       complexo = FALSE,
       tamanho = MONITORA_FONTE_ROTULO_COB
     ) +
-
+    
     facet_wrap(~form_veg) +
-
+    
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -27092,24 +27092,24 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-
+    
     scale_fill_brewer(palette = "Set2") +
-
+    
     monitora_plot_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-
+    
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
-
+  
   # Gráfico sem rótulos
   plot_p2.3.2_veg_cover_categ_sem_rotulo <- ggplot(
     p2_presence_form_veg,
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-
+    
     geom_errorbar(
       aes(xmin = ci_lower, xmax = ci_upper),
       position = position_dodge(width = 0.7),
@@ -27117,9 +27117,9 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       orientation = "y",
       color = "black"
     ) +
-
+    
     facet_wrap(~form_veg) +
-
+    
     labs(
       title = "Cobertura vegetal por plantas nativas, exóticas, secas ou mortas, material botânico em decomposição e solo exposto ou rochas em formações campestres e savânicas",
       x = "Cobertura (%)",
@@ -27127,15 +27127,15 @@ if (monitora_plot_tem_linhas(p2_presence_form_veg)) {
       fill = "Categoria",
       caption = "IC95% das barras: aproximação normal, p ± 1,96 × EP."
     ) +
-
+    
     scale_fill_brewer(palette = "Set2") +
-
+    
     monitora_plot_theme_cobertura_publicavel() +
     theme(
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     ) +
-
+    
     monitora_plot_coord_cartesian(xlim = c(0, monitora_plot_expandir_xmax_rotulos_cobertura(x_max2)), clip = "on")
 } else {
   plot_p2.3.1_veg_cover_categ_com_rotulo <- monitora_plot_criar_sem_dados(
@@ -27166,7 +27166,7 @@ if (length(mat_bot_stat_cols) > 0) {
     recode_material_botanico = TRUE,
     layout = "layout"
   )
-
+  
   x_max_mat <- monitora_safe_xmax(reg_corrig_stat_summarise_material_botanico_presence$veg_cover, mult = 1.15, fallback = 1)
 
   plot_p2m.1.1_prop_rel_material_botanico_camp_sem_rotulo <- reg_corrig_stat_summarise_material_botanico[form_veg == "Campestre"] %>%
@@ -27352,9 +27352,9 @@ em formações savânicas",
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p2_sav_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
 
-list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo,
-     plot_p2.1.2_prop_rel_categ_camp_com_rotulo,
-     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo,
+list(plot_p2.1.1_prop_rel_categ_camp_sem_rotulo, 
+     plot_p2.1.2_prop_rel_categ_camp_com_rotulo, 
+     plot_p2.2.1_prop_rel_categ_sav_sem_rotulo, 
      plot_p2.2.1_prop_rel_categ_sav_com_rotulo,
      plot_p2.3.1_veg_cover_categ_com_rotulo,
      plot_p2.3.2_veg_cover_categ_sem_rotulo)
@@ -27374,9 +27374,9 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     complexo = TRUE,
     filtrar_positivos = FALSE
   )
-
+  
   ## Presença de formas de vida nativas.
-
+  
   reg_corrig_stat_summarise_p3_presence <- monitora_plot_resumo_cobertura_dt(
     registros_corrig_stat,
     measure_cols = MONITORA_PLOT_COLS_NATIVA,
@@ -27384,12 +27384,12 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     filtrar_positivos = FALSE,
     layout = "complexa"
   )
-
+  
     # Limite X dinâmico
   x_max3 <- monitora_safe_xmax(reg_corrig_stat_summarise_p3_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
 # Gráfico com rótulos
-
+  
   plot_p3.3.1_veg_cover_nat_com_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p3_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
@@ -27422,7 +27422,7 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   plot_p3.3.2_veg_cover_nat_sem_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p3_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
@@ -27450,9 +27450,9 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
 # Gráfico sem rótulos
-
+  
   plot_p3.1.1_prop_rel_nat_camp_sem_rotulo <- reg_corrig_stat_summarise_p3[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27465,7 +27465,7 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   dados_p3_camp_rotulos <- reg_corrig_stat_summarise_p3[form_veg == "Campestre"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
@@ -27482,7 +27482,7 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p3_camp_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p3.2.1_prop_rel_nat_sav_sem_rotulo <- reg_corrig_stat_summarise_p3[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27495,7 +27495,7 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   dados_p3_sav_rotulos <- reg_corrig_stat_summarise_p3[form_veg == "Savânica"] %>%
     monitora_plot_preparar_rotulos_proporcao_obrigatorios(prop_min_interno = 0.10)
 
@@ -27512,10 +27512,10 @@ if (length(MONITORA_PLOT_COLS_NATIVA) && monitora_any_sum_cols_match(registros_c
     ) +
     monitora_plot_scale_x_proporcao_obrigatorios(dados_p3_sav_rotulos) +
     monitora_plot_theme_proporcao_publicavel()
-
-  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo,
-       plot_p3.1.2_prop_rel_nat_camp_com_rotulo,
-       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo,
+  
+  list(plot_p3.1.1_prop_rel_nat_camp_sem_rotulo, 
+       plot_p3.1.2_prop_rel_nat_camp_com_rotulo, 
+       plot_p3.2.1_prop_rel_nat_sav_sem_rotulo, 
        plot_p3.2.2_prop_rel_nat_sav_com_rotulo,
        plot_p3.3.1_veg_cover_nat_com_rotulo,
        plot_p3.3.2_veg_cover_nat_sem_rotulo)
@@ -27537,9 +27537,9 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     complexo = TRUE,
     filtrar_positivos = FALSE
   )
-
+  
   ## Presença de formas de vida exóticas.
-
+  
   reg_corrig_stat_summarise_p4_presence <- monitora_plot_resumo_cobertura_dt(
     registros_corrig_stat,
     measure_cols = MONITORA_PLOT_COLS_EXOTICA,
@@ -27547,11 +27547,11 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     filtrar_positivos = FALSE,
     layout = "complexa"
   )
-
-
+  
+  
   # Limite X dinâmico
   x_max4 <- monitora_safe_xmax(reg_corrig_stat_summarise_p4_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
   # Gráfico com rótulos
   plot_p4.3.1_veg_cover_exot_com_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p4_presence),
@@ -27585,7 +27585,7 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   plot_p4.3.2_veg_cover_exot_sem_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p4_presence),
     aes(x = veg_cover, y = factor(ANO), fill = categoria_label)
@@ -27613,9 +27613,9 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   # Gráfico sem rótulos
-
+  
   plot_p4.1.1_prop_rel_exot_camp_sem_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27628,8 +27628,8 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
-
+  
+  
   plot_p4.1.2_prop_rel_exot_camp_com_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27648,8 +27648,8 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
-
+  
+  
   plot_p4.2.1_prop_rel_exot_sav_sem_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27662,7 +27662,7 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p4.2.2_prop_rel_exot_sav_com_rotulo <- reg_corrig_stat_summarise_p4[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27681,9 +27681,9 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   rm(x_max4)
-
+  
   list(plot_p4.1.1_prop_rel_exot_camp_sem_rotulo,
        plot_p4.1.2_prop_rel_exot_camp_com_rotulo,
        plot_p4.2.1_prop_rel_exot_sav_sem_rotulo,
@@ -27707,9 +27707,9 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     complexo = TRUE,
     filtrar_positivos = FALSE
   )
-
+  
   ## Presença de formas de vida secas ou mortas.
-
+  
   reg_corrig_stat_summarise_p5_presence <- monitora_plot_resumo_cobertura_dt(
     registros_corrig_stat,
     measure_cols = MONITORA_PLOT_COLS_SECA_MORTA,
@@ -27717,11 +27717,11 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     filtrar_positivos = FALSE,
     layout = "complexa"
   )
-
-
+  
+  
   # Limite X dinâmico
   x_max5 <- monitora_safe_xmax(reg_corrig_stat_summarise_p5_presence$veg_cover, mult = 1.15, fallback = 1)
-
+  
   # Gráfico com rótulos
   plot_p5.3.1_veg_cover_seca_morta_com_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p5_presence),
@@ -27755,7 +27755,7 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
       panel.grid.major.y = element_blank(),
       plot.caption = element_text(size = 10, hjust = 0)
     )
-
+  
   # Gráfico sem rótulos
   plot_p5.3.2_seca_morta_sem_rotulo <- ggplot(
     monitora_plot_filtrar_form_veg_dt(reg_corrig_stat_summarise_p5_presence),
@@ -27798,7 +27798,7 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Campestre"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27816,7 +27816,7 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27828,7 +27828,7 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo <- reg_corrig_stat_summarise_p5[form_veg == "Savânica"] %>%
     ggplot(aes(prop, ANO, fill = categoria_label)) +
     geom_col() +
@@ -27846,16 +27846,16 @@ if (length(MONITORA_PLOT_COLS_SECA_MORTA) && monitora_any_sum_cols_match(registr
     ) +
     scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.02))) +
     monitora_plot_theme_proporcao_publicavel()
-
+  
   rm(x_max5)
-
-  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo,
-       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo,
-       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo,
+  
+  list(plot_p5.1.1_prop_rel_seca_morta_camp_sem_rotulo, 
+       plot_p5.1.2_prop_rel_seca_morta_camp_com_rotulo, 
+       plot_p5.2.1_prop_rel_seca_morta_sav_sem_rotulo, 
        plot_p5.2.2_prop_rel_seca_morta_sav_com_rotulo,
        plot_p5.3.1_veg_cover_seca_morta_com_rotulo,
        plot_p5.3.2_seca_morta_sem_rotulo)
-
+  
 }
 
 ### remoção de objetos não mais necessários:
@@ -31586,7 +31586,7 @@ monitora_plot_editorial_criar <- function(dados, grupo_grafico, tipo_metrica, es
 
     if ("periodo_pareado" %in% names(dados_prop)) {
       dados_prop[, form_veg_original := as.character(form_veg)]
-      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")]
+      dados_prop[, form_veg := paste(periodo_pareado, form_veg_original, sep = "__")] 
     }
 
     dados_prop <- monitora_plot_preparar_rotulos_proporcao_obrigatorios(
@@ -33192,3 +33192,4 @@ monitora_progresso_finalizar()
 } ### Fim do bloco protegido por MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE
 
 }
+

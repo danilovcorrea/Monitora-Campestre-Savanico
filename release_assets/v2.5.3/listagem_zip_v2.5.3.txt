@@ -1,0 +1,16 @@
+Archive:  release_assets/v2.5.3/Monitora-Campestre-Savanico_v2.5.3_release_completa.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+     1581  06-25-2026 02:52   RELEASE_NOTES_v2.5.3.md
+  2131196  06-25-2026 02:52   monitora_campsav_alvo_global_v2.5.3.R
+  2131196  06-25-2026 02:52   monitora_campsav_alvo_global.R
+  2131196  06-25-2026 02:52   MONITORA_CAMPSAV_Alvo_Global.R
+  2131196  06-25-2026 02:52   R_monitora_campsav_alvo_global.R
+    17718  06-25-2026 02:52   README.md
+    21793  06-25-2026 02:52   CHANGELOG.md
+        6  06-25-2026 02:52   VERSION
+        0  06-25-2026 02:52   R/
+  2131196  06-25-2026 02:52   R/monitora_campsav_alvo_global.R
+      815  06-25-2026 02:52   SHA256SUMS.txt
+---------                     -------
+ 10697893                     11 files
