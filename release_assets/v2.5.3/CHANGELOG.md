@@ -1,3 +1,21 @@
+## [v2.5.3] - 2026-06-25
+
+### Adicionado
+- Barra de progresso `cli` como backend público padrão, com atualização controlada para reduzir ruído e custo de console.
+- Registro explícito da configuração reprodutível dos testes Monte Carlo, com semente base e RNG documentados no log.
+- Checkpoints de performance mais granulares em torno de `correcao_ponto_metro` e auditorias de COLETAS por UC+UA+ANO.
+
+### Alterado
+- Preparação estatística e objetos gráficos mantêm as otimizações com `data.table` introduzidas na série 2.5.
+- A execução pública permanece em modo seguro por padrão, sem abrir painel, sem validação espacial automática, sem `registros_importados.csv` e sem `registros_validados.csv`, salvo configuração explícita.
+- Relatórios e produtos mantêm a estrutura pública da `v2.5.2`, com melhorias de rastreabilidade e acompanhamento de execução.
+
+### Corrigido
+- Correção editorial do README público para alinhar versão, links versionados e diretórios congelados com `v2.5.3`.
+- Redução de falsos gargalos na auditoria de duplicidade por separação de checkpoints.
+- Sanitização editorial para remover menções a versões internas, revisões versões de desenvolvimento, caminhos locais e sistemas operacionais específicos.
+- Preservação de UTF-8 sem BOM e bloqueio de padrões comuns de mojibake antes da publicação.
+
 ## [v2.5.2] - 2026-06-24
 
 ### Adicionado
@@ -372,7 +390,7 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 
 - Importação de múltiplos tipos de entrada.
 - Extração recursiva de ZIPs do SISMONITORA.
-- Auditoria de arquivos candidatos à importação.
+- Auditoria de arquivos versões de desenvolvimento à importação.
 - Deduplicação semântica de registros equivalentes.
 - Verificação de integridade dos dados.
 - Tratamento defensivo de colunas, datas, coordenadas e aliases.
@@ -393,4 +411,3 @@ Todas as mudanças relevantes deste projeto são documentadas neste arquivo.
 - Separa checkpoints de correção de ponto metro e auditorias de COLETAS duplicadas para diagnóstico de performance.
 - Mantém como padrão público `MONITORA_MODO_EXECUCAO <- "completo"` e opções auxiliares desligadas por segurança.
 - Preserva compatibilidade com os produtos finais da versão pública anterior.
-
