@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.4
-### Versão pública: v2.5.4
+### Versão do script: 2.5.5
+### Versão pública: v2.5.5
 ###
 ### Finalidade
 ###   Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -127,22 +127,22 @@
 
 ### BLOCO OPERACIONAL PRINCIPAL - EDITE AQUI ---------------------------------
 ### O padrão abaixo executa o pipeline completo sem abrir painel. Para curadoria
-### assistida, use MONITORA_MODO_EXECUCAO <- "painel_e_parar".
-MONITORA_MODO_EXECUCAO <- "registros_corrig_completo"
+### assistida, use MONITORA_MODO_EXECUCAO <- "completo".
+MONITORA_MODO_EXECUCAO <- "completo"
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
-MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
 
 ### Snapshot opcional da leitura/montagem bruta ------------------------------
 ### Padrão público seguro: "N". Altere para "S" somente em execução local e
 ### deliberada, quando for necessário auditar a entrada antes das padronizações.
 ### O produto output/registros_importados.csv pode conter dados pessoais,
 ### coordenadas, fotos, UUIDs, nomes de UC e observações de campo.
-MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 
 ### Módulo opcional de validação espacial de COLETAS -------------------------
 ### O padrão é desligado. Altere para "S" para gerar validação espacial e habilitar
 ### a aba espacial do painel. Também pode ser definido por variável de ambiente.
-MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
 MONITORA_RAIO_VALIDACAO_ESPACIAL_M <- 20
 MONITORA_RAIO_ALERTA_ESPACIAL_M <- 10
 MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL <- 2L
@@ -223,7 +223,7 @@ if (identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache")) {
   ### equivale a uma solicitação deliberada de reabrir o painel pelo cache.
   MONITORA_OPCAO_REABRIR_PAINEL_DO_CACHE <- "S"
 }
-### v2.5.4 -------------------------------
+### v2.5.5 -------------------------------
 ### Modos novos combinam duas dimensões: origem em registros_corrig.csv já
 ### produzido e destino equivalente aos modos públicos completos. As flags abaixo
 ### evitam duplicar blocos de pipeline e preservam data.table/fluxo principal.
@@ -272,10 +272,10 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- Sys.getenv(
   unset = as.character(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES)[1]
 )
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES)[1]))
-if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar") ||
-    identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache") ||
-    isTRUE(MONITORA_MODO_PAINEL_INCREMENTAL_REGISTROS_CORRIG)) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+MONITORA_MODOS_FORCAM_PAINEL <- c("painel_e_parar", "abrir_painel_cache", MONITORA_MODOS_PAINEL_INCREMENTAL)
+MONITORA_MODO_FORCA_PAINEL <- MONITORA_MODO_EXECUCAO %in% MONITORA_MODOS_FORCAM_PAINEL
+if (isTRUE(MONITORA_MODO_FORCA_PAINEL)) {
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -356,11 +356,11 @@ MONITORA_ESPACIAL_LOTE_AMPLO_JUSTIFICATIVA_MIN_CHARS <- monitora_cfg_env_int("MO
 
 MONITORA_GERAR_REGISTROS_VALIDADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS, "S")
 MONITORA_GERAR_REGISTROS_IMPORTADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS, "S")
-### v2.5.4: calcular a variável derivada do painel antes de qualquer uso.
+### v2.5.5: calcular a variável derivada do painel antes de qualquer uso.
 ### Em painel_e_parar/abrir_painel_cache/painel_incremental_registros_corrig,
 ### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES já foi forçada para "S" acima.
 MONITORA_ABRIR_PAINEL_CORRECOES <- identical(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES, "S")
-### v2.5.4/v2.5.4: registros_importados.csv é produto seletivo. Fora dos modos
+### v2.5.5/v2.5.5: registros_importados.csv é produto seletivo. Fora dos modos
 ### de painel/edição e salvo opção explícita "S", nenhum código de exportação
 ### desse produto deve executar. Em modos com painel, o snapshot bruto é
 ### necessário antes da edição porque serve como referência fiel da entrada.
@@ -430,7 +430,7 @@ monitora_sanitizar_ausencias_produto <- function(x) {
     if (is.character(v) || is.factor(v)) {
       v <- as.character(v)
       z <- trimws(v)
-      ### v2.5.4: produtos corrigidos usam ausência física como literal NA.
+      ### v2.5.5: produtos corrigidos usam ausência física como literal NA.
       ### Além de vazio/NA/"NA", qualquer token composto só por traços
       ### ASCII/Unicode ("-", "--", "---", "—", etc.) é ausência.
       ausente <- is.na(v) | !nzchar(z) | tolower(z) == "na" |
@@ -1373,7 +1373,7 @@ monitora_correcao_normalizar_nome_coluna <- function(x) {
 
 
 
-### v2.5.4 -------------------------------
+### v2.5.5 -------------------------------
 ### Helpers genéricos de cache/data.table usados por todos os contratos XLSForm
 ### embutidos (2022, 2023, 2024 e 2025), não apenas pelo contrato 21FEV25.
 monitora_publicacao_ae_cache_env <- function(nome = "global") {
@@ -1421,7 +1421,7 @@ monitora_publicacao_ae_colnames_norm_dt <- function(dt) {
   assign(sig, ans, envir = env)
   ans
 }
-### FIM v2.5.4 ---------------------------
+### FIM v2.5.5 ---------------------------
 
 monitora_correcao_campo_multiselect_auditoria <- function(atributo, chaves = NULL) {
   ### Campos exportados como listas/multiple choice podem voltar em ordem
@@ -1534,8 +1534,8 @@ monitora_correcao_resolver_atributo_auditoria <- function(dt, atributo) {
 }
 
 
-### v2.5.4 ----------------------
-### O painel funcional da v2.5.4 não deve ser reconstruído para compensar
+### v2.5.5 ----------------------
+### O painel funcional da v2.5.5 não deve ser reconstruído para compensar
 ### efeitos colaterais do fluxo de montagem/normalização de registros_corrig.
 ### Esta camada atua antes do painel, no contrato estrutural do objeto entregue
 ### a ele: resolve chaves operacionais com critérios explícitos e audita o
@@ -1713,7 +1713,7 @@ monitora_publicacao_p_auditar_schema_pre_painel <- function(dt, contexto = "pre_
   }
   invisible(aud)
 }
-### FIM v2.5.4 ------------------
+### FIM v2.5.5 ------------------
 
 monitora_correcao_colunas_chave <- function(dt) {
   list(
@@ -5170,7 +5170,18 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
   out[papel_coluna == "campo_superior_tipo_forma_vida", xlsform_list_name := "tipo_forma_vida"]
   contrato <- tryCatch(monitora_correcao_contrato_edicao(dt, meta_xls, out), error = function(e) data.table::data.table())
   if (nrow(contrato)) {
-    out <- merge(out, contrato[, .(atributo_coluna_registros_corrig, tipo_base_edicao, painel_editavel, painel_motivo_bloqueio, acoes_permitidas)], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+    cols_contrato <- intersect(
+      c(
+        "atributo_coluna_registros_corrig", "tipo_base_edicao", "painel_editavel",
+        "painel_motivo_bloqueio", "acoes_permitidas", "atende_template_sismonitora",
+        "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora",
+        "estrategias_template_sismonitora"
+      ),
+      names(contrato)
+    )
+    out <- merge(out, contrato[, ..cols_contrato], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+  } else if (exists("monitora_correcao_anotar_contrato_template_sismonitora", mode = "function")) {
+    out <- monitora_correcao_anotar_contrato_template_sismonitora(out, dt)
   }
   out[]
 }
@@ -5271,7 +5282,7 @@ monitora_correcao_anexar_contexto_operacao <- function(op, dt, linhas, chaves = 
     if (!(cc %in% names(op))) op[, (cc) := NA_character_]
     data.table::set(op, j = cc, value = ctx[[cc]][1L])
   }
-  ### v2.5.4: manter também as chaves técnicas de ponto nas operações compostas.
+  ### v2.5.5: manter também as chaves técnicas de ponto nas operações compostas.
   ### A aplicação das correções usa ponto_amostral/ponto_metro como chaves estáveis;
   ### se apenas os rótulos "Ponto amostral"/"Ponto metro" forem preenchidos, ações
   ### contratuais derivadas podem voltar para o escopo da COLETA inteira.
@@ -5608,7 +5619,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
 
 
 
-    ### v2.5.4 --------------------------
+    ### v2.5.5 --------------------------
     ### A auditoria de persistência deve bloquear correções que realmente não
     ### chegaram ao produto final, mas não deve bloquear transformações
     ### automáticas esperadas pelo contrato depois de uma operação atômica.
@@ -5802,7 +5813,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     }
 
     res <- v2.5.4(res, dt, chaves)
-    ### FIM v2.5.4 ----------------------
+    ### FIM v2.5.5 ----------------------
 
   if (nrow(res) > 0L) {
     exec_id_pers <- if (exists("MONITORA_EXEC_ID", inherits = TRUE)) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -5979,7 +5990,7 @@ monitora_correcao_aplicar_operacao <- function(valor_atual, acao, valor_novo, va
   rep(valor_novo, length(valor_atual))
 }
 
-### v2.5.4 ------------------------------------------
+### v2.5.5 ------------------------------------------
 ### Contrato transacional por tipo de operação:
 ### - update/substituir_valor e clear/limpar continuam sendo operações de célula inteira;
 ###   quando valor_original_esperado é informado, ele precisa coincidir com o valor completo atual.
@@ -6073,17 +6084,17 @@ monitora_publicacao_d_precondicao_valor_original <- function(valor_atual, acao, 
   }
   list(ok = FALSE, mensagem = paste0("valor_original_esperado não confere em ", sum(!iguais), " linha(s)"))
 }
-### FIM v2.5.4 --------------------------------------
+### FIM v2.5.5 --------------------------------------
 
 
-### v2.5.4 ----------------------------------
-### Proteção transacional para erro de operação ambígua observado na v2.5.4.
+### v2.5.5 ----------------------------------
+### Proteção transacional para erro de operação ambígua observado na v2.5.5.
 ### Caso real: o painel gravou acao=update para lista select_multiple de forma
 ### de vida, com valor_original_esperado="graminoide" e valor_novo="samambaia",
 ### enquanto a célula real era "serrapilheira graminoide". Como update é
 ### operação de célula inteira, a pré-condição falhou corretamente. Porém, para
 ### listas de tokens, esse padrão é inequivocamente uma substituição de token.
-### A v2.5.4 reclassifica esse caso para replace_token antes da pré-validação,
+### A v2.5.5 reclassifica esse caso para replace_token antes da pré-validação,
 ### preservando update estrito quando valor_original_esperado for a célula
 ### inteira ou quando a coluna não for select_multiple/lista principal.
 
@@ -6187,12 +6198,12 @@ monitora_publicacao_s_reclassificar_updates_tokenizados <- function(dt, corr, ch
 
   list(corr = corr, audit = audit, n = length(idx))
 }
-### FIM v2.5.4 ------------------------------
+### FIM v2.5.5 ------------------------------
 
 
 
 
-### v2.5.4 --------------------------------------
+### v2.5.5 --------------------------------------
 ### Harmonização contratual de serrapilheira/material botânico.
 ### Interpretação consolidada dos XLSForms:
 ### - ago/2022: serrapilheira apareceu nas listas inferiores nativa/exotica/seca_morta.
@@ -6334,11 +6345,11 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
   }
   invisible(dt)
 }
-### FIM v2.5.4 ----------------------------------
+### FIM v2.5.5 ----------------------------------
 
-### v2.5.4 -----------------------------------------
-### v2.5.4: correção robusta da materialização de registros_importados.csv com cabeçalhos duplicados.
-### v2.5.4 -----------------------------
+### v2.5.5 -----------------------------------------
+### v2.5.5: correção robusta da materialização de registros_importados.csv com cabeçalhos duplicados.
+### v2.5.5 -----------------------------
 ### Correção de fluxo: registros_importados.csv é produto bruto obrigatório e
 ### deve ser materializado logo após a concatenação dos CSVs lidos, antes de
 ### validações, harmonizações, deduplicações finais, painel ou registros_corrig.
@@ -6359,7 +6370,7 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
 ### - append de auditoria, sem reler/regravar CSVs grandes;
 ### - simulações de persistência sem efeitos colaterais em disco.
 ###
-### v2.5.4
+### v2.5.5
 ### Regra de produto: registros_importados.csv é snapshot fiel da leitura/
 ### montagem dos arquivos de entrada antes de padronizações semânticas,
 ### harmonizações históricas, painel e correções. Nunca deve ser usado como
@@ -6370,9 +6381,9 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
 monitora_publicacao_g_log <- function(..., nivel = "INFO") {
   msg <- paste0(..., collapse = "")
   if (exists("monitora_correcao_console_msg", mode = "function")) {
-    try(monitora_correcao_console_msg("[v2.5.4] ", msg), silent = TRUE)
+    try(monitora_correcao_console_msg("[v2.5.5] ", msg), silent = TRUE)
   } else {
-    message("[v2.5.4] ", msg)
+    message("[v2.5.5] ", msg)
   }
   invisible(TRUE)
 }
@@ -6674,7 +6685,7 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt,
 }
 
 
-### v2.5.4 --------------------------------------------
+### v2.5.5 --------------------------------------------
 ### Selo leve de contrato para evitar fechamentos globais repetidos quando
 ### registros_corrig já foi saneado, fechado e não sofreu mutação contratual
 ### depois do último fechamento. A assinatura é propositalmente estrutural
@@ -6682,7 +6693,7 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt,
 ### dirty interno): não substitui auditoria completa, apenas impede chamadas
 ### redundantes dentro da mesma execução.
 monitora_publicacao_z_assinatura_registros_corrig <- function(dt) {
-  ### v2.5.4: assinatura intencionalmente barata. A integridade contra
+  ### v2.5.5: assinatura intencionalmente barata. A integridade contra
   ### mutações semânticas depende das dirty flags/selo; recalcular uniqueN e
   ### nchar de todas as colunas a cada checagem anulava parte do ganho de
   ### performance do pipeline contratual.
@@ -6756,9 +6767,9 @@ monitora_publicacao_z_selo_registros_corrig_valido <- function(dt) {
   assinatura_atual <- monitora_publicacao_z_assinatura_registros_corrig(dt)
   identical(as.character(assinatura_ant)[1L], as.character(assinatura_atual)[1L])
 }
-### FIM v2.5.4 ----------------------------------------
+### FIM v2.5.5 ----------------------------------------
 
-### v2.5.4 -------------------------------------------
+### v2.5.5 -------------------------------------------
 ### Telemetria leve para preparar otimizações incrementais. Ela não altera o
 ### contrato nem substitui auditorias semânticas; apenas registra escopos sujos
 ### e fragmenta blocos PERF longos para identificar gargalos reais.
@@ -6842,11 +6853,11 @@ monitora_publicacao_ac_gravar_dirty_flags <- function(output_dir = MONITORA_OUTP
   data.table::fwrite(resumo, arq_out, sep = ",", quote = "auto", na = "")
   invisible(resumo)
 }
-### FIM v2.5.4 ---------------------------------------
+### FIM v2.5.5 ---------------------------------------
 
 
-### v2.5.4 ---------------------------------------
-### A v2.5.4 foi validado. A v2.5.4 preserva a regra física definida para
+### v2.5.5 ---------------------------------------
+### A v2.5.5 foi validado. A v2.5.5 preserva a regra física definida para
 ### registros_corrig.csv: ausências devem sair como literal "NA", não como campo
 ### vazio, enquanto registros_validados.csv continua exportando vazios efetivos.
 ### Também adiciona caches leves para reduzir custo de consulta repetida ao
@@ -6923,11 +6934,11 @@ monitora_publicacao_ae_preparar_registros_corrig_para_csv <- function(dt,
 monitora_publicacao_ae_auditoria_mapeamento_leve <- function() {
   isTRUE(get0("MONITORA_PUBLICACAO_AE_AUDITORIA_CONTRATO_LEVE", ifnotfound = TRUE, inherits = TRUE))
 }
-### FIM v2.5.4 -----------------------------------
+### FIM v2.5.5 -----------------------------------
 
 
-### v2.5.4 ---------------------------
-### Foco: ajuste parcial para a base v2.5.4, preservando contratos e ganhos
+### v2.5.5 ---------------------------
+### Foco: ajuste parcial para a base v2.5.5, preservando contratos e ganhos
 ### válidos, e telemetria temporizado correto do bloco matriz/mapeamento.
 monitora_publicacao_aj_cache_env <- function(nome = "matriz") {
   env_nome <- paste0("MONITORA_PUBLICACAO_AJ_CACHE_", gsub("[^A-Za-z0-9]+", "_", toupper(as.character(nome)[1L])))
@@ -7159,8 +7170,37 @@ monitora_publicacao_aj_constroi_matriz_validados <- function(registros_corrig,
     n_celulas_auditadas_mapeamento = 0L
   )
 
+  progresso_matriz_parcial <- isTRUE(get0("MONITORA_PARAR_APOS_REGISTROS_CORRIG", ifnotfound = FALSE, inherits = TRUE))
+  progresso_matriz_inicio <- if (isTRUE(progresso_matriz_parcial)) 6500L else 5000L
+  progresso_matriz_fim <- if (isTRUE(progresso_matriz_parcial)) 9000L else 5015L
+  if (exists("monitora_progresso_definir_valor", mode = "function")) {
+    try(
+      monitora_progresso_definir_valor(
+        progresso_matriz_inicio,
+        etapa = "contrato_xlsform_matriz_mapeamento",
+        detalhe = paste0("0/", length(cols), " atributos do XLSForm; montando matriz contratual"),
+        force = TRUE
+      ),
+      silent = TRUE
+    )
+  }
+
   for (ii in seq_along(cols)) {
     col_tpl <- cols[ii]
+    if (exists("monitora_progresso_definir_valor", mode = "function") &&
+        (ii == 1L || ii %% 5L == 0L || ii == length(cols))) {
+      alvo_ii <- progresso_matriz_inicio + floor((progresso_matriz_fim - progresso_matriz_inicio) * ii / max(1L, length(cols)))
+      detalhe_ii <- paste0(ii, "/", length(cols), " atributos do XLSForm; atributo=", col_tpl)
+      try(
+        monitora_progresso_definir_valor(
+          alvo_ii,
+          etapa = "contrato_xlsform_matriz_mapeamento",
+          detalhe = detalhe_ii,
+          force = ii == length(cols)
+        ),
+        silent = TRUE
+      )
+    }
     plano_ii <- plano[ii]
     formato_ii <- schema$formato[ii]
     largura_ii <- schema$largura[ii]
@@ -7295,7 +7335,7 @@ monitora_publicacao_aj_constroi_matriz_validados <- function(registros_corrig,
 
   list(out = out, auditoria = auditoria_dt)
 }
-### FIM v2.5.4 -----------------------
+### FIM v2.5.5 -----------------------
 
 monitora_publicacao_g_gravar_selo_contrato <- function(dt, contexto, escopo, linhas_avaliadas, invariantes = NULL) {
   out_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path("output", "correcoes_campos"), inherits = TRUE)
@@ -7320,7 +7360,7 @@ monitora_publicacao_g_gravar_selo_contrato <- function(dt, contexto, escopo, lin
   invisible(selo)
 }
 
-### v2.5.4
+### v2.5.5
 ### Esta função é destinada a registros_corrig.csv e registros_validados.csv.
 ### Nunca chamar para registros_importados.csv, que deve permanecer como snapshot
 ### fiel dos arquivos de entrada lidos.
@@ -7372,11 +7412,11 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
   }
   invisible(dt)
 }
-### FIM v2.5.4 -------------------------------------
+### FIM v2.5.5 -------------------------------------
 
 
 monitora_correcao_calcular_tipo_forma_vida_esperado <- function(dt, linhas = NULL, chaves = monitora_correcao_colunas_chave(dt)) {
-  ### v2.5.4
+  ### v2.5.5
   ### Calcula o valor esperado do campo superior de forma de vida a partir do
   ### estado FINAL do ponto, resolvendo automaticamente condicionantes do contrato.
   ### Regra central: solo_nu/solo exposto é mutuamente exclusivo com qualquer
@@ -8397,7 +8437,7 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
   d[papel_coluna %in% c("imagem_foto") & is.na(motivo_bloqueio_edicao), motivo_bloqueio_edicao := "imagem/foto não deve ser substituída livremente no painel"]
   d[, acoes_permitidas := ""]
   d[is.na(motivo_bloqueio_edicao) & papel_coluna == "campo_superior_tipo_forma_vida", acoes_permitidas := "recalcular_tipo_forma_vida"]
-  d[is.na(motivo_bloqueio_edicao) & tipo_base_edicao == "select_multiple" & papel_coluna != "campo_superior_tipo_forma_vida", acoes_permitidas := "update;clear;append_token;remove_token;replace_token"]
+  d[is.na(motivo_bloqueio_edicao) & tipo_base_edicao == "select_multiple" & papel_coluna != "campo_superior_tipo_forma_vida", acoes_permitidas := "append_token;remove_token;replace_token"]
   d[is.na(motivo_bloqueio_edicao) & tipo_base_edicao == "select_one", acoes_permitidas := "update;clear"]
   d[is.na(motivo_bloqueio_edicao) & tipo_base_edicao %in% c("text", "note"), acoes_permitidas := "update;clear"]
   d[is.na(motivo_bloqueio_edicao) & tipo_base_edicao %in% c("date", "datetime", "time", "integer", "decimal", "geopoint", "uuid"), acoes_permitidas := "update;clear"]
@@ -8406,6 +8446,23 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
   d[tipo_base_edicao == "uuid", motivo_bloqueio_edicao := "UUID não deve ser editado diretamente"]
   d[tipo_base_edicao == "uuid", acoes_permitidas := ""]
   d[, painel_editavel := !protegido & nzchar(acoes_permitidas)]
+
+  if (exists("monitora_correcao_anotar_contrato_template_sismonitora", mode = "function")) {
+    d <- monitora_correcao_anotar_contrato_template_sismonitora(d, dt)
+    d[atende_template_sismonitora != TRUE, motivo_bloqueio_edicao := data.table::fifelse(
+      is.na(motivo_bloqueio_edicao) | !nzchar(as.character(motivo_bloqueio_edicao)),
+      "fora do contrato do template SISMONITORA/XLSForm 2025",
+      paste0(motivo_bloqueio_edicao, "; fora do contrato do template SISMONITORA/XLSForm 2025")
+    )]
+    d[atende_template_sismonitora != TRUE, acoes_permitidas := ""]
+    d[atende_template_sismonitora != TRUE, painel_editavel := FALSE]
+  } else {
+    d[, atende_template_sismonitora := NA]
+    d[, atributos_template_sismonitora := ""]
+    d[, posicoes_template_sismonitora := ""]
+    d[, estrategias_template_sismonitora := ""]
+  }
+
   d[, painel_motivo_bloqueio := data.table::fifelse(painel_editavel, "", data.table::fifelse(!is.na(motivo_bloqueio_edicao), motivo_bloqueio_edicao, "sem ação permitida para edição direta"))]
   d[, .(
     atributo_coluna_registros_corrig,
@@ -8415,10 +8472,203 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
     papel_coluna,
     categoria_coluna,
     required_bool,
+    atende_template_sismonitora,
+    ordem_template_sismonitora,
+    atributos_template_sismonitora,
+    posicoes_template_sismonitora,
+    estrategias_template_sismonitora,
     painel_editavel,
     painel_motivo_bloqueio,
     acoes_permitidas
   )]
+}
+
+
+### publicação: restringe atributos do painel aos campos de registros_corrig que
+### constam no template SISMONITORA/XLSForm 2025 usado como contrato de atributos.
+### O painel continua operando sobre registros_corrig, mas só lista atributos
+### que aparecem como coluna de origem na matriz de herança para os 129 atributos
+### do contrato final. Campos técnicos, auxiliares, diagnósticos ou legados que
+### não constam nesse template ficam bloqueados para edição livre.
+monitora_correcao_colunas_template_sismonitora <- function(dt, schema = NULL) {
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório.", call. = FALSE)
+  dt <- data.table::as.data.table(dt)
+  if (is.null(schema)) {
+    if (!exists("monitora_validados_schema_embutido", mode = "function")) {
+      return(data.table::data.table(
+        atributo_coluna_registros_corrig = character(),
+        atende_template_sismonitora = logical(),
+        ordem_template_sismonitora = integer(),
+        atributos_template_sismonitora = character(),
+        posicoes_template_sismonitora = character(),
+        estrategias_template_sismonitora = character()
+      ))
+    }
+    schema <- monitora_validados_schema_embutido()
+  }
+  schema <- data.table::as.data.table(schema)
+  if (!nrow(schema) || !("atributo" %in% names(schema))) {
+    return(data.table::data.table(
+      atributo_coluna_registros_corrig = character(),
+      atende_template_sismonitora = logical(),
+      ordem_template_sismonitora = integer(),
+      atributos_template_sismonitora = character(),
+      posicoes_template_sismonitora = character(),
+      estrategias_template_sismonitora = character()
+    ))
+  }
+
+  for (cc in c("posicao", "atributo", "formato", "obrigatorio_valor", "nivel")) {
+    if (!(cc %in% names(schema))) schema[, (cc) := NA_character_]
+  }
+  schema[, atributo := as.character(atributo)]
+  schema <- schema[!is.na(atributo) & nzchar(trimws(atributo))]
+
+  ### Garantia defensiva para atributos atuais do XLSForm 2025 que são relevantes
+  ### para as operações do painel, mas historicamente podem não aparecer nos dados
+  ### de uma execução específica.
+  obrigatorios_painel <- data.table::data.table(
+    posicao = c(NA_integer_, NA_integer_),
+    atributo = c("amostragem/registro/forma_serrapilheira", "amostragem/registro/forma_vida_outros"),
+    formato = c("select_multiple", "select_multiple"),
+    obrigatorio_valor = c("yes", "yes"),
+    nivel = c("registro", "registro")
+  )
+  faltantes <- obrigatorios_painel[!atributo %in% schema$atributo]
+  if (nrow(faltantes)) schema <- data.table::rbindlist(list(schema, faltantes), fill = TRUE, use.names = TRUE)
+
+  meta <- tryCatch(monitora_correcao_xlsform_meta_atual(NULL), error = function(e) NULL)
+  campos <- if (!is.null(meta) && !is.null(meta$campos)) data.table::as.data.table(meta$campos) else data.table::data.table()
+  if (nrow(campos)) {
+    for (cc in c("name", "type", "label", "caminho_registro", "list_name", "arquivo_xlsform")) {
+      if (!(cc %in% names(campos))) campos[, (cc) := NA_character_]
+    }
+    campos[, name_chr := as.character(name)]
+    campos[, type_chr := as.character(type)]
+    campos[, label_chr := as.character(label)]
+    campos[, caminho_chr := as.character(caminho_registro)]
+    campos[, list_chr := as.character(list_name)]
+    arq_atual <- tryCatch(monitora_correcao_ultima_versao_xlsform(campos), error = function(e) NA_character_)
+    if (!is.na(arq_atual) && nzchar(arq_atual) && "arquivo_xlsform" %in% names(campos)) {
+      campos_atual <- campos[arquivo_xlsform == arq_atual]
+      if (nrow(campos_atual)) campos <- campos_atual
+    }
+  }
+
+  nms <- names(dt)
+  nms_norm <- monitora_correcao_normalizar_nome_coluna(nms)
+  rows <- vector("list", nrow(schema))
+  for (ii in seq_len(nrow(schema))) {
+    att <- as.character(schema$atributo[ii])
+    att_final <- sub("^.*/", "", att)
+    pos_raw <- if ("posicao" %in% names(schema)) schema$posicao[ii] else ii
+    pos_num <- suppressWarnings(as.integer(pos_raw))
+    if (is.na(pos_num)) pos_num <- ii
+
+    hit <- data.table::data.table()
+    if (nrow(campos)) {
+      hit <- campos[caminho_chr == att | name_chr == att | name_chr == att_final]
+      if (!nrow(hit)) {
+        pad <- paste0("(^|/)", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", att_final, perl = TRUE), "$")
+        hit <- campos[grepl(pad, caminho_chr, ignore.case = TRUE)]
+      }
+    }
+
+    nome_xls <- if (nrow(hit)) as.character(hit$name_chr[1L]) else att_final
+    lab_xls <- if (nrow(hit)) as.character(hit$label_chr[1L]) else ""
+    tipo_xls <- if (nrow(hit)) as.character(hit$type_chr[1L]) else as.character(schema$formato[ii])
+    list_xls <- if (nrow(hit)) as.character(hit$list_chr[1L]) else ""
+    tipo_hit <- tryCatch(monitora_correcao_tipo_xlsform(tipo_xls), error = function(e) data.table::data.table(tipo_base = "text", list_name = ""))
+    tipo_base <- as.character(tipo_hit$tipo_base[1L])
+    if (is.na(tipo_base) || !nzchar(tipo_base)) tipo_base <- "text"
+    if (is.na(list_xls) || !nzchar(list_xls)) list_xls <- as.character(tipo_hit$list_name[1L])
+
+    parent <- sub("/[^/]+$", "", att)
+    lab_limpo <- trimws(gsub("\\s+", " ", gsub("\\u200b", "", lab_xls)))
+    lab_sem_dois <- sub(":$", "", lab_limpo)
+    candidatos <- unique(c(
+      att, att_final, nome_xls,
+      if (nzchar(lab_limpo)) lab_limpo else character(0),
+      if (nzchar(lab_sem_dois)) lab_sem_dois else character(0),
+      if (nzchar(lab_limpo) && nzchar(parent)) paste0(lab_limpo, " (", parent, ")") else character(0),
+      if (nzchar(lab_sem_dois) && nzchar(parent)) paste0(lab_sem_dois, ": (", parent, ")") else character(0),
+      if (nzchar(lab_sem_dois) && nzchar(parent)) paste0(lab_sem_dois, " (", parent, ")") else character(0)
+    ))
+    candidatos <- candidatos[!is.na(candidatos) & nzchar(candidatos)]
+
+    col <- NA_character_
+    col_res <- tryCatch(monitora_validados_resolver_coluna(nms, att), error = function(e) NA_character_)
+    if (!is.na(col_res) && nzchar(col_res) && col_res %in% nms) col <- col_res
+    if (is.na(col) || !nzchar(col)) {
+      hit_exato <- candidatos[candidatos %in% nms]
+      if (length(hit_exato)) col <- hit_exato[1L]
+    }
+    if (is.na(col) || !nzchar(col)) {
+      cand_norm <- monitora_correcao_normalizar_nome_coluna(candidatos)
+      idx <- match(TRUE, nms_norm %in% cand_norm)
+      if (!is.na(idx)) col <- nms[idx]
+    }
+    if (is.na(col) || !nzchar(col)) col <- att
+
+    protegido <- isTRUE(monitora_correcao_coluna_protegida(col)) ||
+      isTRUE(monitora_correcao_coluna_protegida(att)) ||
+      grepl("(^|/)uuid$|foto|imagem|image", att, ignore.case = TRUE)
+    tipos_bloq <- c("calculate", "hidden", "start", "end", "deviceid", "phonenumber", "barcode", "acknowledge", "rank", "range", "file", "image", "audio", "video")
+    if (isTRUE(protegido) || tolower(tipo_base) %in% tipos_bloq) next
+
+    rows[[ii]] <- data.table::data.table(
+      atributo_coluna_registros_corrig = as.character(col),
+      atende_template_sismonitora = TRUE,
+      ordem_template_sismonitora = as.integer(pos_num),
+      atributos_template_sismonitora = as.character(att),
+      posicoes_template_sismonitora = as.character(pos_raw),
+      estrategias_template_sismonitora = data.table::fifelse(col %in% nms, "coluna_existente_registros_corrig", "coluna_contratual_criada_pre_painel"),
+      xlsform_name = nome_xls,
+      xlsform_label = lab_xls,
+      xlsform_tipo = tipo_xls,
+      xlsform_tipo_base = tipo_base,
+      xlsform_list_name = list_xls
+    )
+  }
+  h <- data.table::rbindlist(rows, fill = TRUE, use.names = TRUE)
+  if (!nrow(h)) {
+    return(data.table::data.table(
+      atributo_coluna_registros_corrig = character(), atende_template_sismonitora = logical(),
+      ordem_template_sismonitora = integer(), atributos_template_sismonitora = character(),
+      posicoes_template_sismonitora = character(), estrategias_template_sismonitora = character()
+    ))
+  }
+  h <- h[!duplicated(atributo_coluna_registros_corrig)]
+  data.table::setorder(h, ordem_template_sismonitora, atributo_coluna_registros_corrig)
+  h[]
+}
+
+monitora_correcao_anotar_contrato_template_sismonitora <- function(d, dt) {
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório.", call. = FALSE)
+  d <- data.table::as.data.table(data.table::copy(d))
+  if (!("atributo_coluna_registros_corrig" %in% names(d))) return(d)
+  heranca <- tryCatch(monitora_correcao_colunas_template_sismonitora(dt), error = function(e) data.table::data.table())
+  cols_h <- c("atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora")
+  cols_h_existentes <- intersect(cols_h, names(d))
+  if (length(cols_h_existentes)) d[, (cols_h_existentes) := NULL]
+  if (nrow(heranca)) {
+    cols_h_merge <- c("atributo_coluna_registros_corrig", cols_h)
+    d <- merge(d, heranca[, ..cols_h_merge], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+  } else {
+    d[, atende_template_sismonitora := FALSE]
+    d[, atributos_template_sismonitora := ""]
+    d[, posicoes_template_sismonitora := ""]
+    d[, estrategias_template_sismonitora := ""]
+  }
+  for (cc in c("atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora")) {
+    if (!(cc %in% names(d))) d[, (cc) := if (identical(cc, "atende_template_sismonitora")) FALSE else if (identical(cc, "ordem_template_sismonitora")) NA_integer_ else ""]
+  }
+  d[is.na(atende_template_sismonitora), atende_template_sismonitora := FALSE]
+  d[is.na(ordem_template_sismonitora), ordem_template_sismonitora := 999999L]
+  for (cc in c("atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora")) {
+    d[is.na(get(cc)), (cc) := ""]
+  }
+  d[]
 }
 
 
@@ -8474,28 +8724,42 @@ monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list
   acao <- monitora_correcao_acao_normalizar(acao)
   tipo_base <- as.character(tipo_base)[1L]
   valor <- as.character(valor)[1L]
+  valor_original <- as.character(valor_original)[1L]
   if (is.na(valor)) valor <- ""
-  if (acao %in% c("clear", "remove_token", "recalcular_tipo_forma_vida")) return(list(ok = TRUE, status = "ok", mensagem = "formato compatível"))
-  if (!nzchar(trimws(valor))) return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "valor novo vazio; use Limpar valor quando a ausência for permitida"))
+  if (is.na(valor_original)) valor_original <- ""
+  if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(ok = TRUE, status = "ok", mensagem = "formato compatível"))
   if (tipo_base %in% c("select_one", "select_multiple")) {
     escolhas <- monitora_correcao_choices_xlsform(list_name, meta_xls)
-    if (length(escolhas)) {
-      toks <- if (tipo_base == "select_multiple") monitora_correcao_tokens_valor(valor) else valor
-      invalidos <- setdiff(toks, escolhas)
-      if (length(invalidos)) {
-        opcoes_msg <- monitora_correcao_colapsar_opcoes_msg(escolhas)
-        sugestoes_msg <- monitora_correcao_sugerir_opcoes_msg(invalidos, escolhas)
-        msg <- paste0(
-          "Valor/token fora do domínio XLSForm da lista '", list_name, "'. ",
-          "Token(s) inválido(s): ", paste(invalidos, collapse = ", "), ". ",
-          "Opções válidas: ", opcoes_msg, "."
-        )
-        if (nzchar(sugestoes_msg)) msg <- paste0(msg, " ", sugestoes_msg, ".")
-        return(list(ok = FALSE, status = "bloqueada_dominio_xlsform", mensagem = msg))
-      }
+    if (!length(escolhas)) {
+      return(list(ok = FALSE, status = "bloqueada_dominio_xlsform_ausente", mensagem = paste0("Correção bloqueada: o atributo usa lista XLSForm, mas o domínio de tokens não foi carregado para list_name='", list_name, "'.")))
+    }
+    if (tipo_base == "select_multiple" && acao %in% c("update", "substituir_valor", "clear", "limpar")) {
+      return(list(ok = FALSE, status = "bloqueada_lista_tokens_sem_substituir_valor", mensagem = "Atributos de lista de tokens não aceitam substituir ou limpar o valor inteiro. Use Adicionar token, Remover token ou Substituir token."))
+    }
+    valor_validar <- valor
+    if (acao %in% c("remove_token", "remover_token") && !nzchar(trimws(valor_validar))) valor_validar <- valor_original
+    if (!nzchar(trimws(valor_validar))) {
+      return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Informe o token/valor da operação. Em lista de tokens, use operação tokenizada; não substitua o valor inteiro do campo."))
+    }
+    if (tipo_base == "select_multiple" && acao %in% c("remove_token", "remover_token")) {
+      return(list(ok = TRUE, status = "ok", mensagem = "remoção de token validada quanto à presença pela pré-condição operacional"))
+    }
+    toks <- if (tipo_base == "select_multiple") monitora_correcao_tokens_valor(valor_validar) else valor_validar
+    invalidos <- setdiff(toks, escolhas)
+    if (length(invalidos)) {
+      opcoes_msg <- monitora_correcao_colapsar_opcoes_msg(escolhas)
+      sugestoes_msg <- monitora_correcao_sugerir_opcoes_msg(invalidos, escolhas)
+      msg <- paste0(
+        "Valor/token fora do domínio XLSForm da lista '", list_name, "'. ",
+        "Token(s) inválido(s): ", paste(invalidos, collapse = ", "), ". ",
+        "Opções válidas: ", opcoes_msg, "."
+      )
+      if (nzchar(sugestoes_msg)) msg <- paste0(msg, " ", sugestoes_msg, ".")
+      return(list(ok = FALSE, status = "bloqueada_dominio_xlsform", mensagem = msg))
     }
     return(list(ok = TRUE, status = "ok", mensagem = "domínio XLSForm compatível"))
   }
+  if (!nzchar(trimws(valor))) return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "valor novo vazio; use Limpar valor quando a ausência for permitida"))
   if (tipo_base == "date") {
     vv <- as.character(valor)[1L]
     ok <- grepl("^\\d{4}-\\d{2}-\\d{2}$", vv, perl = TRUE)
@@ -10323,8 +10587,8 @@ monitora_correcao_aplicar_exclusoes_coleta_atomicas <- function(dt, corr, chaves
 
 
 
-### v2.5.4 ---------------------------------
-### v2.5.4: reforço para limpeza sem alvo em sessão com exclusões dominantes.
+### v2.5.5 ---------------------------------
+### v2.5.5: reforço para limpeza sem alvo em sessão com exclusões dominantes.
 ### Orquestração pós-painel de operações que interagem entre si.
 ### Regra central: exclusão de COLETAS é operação dominante na sessão.
 ### Operações modificadoras cujo alvo foi removido por uma exclusão da mesma
@@ -10417,7 +10681,7 @@ monitora_publicacao_q_auditoria_subsumida_por_exclusao <- function(linha_corr,
     arquivo_correcao = arquivo_correcao
   )
 }
-### FIM v2.5.4 -----------------------------
+### FIM v2.5.5 -----------------------------
 
 monitora_correcao_arquivo_ler_defensivo <- function(arquivo_correcao) {
   if (is.null(arquivo_correcao) || !file.exists(arquivo_correcao)) return(data.table::data.table())
@@ -10588,7 +10852,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
 
         linhas_limpeza <- filtro_publicacao_q$linhas
 
-        ### v2.5.4: se a operação de limpeza chegou sem linhas-alvo em uma
+        ### v2.5.5: se a operação de limpeza chegou sem linhas-alvo em uma
         ### sessão que contém exclusões dominantes de COLETAS, não chamar o
         ### aplicador de limpeza com vetor vazio. Na execução observada, a
         ### limpeza TRIOUT foi criada no painel com alvo válido, mas, ao
@@ -10885,7 +11149,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   if (nrow(corr) > 0L) {
     if (!("id_correcao" %in% names(corr))) corr[, id_correcao := NA_character_]
     corr[, grupo_correcao := fifelse(!is.na(id_correcao) & nzchar(as.character(id_correcao)), as.character(id_correcao), paste0("__linha_", ordem_tmp))]
-  ### v2.5.4: reclassificar operações ambíguas de token antes da pré-validação
+  ### v2.5.5: reclassificar operações ambíguas de token antes da pré-validação
   ### transacional. Isso evita que um update em lista select_multiple com
   ### valor_original_esperado parcial ("graminoide") bloqueie um grupo cuja
   ### intenção operacional é substituir token ("graminoide" -> "samambaia").
@@ -11527,7 +11791,7 @@ if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inhe
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.4."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.5."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -13096,7 +13360,7 @@ monitora_espacial_lote_amplo_diagnostico <- function(ops, confirmar = FALSE, jus
 ### Fim do módulo incorporado de validação espacial de COLETAS ---------------
 
 
-### v2.5.4 --------------------------------------------------
+### v2.5.5 --------------------------------------------------
 ### Funções auxiliares para materialização pré-painel, schema editável completo
 ### e auditoria das condicionantes automáticas. Mantém atualização por referência
 ### via data.table::set() e evita varreduras globais no Shiny.
@@ -13123,6 +13387,83 @@ monitora_correcao_limpar_cache_mapa_colunas_publicacao_b <- function() {
     try(rm(list = ls(envir = cache_env, all.names = TRUE), envir = cache_env), silent = TRUE)
   }
   invisible(TRUE)
+}
+
+
+
+### publicação: contrato global do seletor de atributos do painel.
+### A lista de atributos editáveis do bolsista não deve depender da COLETA,
+### do ponto selecionado nem de valores já preenchidos. Ela deve refletir o
+### template SISMONITORA/XLSForm 2025 usado como contrato de atributos, criando
+### colunas vazias em registros_corrig quando um atributo contratual opcional
+### ainda não apareceu nos dados da execução.
+monitora_correcao_attrs_template_sismonitora_editaveis <- function(meta_xls = NULL) {
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório.", call. = FALSE)
+  if (!exists("monitora_validados_schema_embutido", mode = "function")) return(data.table::data.table())
+  schema <- tryCatch(monitora_validados_schema_embutido(), error = function(e) NULL)
+  if (is.null(schema)) return(data.table::data.table())
+  schema <- data.table::as.data.table(schema)
+  if (!nrow(schema) || !("atributo" %in% names(schema))) return(data.table::data.table())
+
+  meta <- tryCatch(monitora_correcao_xlsform_meta_atual(meta_xls), error = function(e) NULL)
+  campos <- if (!is.null(meta) && !is.null(meta$campos)) data.table::as.data.table(meta$campos) else data.table::data.table()
+  if (nrow(campos)) {
+    for (cc in c("name", "type", "label", "caminho_registro", "list_name", "arquivo_xlsform")) {
+      if (!(cc %in% names(campos))) data.table::set(campos, j = cc, value = NA_character_)
+    }
+    campos[, name_chr := as.character(name)]
+    campos[, type_chr := as.character(type)]
+    campos[, label_chr := as.character(label)]
+    campos[, caminho_chr := as.character(caminho_registro)]
+    arq_atual <- tryCatch(monitora_correcao_ultima_versao_xlsform(campos), error = function(e) NA_character_)
+    if (!is.na(arq_atual) && nzchar(arq_atual) && "arquivo_xlsform" %in% names(campos)) {
+      campos_atual <- campos[arquivo_xlsform == arq_atual]
+      if (nrow(campos_atual)) campos <- campos_atual
+    }
+  }
+
+  out <- data.table::copy(schema[, .(posicao, atributo, formato, obrigatorio_valor, nivel)])
+  out[, atributo := as.character(atributo)]
+  out <- out[!is.na(atributo) & nzchar(trimws(atributo))]
+  if (!nrow(out)) return(out)
+  out[, atributo_final := sub("^.*/", "", atributo)]
+  out[, xlsform_name := NA_character_]
+  out[, xlsform_label := NA_character_]
+  out[, xlsform_tipo := NA_character_]
+  out[, xlsform_tipo_base := NA_character_]
+  out[, xlsform_list_name := NA_character_]
+
+  if (nrow(campos)) {
+    for (ii in seq_len(nrow(out))) {
+      att <- out$atributo[ii]
+      att_final <- out$atributo_final[ii]
+      hit <- campos[caminho_chr == att | name_chr == att | name_chr == att_final]
+      if (!nrow(hit)) {
+        hit <- campos[grepl(paste0("(^|/)", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", att_final, perl = TRUE), "$"), caminho_chr, ignore.case = TRUE)]
+      }
+      if (nrow(hit)) {
+        tipo_hit <- monitora_correcao_tipo_xlsform(hit$type_chr[1L])
+        data.table::set(out, i = ii, j = "xlsform_name", value = hit$name_chr[1L])
+        data.table::set(out, i = ii, j = "xlsform_label", value = hit$label_chr[1L])
+        data.table::set(out, i = ii, j = "xlsform_tipo", value = hit$type_chr[1L])
+        data.table::set(out, i = ii, j = "xlsform_tipo_base", value = tipo_hit$tipo_base[1L])
+        data.table::set(out, i = ii, j = "xlsform_list_name", value = tipo_hit$list_name[1L])
+      }
+    }
+  }
+
+  out[is.na(xlsform_tipo_base) | !nzchar(xlsform_tipo_base), xlsform_tipo_base := data.table::fifelse(
+    grepl("uuid", atributo, ignore.case = TRUE), "uuid",
+    data.table::fifelse(grepl("foto|imagem|image", atributo, ignore.case = TRUE), "file", "text")
+  )]
+  tipos_bloqueados <- c(
+    "calculate", "hidden", "start", "end", "deviceid", "phonenumber",
+    "barcode", "acknowledge", "rank", "range", "file", "image", "audio", "video"
+  )
+  out[, protegido_template := monitora_correcao_coluna_protegida(atributo) | monitora_correcao_coluna_protegida(atributo_final) |
+        grepl("(^|/)uuid$|foto|imagem|image", atributo, ignore.case = TRUE)]
+  out <- out[protegido_template != TRUE & !(tolower(xlsform_tipo_base) %in% tipos_bloqueados)]
+  out[]
 }
 
 monitora_correcao_preparar_schema_edicao_painel <- function(dt, meta_xls = NULL, contexto = "pre_painel") {
@@ -13166,7 +13507,30 @@ monitora_correcao_preparar_schema_edicao_painel <- function(dt, meta_xls = NULL,
     cols_deps <- unique(deps[token_norm %in% formas_cond & grepl("^forma_vida_(nativa|exotica|seca_morta)_(bromelioide|cactacea|orquidea|samambaia)$", dependent_norm), dependent_chr])
   }
 
-  cols_criar <- unique(c(cols_meta, cols_deps, nomes_padrao))
+  cols_template <- character(0)
+  if (exists("monitora_correcao_attrs_template_sismonitora_editaveis", mode = "function") &&
+      exists("monitora_validados_resolver_coluna", mode = "function")) {
+    attrs_template <- tryCatch(monitora_correcao_attrs_template_sismonitora_editaveis(meta_xls), error = function(e) data.table::data.table())
+    if (nrow(attrs_template) && "atributo" %in% names(attrs_template)) {
+      nms_atuais <- names(dt)
+      cols_template <- vapply(as.character(attrs_template$atributo), function(att) {
+        col_existente <- tryCatch(monitora_validados_resolver_coluna(nms_atuais, att), error = function(e) NA_character_)
+        if (!is.na(col_existente) && nzchar(col_existente) && col_existente %in% nms_atuais) return(NA_character_)
+        att
+      }, character(1), USE.NAMES = FALSE)
+      ### publicação: garantia explícita dos campos de material botânico e outras formas
+      ### atuais do XLSForm 2025. Eles devem existir no painel mesmo que a execução
+      ### atual não tenha valores preenchidos nem coluna herdada do CSV bruto.
+      cols_template <- unique(c(
+        cols_template,
+        "amostragem/registro/forma_serrapilheira",
+        "amostragem/registro/forma_vida_outros"
+      ))
+      cols_template <- cols_template[!is.na(cols_template) & nzchar(cols_template)]
+    }
+  }
+
+  cols_criar <- unique(c(cols_meta, cols_deps, nomes_padrao, cols_template))
   cols_criar <- cols_criar[!is.na(cols_criar) & nzchar(trimws(cols_criar))]
   cols_criar <- cols_criar[!monitora_correcao_coluna_protegida(cols_criar)]
   cols_criar <- cols_criar[!cols_criar %in% names(dt)]
@@ -13187,7 +13551,7 @@ monitora_correcao_preparar_schema_edicao_painel <- function(dt, meta_xls = NULL,
     coluna = cols_criar,
     status = if (length(cols_criar)) "criada_pre_painel" else character(),
     tipo = if (length(cols_criar)) "character" else character(),
-    origem = if (length(cols_criar)) "v2.5.4" else character(),
+    origem = if (length(cols_criar)) ifelse(cols_criar %in% cols_template, "template_sismonitora_xlsform_2025", "v2.5.4") else character(),
     timestamp = if (length(cols_criar)) format(Sys.time(), "%Y-%m-%d %H:%M:%S") else character()
   )
   arq <- file.path(monitora_publicacao_b_correcoes_dir(), "auditoria_schema_pre_painel_colunas_criadas.csv")
@@ -13219,23 +13583,23 @@ monitora_registros_importados_garantir_pre_painel <- function(dt, contexto = "pr
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   caminho <- file.path(output_dir, "registros_importados.csv")
+  caminho_bruto <- file.path(output_dir, "registros_importados_bruto.csv")
 
   if (file.exists(caminho) && isTRUE(file.info(caminho)$size > 0)) {
     if (exists("monitora_log_registrar_evento", mode = "function")) {
-      monitora_log_registrar_evento("registros_importados_pre_painel", "INFO", caminho, "registros_importados.csv bruto já existia antes do painel", contexto)
+      monitora_log_registrar_evento("registros_importados_pre_painel", "INFO", caminho, "registros_importados.csv saneado já existia antes do painel", contexto)
     }
     return(invisible(TRUE))
   }
 
-  ### v2.5.4: não reconstruir registros_importados.csv neste ponto, porque dt já
-  ### pode estar padronizado/harmonizado. A ausência deve ser registrada como
-  ### falha do snapshot bruto, mas não pode impedir que o painel abra para que o
-  ### bolsista resolva conflitos antes da criação de registros_corrig.csv.
+  ### publicação: neste ponto não reconstruir o produto saneado se ele estiver ausente,
+  ### pois o objeto já pode ter sofrido transformações adicionais. A ausência não
+  ### bloqueia o painel, mas é registrada para auditoria.
   msg <- paste0(
-    "registros_importados.csv ausente antes do painel. O arquivo deveria ter sido ",
-    "materializado logo após a leitura/concatenação dos CSVs de entrada. O painel ",
-    "não será bloqueado, mas esta execução deve ser auditada porque o snapshot bruto ",
-    "não foi entregue."
+    "registros_importados.csv saneado ausente antes do painel. O arquivo deveria ter sido ",
+    "materializado após consolidação inicial de colunas/aliases e antes do painel. O painel ",
+    "não será bloqueado, mas esta execução deve ser auditada porque o produto de comparação ",
+    "não foi entregue. Produto bruto esperado em: ", basename(caminho_bruto), "."
   )
   warning(msg, call. = FALSE)
   if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -13243,7 +13607,7 @@ monitora_registros_importados_garantir_pre_painel <- function(dt, contexto = "pr
   }
   invisible(FALSE)
 }
-### FIM v2.5.4 ----------------------------------------------
+### FIM v2.5.5 ----------------------------------------------
 
 
 monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITORA_ARQUIVO_CORRECOES_CAMPOS) {
@@ -13261,13 +13625,59 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   } else if ("atributo_coluna_registros_corrig" %in% names(dict)) {
     dict <- dict[!monitora_correcao_coluna_protegida(atributo_coluna_registros_corrig)]
   }
+  ### publicação: a lista do seletor deve seguir o contrato global do template
+  ### SISMONITORA/XLSForm 2025 e a ordem do template, não a ordem caótica das
+  ### colunas de registros_corrig nem a presença de valores na coleta filtrada.
+  if (exists("monitora_correcao_colunas_template_sismonitora", mode = "function")) {
+    dict_template <- tryCatch(monitora_correcao_colunas_template_sismonitora(dt), error = function(e) data.table::data.table())
+    if (nrow(dict_template) && "atributo_coluna_registros_corrig" %in% names(dict_template)) {
+      ### Garante fisicamente no objeto os campos contratuais ainda ausentes.
+      cols_criar_tpl <- setdiff(as.character(dict_template$atributo_coluna_registros_corrig), names(dt))
+      cols_criar_tpl <- cols_criar_tpl[!is.na(cols_criar_tpl) & nzchar(cols_criar_tpl) & !monitora_correcao_coluna_protegida(cols_criar_tpl)]
+      if (length(cols_criar_tpl)) {
+        data.table::setalloccol(dt, ncol(dt) + length(cols_criar_tpl) + 16L)
+        for (cc_tpl in cols_criar_tpl) data.table::set(dt, j = cc_tpl, value = NA_character_)
+        monitora_correcao_limpar_cache_mapa_colunas_publicacao_b()
+      }
+      dict <- merge(dict_template, dict, by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE, suffixes = c("", ".dict"))
+      ### Preserva metadados XLSForm trazidos diretamente do template quando o
+      ### dicionário base não os resolveu por nome de coluna.
+      for (cc_tpl in c("xlsform_name", "xlsform_label", "xlsform_tipo", "xlsform_tipo_base", "xlsform_list_name")) {
+        cc_dict <- paste0(cc_tpl, ".dict")
+        if (cc_dict %in% names(dict)) {
+          if (!(cc_tpl %in% names(dict))) dict[, (cc_tpl) := NA_character_]
+          dict[is.na(get(cc_tpl)) | !nzchar(as.character(get(cc_tpl))), (cc_tpl) := get(cc_dict)]
+          dict[, (cc_dict) := NULL]
+        }
+      }
+      contrato_edicao <- monitora_correcao_contrato_edicao(dt, meta_xls, dict)
+      cols_contrato_painel <- intersect(
+        c("atributo_coluna_registros_corrig", "tipo_base_edicao", "painel_editavel", "painel_motivo_bloqueio", "acoes_permitidas", "atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora"),
+        names(contrato_edicao)
+      )
+      if (length(cols_contrato_painel) > 1L) {
+        cols_drop <- setdiff(cols_contrato_painel, "atributo_coluna_registros_corrig")
+        cols_drop <- intersect(cols_drop, names(dict))
+        if (length(cols_drop)) dict[, (cols_drop) := NULL]
+        dict <- merge(dict, contrato_edicao[, ..cols_contrato_painel], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+      }
+      if ("painel_editavel" %in% names(dict)) dict <- dict[painel_editavel %in% TRUE]
+      if ("atende_template_sismonitora" %in% names(dict)) dict <- dict[atende_template_sismonitora %in% TRUE]
+      if (!("ordem_template_sismonitora" %in% names(dict))) dict[, ordem_template_sismonitora := 999999L]
+      dict[is.na(ordem_template_sismonitora), ordem_template_sismonitora := 999999L]
+      data.table::setorder(dict, ordem_template_sismonitora, atributo_coluna_registros_corrig)
+    }
+  }
   if (!nrow(dict)) stop("Nenhum atributo editável seguro foi identificado para o painel de correções.", call. = FALSE)
   mapa_colunas_painel <- monitora_correcao_mapa_colunas_canonicas(dt, meta_xls, contexto = paste0("painel_", if (exists("MONITORA_EXEC_ID", inherits = TRUE)) get("MONITORA_EXEC_ID", inherits = TRUE) else format(Sys.time(), "%Y%m%d_%H%M%S")), gravar = TRUE)
   deps <- monitora_correcao_unificar_dependencias(if (!is.null(meta_xls)) meta_xls$dependencias else data.table::data.table())
 
   monitora_painel_valor <- function(x) {
-    if (is.null(x) || length(x) == 0L || is.na(x[1])) return("")
-    as.character(x[1])
+    if (is.null(x) || length(x) == 0L) return("")
+    z <- as.character(x)
+    z <- z[!is.na(z) & nzchar(trimws(z))]
+    if (!length(z)) return("")
+    paste(unique(z), collapse = " | ")
   }
   monitora_painel_valores_coluna <- function(x, col) {
     if (is.na(col) || !col %in% names(x)) return(character(0))
@@ -13293,6 +13703,98 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     rot <- monitora_correcao_acoes_rotulos()
     rot <- rot[unname(rot) %in% acoes]
     if (!length(rot)) stats::setNames(character(0), character(0)) else rot
+  }
+  monitora_painel_choices_atributos_template <- function(d) {
+    d <- data.table::as.data.table(data.table::copy(d))
+    if ("ordem_template_sismonitora" %in% names(d)) {
+      d[is.na(ordem_template_sismonitora), ordem_template_sismonitora := 999999L]
+      data.table::setorder(d, ordem_template_sismonitora, atributo_coluna_registros_corrig)
+    }
+    vals <- as.character(d$atributo_coluna_registros_corrig)
+    labels_base <- vals
+    if ("xlsform_label" %in% names(d)) {
+      lab <- as.character(d$xlsform_label)
+      lab[is.na(lab)] <- ""
+      lab <- trimws(gsub("\\s+", " ", gsub("\u200b", "", lab), perl = TRUE))
+      labels_base <- ifelse(nzchar(lab), paste0(lab, " (", vals, ")"), labels_base)
+    }
+    labels <- labels_base
+    if ("atributos_template_sismonitora" %in% names(d)) {
+      tpl <- as.character(d$atributos_template_sismonitora)
+      tpl[is.na(tpl)] <- ""
+      labels <- ifelse(nzchar(tpl), paste0(labels_base, "  →  ", tpl), labels_base)
+    }
+    ### Termos auxiliares explícitos ajudam a busca do selectize por expressões
+    ### naturais usadas pelos bolsistas e pelo contrato do XLSForm 2025.
+    extras <- rep("", length(vals))
+    extras[vals %in% c("amostragem/registro/forma_serrapilheira", "forma_serrapilheira")] <- " material botanico materiais botanicos decomposicao solo serrapilheira fragmentos botanicos material inundado"
+    extras[vals %in% c("amostragem/registro/forma_vida_outros", "forma_vida_outros")] <- " outras plantas terrestres liquens fungos musgos hepaticas antoceros"
+    labels <- paste0(labels, extras)
+    stats::setNames(vals, labels)
+  }
+  escolhas_atributos_painel <- monitora_painel_choices_atributos_template(dict)
+  if (exists("monitora_correcao_console_msg", mode = "function")) {
+    alvos_tpl <- c("amostragem/registro/forma_serrapilheira", "amostragem/registro/forma_vida_outros", "forma_serrapilheira", "forma_vida_outros")
+    presentes_tpl <- intersect(alvos_tpl, unname(escolhas_atributos_painel))
+    monitora_correcao_console_msg(
+      "Seletor de atributos do painel: ", length(escolhas_atributos_painel),
+      " atributo(s) contratuais exibidos em ordem do template SISMONITORA/XLSForm 2025; alvos materiais/outros presentes=",
+      paste(presentes_tpl, collapse = " | ")
+    )
+  }
+  monitora_painel_choices_valor_atributo <- function(atributo, acao = NULL, incluir_observados = FALSE) {
+    info <- monitora_painel_info_contrato_atributo(atributo)
+    escolhas <- unique(as.character(info$escolhas))
+    escolhas <- escolhas[!is.na(escolhas) & nzchar(trimws(escolhas))]
+    if (isTRUE(incluir_observados) && !is.na(info$col) && nzchar(info$col) && info$col %in% names(dt)) {
+      obs <- unique(unlist(lapply(as.character(dt[[info$col]]), monitora_correcao_tokens_valor), use.names = FALSE))
+      obs <- obs[!is.na(obs) & nzchar(trimws(obs))]
+      escolhas <- unique(c(escolhas, obs))
+    }
+    stats::setNames(escolhas, escolhas)
+  }
+
+  monitora_painel_widget_valor_atributo <- function(atributo, acao = NULL) {
+    info <- monitora_painel_info_contrato_atributo(atributo)
+    tipo <- as.character(info$tipo)[1L]
+    acao_norm <- monitora_correcao_acao_normalizar(acao)
+    if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
+    if (acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) return("sem_valor_novo")
+    if (tipo == "select_one") return("selectize_unico")
+    if (tipo == "select_multiple") return("selectize_tokens")
+    if (tipo == "date") return("date")
+    if (tipo %in% c("integer", "decimal")) return("numeric")
+    if (tipo %in% c("time", "datetime", "geopoint")) return("texto_formatado")
+    "texto_livre"
+  }
+
+  monitora_painel_gravar_auditoria_controle_atributos <- function() {
+    aud <- data.table::as.data.table(data.table::copy(contrato_edicao))
+    if (!nrow(aud)) return(invisible(FALSE))
+    if ("atende_template_sismonitora" %in% names(aud)) aud <- aud[atende_template_sismonitora %in% TRUE]
+    if ("painel_editavel" %in% names(aud)) aud <- aud[painel_editavel %in% TRUE]
+    if (!nrow(aud)) return(invisible(FALSE))
+    aud[, n_opcoes_xlsform := vapply(xlsform_list_name, function(ll) length(monitora_correcao_choices_xlsform(ll, meta_xls)), integer(1))]
+    aud[, widget_valor := vapply(atributo_coluna_registros_corrig, function(aa) monitora_painel_widget_valor_atributo(aa, "update"), character(1))]
+    aud[tipo_base_edicao == "select_multiple", widget_valor := "selectize_tokens"]
+    aud[tipo_base_edicao == "select_one", widget_valor := "selectize_unico"]
+    aud[, status_controle := "ok"]
+    aud[tipo_base_edicao %in% c("select_one", "select_multiple") & n_opcoes_xlsform < 1L, status_controle := "bloqueado_sem_dominio_xlsform"]
+    aud[tipo_base_edicao == "select_multiple" & grepl("(^|;)update(;|$)|(^|;)clear(;|$)", acoes_permitidas, perl = TRUE), status_controle := "erro_lista_tokens_com_operacao_valor_total"]
+    aud[, timestamp := format(Sys.time(), "%Y-%m-%d %H:%M:%S")]
+    cols <- intersect(c(
+      "timestamp", "atributo_coluna_registros_corrig", "ordem_template_sismonitora", "atributos_template_sismonitora",
+      "tipo_base_edicao", "xlsform_tipo", "xlsform_list_name", "n_opcoes_xlsform", "acoes_permitidas",
+      "widget_valor", "status_controle", "painel_motivo_bloqueio"
+    ), names(aud))
+    arq <- file.path(monitora_publicacao_b_output_dir(), "auditoria_painel_controle_atributos.csv")
+    dir.create(dirname(arq), recursive = TRUE, showWarnings = FALSE)
+    try(monitora_fwrite(aud[, ..cols], arq, na = ""), silent = TRUE)
+    if (exists("monitora_correcao_console_msg", mode = "function")) {
+      tab <- aud[, .N, by = status_controle]
+      monitora_correcao_console_msg("Auditoria de controle de atributos do painel gravada: ", arq, "; ", paste(paste0(tab$status_controle, "=", tab$N), collapse = "; "))
+    }
+    invisible(TRUE)
   }
   monitora_painel_validar_entrada <- function(atributo, acao, valor_novo, valor_original = NA_character_) {
     col <- monitora_correcao_resolver_coluna(dt, atributo, dict)
@@ -13446,6 +13948,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       escolhas = escolhas
     )
   }
+
+  try(monitora_painel_gravar_auditoria_controle_atributos(), silent = TRUE)
 
   monitora_painel_detalhar_forma_vida_contratual <- function(atributo, acao, valor_novo) {
     info <- monitora_painel_info_contrato_atributo(atributo)
@@ -14400,11 +14904,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::actionButton("excluir_coletas_filtradas", "Adicionar exclusão da(s) COLETA(s) selecionada(s)", class = "btn-danger"),
         shiny::helpText("Exclusão de COLETAS: em escopo 'Coleta individual', remove todos os registros da COLETA selecionada acima; em escopo 'Coletas do lote', remove todos os registros das COLETAS listadas no lote. A operação é sempre atômica EXCCOL, inclusive para uma única COLETA, e exige confirmação de abrangência e justificativa."),
         shiny::uiOutput("ui_ponto"),
-        shiny::selectizeInput("atributo", "Atributo / coluna a corrigir", choices = dict$atributo_coluna_registros_corrig, selected = dict$atributo_coluna_registros_corrig[1], options = list(placeholder = "Digite para buscar a coluna")),
+        shiny::selectizeInput("atributo", "Atributo do template SISMONITORA a corrigir", choices = escolhas_atributos_painel, selected = unname(escolhas_atributos_painel)[1], options = list(placeholder = "Digite para buscar atributo contratual do template", maxOptions = 5000)),
+        shiny::helpText("A lista acima é contratual/global: mostra atributos de registros_corrig que constam no template SISMONITORA/XLSForm 2025, independentemente da COLETA, do ponto selecionado ou de já haver valor preenchido no atributo. Campos técnicos, auxiliares ou fora do template ficam fora das operações do bolsista."),
         shiny::radioButtons("escopo", "Escopo da aplicação", choices = c("Aplicar aos 101 registros da coleta" = "coleta_inteira", "Aplicar apenas ao ponto selecionado" = "ponto"), selected = "coleta_inteira"),
-        shiny::selectInput("acao", "Ação", choices = monitora_painel_acoes_atributo(dict$atributo_coluna_registros_corrig[1L])),
-        shiny::textAreaInput("valor_original", "Valor original esperado (trava; opcional, mas recomendado)", value = "", rows = 2),
-        shiny::textAreaInput("valor_novo", "Valor novo / token", value = "", rows = 2),
+        shiny::selectInput("acao", "Ação", choices = monitora_painel_acoes_atributo(unname(escolhas_atributos_painel)[1L])),
+        shiny::helpText("A ação disponível depende do tipo do atributo. Campos de lista múltipla não aceitam substituição do valor inteiro: use adicionar, remover ou substituir token."),
+        shiny::textAreaInput("valor_original", "Valor original esperado / token origem (trava; opcional, mas recomendado)", value = "", rows = 2),
+        shiny::uiOutput("ui_valor_novo_controle"),
         shiny::uiOutput("ui_contrato_entrada_info"),
         shiny::uiOutput("ui_habito_correcao_contratual"),
         shiny::numericInput("n_esperado", "Número esperado de linhas-alvo", value = 101, min = 1, step = 1),
@@ -14590,6 +15096,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(shiny::updateSelectInput(session, "ponto", selected = ""), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "valor_original", value = ""), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
+      try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
+      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "motivo", value = ""), silent = TRUE)
       try(shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira"), silent = TRUE)
       try(shiny::updateSelectInput(session, "acao", selected = "update"), silent = TRUE)
@@ -14609,6 +15119,38 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
 
+
+    output$ui_valor_novo_controle <- shiny::renderUI({
+      atributo <- monitora_painel_valor(input$atributo)
+      acao_norm <- monitora_correcao_acao_normalizar(input$acao)
+      if (!nzchar(atributo)) return(NULL)
+      info <- tryCatch(monitora_painel_info_contrato_atributo(atributo), error = function(e) list(tipo = "text", list_name = NA_character_, escolhas = character(0)))
+      tipo <- as.character(info$tipo)[1L]
+      if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
+      if (acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) {
+        return(shiny::div(class = "alert alert-warning", "Esta ação não usa valor novo. O valor será limpo ou recalculado pelo contrato do script."))
+      }
+      if (tipo == "select_one") {
+        choices <- monitora_painel_choices_valor_atributo(atributo, acao_norm, incluir_observados = FALSE)
+        if (!length(choices)) return(shiny::div(class = "alert alert-danger", "Domínio XLSForm indisponível para este atributo; edição bloqueada até o dicionário ser saneado."))
+        return(shiny::selectizeInput("valor_novo", "Valor novo", choices = choices, selected = character(0), multiple = FALSE, options = list(placeholder = "Escolha um valor do domínio XLSForm")))
+      }
+      if (tipo == "select_multiple") {
+        incluir_obs <- acao_norm %in% c("remove_token", "remover_token")
+        choices <- monitora_painel_choices_valor_atributo(atributo, acao_norm, incluir_observados = incluir_obs)
+        if (!length(choices)) return(shiny::div(class = "alert alert-danger", "Domínio XLSForm indisponível para esta lista de tokens; edição bloqueada até o dicionário ser saneado."))
+        lab <- if (acao_norm %in% c("append_token", "adicionar_token")) "Token(s) a adicionar" else if (acao_norm %in% c("remove_token", "remover_token")) "Token(s) a remover" else "Token novo"
+        mult <- acao_norm %in% c("append_token", "adicionar_token", "remove_token", "remover_token")
+        return(shiny::selectizeInput("valor_novo", lab, choices = choices, selected = character(0), multiple = mult, options = list(placeholder = "Escolha token(s); não digite valor total do campo", plugins = if (mult) list("remove_button") else NULL)))
+      }
+      if (tipo == "date") return(shiny::dateInput("valor_novo", "Valor novo", value = NULL, format = "yyyy-mm-dd"))
+      if (tipo == "integer") return(shiny::numericInput("valor_novo", "Valor novo inteiro", value = NA, step = 1))
+      if (tipo == "decimal") return(shiny::numericInput("valor_novo", "Valor novo decimal", value = NA, step = 0.01))
+      if (tipo == "time") return(shiny::textInput("valor_novo", "Valor novo de hora", value = "", placeholder = "HH:MM:SS.000-03:00"))
+      if (tipo == "datetime") return(shiny::textInput("valor_novo", "Valor novo de data/hora", value = "", placeholder = "YYYY-MM-DDTHH:MM:SS-03:00"))
+      if (tipo == "geopoint") return(shiny::textInput("valor_novo", "Valor novo de coordenada", value = "", placeholder = "lat lon [alt acc]"))
+      shiny::textAreaInput("valor_novo", "Valor novo", value = "", rows = 2)
+    })
 
     output$ui_contrato_entrada_info <- shiny::renderUI({
       atributo <- monitora_painel_valor(input$atributo)
@@ -16770,7 +17312,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     monitora_painel_publicacao_t_atualizar_valor_original <- function() {
-      ### v2.5.4:
+      ### v2.5.5:
       ### atualiza a trava com o valor calculado pelo escopo efetivo atual.
       ### Chamada após mudanças automáticas de escopo para evitar que o campo
       ### permaneça vazio por uma reação transitória anterior.
@@ -16780,7 +17322,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
     shiny::observeEvent(input$coleta, {
-      ### v2.5.4:
+      ### v2.5.5:
       ### escolher explicitamente uma COLETA no campo principal deve recolocar o
       ### painel em escopo de COLETAS = Coleta individual. O lote continua
       ### disponível, mas só é usado quando selecionado de forma explícita.
@@ -16791,7 +17333,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$ponto, {
-      ### v2.5.4:
+      ### v2.5.5:
       ### escolher um ponto amostral válido implica escopo de aplicação pontual.
       ### Isso elimina a ambiguidade ponto selecionado + escopo de 101 registros
       ### e faz o Valor original esperado voltar a ser preenchido com o valor da
@@ -16815,11 +17357,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       esc <- monitora_painel_escopo_efetivo_atributo(input$atributo, esc)
       acoes <- monitora_painel_acoes_atributo(input$atributo)
       shiny::updateSelectInput(session, "acao", choices = acoes, selected = if (length(acoes)) unname(acoes)[1L] else character(0))
+      try(shiny::updateTextAreaInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
+      try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
+      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
       if (isTRUE(monitora_painel_usar_lote_coletas())) {
         shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira")
         shiny::updateNumericInput(session, "n_esperado", value = 101)
       } else {
-        ### v2.5.4:
+        ### v2.5.5:
         ### se já existe ponto amostral selecionado, o estado operacional do
         ### formulário deve permanecer em escopo de ponto, mesmo que a troca de
         ### atributo dispare a sugestão padrão do dicionário. Isso evita o
@@ -16834,6 +17381,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
     }, ignoreInit = FALSE)
+
+    shiny::observeEvent(input$acao, {
+      try(shiny::updateTextAreaInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
+      try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
+      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
+    }, ignoreInit = TRUE)
 
     shiny::observeEvent(
       list(input$coleta, input$atributo, input$escopo, input$ponto, input$filtro_uc, input$filtro_ea, input$filtro_ano, input$filtro_ciclo, input$filtro_campanha, input$filtro_ua),
@@ -17006,8 +17561,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           return(NULL)
         }
         acao_val <- monitora_painel_valor(input$acao)
-        if (!(acao_val %in% c("update", "clear"))) {
-          monitora_painel_notificar("Lote de COLETAS permite apenas 'Substituir valor' ou 'Limpar valor'.", type = "error", duration = 10)
+        info_lote <- monitora_painel_info_contrato_atributo(atributo_sel)
+        acoes_lote_permitidas <- if (identical(info_lote$tipo, "select_multiple")) c("append_token", "remove_token", "replace_token") else c("update", "clear")
+        if (!(acao_val %in% acoes_lote_permitidas)) {
+          msg_lote <- if (identical(info_lote$tipo, "select_multiple")) {
+            "Lote de COLETAS em lista de tokens permite apenas Adicionar token, Remover token ou Substituir token; não substitui o valor total do campo."
+          } else {
+            "Lote de COLETAS permite apenas 'Substituir valor' ou 'Limpar valor' para atributos de valor único."
+          }
+          monitora_painel_notificar(msg_lote, type = "error", duration = 10)
           return(NULL)
         }
         valid_entrada_lote <- monitora_painel_validar_entrada(atributo_sel, acao_val, monitora_painel_valor(input$valor_novo), monitora_painel_valor(input$valor_original))
@@ -17113,7 +17675,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       ponto_val <- monitora_painel_valor(input$ponto)
       escopo_efetivo <- monitora_painel_escopo_efetivo_atributo(atributo_sel, input$escopo)
-      ### v2.5.4: trava defensiva no momento de
+      ### v2.5.5: trava defensiva no momento de
       ### adicionar a operação. Se há ponto selecionado e o atributo aceita
       ### escopo pontual, a operação deve ser registrada como ponto, mesmo que
       ### alguma reação transitória ainda tenha deixado input$escopo em
@@ -18094,10 +18656,39 @@ MONITORA_PROGRESSO_ALVO_CHECKPOINT <- c(
   extracao_ano_data = 4150L,
   deduplicacao_final_ponto_ano = 4250L,
   auditoria_datas_pontos = 4350L,
+  correcao_ponto_metro = 4430L,
+  auditoria_coletas_ua_ano_duplicadas_pre_correcoes = 4460L,
+  validacao_espacial_pre_painel = 4490L,
+  relatorios_suporte_pre_painel = 4520L,
+  painel_correcoes_preparacao_shiny = 4540L,
   painel_correcoes_painel_encerrado = 4550L,
+  painel_correcoes_operacoes_atomicas_pre_recalculo_data = 4620L,
+  recalculo_data_hora_pos_correcoes = 4680L,
+  recalculo_data_hora_pos_correcoes_pulado = 4680L,
   painel_correcoes_aplicacao_arquivo = 4750L,
+  painel_correcoes_auditoria_semantica = 4820L,
   painel_correcoes_validacao_dependencias = 4920L,
+  relatorios_suporte_pos_correcoes = 4940L,
+  relatorios_suporte_pos_correcoes_pulados = 4940L,
+  validacao_espacial_aplicacao_correcoes = 4945L,
+  validacao_espacial_pos_painel = 4948L,
+  auditoria_coletas_ua_ano_duplicadas_pos_correcoes = 4949L,
   painel_correcoes_campos = 4950L,
+  checkpoint_registros_corrig_inicio = 4970L,
+  sanitizacao_contratual_pos_painel_pre_registros_corrig = 4980L,
+  fechamento_contratual_registros_corrig = 4990L,
+  reordenacao_registros_corrig_pre_materializacao = 5000L,
+  contrato_xlsform_matriz_mapeamento = 5015L,
+  contrato_xlsform_regras_relevance_normalizacao = 5025L,
+  contrato_xlsform_validacao_dominios = 5030L,
+  contrato_xlsform_validacao_condicionais = 5035L,
+  contrato_xlsform_validacao_sanitizacao = 5040L,
+  auditoria_contrato_registros_corrig_xlsform21 = 5045L,
+  selo_dirty_flags_registros_corrig = 5048L,
+  checkpoint_materializacao_registros_corrig_inicio = 5049L,
+  checkpoint_materializacao_registros_corrig_fim = 5050L,
+  checkpoint_auditoria_persistencia_correcoes = 5050L,
+  checkpoint_parcial_registros_corrig = 5050L,
   preparacao_stat_inicio = 5050L,
   preparacao_stat_sum_categ = 5100L,
   preparacao_stat_sum_forma_nativa = 5130L,
@@ -18378,6 +18969,36 @@ monitora_progresso_definir_valor <- function(valor, etapa = NA_character_, detal
 monitora_progresso_alvo_checkpoint <- function(etapa) {
   etapa <- as.character(etapa)[1]
   if (is.na(etapa) || !nzchar(etapa)) return(NA_integer_)
+
+  # Em modos parciais que encerram em registros_corrig.csv, a faixa pós-painel
+  # precisa representar o fechamento contratual e a materialização do produto,
+  # não as estatísticas/gráficos que não serão executados. Isso evita o salto
+  # visual 50% -> 100% observado em painel_e_parar.
+  if (isTRUE(get0("MONITORA_PARAR_APOS_REGISTROS_CORRIG", ifnotfound = FALSE, inherits = TRUE))) {
+    mapa_parcial_registros_corrig <- c(
+      painel_correcoes_campos = 5000L,
+      checkpoint_registros_corrig_inicio = 5150L,
+      sanitizacao_contratual_pos_painel_pre_registros_corrig = 5700L,
+      fechamento_contratual_registros_corrig = 6350L,
+      reordenacao_registros_corrig_pre_materializacao = 6500L,
+      contrato_xlsform_matriz_mapeamento = 9000L,
+      contrato_xlsform_regras_relevance_normalizacao = 9220L,
+      contrato_xlsform_validacao_dominios = 9350L,
+      contrato_xlsform_validacao_condicionais = 9450L,
+      contrato_xlsform_validacao_sanitizacao = 9520L,
+      auditoria_contrato_registros_corrig_xlsform21 = 9580L,
+      selo_dirty_flags_registros_corrig = 9640L,
+      checkpoint_materializacao_registros_corrig_inicio = 9700L,
+      checkpoint_materializacao_registros_corrig_fim = 9780L,
+      checkpoint_auditoria_persistencia_correcoes = 9820L,
+      checkpoint_parcial_registros_corrig = 9850L,
+      fim_execucao = 9950L
+    )
+    if (etapa %in% names(mapa_parcial_registros_corrig)) {
+      return(as.integer(mapa_parcial_registros_corrig[[etapa]]))
+    }
+  }
+
   if (etapa %in% names(MONITORA_PROGRESSO_ALVO_CHECKPOINT)) {
     return(as.integer(MONITORA_PROGRESSO_ALVO_CHECKPOINT[[etapa]]))
   }
@@ -18610,8 +19231,8 @@ monitora_registros_importados_reordenar <- function(dt) {
 }
 
 
-### v2.5.4 ------------------------
-### v2.5.4 ----------------------------------
+### v2.5.5 ------------------------
+### v2.5.5 ----------------------------------
 ### Escreve registros_importados.csv mesmo quando os CSVs históricos geram
 ### cabeçalhos duplicados. O data.table::fwrite() não aceita nomes duplicados no
 ### objeto, mesmo quando col.names = FALSE em alguns caminhos. Por isso o corpo é
@@ -18646,7 +19267,7 @@ monitora_publicacao_i_file_append_binary <- function(destino, arquivos) {
 monitora_publicacao_h_csv_quote <- monitora_publicacao_i_csv_quote
 
 monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
-  ### v2.5.4: caminho único e robusto de escrita do snapshot bruto.
+  ### v2.5.5: caminho único e robusto de escrita do snapshot bruto.
   ### Requisitos:
   ### - aceitar nomes duplicados herdados de XLSForms históricos;
   ### - não normalizar valores;
@@ -18660,7 +19281,11 @@ monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
   }
 
   out <- if (data.table::is.data.table(x)) data.table::copy(x) else data.table::as.data.table(x)
-  nomes_originais <- names(out)
+  ### publicação: copiar explicitamente o vetor de nomes antes de setnames().
+  ### Em data.table, names(out) pode compartilhar referência interna; se o vetor
+  ### for mantido por referência, o setnames(out, nomes_internos) pode vazar para
+  ### o cabeçalho manual e produzir MONITORA_COL_00001... no CSV final.
+  nomes_originais <- enc2utf8(as.character(base::names(out)))
   if (!length(nomes_originais)) stop("registros_importados.csv bruto sem colunas.", call. = FALSE)
 
   duplicadas <- nomes_originais[duplicated(nomes_originais)]
@@ -18719,7 +19344,7 @@ monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
 
   invisible(list(ok = TRUE, colunas_duplicadas = unique(duplicadas)))
 }
-### FIM v2.5.4 ------------------------------
+### FIM v2.5.5 ------------------------------
 
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
@@ -18737,17 +19362,17 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
     dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
     dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
 
-    ### v2.5.4: materialização bruta e robusta. Duplicidades de cabeçalho são
+    ### v2.5.5: materialização bruta e robusta. Duplicidades de cabeçalho são
     ### preservadas no CSV de saída, pois fazem parte do snapshot fiel dos dados
     ### lidos. Para contornar a restrição de data.table::fwrite() a nomes
     ### duplicados, usamos nomes internos temporários únicos e escrevemos o
     ### cabeçalho original manualmente.
-    ### v2.5.4: não reordenar por nomes neste snapshot bruto. Bases históricas
+    ### v2.5.5: não reordenar por nomes neste snapshot bruto. Bases históricas
     ### podem conter nomes duplicados; a reordenação por nome aciona erros no
     ### data.table antes do gravador robusto. A ordem da montagem pós-rbindlist é
     ### preservada como melhor aproximação fiel da entrada consolidada.
     out <- if (data.table::is.data.table(dt)) data.table::copy(dt) else data.table::as.data.table(dt)
-    caminho <- file.path(output_dir, "registros_importados.csv")
+    caminho <- file.path(output_dir, "registros_importados_bruto.csv")
     escrita <- monitora_publicacao_h_fwrite_registros_importados(out, caminho, row.names = FALSE)
 
     duplicadas_dt <- data.table::data.table(
@@ -18762,14 +19387,14 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
 
     resumo <- data.table::data.table(
       exec_id = as.character(exec_id),
-      produto = "registros_importados.csv",
+      produto = "registros_importados_bruto.csv",
       contexto = as.character(contexto),
-      descricao = "Snapshot fiel da leitura/montagem dos arquivos de entrada antes de padronizações semânticas, harmonização de contratos históricos, deduplicação semântica e correções do usuário.",
+      descricao = "Snapshot técnico fiel da leitura/montagem dos arquivos de entrada antes de padronizações semânticas, harmonização de contratos históricos, deduplicação semântica e correções do usuário.",
       n_linhas = as.integer(nrow(out)),
       n_colunas = as.integer(ncol(out)),
       n_colunas_duplicadas = as.integer(length(unique(escrita$colunas_duplicadas))),
       caminho = monitora_privacidade_caminho_relativo(caminho),
-      observacao = "Arquivo montado pelo script a partir dos CSVs lidos; preserva valores como texto e preserva cabeçalhos duplicados quando presentes. Não é normalizado, não é harmonizado ao XLSForm atual, não é contrato SISMONITORA e não substitui registros_corrig.csv nem registros_validados.csv.",
+      observacao = "Arquivo técnico bruto montado pelo script a partir dos CSVs lidos; preserva valores como texto e preserva cabeçalhos duplicados quando presentes. O produto comparável para bolsista é registros_importados.csv saneado.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
     monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE)
@@ -18777,17 +19402,212 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_CONTEXTO", contexto_chr, envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
-      monitora_log_registrar_evento("registros_importados_exportado", "INFO", caminho, paste0("registros_importados.csv bruto gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "snapshot fiel de leitura/montagem; produto não normalizado e independente de registros_corrig")
+      monitora_log_registrar_evento("registros_importados_bruto_exportado", "INFO", caminho, paste0("registros_importados_bruto.csv gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "snapshot técnico fiel de leitura/montagem; produto bruto não comparável diretamente")
     }
     invisible(TRUE)
   }, error = function(e) {
-    warning("Falha ao gerar registros_importados.csv bruto: ", conditionMessage(e), call. = FALSE)
+    warning("Falha ao gerar registros_importados_bruto.csv: ", conditionMessage(e), call. = FALSE)
     invisible(FALSE)
   })
 }
 
 
-### v2.5.4 ---------------------------------
+### v2.5.5 publicação ---------------------------------
+### registros_importados.csv passa a ser produto saneado/comparável para uso do
+### bolsista. O snapshot fiel e potencialmente heterogêneo fica em
+### registros_importados_bruto.csv. A geração saneada ocorre depois do merge de
+### colunas duplicadas e da consolidação de aliases críticos, mas antes de
+### deduplicações finais, painel, exclusões e correções assistidas.
+
+monitora_registros_importados_chaves_preferenciais <- function() {
+  c(
+    "COLETA", "UC", "CICLO", "CAMPANHA", "EA", "UA", "PROTOCOLO",
+    "Data (data_hora)", "Horário (data_hora)", "ANO",
+    "ponto_amostral (amostragem/registro)", "ponto_metro (amostragem/registro)",
+    "**Encostam** na vareta: (amostragem/registro)",
+    "MONITORA_ARQUIVO_ORIGEM_EXECUCAO", "MONITORA_CAMINHO_ARQUIVO_ENTRADA",
+    "MONITORA_ARQUIVO_ENTRADA", "MONITORA_TIPO_ENTRADA", ".id"
+  )
+}
+
+monitora_registros_importados_saneado_preparar <- function(dt, contexto = "pos_consolidacao_aliases_importacao") {
+  if (!inherits(dt, c("data.frame", "data.table"))) stop("registros_importados saneado exige data.frame/data.table.", call. = FALSE)
+  out <- if (data.table::is.data.table(dt)) data.table::copy(dt) else data.table::as.data.table(dt)
+
+  ### Segurança: se a função for chamada fora do ponto previsto, ainda consolida
+  ### duplicatas/aliases antes de materializar o produto de comparação.
+  if (anyDuplicated(names(out)) && exists("monitora_dt_consolidar_colunas_duplicadas", mode = "function")) {
+    out <- monitora_dt_consolidar_colunas_duplicadas(out)
+  }
+  if (exists("monitora_dt_consolidar_aliases_colunas", mode = "function")) {
+    out <- monitora_dt_consolidar_aliases_colunas(out)
+  }
+
+  if (anyDuplicated(names(out))) {
+    data.table::setnames(out, make.unique(names(out), sep = "__dup"))
+  }
+
+  chaves <- monitora_registros_importados_chaves_preferenciais()
+  ordem <- unique(c(intersect(chaves, names(out)), names(out)))
+  data.table::setcolorder(out, ordem)
+
+  attr(out, "monitora_contexto_registros_importados_saneado") <- contexto
+  out[]
+}
+
+monitora_registros_importados_saneado_exportar <- function(dt,
+                                                           output_dir = MONITORA_OUTPUT_DIR,
+                                                           log_dir = MONITORA_LOG_DIR,
+                                                           exec_id = MONITORA_EXEC_ID,
+                                                           contexto = "pos_consolidacao_aliases_importacao") {
+  tryCatch({
+    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+    dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
+    out <- monitora_registros_importados_saneado_preparar(dt, contexto = contexto)
+    caminho <- file.path(output_dir, "registros_importados.csv")
+    monitora_fwrite(out, caminho, row.names = FALSE, na = "")
+
+    chaves <- monitora_registros_importados_chaves_preferenciais()
+    resumo <- data.table::data.table(
+      exec_id = as.character(exec_id),
+      produto = "registros_importados.csv",
+      contexto = as.character(contexto)[1L],
+      descricao = "Produto saneado de entrada, com cabeçalhos canônicos/legíveis e comparável a registros_corrig.csv e registros_validados.csv por COLETA e demais chaves.",
+      n_linhas = as.integer(nrow(out)),
+      n_colunas = as.integer(ncol(out)),
+      chaves_presentes = paste(intersect(chaves, names(out)), collapse = " | "),
+      chaves_ausentes = paste(setdiff(chaves, names(out)), collapse = " | "),
+      caminho = monitora_privacidade_caminho_relativo(caminho),
+      observacao = "Gerado após normalização inicial de nomes/aliases e antes de deduplicação final, painel, exclusões e correções assistidas. Use este arquivo para comparação operacional; use registros_importados_bruto.csv para auditoria técnica fiel da leitura.",
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE, na = "")
+    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE, na = "")
+
+    assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
+    assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_CONTEXTO", as.character(contexto)[1L], envir = .GlobalEnv)
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento("registros_importados_saneado_exportado", "INFO", caminho, paste0("registros_importados.csv saneado gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "produto comparável para curadoria")
+    }
+    invisible(TRUE)
+  }, error = function(e) {
+    warning("Falha ao gerar registros_importados.csv saneado: ", conditionMessage(e), call. = FALSE)
+    invisible(FALSE)
+  })
+}
+
+monitora_registros_importados_coluna_coleta <- function(dt) {
+  if (!inherits(dt, c("data.frame", "data.table"))) return(NA_character_)
+  nms <- names(dt)
+  if ("COLETA" %in% nms) return("COLETA")
+  if ("coleta" %in% nms) return("coleta")
+  if (exists("monitora_txt_canonicalizar_coluna", mode = "function")) {
+    canon <- monitora_txt_canonicalizar_coluna(nms)
+  } else {
+    canon <- tolower(trimws(gsub("_", " ", nms, fixed = TRUE)))
+  }
+  idx <- which(canon %in% c("coleta", "id coleta", "codigo coleta", "amostragem/coleta"))[1L]
+  if (!is.na(idx)) return(nms[idx])
+  NA_character_
+}
+
+monitora_registros_importados_contar_coletas <- function(dt, produto) {
+  if (!inherits(dt, c("data.frame", "data.table"))) {
+    return(data.table::data.table(COLETA = character(), produto = character(), n_registros = integer()))
+  }
+  dtx <- data.table::as.data.table(dt)
+  col <- monitora_registros_importados_coluna_coleta(dtx)
+  if (is.na(col) || !nzchar(col) || !(col %in% names(dtx))) {
+    return(data.table::data.table(COLETA = character(), produto = character(), n_registros = integer()))
+  }
+  coleta <- trimws(as.character(dtx[[col]]))
+  coleta[coleta %in% c("", "NA", "NaN", "NULL", "---")] <- NA_character_
+  ans <- data.table::data.table(COLETA = coleta)
+  ans <- ans[!is.na(COLETA) & nzchar(COLETA), .(n_registros = .N), by = COLETA]
+  ans[, produto := as.character(produto)[1L]]
+  data.table::setcolorder(ans, c("produto", "COLETA", "n_registros"))
+  ans[]
+}
+
+monitora_registros_importados_auditar_comparacao_produtos <- function(output_dir = MONITORA_OUTPUT_DIR,
+                                                                      log_dir = MONITORA_LOG_DIR,
+                                                                      exec_id = MONITORA_EXEC_ID,
+                                                                      contexto = "comparacao_produtos") {
+  tryCatch({
+    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+    dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
+    arquivos <- c(
+      registros_importados = file.path(output_dir, "registros_importados.csv"),
+      registros_corrig = file.path(output_dir, "registros_corrig.csv"),
+      registros_validados = file.path(output_dir, "registros_validados.csv")
+    )
+    ler <- function(path) {
+      if (!file.exists(path) || !isTRUE(file.info(path)$size > 0)) return(NULL)
+      data.table::fread(path, encoding = "UTF-8", showProgress = FALSE, colClasses = "character", na.strings = c(""))
+    }
+    tabs <- lapply(arquivos, ler)
+    counts <- list()
+    for (nm in names(tabs)) {
+      if (!is.null(tabs[[nm]])) counts[[nm]] <- monitora_registros_importados_contar_coletas(tabs[[nm]], nm)
+    }
+    if (!length(counts)) return(invisible(data.table::data.table()))
+    cc <- data.table::rbindlist(counts, fill = TRUE, use.names = TRUE)
+    wide <- data.table::dcast(cc, COLETA ~ produto, value.var = "n_registros", fill = 0L)
+    for (col in c("registros_importados", "registros_corrig", "registros_validados")) {
+      if (!(col %in% names(wide))) wide[, (col) := 0L]
+    }
+    wide[, em_importados := registros_importados > 0L]
+    wide[, em_corrig := registros_corrig > 0L]
+    wide[, em_validados := registros_validados > 0L]
+    wide[, status := data.table::fcase(
+      (em_corrig | em_validados) & !em_importados, "produto_final_sem_importado",
+      em_importados & !em_corrig & !em_validados, "somente_importado",
+      em_importados & em_corrig & em_validados, "presente_nos_tres",
+      em_importados & em_corrig & !em_validados, "importado_e_corrig_sem_validado",
+      em_importados & !em_corrig & em_validados, "importado_e_validado_sem_corrig",
+      default = "outro"
+    )]
+    wide[, diferenca_n_corrig_importados := as.integer(registros_corrig - registros_importados)]
+    wide[, diferenca_n_validados_importados := as.integer(registros_validados - registros_importados)]
+    data.table::setorder(wide, status, COLETA)
+
+    arq <- file.path(output_dir, "auditoria_registros_importados_vs_corrig_validados.csv")
+    monitora_fwrite(wide, arq, row.names = FALSE, na = "")
+
+    resumo <- data.table::data.table(
+      exec_id = as.character(exec_id),
+      contexto = as.character(contexto)[1L],
+      produto_auditoria = basename(arq),
+      coletas_importados = as.integer(sum(wide$em_importados, na.rm = TRUE)),
+      coletas_corrig = as.integer(sum(wide$em_corrig, na.rm = TRUE)),
+      coletas_validados = as.integer(sum(wide$em_validados, na.rm = TRUE)),
+      coletas_corrig_fora_importados = as.integer(sum(wide$em_corrig & !wide$em_importados, na.rm = TRUE)),
+      coletas_validados_fora_importados = as.integer(sum(wide$em_validados & !wide$em_importados, na.rm = TRUE)),
+      coletas_somente_importados = as.integer(sum(wide$em_importados & !wide$em_corrig & !wide$em_validados, na.rm = TRUE)),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_vs_corrig_validados_resumo.csv"), row.names = FALSE, na = "")
+    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_vs_corrig_validados_resumo_", exec_id, ".csv")), row.names = FALSE, na = "")
+
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      msg <- paste0(
+        "auditoria importados×corrig×validados: corrig_fora_importados=", resumo$coletas_corrig_fora_importados[1L],
+        "; validados_fora_importados=", resumo$coletas_validados_fora_importados[1L],
+        "; somente_importados=", resumo$coletas_somente_importados[1L]
+      )
+      nivel <- if (resumo$coletas_corrig_fora_importados[1L] > 0L || resumo$coletas_validados_fora_importados[1L] > 0L) "WARN" else "INFO"
+      monitora_log_registrar_evento("auditoria_importados_corrig_validados", nivel, arq, msg, contexto)
+    }
+    invisible(wide)
+  }, error = function(e) {
+    warning("Falha na auditoria registros_importados × registros_corrig × registros_validados: ", conditionMessage(e), call. = FALSE)
+    invisible(data.table::data.table())
+  })
+}
+### FIM v2.5.5 publicação -----------------------------
+
+
+### v2.5.5 ---------------------------------
 ### Em modos que retomam por registros_corrig.csv, registros_importados.csv não é
 ### produto da execução corrente. Se houver arquivo legado em output/, ele é
 ### auditado como legado/não aplicável para evitar interpretação de que representa
@@ -18837,7 +19657,7 @@ monitora_registros_importados_auditar_nao_aplicavel <- function(output_dir = MON
     invisible(data.table::data.table())
   })
 }
-### FIM v2.5.4 -----------------------------
+### FIM v2.5.5 -----------------------------
 
 monitora_registros_corrig_reordenar_colunas <- function(dt) {
   dt <- monitora_dt_referenciar(dt)
@@ -18885,11 +19705,25 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
     obj <- prep$registros_corrig
   }
   caminho_produto <- file.path(MONITORA_OUTPUT_DIR, produto)
+  if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
+    monitora_perf_registrar_checkpoint(
+      "checkpoint_materializacao_registros_corrig_inicio",
+      paste0("iniciando materialização do produto parcial: ", produto),
+      obj
+    )
+  }
   if (identical(basename(produto), "registros_corrig.csv") &&
       exists("monitora_publicacao_aa_exportar_registros_corrig_aprovado", mode = "function")) {
     monitora_publicacao_aa_exportar_registros_corrig_aprovado(obj, caminho_produto, contexto = "checkpoint_parcial_registros_corrig", abortar = TRUE)
   } else {
     monitora_fwrite(obj, caminho_produto, row.names = FALSE)
+  }
+  if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
+    monitora_perf_registrar_checkpoint(
+      "checkpoint_materializacao_registros_corrig_fim",
+      paste0("produto parcial gravado em disco: ", produto),
+      obj
+    )
   }
   if (identical(basename(produto), "registros_corrig.csv") &&
       exists("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE) &&
@@ -18907,6 +19741,13 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
       )
     }
   }
+  if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
+    monitora_perf_registrar_checkpoint(
+      "checkpoint_auditoria_persistencia_correcoes",
+      "auditoria de persistência das correções no produto parcial concluída ou não aplicável",
+      obj
+    )
+  }
 
   if (isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE)) &&
       identical(basename(produto), "registros_corrig.csv") &&
@@ -18919,6 +19760,16 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
       abortar = TRUE,
       forcar = TRUE,
       contrato_corrig_validado = TRUE
+    )
+  }
+
+  if (identical(basename(produto), "registros_corrig.csv") &&
+      exists("monitora_registros_importados_auditar_comparacao_produtos", mode = "function")) {
+    monitora_registros_importados_auditar_comparacao_produtos(
+      output_dir = MONITORA_OUTPUT_DIR,
+      log_dir = MONITORA_LOG_DIR,
+      exec_id = MONITORA_EXEC_ID,
+      contexto = paste0("checkpoint_parcial_", as.character(motivo)[1L])
     )
   }
 
@@ -20040,6 +20891,7 @@ monitora_dt_consolidar_aliases_colunas <- function(dt) {
   dt <- monitora_dt_referenciar(dt)
   canon <- monitora_txt_canonicalizar_coluna(names(dt))
   alias_map <- list(
+    "COLETA" = c("coleta", "id_coleta", "id coleta", "codigo coleta", "código coleta", "amostragem/coleta"),
     "UC" = c("uc", "unidade de conservacao", "unidade de conservação"),
     "UA" = c("ua", "unidade amostral", "amostragem/unidade_amostral"),
     "CICLO" = c("ciclo", "ano ciclo", "ano_ciclo"),
@@ -20583,8 +21435,8 @@ monitora_auditoria_criar_resumo_achados <- function() {
 
 
 
-### v2.5.4
-### v2.5.4 -----------------------------
+### v2.5.5
+### v2.5.5 -----------------------------
 ### Sanitização contratual obrigatória antes de registros_validados.csv.
 ### A exportação 21FEV25 não deve herdar diretamente campos históricos de
 ### "outra forma de vida" nem dependentes de "desconhecida" quando o token
@@ -20683,7 +21535,7 @@ monitora_registros_validados_sanitizar_forma_outros_atual <- function(dt,
 }
 
 
-### v2.5.4 --------------------------
+### v2.5.5 --------------------------
 ### Regra taxonômica/contratual 21FEV25: não há Velloziaceae exótica conhecida
 ### para o escopo tratado. Registros históricos com canela_de_ema em formas
 ### exóticas devem migrar para a lista de formas nativas antes da validação do
@@ -20807,7 +21659,7 @@ monitora_publicacao_ab_migrar_canela_de_ema_exotica_para_nativa <- function(dt,
 
   list(dt = dt[], audit = audit[], afetacoes = unique(afetacoes), linhas = unique(idx), falha = FALSE)
 }
-### FIM v2.5.4 ----------------------
+### FIM v2.5.5 ----------------------
 
 monitora_registros_validados_gravar_auditoria_pre_sanitizacao <- function(audit, nome, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID) {
   audit <- data.table::as.data.table(audit)
@@ -20952,8 +21804,8 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
   }
   dt
 }
-### FIM v2.5.4
-### v2.5.4 -------------------------
+### FIM v2.5.5
+### v2.5.5 -------------------------
 
 ### Exportação opcional: registros_validados.csv ---------------------------
 ### As funções do contrato SISMONITORA são sempre carregadas para permitir
@@ -21352,7 +22204,7 @@ monitora_validados_normalizar_hora_hms_millis_tz <- function(x, tz_padrao = "-03
   yy <- gsub("T", " ", yy, fixed = TRUE)
   yy <- gsub(",", ".", yy, fixed = TRUE)
 
-  ## v2.5.4: contrato único para data_hora/hora. Aceita HH:MM,
+  ## v2.5.5: contrato único para data_hora/hora. Aceita HH:MM,
   ## HH:MM:SS, HH:MM:SS.mmm, hora com fuso -0300/-03:00, datetime
   ## completo/ISO com T e separador histórico com hífen (HH-MM ou
   ## HH-MM-SS). Emite sempre HH:MM:SS.mmm-03:00. Valores não
@@ -21475,9 +22327,9 @@ monitora_validados_formatar_valor <- function(x, formato = "texto", largura = NA
   y
 }
 
-### v2.5.4: ativação tardia do wrapper por valores distintos. Este ponto fica
+### v2.5.5: ativação tardia do wrapper por valores distintos. Este ponto fica
 ### depois da definição original de monitora_validados_formatar_valor; a seção
-### de helpers v2.5.4 é carregada antes, então o if inicial pode ter sido falso.
+### de helpers v2.5.5 é carregada antes, então o if inicial pode ter sido falso.
 if (exists("monitora_validados_formatar_valor", mode = "function") &&
     !exists("monitora_validados_formatar_valor_base_publicacao_aj", mode = "function")) {
   monitora_validados_formatar_valor_base_publicacao_aj <- monitora_validados_formatar_valor
@@ -21735,7 +22587,7 @@ monitora_validados_derivar_num_placa <- function(dt, alvo = c("num_placa", "num_
   p_num <- monitora_validados_pegar(dt, c("Número da plaqueta (amostragem)", "amostragem/num_placa", "num_placa"), n)
   p_ua <- monitora_validados_numero_ua(dt, n)
 
-  ## v2.5.4: não preservar texto inválido em campos de plaqueta. Usa-se
+  ## v2.5.5: não preservar texto inválido em campos de plaqueta. Usa-se
   ## extração numérica defensiva e fallback para UA; isso mantém o contrato
   ## de inteiro textual com zero à esquerda sem inventar valores quando já há
   ## número recuperável.
@@ -21937,7 +22789,7 @@ monitora_validados_normalizar_select_vetor <- function(x, lista, multiple = TRUE
 }
 
 monitora_validados_tem_token <- function(x, token) {
-  ### v2.5.4: caminho genérico sem regex para selected() de select_multiple.
+  ### v2.5.5: caminho genérico sem regex para selected() de select_multiple.
   ### Vale para contratos 2022/2023/2024/2025 porque todos usam tokens separados por espaço.
   x <- monitora_validados_limpar_ausencia_saida(x)
   if (!length(x)) return(logical(0))
@@ -22372,7 +23224,7 @@ monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, l
     return(monitora_validados_derivar_num_placa(dt, "num_placa_formatado"))
   }
   if (identical(atributo, "amostragem/registro/forma_vida_outros")) {
-    ## v2.5.4: registros_validados.csv não herda diretamente campos históricos
+    ## v2.5.5: registros_validados.csv não herda diretamente campos históricos
     ## de "outra forma de vida". Esses campos são consumidos e auditados pela
     ## sanitização validados em registros_corrig. A saída validada deve usar
     ## somente o campo atual 21FEV25 já sanitizado.
@@ -22475,7 +23327,7 @@ monitora_validados_auditar_cardinalidade <- function(out) {
 }
 
 
-### v2.5.4 --------------------
+### v2.5.5 --------------------
 ### Auditoria contratual do produto registros_corrig.csv nos atributos que
 ### alimentam registros_validados.csv. Ela reaproveita as interpretações,
 ### normalizações e validações do exportador validado, mas materializa o status no
@@ -22612,7 +23464,7 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
   }
   invisible(list(auditoria = contrato_auditoria, resumo = resumo))
 }
-### FIM v2.5.4 ----------------
+### FIM v2.5.5 ----------------
 
 monitora_registros_validados_exportar <- function(registros_corrig,
                                                   output_dir = MONITORA_OUTPUT_DIR,
@@ -22634,7 +23486,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
 
-  ### v2.5.4: quando registros_corrig já foi saneado e validado pelo contrato
+  ### v2.5.5: quando registros_corrig já foi saneado e validado pelo contrato
   ### XLSForm21 antes da materialização, registros_validados.csv deve herdar a
   ### matriz já montada/formatada na validação contratual. Isso evita repetir a
   ### interpretação completa do schema quando nada mudou desde o selo.
@@ -22731,7 +23583,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   }
 
   ## Recalcula métricas da auditoria de mapeamento após normalização/relevance.
-  ## v2.5.4: em auditoria contratual pré-registros_corrig, a integridade depende
+  ## v2.5.5: em auditoria contratual pré-registros_corrig, a integridade depende
   ## de vazios/bloqueios. uniqueN/exemplos em 129 colunas são diagnóstico rico,
   ## mas custoso; por padrão, ficam leves nesse modo e continuam completos na
   ## exportação final sem cache, quando ela realmente precisar rodar.
@@ -22883,7 +23735,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   data.table::fwrite(resumo, caminhos$resumo_log, sep = ",", quote = "auto", na = "")
   data.table::fwrite(resumo, caminhos$resumo_out, sep = ",", quote = "auto", na = "")
 
-  ### v2.5.4: modo de auditoria contratual de registros_corrig. Nesta chamada,
+  ### v2.5.5: modo de auditoria contratual de registros_corrig. Nesta chamada,
   ### o exportador monta a mesma matriz que alimentará registros_validados.csv,
   ### grava as auditorias e bloqueia antes da materialização de registros_corrig
   ### caso algum atributo do template 21FEV25 esteja inválido.
@@ -22948,7 +23800,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
 ### Fim da exportação opcional: registros_validados.csv ---------------------
 
 
-### v2.5.4 ----------------------------
+### v2.5.5 ----------------------------
 ### Fechamento único pós-painel/pre-materialização. Esta função torna
 ### registros_corrig.csv o produto mestre: sanitiza, fecha invariantes, audita
 ### contrato XLSForm21 nos atributos que alimentam registros_validados.csv e só
@@ -22969,7 +23821,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
 
   if (exists("monitora_publicacao_g_log", mode = "function")) {
-    monitora_publicacao_g_log("v2.5.4 fechamento mestre registros_corrig: contexto=", contexto, "; linhas=", nrow(dt))
+    monitora_publicacao_g_log("v2.5.5 fechamento mestre registros_corrig: contexto=", contexto, "; linhas=", nrow(dt))
   }
   if (exists("monitora_publicacao_ac_perf_checkpoint", mode = "function")) {
     monitora_publicacao_ac_perf_checkpoint("checkpoint_registros_corrig_inicio", paste0("início do fechamento contratual de registros_corrig; contexto=", contexto), dt)
@@ -23010,7 +23862,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
         isTRUE(monitora_publicacao_z_selo_registros_corrig_valido(dt)) &&
         isTRUE(get0("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", ifnotfound = FALSE, inherits = TRUE))) {
       if (exists("monitora_publicacao_g_log", mode = "function")) {
-        monitora_publicacao_g_log("v2.5.4 fechamento mestre registros_corrig reutilizado; selo contratual válido; contexto=", contexto)
+        monitora_publicacao_g_log("v2.5.5 fechamento mestre registros_corrig reutilizado; selo contratual válido; contexto=", contexto)
       }
     } else {
       monitora_publicacao_c_normalizar_contratos_pre_exportacao(dt, contexto = contexto)
@@ -23092,7 +23944,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
   }
   invisible(TRUE)
 }
-### FIM v2.5.4 ------------------------
+### FIM v2.5.5 ------------------------
 
 monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL) {
   # Deduplicação semântica com tabela auxiliar estreita.
@@ -23937,7 +24789,7 @@ monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_IO_D
   out[]
 }
 
-### v2.5.4 ----------------------------------
+### v2.5.5 ----------------------------------
 ### Modos registros_corrig_* e painel_incremental_* retomam de um produto
 ### corrigido já produzido pelo script. Essa entrada não reconstrói
 ### registros_importados.csv e não mistura correções antigas com a sessão atual.
@@ -24386,7 +25238,7 @@ monitora_recurso_controlar("concatenacao_rbindlist_pos", risco = "normal", objet
 data.table::setalloccol(registros, ncol(registros) + 8L)
 data.table::set(registros, j = "MONITORA_ARQUIVO_ENTRADA", value = as.character(registros[["MONITORA_ARQUIVO_ORIGEM_EXECUCAO"]]))
 data.table::set(registros, j = ".id", value = registros[["MONITORA_ARQUIVO_ENTRADA"]])
-### v2.5.4: registros_importados.csv é produto seletivo. A exportação bruta
+### v2.5.5: registros_importados.csv é produto seletivo. A exportação bruta
 ### só executa quando solicitada explicitamente ou quando necessária antes do
 ### painel. Em execuções sem painel e com opção "N", não há custo nem bloqueio.
 ok_registros_importados <- TRUE
@@ -24401,8 +25253,8 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
   )
   if (!isTRUE(ok_registros_importados)) {
     stop(
-      "Falha ao materializar registros_importados.csv bruto logo após a leitura/concatenação dos CSVs. ",
-      "Este produto é obrigatório quando solicitado ou quando o painel será aberto, e é independente da criação posterior de registros_corrig.csv.",
+      "Falha ao materializar registros_importados_bruto.csv logo após a leitura/concatenação dos CSVs. ",
+      "Este produto técnico é obrigatório quando solicitado ou quando o painel será aberto, e é independente da criação posterior de registros_corrig.csv.",
       call. = FALSE
     )
   }
@@ -24434,6 +25286,26 @@ if (!is.null(col_audit_import) && nrow(col_audit_import) > 0) {
 registros <- monitora_dt_consolidar_aliases_colunas(registros)
 monitora_recurso_controlar("consolidacao_aliases_importacao", risco = "alto", objeto = registros, force_log = TRUE)
 monitora_perf_registrar_checkpoint("consolidacao_aliases_importacao", "coalesce de aliases críticos antes da criação de registros_corrig", registros)
+
+### publicação: materializa o produto de comparação do bolsista depois da consolidação
+### inicial de nomes/aliases, preservando o bruto em registros_importados_bruto.csv.
+if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = FALSE, inherits = TRUE))) {
+  ok_registros_importados_saneado <- monitora_registros_importados_saneado_exportar(
+    registros,
+    output_dir = MONITORA_OUTPUT_DIR,
+    log_dir = MONITORA_LOG_DIR,
+    exec_id = MONITORA_EXEC_ID,
+    contexto = "pos_consolidacao_aliases_importacao_pre_registros_corrig"
+  )
+  if (!isTRUE(ok_registros_importados_saneado)) {
+    stop(
+      "Falha ao materializar registros_importados.csv saneado após a consolidação inicial de colunas/aliases. ",
+      "Este é o produto comparável usado na curadoria por bolsista; o bruto técnico permanece em registros_importados_bruto.csv quando gerado.",
+      call. = FALSE
+    )
+  }
+  monitora_perf_registrar_checkpoint("registros_importados_saneado", "registros_importados.csv saneado/comparável materializado antes de registros_corrig", registros)
+}
 
 monitora_fwrite(csv_audit, file.path(MONITORA_LOG_DIR, paste0("auditoria_arquivos_csv_", MONITORA_EXEC_ID, ".csv")))
 monitora_io_resumir_fontes_por_tipo(csv_audit)
@@ -28421,7 +29293,9 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
   registros_corrig <- monitora_correcao_preparar_schema_edicao_painel(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES, contexto = "pre_dicionario_painel")
   MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES <- monitora_correcao_dicionario_atributos(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES)
   monitora_fwrite(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "dicionario_atributos_registros_corrig.csv"), na = "")
-  monitora_correcao_console_msg("Dicionário do painel preparado: ", nrow(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES), " atributo(s) disponíveis para correção.")
+  MONITORA_N_ATRIBUTOS_PAINEL_EDITAVEIS <- if ("painel_editavel" %in% names(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES)) sum(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES$painel_editavel %in% TRUE, na.rm = TRUE) else nrow(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES)
+  MONITORA_N_ATRIBUTOS_TEMPLATE_SISMONITORA <- if ("atende_template_sismonitora" %in% names(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES)) sum(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES$atende_template_sismonitora %in% TRUE, na.rm = TRUE) else NA_integer_
+  monitora_correcao_console_msg("Dicionário do painel preparado: ", nrow(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES), " atributo(s) em registros_corrig; ", MONITORA_N_ATRIBUTOS_TEMPLATE_SISMONITORA, " constante(s) no template SISMONITORA/XLSForm 2025; ", MONITORA_N_ATRIBUTOS_PAINEL_EDITAVEIS, " editável(is) exibido(s) ao bolsista.")
 
   if (isTRUE(MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL)) {
     MONITORA_RELATORIOS_SUPORTE_PRE_PAINEL <- monitora_relatorios_suporte_painel_gravar(registros_corrig, fase = "pre_painel", atualizar_saida_principal = TRUE)
@@ -34829,6 +35703,14 @@ if (exists("registros_corrig")) {
       contrato_corrig_validado = TRUE
     )
   }
+  if (exists("monitora_registros_importados_auditar_comparacao_produtos", mode = "function")) {
+    monitora_registros_importados_auditar_comparacao_produtos(
+      output_dir = MONITORA_OUTPUT_DIR,
+      log_dir = MONITORA_LOG_DIR,
+      exec_id = MONITORA_EXEC_ID,
+      contexto = "exportacao_final"
+    )
+  }
   monitora_relatorio_exoticas_gravar(registros_corrig, MONITORA_OUTPUT_DIR)
 }
 
@@ -37059,10 +37941,12 @@ monitora_auditar_produtos_finais <- function() {
     isTRUE(monitora_global_get("MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS", FALSE))
 
   espera_registros_validados <- isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_VALIDADOS", FALSE))
-  espera_registros_importados <- isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_IMPORTADOS", FALSE))
+  espera_registros_importados <- isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_IMPORTADOS", FALSE)) ||
+    isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", FALSE))
 
   produtos <- list(
-    produto_linha("registros_importados.csv", file.path(out_dir, "registros_importados.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "snapshot opcional e sensível de leitura/montagem dos arquivos de entrada"),
+    produto_linha("registros_importados.csv", file.path(out_dir, "registros_importados.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "produto saneado/comparável de entrada, antes de correções e deduplicações finais"),
+    produto_linha("registros_importados_bruto.csv", file.path(out_dir, "registros_importados_bruto.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "snapshot técnico bruto da leitura/montagem dos arquivos de entrada"),
     produto_linha("registros_corrig.csv", file.path(out_dir, "registros_corrig.csv"), "arquivo", TRUE, TRUE, 1L, "base corrigida final"),
     produto_linha("registros_validados.csv", file.path(out_dir, "registros_validados.csv"), "arquivo", espera_registros_validados, espera_registros_validados, 1L, "produto opcional no schema SISMONITORA 21FEV25"),
     produto_linha("registros_corrig_stat.csv", file.path(out_dir, "registros_corrig_stat.csv"), "arquivo", TRUE, TRUE, 1L, "base estatística final"),
