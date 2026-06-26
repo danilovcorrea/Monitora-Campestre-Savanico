@@ -2,148 +2,187 @@
 
 ## Versão pública atual
 
-- Versão: `v2.5.3`
-- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.3.R`](monitora_campsav_alvo_global_v2.5.3.R)
+- Versão: `v2.5.4`
+- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.4.R`](monitora_campsav_alvo_global_v2.5.4.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada no repositório: [`releases/v2.5.3/monitora_campsav_alvo_global_v2.5.3.R`](releases/v2.5.3/monitora_campsav_alvo_global_v2.5.3.R)
-- Assets auxiliares da publicação: [`release_assets/v2.5.3/`](release_assets/v2.5.3/)
-- Modo padrão público seguro: `MONITORA_MODO_EXECUCAO <- "completo"`, `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"`, `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"`, `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"` e `MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"`.
+- Cópia congelada no repositório: [`releases/v2.5.4/monitora_campsav_alvo_global_v2.5.4.R`](releases/v2.5.4/monitora_campsav_alvo_global_v2.5.4.R)
+- Assets auxiliares da publicação: [`release_assets/v2.5.4/`](release_assets/v2.5.4/)
+- Pacote completo da release: [`releases/v2.5.4/Monitora-Campestre-Savanico_v2.5.4_release_completa.zip`](releases/v2.5.4/Monitora-Campestre-Savanico_v2.5.4_release_completa.zip)
 
-Para curadoria assistida, use `MONITORA_MODO_EXECUCAO <- "painel_e_parar"`. Para reabrir painel sem reconstruir tudo, use `MONITORA_MODO_EXECUCAO <- "abrir_painel_cache"` após uma execução que tenha gerado cache. Para continuar uma curadoria a partir de `registros_corrig.csv`, use `MONITORA_MODO_EXECUCAO <- "painel_incremental_registros_corrig"` com um único `registros_corrig*.csv` em `input/`.
-
-## Principais recursos da versão atual
-
-A versão `v2.5.3` consolida ganhos de performance com `data.table`, barra de progresso `cli` por padrão, estatística Monte Carlo reprodutível e instrumentação de performance, mantendo os defaults públicos seguros, a governança de privacidade e os modos de execução já publicados.
-
-- Otimizações com `data.table` em preparação estatística, objetos gráficos, agregações, pareamentos e exportações intermediárias.
-- Barra de progresso informativa com backend `cli`, percentual, etapa, detalhe e ETA, com atualização controlada para reduzir custo de console.
-- Reprodutibilidade estatística para bootstrap e permutação Monte Carlo, com semente base e RNG registrados no log.
-- Checkpoints mais granulares para diagnóstico de performance, incluindo `correcao_ponto_metro` e auditorias de COLETAS por UC+UA+ANO.
-- Preservação dos produtos finais públicos da série 2.5: `registros_corrig.csv`, `registros_corrig_stat.csv`, relatórios, gráficos PNG, KMLs e auditorias.
-- Manutenção do painel opcional de correções assistidas, validação espacial opcional, cache pré-painel, continuidade incremental e controles de privacidade.
-
-## Versão anterior
-
-A versão pública imediatamente anterior foi `v2.5.2`. O histórico detalhado das versões anteriores fica no [`CHANGELOG.md`](CHANGELOG.md) e nas páginas de release do GitHub.
-
-## Modos de execução
-
-Configure `MONITORA_MODO_EXECUCAO` no início do script conforme o objetivo da rodada.
-
-- `completo`: executa todo o pipeline, com bases tratadas, auditorias, estatísticas, relatórios e gráficos.
-- `sem_png`: executa o pipeline sem exportar PNGs.
-- `estatisticas_sem_graficos`: mantém tabelas estatísticas e relatório textual, sem gráficos e KML.
-- `ate_registros_corrig`: grava `registros_corrig.csv` sem abrir o painel e encerra de forma controlada.
-- `painel_e_parar`: abre o painel, aplica correções salvas e encerra após gravar `registros_corrig.csv`.
-- `abrir_painel_cache`: reabre o painel a partir do cache pré-painel, sem reconstruir toda a leitura e sem reaplicar correções antigas em `input/`.
-- `painel_incremental_registros_corrig`: abre o painel a partir de um `registros_corrig.csv` já produzido pelo script, colocado em `input/`, para continuar a curadoria.
-
-O padrão público permanece seguro:
+Modo público seguro por padrão:
 
 ```r
 MONITORA_MODO_EXECUCAO <- "completo"
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
 MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
+MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
+```
+
+Para usar o painel de correções assistidas, ative deliberadamente o modo de curadoria ou a opção do painel no início do script.
+
+## Finalidade
+
+Este repositório consolida rotinas em R para tratamento, auditoria e análise de dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
+
+O script lê exportações do SISMONITORA, harmoniza colunas históricas, deduplica registros, aplica correções auditáveis, gera bases tratadas, estatísticas temporais, relatórios, gráficos e auditorias de consistência.
+
+## Principais recursos da versão v2.5.4
+
+A versão `v2.5.4` consolida o fechamento contratual dos produtos tabulares usados na validação final do fluxo.
+
+Principais entregas públicas:
+
+- fechamento contratual antes da materialização de `registros_corrig.csv`;
+- geração opcional de `registros_validados.csv` a partir de `registros_corrig.csv` aprovado;
+- compatibilidade estrutural com o contrato XLSForm vigente e com a estrutura esperada pelo SISMONITORA;
+- auditorias de formato, domínio, condicionais, sanitização, UUID, cardinalidade e schema;
+- normalização de datas, horas, UUIDs, campos textuais e ausências;
+- padronização física de ausências em `registros_corrig.csv` como `NA`;
+- preservação de vazios efetivos em `registros_validados.csv`;
+- correção contratual de formas de vida incompatíveis com listas taxonômicas vigentes;
+- manutenção dos modos públicos seguros, com painel e validações opcionais desligados por padrão;
+- preservação dos produtos estatísticos, relatórios, gráficos, KMLs e auditorias já existentes na série 2.5.
+
+## Fluxo geral dos dados
+
+O pipeline organiza os dados em três níveis principais.
+
+### `registros_importados.csv`
+
+Produto opcional que registra o retrato da importação consolidada antes das etapas finais de harmonização, deduplicação, curadoria e contrato.
+
+Ele fica desligado por padrão público seguro:
+
+```r
 MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 ```
 
-Nos modos `painel_e_parar`, `abrir_painel_cache` e `painel_incremental_registros_corrig`, o script força internamente a abertura do painel, preservando o default público seguro fora desses modos.
+Quando habilitado, deve ser tratado como produto sensível, pois pode conter dados brutos, identificadores, metadados institucionais e campos ainda não saneados.
 
-## Privacidade e produtos locais sensíveis
+### `registros_corrig.csv`
 
-Produtos locais gerados em `output/`, `log/` e `input/correcoes_*.csv` podem conter dados pessoais ou institucionais sensíveis, incluindo nomes, CPF, UC, UA, COLETA, coordenadas, fotos, UUIDs e observações de campo. Não publique nem compartilhe `input/`, `output/`, `log/`, `extracted/`, `registros_importados.csv`, `registros_corrig.csv`, `registros_validados.csv`, `correcoes_campos.csv` ou `correcoes_espaciais.csv` sem triagem.
+Base canônica corrigida e auditável usada pelo pipeline analítico.
 
-`registros_importados.csv` fica desligado por padrão público seguro. Para gerá-lo em execução local deliberada, use `MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "S"`.
+Na versão `v2.5.4`, este produto só deve ser materializado depois do fechamento contratual da base em memória. Ausências são gravadas fisicamente como o literal `NA`, para reduzir ambiguidade em editores de planilha e em reuso incremental.
+
+### `registros_validados.csv`
+
+Produto opcional derivado de `registros_corrig.csv`, com 129 atributos na ordem e formato esperados pelo contrato de validação.
+
+Ele mantém vazios efetivos, não o literal `NA`, para preservar compatibilidade com fluxos de validação e importação que interpretam campos vazios como ausência real de preenchimento.
+
+A geração é controlada por:
+
+```r
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
+```
+
+## Modos de execução
+
+Configure `MONITORA_MODO_EXECUCAO` no início do script conforme o objetivo da rodada.
+
+- `completo`: executa o pipeline completo, incluindo bases tratadas, auditorias, estatísticas, relatórios e gráficos.
+- `sem_png`: executa o pipeline sem exportar PNGs.
+- `estatisticas_sem_graficos`: mantém tabelas estatísticas e relatório textual, sem gráficos e KML.
+- `ate_registros_corrig`: grava `registros_corrig.csv` e encerra de forma controlada.
+- `painel_e_parar`: abre o painel, aplica correções salvas e encerra após gravar `registros_corrig.csv`.
+- `abrir_painel_cache`: reabre o painel a partir do cache pré-painel, sem reconstruir toda a leitura.
+- `painel_incremental_registros_corrig`: abre o painel a partir de um `registros_corrig.csv` já produzido pelo próprio script e colocado deliberadamente em `input/`.
+
+Nos modos de painel, o script pode forçar internamente a abertura da interface de curadoria, preservando o default público seguro fora desses modos.
+
+## Painel de validação — correções assistidas
+
+A abertura direta do painel também pode ser controlada por variável:
+
+```r
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+```
+
+Para abrir o painel deliberadamente:
+
+```r
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
+```
+
+O painel registra operações em:
+
+```text
+input/correcoes_campos.csv
+```
+
+Esse arquivo representa a receita auditável de correções. Ele não substitui diretamente `registros_corrig.csv`.
 
 ## Entradas aceitas
 
-Coloque os arquivos de entrada exclusivamente no subdiretório `input/`, no mesmo diretório do script. Essa regra evita confusão entre dados de entrada, produtos antigos e arquivos gerados em execuções anteriores. Arquivos de entrada colocados na raiz da pasta do script não devem ser usados.
-
-Caso seja necessário reaproveitar um produto anterior, copie deliberadamente o arquivo adequado para `input/`.
+Coloque os arquivos de entrada exclusivamente no subdiretório `input/`, no mesmo diretório do script. Essa regra evita mistura entre dados de entrada, produtos antigos e arquivos gerados.
 
 Entradas reconhecidas:
 
 - arquivos ZIP exportados individualmente pelo SISMONITORA;
 - arquivos ZIP, CSV, XLSX ou XLS de exportação em lote;
-- arquivos `registros_corrig*.csv` gerados por execuções anteriores do próprio script, quando usados deliberadamente no modo `painel_incremental_registros_corrig`;
+- arquivos `registros_corrig*.csv` gerados por execuções anteriores do próprio script, quando usados no modo incremental adequado;
 - arquivo `input/correcoes_campos.csv`, quando usado deliberadamente para reaplicação auditável de correções.
 
 O script não exige extração manual dos ZIPs. As extrações recursivas são feitas em `extracted/`.
 
-## Finalidade
-
-O fluxo consolida registros exportados do SISMONITORA e produz bases padronizadas, tabelas analíticas, auditorias, estatísticas temporais, relatório textual e gráficos publicáveis para dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora. O script aceita dados brutos e arquivos já tratados em execuções anteriores, permitindo novas rodadas de tratamento com dados incrementais.
-
-O painel opcional de validação assistida reduz riscos associados à edição direta de CSVs consolidados em editores de planilha.
-
 ## Saídas principais
 
-Na raiz do projeto ou no diretório de execução:
+Na raiz do projeto ou diretório de execução:
 
-- `registros_corrig.csv`: versão canônica corrigida, padronizada, deduplicada e auditável;
-- `registros_corrig_stat.csv`: base estatística por UC, UA, ano e métricas derivadas.
+- `registros_corrig.csv`;
+- `registros_corrig_stat.csv`.
 
 Em `output/`:
 
-- `registros_validados.csv`, quando `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"`;
+- `registros_validados.csv`, quando habilitado;
 - tabelas de proporção relativa e cobertura vegetal;
 - tabelas estatísticas de mudança ano a ano, linha de base e composição geral;
 - tabelas estatísticas dos painéis amostrais por ano inicial;
-- relatório textual estatístico (`relatorio_textual_estatistico.txt`);
-- índice mestre de gráficos (`indice_graficos.csv`);
+- relatório textual estatístico;
+- índice mestre de gráficos;
 - gráficos publicáveis seriados em `output/plots_png/`;
 - auditorias de símbolos, esforço amostral, layout de rótulos e produtos gráficos;
-- auditorias e dicionários auxiliares do painel em `output/correcoes_campos/`, quando a validação assistida for usada;
+- auditorias e dicionários auxiliares do painel, quando usado;
 - arquivos KML, quando habilitados e aplicáveis.
 
 Em `log/`:
 
 - relatório de execução;
 - auditorias de arquivos, tipos de entrada, duplicidades, compatibilidade entre fontes, completude e coordenadas;
-- auditoria de correções assistidas (`auditoria_correcoes_campos_*.csv`), quando aplicável;
-- auditorias de `registros_validados.csv`, quando esse produto for gerado;
+- auditoria de correções assistidas, quando aplicável;
+- auditorias de contrato e de `registros_validados.csv`, quando esse produto for gerado;
 - relatórios de performance, memória e controle de recursos.
 
-## `registros_corrig.csv` e `registros_validados.csv`
+## Privacidade e produtos locais sensíveis
 
-`registros_corrig.csv` é a base canônica do pipeline: contém os registros corrigidos, auditáveis e usados nas análises. `registros_validados.csv` é um produto público opcional, criado a partir de `registros_corrig.csv` final, com compatibilidade estrutural com o contrato do XLSForm vigente e com a exportação esperada pelo SISMONITORA. Ele não substitui a base canônica do pipeline.
+Produtos gerados em `input/`, `output/`, `log/` e `extracted/` podem conter dados pessoais ou institucionais sensíveis, incluindo nomes, CPF, UC, UA, COLETA, coordenadas, fotos, UUIDs, observações de campo e metadados de coleta.
 
-## Painel de validação — correções assistidas
+Não publique nem compartilhe sem triagem:
 
-A abertura do painel é controlada por variável no início do script:
-
-```r
-MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
-```
-
-Para abrir o painel:
-
-```r
-MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
-```
-
-Com `"N"`, o script segue a execução analítica normal. Com `"S"`, o script consolida `registros_corrig.csv`, abre o painel de validação e, após o fechamento do painel, aplica as correções salvas e continua o fluxo.
-
-O painel gera ou atualiza:
-
-```text
-input/correcoes_campos.csv
-```
-
-Esse arquivo registra a receita das alterações, em formato longo, e não substitui diretamente `registros_corrig.csv`.
+- `input/`;
+- `output/`;
+- `log/`;
+- `extracted/`;
+- `registros_importados.csv`;
+- `registros_corrig.csv`;
+- `registros_corrig_stat.csv`;
+- `registros_validados.csv`;
+- `correcoes_campos.csv`;
+- `correcoes_espaciais.csv`.
 
 ## Estrutura do repositório
 
-- [`MONITORA_CAMPSAV_Alvo_Global.R`](MONITORA_CAMPSAV_Alvo_Global.R): script atual recomendado para uso.
-- [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): cópia pública equivalente do script atual.
-- [`R/monitora_campsav_alvo_global.R`](R/monitora_campsav_alvo_global.R): cópia do script atual na estrutura interna do projeto.
-- [`R_monitora_campsav_alvo_global.R`](R_monitora_campsav_alvo_global.R): cópia pública equivalente.
-- [`monitora_campsav_alvo_global_v2.5.3.R`](monitora_campsav_alvo_global_v2.5.3.R): cópia versionada da versão pública atual.
-- [`releases/v2.5.3/`](releases/v2.5.3/): cópia congelada da versão pública `v2.5.3`.
-- [`release_assets/v2.5.3/`](release_assets/v2.5.3/): artefatos auxiliares da publicação pública.
+- [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): script público canônico atual.
+- [`monitora_campsav_alvo_global_v2.5.4.R`](monitora_campsav_alvo_global_v2.5.4.R): script público versionado da versão atual.
+- [`VERSION`](VERSION): número da versão pública atual.
+- [`CHANGELOG.md`](CHANGELOG.md): histórico público de mudanças.
+- [`RELEASE_NOTES_v2.5.4.md`](RELEASE_NOTES_v2.5.4.md): notas da release atual.
+- [`release_assets/v2.5.4/`](release_assets/v2.5.4/): artefatos auxiliares da publicação.
+- [`releases/v2.5.4/`](releases/v2.5.4/): cópia congelada da release no repositório.
 - [`archive/versoes_historicas/`](archive/versoes_historicas/): versões históricas anteriores ao versionamento público semântico.
-- [`docs/`](docs/): documentação auxiliar, incluindo versionamento e uso de IA, quando presente.
+- [`docs/`](docs/): documentação auxiliar, quando presente.
 - [`tools/`](tools/): ferramentas auxiliares de auditoria e revisão, quando presentes.
 - [`.github/workflows/`](.github/workflows/): automações do GitHub Actions, quando presentes.
 
@@ -163,11 +202,11 @@ Pacotes usados pelo script:
 - `openxlsx`
 - `sf`
 - `cli`
-- `shiny` e `DT`, apenas quando o painel de correções assistidas for ativado.
+- `shiny` e `DT`, apenas quando o painel de correções assistidas for ativado
 
 O script tenta instalar pacotes ausentes durante a execução. Em ambientes institucionais ou sem permissão de instalação, instale os pacotes previamente.
 
-## Parâmetros por variáveis de ambiente
+## Variáveis de ambiente úteis
 
 Alguns parâmetros podem ser definidos antes da execução:
 
@@ -192,9 +231,9 @@ MONITORA_PERFIL_EXECUCAO=economico MONITORA_EXPORTAR_KML=false Rscript monitora_
 
 ## Interpretação dos gráficos
 
-Os gráficos publicáveis foram desenhados para explicitar formação vegetacional, ano, esforço amostral (`n UA`), escopo amostral da comparação, incerteza por IC95%, símbolos estatísticos de mudança por categoria ou composição geral e legenda metodológica inferior, quando necessária.
+Os gráficos publicáveis explicitam formação vegetacional, ano, esforço amostral, escopo de comparação, incerteza por IC95%, símbolos estatísticos de mudança por categoria ou composição geral e legenda metodológica inferior, quando necessária.
 
-Os gráficos são exportados em `output/plots_png/` com nomenclatura pública seriada. O arquivo `output/indice_graficos.csv` deve ser usado para identificar serial, nome público do PNG, nome interno legado, bloco analítico, escopo amostral, ano inicial do painel, métrica, tema, formação, presença ou ausência de rótulos, uso recomendado e arquivos de dados associados.
+Os gráficos são exportados em `output/plots_png/`. O arquivo `output/indice_graficos.csv` deve ser usado para identificar nome público do PNG, bloco analítico, escopo amostral, ano inicial do painel, métrica, tema, formação, presença ou ausência de rótulos, uso recomendado e arquivos de dados associados.
 
 ## Painéis amostrais por ano inicial
 
@@ -206,70 +245,20 @@ O relatório `output/relatorio_textual_estatistico.txt` sintetiza os principais 
 
 ## Auditoria antes de publicar uma versão
 
-Antes de subir uma nova versão, conferir:
+Antes de publicar uma nova versão, confira:
 
-```bash
-VERSAO="2.5.3"
-TAG="v${VERSAO}"
-sha256sum   "monitora_campsav_alvo_global_${TAG}.R"   monitora_campsav_alvo_global.R   MONITORA_CAMPSAV_Alvo_Global.R   R/monitora_campsav_alvo_global.R   R_monitora_campsav_alvo_global.R   "releases/${TAG}/monitora_campsav_alvo_global_${TAG}.R"
-
-grep -Rni "Versão pública"   "monitora_campsav_alvo_global_${TAG}.R"   monitora_campsav_alvo_global.R   MONITORA_CAMPSAV_Alvo_Global.R   R/monitora_campsav_alvo_global.R   R_monitora_campsav_alvo_global.R   "releases/${TAG}/monitora_campsav_alvo_global_${TAG}.R"
-
-cat VERSION
-```
-
-Critério de liberação:
-
-- os scripts públicos devem ter o mesmo hash;
-- `VERSION` deve conter a versão publicada;
-- a execução sem painel deve ser validada;
-- quando aplicável, o painel deve ser testado em correção simples, movimento assistido e exclusão de COLETAS em lote;
-- a exclusão de COLETAS não deve deixar linhas residuais em `registros_corrig.csv`;
-- `registros_validados.csv`, quando gerado, deve passar nas auditorias contratuais;
-- os gráficos de validação devem ter sido conferidos visualmente;
-- `output/indice_graficos.csv` deve estar consistente;
-- `relatorio_textual_estatistico.txt` deve incorporar os produtos estatísticos atuais.
+- scripts públicos canônico e versionado com conteúdo completo;
+- `VERSION` coerente com a versão publicada;
+- README, CHANGELOG e release notes sem nomes de arquivos de desenvolvimento;
+- ausência de rótulos operacionais de desenvolvimento, caminhos locais ou marcas de trabalho no script público;
+- painel desligado por padrão público seguro;
+- checksums atualizados;
+- ZIP completo da release recriado a partir dos arquivos finais;
+- tag e release apontando para o commit correto;
+- assets mínimos da release publicados.
 
 ## Uso auxiliar de IA generativa
 
-Este projeto teve uma fase inicial de desenvolvimento baseada em edição manual, consulta a documentação técnica, exemplos de código e fontes abertas de referência, incluindo fóruns técnicos e materiais de apoio.
+Este projeto teve apoio de IA generativa em etapas de refatoração, revisão, organização editorial, elaboração de comandos de auditoria e diagnóstico de erros. O uso de IA não substitui validação técnica, revisão humana, execução local, conferência de produtos, auditoria de privacidade e responsabilidade sobre publicação.
 
-A partir da fase de consolidação publicada como `v2.0.0`, o desenvolvimento passou a contar com apoio de ferramentas de IA generativa para revisão editorial, refatoração, documentação, apoio à depuração, organização do versionamento público, análise de logs, padronização de nomenclatura e proposição de testes. O uso de IA teve caráter auxiliar.
-
-As decisões metodológicas, critérios ecológicos, validações, testes, interpretação dos resultados e responsabilidade técnica pelo script permanecem sob responsabilidade do autor. Ferramentas de IA não substituem a validação humana, a execução local do script, a inspeção dos produtos, a comparação de hashes, a auditoria dos logs e a responsabilidade técnica sobre a publicação.
-
-Mais detalhes em:
-
-- [`docs/uso_de_ia.md`](docs/uso_de_ia.md)
-
-## Consulte também
-
-- [`CHANGELOG.md`](CHANGELOG.md): histórico das versões públicas.
-- [`VERSION`](VERSION): versão pública atual.
-- [`LICENSE`](LICENSE): licença do projeto.
-- [`docs/uso_de_ia.md`](docs/uso_de_ia.md): registro do uso auxiliar de IA, quando disponível.
-- [`docs/versionamento.md`](docs/versionamento.md): notas de versionamento, quando disponível.
-- [`releases/v2.5.3/`](releases/v2.5.3/): cópia congelada da versão pública atual.
-
-## Licença
-
-Este projeto está licenciado sob a licença GPL-3.0. Consulte:
-
-- [`LICENSE`](LICENSE)
-
-## Citação
-
-CBC - ICMBio/MMA, 2026. Scripts de tratamento e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas do Componente Campestre Savânico do Programa Monitora. Desenvolvido por Danilo Correa - CBC/ICMBio.
-
-## Repositório
-
-https://github.com/danilovcorrea/Monitora-Campestre-Savanico
-
-## Versão atual
-
-Versão pública atual: `v2.5.4`.
-
-Script principal: `monitora_campsav_alvo_global_v2.5.4.R`.
-
-O fluxo público separa `registros_importados.csv`, `registros_corrig.csv` e `registros_validados.csv`. O arquivo `registros_corrig.csv` materializa ausências como `NA`; o arquivo `registros_validados.csv` preserva vazio efetivo conforme contrato de exportação.
-
+Recomenda-se usar IA apenas como apoio controlado, preservando dados sensíveis fora de prompts públicos e conferindo manualmente qualquer alteração antes de execução ou publicação.

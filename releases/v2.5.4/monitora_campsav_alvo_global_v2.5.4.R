@@ -1,7 +1,7 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.3
+### Versão do script: 2.5.4
 ### Versão pública: v2.5.4
 ###
 ### Finalidade
@@ -275,7 +275,7 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OP
 if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar") ||
     identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache") ||
     isTRUE(MONITORA_MODO_PAINEL_INCREMENTAL_REGISTROS_CORRIG)) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -11520,14 +11520,14 @@ MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(
   "S"
 )
 
-MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.3"
+MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.4"
 if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA <- "S"
 }
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.3.5.3."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.4."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -12884,7 +12884,7 @@ monitora_espacial_aplicar_correcoes_atomicas <- function(registros_corrig, arqui
     audg[, n_itens_grupo := nrow(grupo)]
     if (isTRUE(falhou)) {
       audg[status == "aplicada", `:=`(
-        status = "falha_grupo_revertida",
+        status = "falha_grupo_desfeita",
         motivo_falha = paste0("operação espacial atômica revertida; falha em outro item do grupo: ", motivo_falha_grupo)
       )]
       auditoria[[gg]] <- audg
@@ -20843,7 +20843,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
       arquivo_correcao = "pos_painel_pre_registros_corrig",
       dicionario = dicionario
     ),
-    error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+    error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
   )
   aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_outras$audit)), fill = TRUE, use.names = TRUE)
   afetadas <- unique(c(afetadas, as.integer(res_outras$linhas)))
@@ -20856,7 +20856,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
       id_correcao = "v2.5.4",
       arquivo_correcao = "pos_painel_pre_registros_corrig"
     ),
-    error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_forma_outros_atual", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+    error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_forma_outros_atual", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
   )
   aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_atual$audit)), fill = TRUE, use.names = TRUE)
   afetadas <- unique(c(afetadas, as.integer(res_atual$linhas)))
@@ -20870,7 +20870,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
         arquivo_correcao = "pos_painel_pre_registros_corrig",
         dicionario = dicionario
       ),
-      error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_recalculo_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+      error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_recalculo_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
     )
     aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_recalc$audit)), fill = TRUE, use.names = TRUE)
     afetadas <- unique(c(afetadas, as.integer(res_recalc$linhas), as.integer(res_atual$linhas)))
@@ -22381,7 +22381,7 @@ monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, l
       "Outras plantas terrestres, líquens e/ou fungos\u200b: (amostragem/registro)",
       "Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro)"
     ), n)
-    return(list(valor = atual$valor, coluna = atual$coluna, estrategia = "mapeada_campo_atual_pos_sanitizacao_pre_validados"))
+    return(list(valor = atual$valor, coluna = atual$coluna, estrategia = "mapeada_campo_atual_pos_sanitizacao_antes_registros_validados"))
   }
   if (identical(atributo, "amostragem/registro/forma_serrapilheira")) {
     atual <- monitora_validados_pegar(dt, c(

@@ -1,7 +1,7 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.3
+### Versão do script: 2.5.4
 ### Versão pública: v2.5.4
 ###
 ### Finalidade
@@ -11520,14 +11520,14 @@ MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(
   "S"
 )
 
-MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.3"
+MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.4"
 if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA <- "S"
 }
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.3.5.3."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.4."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -12884,7 +12884,7 @@ monitora_espacial_aplicar_correcoes_atomicas <- function(registros_corrig, arqui
     audg[, n_itens_grupo := nrow(grupo)]
     if (isTRUE(falhou)) {
       audg[status == "aplicada", `:=`(
-        status = "falha_grupo_revertida",
+        status = "falha_grupo_desfeita",
         motivo_falha = paste0("operação espacial atômica revertida; falha em outro item do grupo: ", motivo_falha_grupo)
       )]
       auditoria[[gg]] <- audg
@@ -28348,7 +28348,7 @@ if (!exists("MONITORA_CORRECOES_DIR", inherits = FALSE)) {
 
 ### A decisão sobre abertura do painel já foi tomada no início do script.
 ### Neste ponto, o painel só será carregado se MONITORA_ABRIR_PAINEL_CORRECOES = TRUE,
-### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N".
+### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S" ou "N".
 if (!exists("MONITORA_VALIDAR_CONDICIONAIS_CORRECOES", inherits = FALSE)) MONITORA_VALIDAR_CONDICIONAIS_CORRECOES <- TRUE
 if (!exists("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", TRUE)
 if (!exists("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_POS_CORRECOES <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", TRUE)
