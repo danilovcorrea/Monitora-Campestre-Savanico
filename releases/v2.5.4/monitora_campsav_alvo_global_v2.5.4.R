@@ -275,7 +275,7 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OP
 if (identical(MONITORA_MODO_EXECUCAO, "painel_e_parar") ||
     identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache") ||
     isTRUE(MONITORA_MODO_PAINEL_INCREMENTAL_REGISTROS_CORRIG)) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -20843,7 +20843,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
       arquivo_correcao = "pos_painel_pre_registros_corrig",
       dicionario = dicionario
     ),
-    error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+    error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
   )
   aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_outras$audit)), fill = TRUE, use.names = TRUE)
   afetadas <- unique(c(afetadas, as.integer(res_outras$linhas)))
@@ -20856,7 +20856,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
       id_correcao = "v2.5.4",
       arquivo_correcao = "pos_painel_pre_registros_corrig"
     ),
-    error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_forma_outros_atual", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+    error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_forma_outros_atual", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
   )
   aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_atual$audit)), fill = TRUE, use.names = TRUE)
   afetadas <- unique(c(afetadas, as.integer(res_atual$linhas)))
@@ -20870,7 +20870,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
         arquivo_correcao = "pos_painel_pre_registros_corrig",
         dicionario = dicionario
       ),
-      error = function(e) list(audit = data.table::data.table(status = "falha_antes_registros_validados_recalculo_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
+      error = function(e) list(audit = data.table::data.table(status = "falha_pre_validados_recalculo_outras_formas", mensagem = conditionMessage(e)), linhas = integer(), afetacoes = data.table::data.table(), falha = TRUE)
     )
     aud_outras <- data.table::rbindlist(list(aud_outras, data.table::as.data.table(res_recalc$audit)), fill = TRUE, use.names = TRUE)
     afetadas <- unique(c(afetadas, as.integer(res_recalc$linhas), as.integer(res_atual$linhas)))
@@ -22381,7 +22381,7 @@ monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, l
       "Outras plantas terrestres, líquens e/ou fungos\u200b: (amostragem/registro)",
       "Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro)"
     ), n)
-    return(list(valor = atual$valor, coluna = atual$coluna, estrategia = "mapeada_campo_atual_pos_sanitizacao_antes_registros_validados"))
+    return(list(valor = atual$valor, coluna = atual$coluna, estrategia = "mapeada_campo_atual_pos_sanitizacao_pre_validados"))
   }
   if (identical(atributo, "amostragem/registro/forma_serrapilheira")) {
     atual <- monitora_validados_pegar(dt, c(
@@ -28348,7 +28348,7 @@ if (!exists("MONITORA_CORRECOES_DIR", inherits = FALSE)) {
 
 ### A decisão sobre abertura do painel já foi tomada no início do script.
 ### Neste ponto, o painel só será carregado se MONITORA_ABRIR_PAINEL_CORRECOES = TRUE,
-### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N" ou "N".
+### definido pela variável MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S" ou "N".
 if (!exists("MONITORA_VALIDAR_CONDICIONAIS_CORRECOES", inherits = FALSE)) MONITORA_VALIDAR_CONDICIONAIS_CORRECOES <- TRUE
 if (!exists("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL", TRUE)
 if (!exists("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", inherits = FALSE)) MONITORA_GERAR_RELATORIOS_POS_CORRECOES <- monitora_cfg_env_bool("MONITORA_GERAR_RELATORIOS_POS_CORRECOES", TRUE)
