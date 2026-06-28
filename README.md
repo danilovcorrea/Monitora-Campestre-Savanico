@@ -1,16 +1,26 @@
 # Monitora Campestre-Savânico — Alvo Global
 
+### Destaques da versão v2.5.6
+
+- Consolida o fechamento validado de `registros_corrig.csv` e `registros_validados.csv`.
+- Mantém o painel de correções assistidas com preview coerente e operações vetorizadas.
+- Preserva `outra_forma_vida` como choice válido do XLSForm 2025 quando acompanhado de `forma_vida_outros`.
+- Preserva o campo contratual `amostragem/registro/forma_vida_seca_mortaarvore_abaixo`.
+- Adiciona sanitização cadastral automática não bloqueante para deslocamentos inequívocos entre `CICLO`, `CAMPANHA`, `EA` e `UA`.
+- Registra alertas cadastrais não bloqueantes em relatórios específicos.
+
+
 ## Versão pública atual
 
-- Versão: `v2.5.5`
-- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.5.R`](monitora_campsav_alvo_global_v2.5.5.R)
+- Versão: `v2.5.6`
+- Script principal versionado: [`monitora_campsav_alvo_global_v2.5.6.R`](monitora_campsav_alvo_global_v2.5.6.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada no repositório: [`releases/v2.5.5/monitora_campsav_alvo_global_v2.5.5.R`](releases/v2.5.5/monitora_campsav_alvo_global_v2.5.5.R)
-- Assets auxiliares da publicação: [`release_assets/v2.5.5/`](release_assets/v2.5.5/)
-- Pacote completo da release: [`releases/v2.5.5/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip`](releases/v2.5.5/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip)
-- Release no GitHub: [https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.5](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.5)
+- Cópia congelada no repositório: [`releases/v2.5.6/monitora_campsav_alvo_global_v2.5.6.R`](releases/v2.5.6/monitora_campsav_alvo_global_v2.5.6.R)
+- Assets auxiliares da publicação: [`release_assets/v2.5.6/`](release_assets/v2.5.6/)
+- Pacote completo da release: [`releases/v2.5.6/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip`](releases/v2.5.6/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip)
+- Release no GitHub: [https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.6](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.6)
 
-A versão `v2.5.5` consolida a curadoria assistida por painel com contrato SISMONITORA/XLSForm 2025, produtos de entrada saneados para comparação, controles de edição por tipo de atributo e auditorias adicionais de rastreabilidade.
+A versão `v2.5.6` consolida a curadoria assistida por painel com contrato SISMONITORA/XLSForm 2025, produtos de entrada saneados para comparação, controles de edição por tipo de atributo e auditorias adicionais de rastreabilidade.
 
 A versão pública imediatamente anterior foi `v2.5.4`. O histórico detalhado fica no `CHANGELOG.md` e nas páginas de release do GitHub.
 
@@ -20,9 +30,9 @@ Este repositório consolida rotinas em R para tratamento, auditoria e análise d
 
 O script lê exportações do SISMONITORA, harmoniza colunas históricas, deduplica registros, aplica correções auditáveis, gera bases tratadas, estatísticas temporais, relatórios, gráficos e auditorias de consistência.
 
-## Principais recursos da versão v2.5.5
+## Principais recursos da versão v2.5.6
 
-A versão `v2.5.5` consolida o painel contratual de correções, a geração de registros importados saneados para comparação, os controles de edição por tipo de atributo e auditorias adicionais de rastreabilidade.
+A versão `v2.5.6` consolida o painel contratual de correções, a geração de registros importados saneados para comparação, os controles de edição por tipo de atributo e auditorias adicionais de rastreabilidade.
 
 Principais entregas públicas:
 
@@ -170,14 +180,14 @@ Não publique nem compartilhe sem triagem:
 ## Estrutura do repositório
 
 - [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): script público canônico atual.
-- [`monitora_campsav_alvo_global_v2.5.5.R`](monitora_campsav_alvo_global_v2.5.5.R): script público versionado da versão atual.
+- [`monitora_campsav_alvo_global_v2.5.6.R`](monitora_campsav_alvo_global_v2.5.6.R): script público versionado da versão atual.
 - [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R): script canônico da versão atual.
 - [`VERSION`](VERSION): número da versão pública atual.
 - [`CHANGELOG.md`](CHANGELOG.md): histórico público de mudanças.
 - [`RELEASE_NOTES_v2.5.5.md`](RELEASE_NOTES_v2.5.5.md): notas da release atual.
-- [`release_assets/v2.5.5/`](release_assets/v2.5.5/): artefatos auxiliares da publicação.
-- [`releases/v2.5.5/`](releases/v2.5.5/): cópia congelada da release no repositório.
-- [`Monitora-Campestre-Savanico_v2.5.5_release_completa.zip`](releases/v2.5.5/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip): pacote completo da release.
+- [`release_assets/v2.5.6/`](release_assets/v2.5.6/): artefatos auxiliares da publicação.
+- [`releases/v2.5.6/`](releases/v2.5.6/): cópia congelada da release no repositório.
+- [`Monitora-Campestre-Savanico_v2.5.5_release_completa.zip`](releases/v2.5.6/Monitora-Campestre-Savanico_v2.5.5_release_completa.zip): pacote completo da release.
 - [`archive/versoes_historicas/`](archive/versoes_historicas/): versões históricas anteriores ao versionamento público semântico.
 - [`docs/`](docs/): documentação auxiliar, quando presente.
 - [`tools/`](tools/): ferramentas auxiliares de auditoria e revisão, quando presentes.
@@ -261,7 +271,7 @@ Ao citar este repositório, indique a versão pública utilizada, a data de aces
 Formato recomendado:
 
 ```text
-CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v2.5.5. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.5. Acesso em: DD mês AAAA.
+CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v2.5.6. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.6. Acesso em: DD mês AAAA.
 ```
 
 Formato BibTeX sugerido:
@@ -270,9 +280,9 @@ Formato BibTeX sugerido:
 @software{correa_monitora_campestre_savanico_2_5_5,
   author = {Corrêa, Danilo V.},
   title = {Monitora Campestre-Savânico — Alvo Global},
-  version = {v2.5.5},
+  version = {v2.5.6},
   year = {2026},
-  url = {https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.5},
+  url = {https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.5.6},
   note = {Script em R para tratamento, auditoria e análise de dados do Componente Campestre Savânico do Programa Monitora}
 }
 ```

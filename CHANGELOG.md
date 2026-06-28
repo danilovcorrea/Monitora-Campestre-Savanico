@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.5.6 - 2026-06-28
+
+### Adicionado
+- Auditoria cadastral não bloqueante para valores aparentemente deslocados entre atributos cadastrais.
+- Sanitização automática de deslocamentos inequívocos entre `CICLO`, `CAMPANHA`, `EA` e `UA`.
+- Relatórios de auditoria cadastral automática e ocorrências cadastrais suspeitas não bloqueantes.
+
+### Corrigido
+- Remoção de falso aviso de bloqueio de `registros_validados.csv`.
+- Consolidação da auditoria de persistência por efeito diagnóstico final.
+- Estabilização da limpeza vetorizada de resíduos legados de outras formas de vida.
+
+### Preservado
+- `outra_forma_vida` como choice válido de `tipo_forma_vida` quando acompanhado de `forma_vida_outros`.
+- Campo contratual `amostragem/registro/forma_vida_seca_mortaarvore_abaixo`.
+- Defaults públicos seguros.
+
+
 ## v2.5.5 - Painel contratual, registros importados saneados e controles de edição
 
 - Corrige os modos de painel para forçar abertura nos fluxos `painel_e_parar`, `abrir_painel_cache` e `painel_incremental_*`.
