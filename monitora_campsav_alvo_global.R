@@ -20933,7 +20933,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         mult <- acao_norm %in% c("append_token", "adicionar_token", "remove_token", "remover_token")
         return(shiny::selectizeInput("valor_novo", lab, choices = choices, selected = character(0), multiple = mult, options = list(placeholder = "Escolha token(s); não digite valor total do campo", plugins = if (mult) list("remove_button") else NULL)))
       }
-      if (tipo == "date") return(shiny::dateInput("valor_novo", "Valor novo", value = NULL, format = "yyyy-mm-dd"))
+      if (tipo == "date") return(shiny::textInput("valor_novo", "Valor novo", value = "", placeholder = "YYYY-MM-DD"))
       if (tipo == "integer") return(shiny::numericInput("valor_novo", "Valor novo inteiro", value = NA, step = 1))
       if (tipo == "decimal") return(shiny::numericInput("valor_novo", "Valor novo decimal", value = NA, step = 0.01))
       if (tipo == "time") return(shiny::textInput("valor_novo", "Valor novo de hora", value = "", placeholder = "HH:MM:SS.000-03:00"))
