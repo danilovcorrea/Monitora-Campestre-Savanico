@@ -21,10 +21,13 @@
 #   MANTER_TMP=S ...
 #
 # Variáveis opcionais:
-#   N_COLETAS=3          — número de COLETAs a amostrar (padrão: 3)
-#   ABRIR_PAINEL=N       — S abre painel Shiny (interativo, bloqueia)
-#   MANTER_TMP=N         — S preserva $TMP_RUN após execução
-#   XLSFORM_ENTRADA=     — caminho para o xlsx do XLSForm (opcional)
+#   N_COLETAS=3                    — número de COLETAs a amostrar automaticamente (1-5; padrão: 3)
+#   COLETAS_FIXAS="6005,10813"     — lista de COLETAs específicas separadas por vírgula;
+#                                    se preenchida, substitui N_COLETAS para seleção;
+#                                    máximo 5; aborta se alguma não existir no arquivo
+#   ABRIR_PAINEL=N                 — S abre painel Shiny (interativo, bloqueia)
+#   MANTER_TMP=N                   — S preserva $TMP_RUN após execução
+#   XLSFORM_ENTRADA=               — caminho para o xlsx do XLSForm (opcional)
 #
 # Garante:
 #   - nunca altera o diretório de trabalho original (output/, log/, input/)
@@ -65,6 +68,7 @@ fi
 
 XLSFORM_ENTRADA="${XLSFORM_ENTRADA:-}"
 N_COLETAS="${N_COLETAS:-3}"
+COLETAS_FIXAS="${COLETAS_FIXAS:-}"
 ABRIR_PAINEL="${ABRIR_PAINEL:-N}"
 ABRIR_PAINEL="${ABRIR_PAINEL^^}"
 MANTER_TMP="${MANTER_TMP:-N}"
@@ -73,6 +77,16 @@ MANTER_TMP="${MANTER_TMP^^}"
 if ! [[ "$N_COLETAS" =~ ^[0-9]+$ ]] || (( N_COLETAS < 1 || N_COLETAS > 5 )); then
   echo "ERRO: N_COLETAS deve ser inteiro entre 1 e 5 (recebido: $N_COLETAS)" >&2
   exit 1
+fi
+
+if [[ -n "$COLETAS_FIXAS" ]]; then
+  # Contar elementos: remover espaços, contar vírgulas
+  _n_fixas=$(echo "$COLETAS_FIXAS" | tr -cd ',' | wc -c)
+  _n_fixas=$(( _n_fixas + 1 ))
+  if (( _n_fixas > 5 )); then
+    echo "ERRO: COLETAS_FIXAS tem $_n_fixas coletas; maximo permitido e 5." >&2
+    exit 1
+  fi
 fi
 
 if [[ "$ABRIR_PAINEL" != "S" && "$ABRIR_PAINEL" != "N" ]]; then
@@ -105,7 +119,11 @@ echo "============================================================"
 echo "Projeto:          $PROJETO_DIR"
 echo "Entrada:          $REGISTROS_ENTRADA"
 echo "Dir temporario:   $TMP_RUN"
-echo "N_COLETAS:        $N_COLETAS"
+if [[ -n "$COLETAS_FIXAS" ]]; then
+  echo "COLETAS_FIXAS:    $COLETAS_FIXAS"
+else
+  echo "N_COLETAS:        $N_COLETAS"
+fi
 echo "ABRIR_PAINEL:     $ABRIR_PAINEL"
 echo "MANTER_TMP:       $MANTER_TMP"
 if [[ -n "$XLSFORM_ENTRADA" ]]; then
@@ -132,9 +150,15 @@ cp "$SCRIPT_PRINCIPAL" "$TMP_RUN/monitora_campsav_alvo_global.R"
 # -----------------------------------------------------------------------------
 # 5. Amostrar COLETAs da entrada com R (preserva encoding, BOM e CSV)
 # -----------------------------------------------------------------------------
-echo "[2/5] Amostrando $N_COLETAS coleta(s) de: $REGISTROS_ENTRADA"
+if [[ -n "$COLETAS_FIXAS" ]]; then
+  echo "[2/5] Filtrando COLETAs fixas de: $REGISTROS_ENTRADA"
+  echo "      COLETAS_FIXAS: $COLETAS_FIXAS"
+else
+  echo "[2/5] Amostrando $N_COLETAS coleta(s) de: $REGISTROS_ENTRADA"
+fi
 
 REGISTROS_ENTRADA_ESC="${REGISTROS_ENTRADA//\'/\'\\\'\'}"
+COLETAS_FIXAS_ESC="${COLETAS_FIXAS//\'/\'\\\'\'}"
 AMOSTRA_DEST="$TMP_RUN/input/registros_corrig.csv"
 
 Rscript --vanilla -e "
@@ -143,14 +167,27 @@ dt <- data.table::fread('${REGISTROS_ENTRADA_ESC}', encoding = 'UTF-8', nThread 
 if (!('COLETA' %in% names(dt))) {
   stop('Coluna COLETA nao encontrada em REGISTROS_ENTRADA.', call. = FALSE)
 }
-coletas <- head(unique(as.character(dt[['COLETA']])), ${N_COLETAS}L)
-coletas <- coletas[!is.na(coletas) & nzchar(coletas)]
-if (!length(coletas)) stop('Nenhuma COLETA valida encontrada.', call. = FALSE)
+coletas_fixas_str <- trimws('${COLETAS_FIXAS_ESC}')
+if (nzchar(coletas_fixas_str)) {
+  solicitadas <- trimws(strsplit(coletas_fixas_str, ',', fixed = TRUE)[[1L]])
+  solicitadas <- solicitadas[nzchar(solicitadas)]
+  presentes   <- unique(as.character(dt[['COLETA']]))
+  ausentes    <- setdiff(solicitadas, presentes)
+  if (length(ausentes)) {
+    stop('COLETAS_FIXAS solicitadas nao encontradas no arquivo: ',
+         paste(ausentes, collapse = ', '), call. = FALSE)
+  }
+  coletas <- solicitadas
+} else {
+  coletas <- head(unique(as.character(dt[['COLETA']])), ${N_COLETAS}L)
+  coletas <- coletas[!is.na(coletas) & nzchar(coletas)]
+  if (!length(coletas)) stop('Nenhuma COLETA valida encontrada.', call. = FALSE)
+}
 amostra <- dt[COLETA %in% coletas]
 data.table::fwrite(amostra, '${AMOSTRA_DEST}', bom = TRUE)
-cat('COLETAs amostradas:', length(coletas), '\n')
-cat('Linhas amostradas: ', nrow(amostra), '\n')
-cat('COLETAs:           ', paste(coletas, collapse = ', '), '\n')
+cat('COLETAs selecionadas:', length(coletas), '\n')
+cat('Linhas amostradas:   ', nrow(amostra), '\n')
+cat('COLETAs:             ', paste(coletas, collapse = ', '), '\n')
 " 2>&1 || {
   echo "ERRO: falha ao amostrar entrada. Verifique se data.table esta instalado e REGISTROS_ENTRADA e valido." >&2
   exit 1
