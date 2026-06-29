@@ -10940,6 +10940,11 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
     if (nrow(admin_hit) && !is.na(admin_hit$xlsform_tipo_base[1L]) && nzchar(admin_hit$xlsform_tipo_base[1L])) {
       tipo_info$tipo_base <- as.character(admin_hit$xlsform_tipo_base[1L])
     }
+    excecao_calculate_editavel <- identical(att, "amostragem/num_placa_formatado")
+    if (isTRUE(excecao_calculate_editavel)) {
+      tipo_info$tipo_base <- "text"
+      tipo_info$list_name <- ""
+    }
 
     painel_101 <- att_norm %in% edit_norm
     protegido <- att_norm %in% bloqueados_norm ||
@@ -10955,8 +10960,12 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
         acao <- "recalcular_tipo_forma_vida"
       } else if (identical(tipo_info$tipo_base, "select_multiple")) {
         acao <- "append_token;remove_token;replace_token"
-      } else if (tipo_info$tipo_base %in% c("select_one", "text", "note", "date", "datetime", "time", "integer", "decimal", "geopoint", "calculate")) {
+      } else if (tipo_info$tipo_base %in% c("select_one", "text", "note", "date", "datetime", "time", "integer", "decimal", "geopoint")) {
         acao <- "update;clear"
+      }
+      if (tipo_info$tipo_base %in% c("calculate", "hidden", "metadata")) {
+        editavel <- FALSE
+        acao <- ""
       }
     }
 
@@ -10971,6 +10980,7 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
     origem <- c("template_xlsform_2025")
     if (nrow(admin_hit)) origem <- c(origem, "atributo_administrativo_controlado")
     if (isTRUE(painel_101)) origem <- c(origem, "painel_101")
+    if (isTRUE(excecao_calculate_editavel)) origem <- c(origem, "excecao_calculate_editavel_num_placa_formatado")
 
     dominio <- if (nzchar(tipo_info$list_name)) {
       paste0("xlsform:", tipo_info$list_name)
@@ -10997,6 +11007,8 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
       acao_painel = acao,
       validacao_materializacao = if (isTRUE(protegido)) {
         "protegido; nao editar no painel"
+      } else if (isTRUE(excecao_calculate_editavel)) {
+        "excecao explicita: num_placa_formatado e editavel com validacao de formato; materializacao posterior continua controlada"
       } else if (isTRUE(editavel)) {
         "validar dominio/formato antes de materializar registros_corrig"
       } else if (tipo_info$tipo_base %in% c("calculate", "hidden", "metadata")) {
@@ -11010,6 +11022,106 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
   out <- data.table::rbindlist(linhas, fill = TRUE, use.names = TRUE)
   data.table::setorder(out, ordem_template, atributo_canonico)
   out[]
+}
+
+monitora_registros_corrig_contrato_dropdown_painel_101 <- function(contrato = NULL) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Pacote data.table é obrigatório.", call. = FALSE)
+  }
+  if (is.null(contrato)) contrato <- monitora_registros_corrig_contrato_mestre_2025()
+  contrato <- data.table::as.data.table(data.table::copy(contrato))
+  obrigatorias <- c("atributo_canonico", "coluna_materializada", "ordem_template", "painel_101", "editavel_painel", "protegido", "tipo_base", "acao_painel")
+  faltantes <- setdiff(obrigatorias, names(contrato))
+  if (length(faltantes)) {
+    stop("Contrato mestre sem coluna(s) obrigatoria(s) para dropdown: ", paste(faltantes, collapse = ", "), call. = FALSE)
+  }
+  out <- contrato[painel_101 == TRUE & editavel_painel == TRUE & protegido != TRUE]
+  data.table::setorder(out, ordem_template, atributo_canonico)
+  if (nrow(out) != 101L) {
+    stop("Dropdown contratual do painel deve conter exatamente 101 atributos; encontrado ", nrow(out), ".", call. = FALSE)
+  }
+  calc_update <- out[tipo_base %in% c("calculate", "hidden", "metadata") & grepl("(^|;)update(;|$)|(^|;)clear(;|$)", acao_painel, perl = TRUE)]
+  if (nrow(calc_update)) {
+    stop("Atributos calculate/hidden/metadata nao podem usar update/clear no dropdown: ", paste(calc_update$atributo_canonico, collapse = ", "), call. = FALSE)
+  }
+  out[]
+}
+
+monitora_registros_corrig_contrato_edicao_painel_101 <- function(contrato_edicao, contrato_dropdown_painel_101) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Pacote data.table é obrigatório.", call. = FALSE)
+  }
+  original <- data.table::as.data.table(data.table::copy(contrato_edicao))
+  contrato <- data.table::as.data.table(data.table::copy(contrato_dropdown_painel_101))
+  obrigatorias <- c("coluna_materializada", "tipo_base", "list_name", "obrigatorio_registros_corrig", "ordem_template", "atributo_canonico", "origem_contrato", "acao_painel")
+  faltantes <- setdiff(obrigatorias, names(contrato))
+  if (length(faltantes)) {
+    stop("Contrato dropdown sem coluna(s) obrigatoria(s): ", paste(faltantes, collapse = ", "), call. = FALSE)
+  }
+  tipo_base <- as.character(contrato$tipo_base)
+  list_name <- as.character(contrato$list_name)
+  list_name[is.na(list_name)] <- ""
+  xlsform_tipo <- tipo_base
+  idx_lista <- tipo_base %in% c("select_one", "select_multiple") & nzchar(trimws(list_name))
+  xlsform_tipo[idx_lista] <- paste(tipo_base[idx_lista], list_name[idx_lista])
+  novo <- data.table::data.table(
+    atributo_coluna_registros_corrig = as.character(contrato$coluna_materializada),
+    tipo_base_edicao = tipo_base,
+    xlsform_tipo = xlsform_tipo,
+    xlsform_list_name = list_name,
+    papel_coluna = "",
+    categoria_coluna = "",
+    required_bool = as.logical(contrato$obrigatorio_registros_corrig),
+    atende_template_sismonitora = TRUE,
+    ordem_template_sismonitora = as.integer(contrato$ordem_template),
+    atributos_template_sismonitora = as.character(contrato$atributo_canonico),
+    posicoes_template_sismonitora = as.character(contrato$ordem_template),
+    estrategias_template_sismonitora = as.character(contrato$origem_contrato),
+    painel_editavel = TRUE,
+    painel_motivo_bloqueio = "",
+    acoes_permitidas = as.character(contrato$acao_painel)
+  )
+  if (!nrow(original)) return(novo[])
+  for (cc in setdiff(names(novo), names(original))) original[, (cc) := NA]
+  for (cc in setdiff(names(original), names(novo))) novo[, (cc) := NA]
+  original[, atributo_coluna_registros_corrig := as.character(atributo_coluna_registros_corrig)]
+  novo[, atributo_coluna_registros_corrig := as.character(atributo_coluna_registros_corrig)]
+  fora_101 <- original[!(atributo_coluna_registros_corrig %in% novo$atributo_coluna_registros_corrig)]
+  sobrepostos <- merge(
+    original[atributo_coluna_registros_corrig %in% novo$atributo_coluna_registros_corrig],
+    novo,
+    by = "atributo_coluna_registros_corrig",
+    all.y = TRUE,
+    suffixes = c(".orig", ".novo"),
+    sort = FALSE
+  )
+  preferir_original <- function(orig, novo) {
+    orig_chr <- as.character(orig)
+    usar_orig <- !is.na(orig_chr) & nzchar(trimws(orig_chr))
+    out <- novo
+    out[usar_orig] <- orig[usar_orig]
+    out
+  }
+  combinados <- data.table::data.table(atributo_coluna_registros_corrig = sobrepostos$atributo_coluna_registros_corrig)
+  for (cc in setdiff(names(novo), "atributo_coluna_registros_corrig")) {
+    orig_nm <- paste0(cc, ".orig")
+    novo_nm <- paste0(cc, ".novo")
+    if (cc %in% c("atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora", "painel_editavel", "painel_motivo_bloqueio", "acoes_permitidas")) {
+      combinados[, (cc) := sobrepostos[[novo_nm]]]
+    } else if (orig_nm %in% names(sobrepostos)) {
+      combinados[, (cc) := preferir_original(sobrepostos[[orig_nm]], sobrepostos[[novo_nm]])]
+    } else {
+      combinados[, (cc) := sobrepostos[[novo_nm]]]
+    }
+  }
+  tipo_final <- as.character(combinados$tipo_base_edicao)
+  lista_final <- as.character(combinados$xlsform_list_name)
+  lista_final[is.na(lista_final)] <- ""
+  tipo_xls_final <- as.character(combinados$xlsform_tipo)
+  precisa_lista <- tipo_final %in% c("select_one", "select_multiple") & nzchar(trimws(lista_final))
+  tipo_xls_final[precisa_lista] <- paste(tipo_final[precisa_lista], lista_final[precisa_lista])
+  combinados[, xlsform_tipo := tipo_xls_final]
+  data.table::rbindlist(list(fora_101, combinados), fill = TRUE, use.names = TRUE)
 }
 
 monitora_correcao_coluna_real_admin_ou_col <- function(dt, col) {
@@ -18568,7 +18680,23 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     labels <- monitora_painel_limpar_html_rotulo(paste0(labels, extras))
     stats::setNames(vals, labels)
   }
-  escolhas_atributos_painel <- monitora_painel_choices_atributos_template(dict)
+  monitora_painel_choices_atributos_contrato_mestre <- function(d) {
+    d <- data.table::as.data.table(data.table::copy(d))
+    d <- d[order(ordem_template, atributo_canonico)]
+    vals <- as.character(d$coluna_materializada)
+    rotulo_base <- sub("^.*/", "", as.character(d$atributo_canonico))
+    rotulo_base <- gsub("_", " ", rotulo_base, fixed = TRUE)
+    rotulo_base <- tools::toTitleCase(rotulo_base)
+    labels <- paste0(rotulo_base, " (", as.character(d$atributo_canonico), ")")
+    extras <- rep("", length(vals))
+    extras[as.character(d$atributo_canonico) %in% c("amostragem/registro/forma_serrapilheira", "forma_serrapilheira")] <- " material botanico materiais botanicos decomposicao solo serrapilheira fragmentos botanicos material inundado"
+    extras[as.character(d$atributo_canonico) %in% c("amostragem/registro/forma_vida_outros", "forma_vida_outros")] <- " outras plantas terrestres liquens fungos musgos hepaticas antoceros"
+    labels <- monitora_painel_limpar_html_rotulo(paste0(labels, extras))
+    stats::setNames(vals, labels)
+  }
+  contrato_dropdown_painel_101 <- monitora_registros_corrig_contrato_dropdown_painel_101()
+  contrato_edicao <- monitora_registros_corrig_contrato_edicao_painel_101(contrato_edicao, contrato_dropdown_painel_101)
+  escolhas_atributos_painel <- monitora_painel_choices_atributos_contrato_mestre(contrato_dropdown_painel_101)
   if (exists("monitora_correcao_console_msg", mode = "function")) {
     alvos_tpl <- c("ciclo", "campanha", "ea", "ua", "validado", "validador", "data_validacao", "obs_validacao", "UA", "amostragem/num_placa", "amostragem/num_placa_formatado", "amostragem/registro/forma_serrapilheira", "amostragem/registro/forma_vida_outros", "forma_serrapilheira", "forma_vida_outros")
     presentes_tpl <- intersect(alvos_tpl, unname(escolhas_atributos_painel))
