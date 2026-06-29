@@ -30788,6 +30788,14 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
 }
 ### FIM v2.6.1 ----------------
 
+monitora_registros_validados_contrato_corrig_liberado <- function(contrato_corrig_validado = FALSE) {
+  if (!isTRUE(contrato_corrig_validado)) return(FALSE)
+  if (isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound = FALSE, inherits = TRUE))) return(FALSE)
+  xlsform_val <- get0("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", ifnotfound = NA, inherits = TRUE)
+  if (is.na(xlsform_val)) return(TRUE)
+  isTRUE(xlsform_val)
+}
+
 monitora_registros_validados_exportar <- function(registros_corrig,
                                                   output_dir = MONITORA_OUTPUT_DIR,
                                                   log_dir = MONITORA_LOG_DIR,
@@ -30809,15 +30817,20 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
 
   if (!isTRUE(somente_auditar_contrato_corrig) &&
-      isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound = FALSE, inherits = TRUE))) {
+      !monitora_registros_validados_contrato_corrig_liberado(contrato_corrig_validado)) {
+    assign("MONITORA_REGISTROS_VALIDADOS_GERADO", FALSE, envir = .GlobalEnv)
     resumo_pend <- get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS_RESUMO", ifnotfound = data.table::data.table(), inherits = TRUE)
     if (exists("monitora_publicacao_ab_logar_resumo_pendencias", mode = "function")) {
       monitora_publicacao_ab_logar_resumo_pendencias(resumo_pend, contexto = "bloqueio_registros_validados")
     }
     if (exists("monitora_publicacao_g_log", mode = "function")) {
-      monitora_publicacao_g_log("registros_validados.csv não será criado: registros_corrig.csv ainda contém pendências impeditivas sinalizadas.")
+      monitora_publicacao_g_log("registros_validados.csv nao sera criado: registros_corrig nao possui contrato validado ou contem pendencias impeditivas.")
     }
-    return(invisible(list(bloqueado = TRUE, motivo = "registros_corrig_com_pendencias_impeditivas", resumo = resumo_pend)))
+    if (exists("monitora_registros_validados_diagnostico_nao_gerado", mode = "function")) {
+      try(monitora_registros_validados_diagnostico_nao_gerado(contexto = "bloqueio_contrato_corrig"), silent = TRUE)
+    }
+    if (isTRUE(abortar)) stop("registros_validados.csv bloqueado: registros_corrig nao validado ou com pendencias impeditivas.", call. = FALSE)
+    return(invisible(list(bloqueado = TRUE, motivo = "contrato_corrig_nao_liberado", resumo = resumo_pend)))
   }
 
 
