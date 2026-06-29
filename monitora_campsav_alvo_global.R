@@ -20148,6 +20148,56 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     out
   }
 
+  monitora_painel_tipos_encostam_derivado <- function() {
+    data.table::data.table(
+      tipo = c(
+        "encostam_desatualizado",
+        "encostam_token_sem_inferior",
+        "encostam_inferior_sem_token",
+        "encostam_solo_nu_conflitante",
+        "encostam_token_desconhecido",
+        "encostam_desconhecida_superior_only",
+        "encostam_outra_forma_vida",
+        "encostam_coluna_nao_resolvida"
+      ),
+      ocorrencia = c(
+        "Encostam desatualizado",
+        "Encostam: token sem inferior correspondente",
+        "Encostam: inferior sem token",
+        "Encostam: solo nu conflitante",
+        "Encostam: token desconhecido",
+        "Encostam: desconhecida superior-only",
+        "Encostam: outra forma de vida",
+        "Encostam: coluna não resolvida"
+      ),
+      severidade = "impeditiva",
+      corrigivel_no_painel = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE)
+    )
+  }
+
+  monitora_painel_auditoria_encostam_derivado_dt <- function(x) {
+    if (!exists("monitora_registros_corrig_auditar_encostam_derivado", mode = "function")) return(data.table::data.table())
+    x <- data.table::as.data.table(x)
+    if (!nrow(x)) return(data.table::data.table())
+    tryCatch(
+      data.table::as.data.table(monitora_registros_corrig_auditar_encostam_derivado(data.table::copy(x))),
+      error = function(e) data.table::data.table()
+    )
+  }
+
+  monitora_painel_coletas_encostam_derivado <- function(x) {
+    tipos_enc <- monitora_painel_tipos_encostam_derivado()
+    out <- stats::setNames(vector("list", nrow(tipos_enc)), tipos_enc$tipo)
+    aud_enc <- monitora_painel_auditoria_encostam_derivado_dt(x)
+    if (!nrow(aud_enc) || !("tipo_pendencia" %in% names(aud_enc))) return(lapply(out, function(z) character(0)))
+    if (!("COLETA" %in% names(aud_enc))) aud_enc[, COLETA := ""]
+    for (tp in names(out)) {
+      vals <- unique(as.character(aud_enc[tipo_pendencia == tp, COLETA]))
+      out[[tp]] <- sort(vals[!is.na(vals) & nzchar(vals)])
+    }
+    out
+  }
+
   coletas_triagem_por_tipo <- monitora_painel_coletas_diagnosticas_preferir_relatorios()
   coletas_triagem_por_tipo$uas_duplicadas_mesmo_ano <- monitora_painel_coletas_ua_ano_duplicadas()
   tipos_auditoria_101_iniciais <- stats::setNames(
@@ -20155,6 +20205,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_tipos_auditoria_101()$tipo
   )
   coletas_triagem_por_tipo <- c(coletas_triagem_por_tipo, tipos_auditoria_101_iniciais)
+  tipos_encostam_derivado_iniciais <- stats::setNames(
+    rep(list(character(0)), nrow(monitora_painel_tipos_encostam_derivado())),
+    monitora_painel_tipos_encostam_derivado()$tipo
+  )
+  coletas_triagem_por_tipo <- c(coletas_triagem_por_tipo, tipos_encostam_derivado_iniciais)
   coletas_triagem_por_tipo <- lapply(coletas_triagem_por_tipo, function(z) {
     z <- unique(as.character(z))
     sort(z[!is.na(z) & nzchar(z)])
@@ -23603,6 +23658,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       aud101_coletas <- monitora_painel_coletas_auditoria_101(x)
       for (nm in names(aud101_coletas)) out[[nm]] <- aud101_coletas[[nm]]
+      enc_coletas <- monitora_painel_coletas_encostam_derivado(x)
+      for (nm in names(enc_coletas)) out[[nm]] <- enc_coletas[[nm]]
       out
     }
 
@@ -24298,7 +24355,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "seca_morta_sem_forma_vida",
         "outra_forma_vida",
         "forma_vida_desconhecida",
-        monitora_painel_tipos_auditoria_101()$tipo
+        monitora_painel_tipos_auditoria_101()$tipo,
+        monitora_painel_tipos_encostam_derivado()$tipo
       )
       rotulos <- c(
         "UAs duplicadas no mesmo ano",
@@ -24308,7 +24366,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "Seca ou morta sem forma de vida",
         "Outra forma de vida",
         "Forma de vida desconhecida",
-        monitora_painel_tipos_auditoria_101()$ocorrencia
+        monitora_painel_tipos_auditoria_101()$ocorrencia,
+        monitora_painel_tipos_encostam_derivado()$ocorrencia
       )
       tryCatch({
         data.table::rbindlist(lapply(seq_along(tipos), function(i) {
@@ -24347,9 +24406,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       x <- data.table::as.data.table(x)
       n <- nrow(x)
       tipos_101 <- monitora_painel_tipos_auditoria_101()
+      tipos_enc <- monitora_painel_tipos_encostam_derivado()
       res <- data.table::data.table(
-        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", tipos_101$tipo),
-        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", tipos_101$ocorrencia),
+        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", tipos_101$tipo, tipos_enc$tipo),
+        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", tipos_101$ocorrencia, tipos_enc$ocorrencia),
         n_linhas = 0L,
         n_coletas = 0L,
         n_corrigiveis_painel = NA_integer_,
@@ -24424,6 +24484,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         ), by = .(tipo = tipo_pendencia)]
         if (nrow(aud101_sum)) {
           res[aud101_sum, on = .(tipo), `:=`(
+            n_linhas = i.n_linhas,
+            n_coletas = i.n_coletas,
+            n_corrigiveis_painel = i.n_corrigiveis_painel,
+            n_nao_corrigiveis_painel = i.n_nao_corrigiveis_painel
+          )]
+        }
+      }
+      aud_enc <- monitora_painel_auditoria_encostam_derivado_dt(x)
+      if (nrow(aud_enc) && "tipo_pendencia" %in% names(aud_enc)) {
+        if (!("COLETA" %in% names(aud_enc))) aud_enc[, COLETA := ""]
+        if (!("corrigivel_no_painel" %in% names(aud_enc))) aud_enc[, corrigivel_no_painel := NA]
+        aud_enc_sum <- aud_enc[tipo_pendencia %in% tipos_enc$tipo, .(
+          n_linhas = .N,
+          n_coletas = data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)]),
+          n_corrigiveis_painel = sum(corrigivel_no_painel %in% TRUE, na.rm = TRUE),
+          n_nao_corrigiveis_painel = sum(!(corrigivel_no_painel %in% TRUE), na.rm = TRUE)
+        ), by = .(tipo = tipo_pendencia)]
+        if (nrow(aud_enc_sum)) {
+          res[aud_enc_sum, on = .(tipo), `:=`(
             n_linhas = i.n_linhas,
             n_coletas = i.n_coletas,
             n_corrigiveis_painel = i.n_corrigiveis_painel,
