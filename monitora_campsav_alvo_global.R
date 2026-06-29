@@ -31221,6 +31221,88 @@ monitora_publicacao_ab_tem_forma_categoria <- function(dt, categoria) {
   out
 }
 
+monitora_publicacao_ab_auditar_pendencias_impeditivas_complementares_101_encostam <- function(dt, contexto = "pre_registros_corrig") {
+  if (!requireNamespace("data.table", quietly = TRUE)) return(data.table::data.table())
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return(data.table::data.table())
+  rotulos <- c(
+    atributo_101_nao_resolvido             = "Atributo 101 não resolvido",
+    atributo_101_alias_conflitante         = "Atributo 101 com aliases conflitantes",
+    cadastro_uc_ausente_ou_invalida        = "Cadastro UC ausente ou inválida",
+    cadastro_ea_ausente_ou_invalida        = "Cadastro EA ausente ou inválida",
+    cadastro_ua_ausente_ou_invalida        = "Cadastro UA ausente ou inválida",
+    cadastro_ciclo_ausente_ou_invalido     = "Cadastro ciclo ausente ou inválido",
+    cadastro_campanha_ausente_ou_invalida  = "Cadastro campanha ausente ou inválida",
+    atributo_101_formato_invalido          = "Atributo 101 com formato inválido",
+    atributo_101_valor_fora_dominio        = "Atributo 101 com valor fora do domínio",
+    encostam_desatualizado                 = "Encostam desatualizado",
+    encostam_token_sem_inferior            = "Encostam: token sem inferior correspondente",
+    encostam_inferior_sem_token            = "Encostam: inferior sem token",
+    encostam_solo_nu_conflitante           = "Encostam: solo nu conflitante",
+    encostam_token_desconhecido            = "Encostam: token desconhecido",
+    encostam_desconhecida_superior_only    = "Encostam: desconhecida superior-only",
+    encostam_outra_forma_vida              = "Encostam: outra forma de vida",
+    encostam_coluna_nao_resolvida          = "Encostam: coluna não resolvida"
+  )
+  normalizar_pend <- function(aud, ctx) {
+    aud <- data.table::as.data.table(aud)
+    if (!("severidade" %in% names(aud))) return(data.table::data.table())
+    aud <- aud[severidade == "impeditiva"]
+    if (!nrow(aud)) return(data.table::data.table())
+    obter <- function(col) if (col %in% names(aud)) as.character(aud[[col]]) else rep(NA_character_, nrow(aud))
+    lin <- if ("linha" %in% names(aud)) suppressWarnings(as.integer(aud[["linha"]])) else rep(NA_integer_, nrow(aud))
+    tp  <- as.character(aud[["tipo_pendencia"]])
+    rot <- rotulos[tp]
+    rot[is.na(rot)] <- tp[is.na(rot)]
+    atr <- if ("coluna_materializada" %in% names(aud)) obter("coluna_materializada") else if ("coluna_encostam" %in% names(aud)) obter("coluna_encostam") else rep(NA_character_, nrow(aud))
+    enc <- if ("valor_atual" %in% names(aud)) obter("valor_atual") else rep(NA_character_, nrow(aud))
+    corr <- if ("corrigivel_no_painel" %in% names(aud)) as.logical(aud[["corrigivel_no_painel"]]) else rep(NA, nrow(aud))
+    data.table::data.table(
+      contexto            = ctx,
+      severidade          = as.character(aud[["severidade"]]),
+      tipo_pendencia      = tp,
+      rotulo_pendencia    = unname(rot),
+      linha_indice        = lin,
+      COLETA              = obter("COLETA"),
+      UC                  = obter("UC"),
+      EA                  = obter("EA"),
+      UA                  = obter("UA"),
+      ANO                 = rep(NA_character_, nrow(aud)),
+      CICLO               = obter("CICLO"),
+      CAMPANHA            = obter("CAMPANHA"),
+      ponto_amostral      = rep(NA_character_, nrow(aud)),
+      atributo            = atr,
+      Encostam            = enc,
+      mensagem            = obter("mensagem"),
+      corrigivel_no_painel = corr,
+      acao_sugerida       = obter("acao_sugerida")
+    )
+  }
+  pend <- list()
+  if (exists("monitora_registros_corrig_auditar_atributos_101", mode = "function")) {
+    aud101 <- tryCatch(
+      monitora_registros_corrig_auditar_atributos_101(data.table::copy(dt)),
+      error = function(e) data.table::data.table()
+    )
+    if (data.table::is.data.table(aud101) && nrow(aud101)) {
+      norm101 <- normalizar_pend(aud101, contexto)
+      if (nrow(norm101)) pend[[length(pend) + 1L]] <- norm101
+    }
+  }
+  if (exists("monitora_registros_corrig_auditar_encostam_derivado", mode = "function")) {
+    aud_enc <- tryCatch(
+      monitora_registros_corrig_auditar_encostam_derivado(data.table::copy(dt)),
+      error = function(e) data.table::data.table()
+    )
+    if (data.table::is.data.table(aud_enc) && nrow(aud_enc)) {
+      norm_enc <- normalizar_pend(aud_enc, contexto)
+      if (nrow(norm_enc)) pend[[length(pend) + 1L]] <- norm_enc
+    }
+  }
+  if (!length(pend)) return(data.table::data.table())
+  data.table::rbindlist(pend, fill = TRUE, use.names = TRUE)
+}
+
 monitora_publicacao_ab_auditar_pendencias_impeditivas <- function(dt,
                                                                   contexto = "pre_registros_corrig",
                                                                   output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
@@ -31365,6 +31447,13 @@ monitora_publicacao_ab_auditar_pendencias_impeditivas <- function(dt,
     atributo = paste(unique(cols_outra), collapse = " | ")
   )
 
+  comp_101_enc <- tryCatch(
+    monitora_publicacao_ab_auditar_pendencias_impeditivas_complementares_101_encostam(dt, contexto = contexto),
+    error = function(e) data.table::data.table()
+  )
+  if (data.table::is.data.table(comp_101_enc) && nrow(comp_101_enc)) {
+    issues[[length(issues) + 1L]] <- comp_101_enc
+  }
 
   audit <- if (length(issues)) data.table::rbindlist(issues, fill = TRUE, use.names = TRUE) else data.table::data.table(
     contexto = character(), severidade = character(), tipo_pendencia = character(), rotulo_pendencia = character(), linha_indice = integer(),
