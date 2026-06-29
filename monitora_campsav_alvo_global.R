@@ -11467,7 +11467,7 @@ monitora_registros_corrig_auditar_atributos_101 <- function(dt, contrato = NULL)
       }
     }
 
-    if (tipo_base %in% c("select_one", "select_multiple") && !is.na(col_resolvida) && nrow(x)) {
+    if (tipo_base %in% c("select_one", "select_multiple") && is.na(cad_tipo) && !is.na(col_resolvida) && nrow(x)) {
       escolhas <- choices_seguras(row$list_name)
       ### TODO bloco posterior: ampliar validação de domínio dos 101 com fonte
       ### mestre explícita quando a lista XLSForm não estiver carregada. Sem
