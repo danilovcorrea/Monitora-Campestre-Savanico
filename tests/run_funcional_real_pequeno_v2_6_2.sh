@@ -28,6 +28,8 @@
 #   ABRIR_PAINEL=N                 — S abre painel Shiny (interativo, bloqueia)
 #   MANTER_TMP=N                   — S preserva $TMP_RUN após execução
 #   XLSFORM_ENTRADA=               — caminho para o xlsx do XLSForm (opcional)
+#   PROGRESSO_BACKEND=cli          — backend de progresso R: cli, nenhum, etc. (padrão: cli)
+#   HEARTBEAT=S                    — S imprime status a cada 30 s durante execução R (padrão: S)
 #
 # Garante:
 #   - nunca altera o diretório de trabalho original (output/, log/, input/)
@@ -73,6 +75,9 @@ ABRIR_PAINEL="${ABRIR_PAINEL:-N}"
 ABRIR_PAINEL="${ABRIR_PAINEL^^}"
 MANTER_TMP="${MANTER_TMP:-N}"
 MANTER_TMP="${MANTER_TMP^^}"
+PROGRESSO_BACKEND="${PROGRESSO_BACKEND:-cli}"
+HEARTBEAT="${HEARTBEAT:-S}"
+HEARTBEAT="${HEARTBEAT^^}"
 
 if ! [[ "$N_COLETAS" =~ ^[0-9]+$ ]] || (( N_COLETAS < 1 || N_COLETAS > 5 )); then
   echo "ERRO: N_COLETAS deve ser inteiro entre 1 e 5 (recebido: $N_COLETAS)" >&2
@@ -91,6 +96,11 @@ fi
 
 if [[ "$ABRIR_PAINEL" != "S" && "$ABRIR_PAINEL" != "N" ]]; then
   echo "ERRO: ABRIR_PAINEL deve ser S ou N (recebido: $ABRIR_PAINEL)" >&2
+  exit 1
+fi
+
+if [[ "$HEARTBEAT" != "S" && "$HEARTBEAT" != "N" ]]; then
+  echo "ERRO: HEARTBEAT deve ser S ou N (recebido: $HEARTBEAT)" >&2
   exit 1
 fi
 
@@ -126,6 +136,8 @@ else
 fi
 echo "ABRIR_PAINEL:     $ABRIR_PAINEL"
 echo "MANTER_TMP:       $MANTER_TMP"
+echo "PROGRESSO_BACKEND: $PROGRESSO_BACKEND"
+echo "HEARTBEAT:        $HEARTBEAT"
 if [[ -n "$XLSFORM_ENTRADA" ]]; then
   echo "XLSForm:          $XLSFORM_ENTRADA"
 fi
@@ -236,21 +248,76 @@ echo ""
 # 8. Execução principal (captura saída sem abortar por exit não-zero)
 # -----------------------------------------------------------------------------
 set +e
-env \
-  MONITORA_MODO_EXECUCAO="$MODO" \
-  MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS="S" \
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES="$PAINEL_FLAG" \
-  MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS="N" \
-  MONITORA_OPCAO_GERAR_MANUAL_USUARIO="N" \
-  MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO="N" \
-  MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS="N" \
-  MONITORA_OPCAO_SALVAR_CACHE_PAINEL="N" \
-  MONITORA_OPCAO_USAR_CACHE_PAINEL="N" \
-  MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES="N" \
-  MONITORA_PROGRESSO_BACKEND="nenhum" \
-  Rscript "$TMP_RUN/monitora_campsav_alvo_global.R" 2>&1 \
-  | tee "$LOG_PRINCIPAL"
-STATUS_R="${PIPESTATUS[0]}"
+if [[ "$HEARTBEAT" == "N" ]]; then
+  env \
+    MONITORA_MODO_EXECUCAO="$MODO" \
+    MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS="S" \
+    MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES="$PAINEL_FLAG" \
+    MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS="N" \
+    MONITORA_OPCAO_GERAR_MANUAL_USUARIO="N" \
+    MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO="N" \
+    MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS="N" \
+    MONITORA_OPCAO_SALVAR_CACHE_PAINEL="N" \
+    MONITORA_OPCAO_USAR_CACHE_PAINEL="N" \
+    MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES="N" \
+    MONITORA_PROGRESSO_BACKEND="$PROGRESSO_BACKEND" \
+    Rscript "$TMP_RUN/monitora_campsav_alvo_global.R" 2>&1 \
+    | tee "$LOG_PRINCIPAL"
+  STATUS_R="${PIPESTATUS[0]}"
+else
+  # Heartbeat: Rscript escreve direto no log; tail -f espelha no terminal.
+  # A cada 30 s imprime timestamp, PID, stats de processo, tamanho do log
+  # e os 5 arquivos mais recentes em output/ e log/.
+  touch "$LOG_PRINCIPAL"
+  env \
+    MONITORA_MODO_EXECUCAO="$MODO" \
+    MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS="S" \
+    MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES="$PAINEL_FLAG" \
+    MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS="N" \
+    MONITORA_OPCAO_GERAR_MANUAL_USUARIO="N" \
+    MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO="N" \
+    MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS="N" \
+    MONITORA_OPCAO_SALVAR_CACHE_PAINEL="N" \
+    MONITORA_OPCAO_USAR_CACHE_PAINEL="N" \
+    MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES="N" \
+    MONITORA_PROGRESSO_BACKEND="$PROGRESSO_BACKEND" \
+    Rscript "$TMP_RUN/monitora_campsav_alvo_global.R" >> "$LOG_PRINCIPAL" 2>&1 &
+  RSCRIPT_PID=$!
+
+  tail -f "$LOG_PRINCIPAL" &
+  TAIL_PID=$!
+
+  (
+    while kill -0 "$RSCRIPT_PID" 2>/dev/null; do
+      sleep 30
+      kill -0 "$RSCRIPT_PID" 2>/dev/null || break
+      echo ""
+      echo "--- [heartbeat] $(date '+%Y-%m-%d %H:%M:%S') ---"
+      echo "    PID Rscript: $RSCRIPT_PID"
+      if command -v ps &>/dev/null; then
+        ps -p "$RSCRIPT_PID" -o pid,etime,%cpu,%mem --no-headers 2>/dev/null \
+          | awk '{printf "    pid=%-8s etime=%-12s cpu=%-6s mem=%s\n",$1,$2,$3,$4}' || true
+      fi
+      _log_sz="$(du -sh "$LOG_PRINCIPAL" 2>/dev/null | cut -f1)"
+      echo "    Log: ${_log_sz:-?} — $(basename "$LOG_PRINCIPAL")"
+      echo "    Ultimos 5 arquivos modificados em output/ e log/:"
+      find "$TMP_RUN/output" "$TMP_RUN/log" -type f -printf '%T@ %p\n' 2>/dev/null \
+        | sort -rn | head -5 \
+        | while read -r _ts _fp; do
+            echo "      ${_fp#"$TMP_RUN/"}"
+          done
+    done
+  ) &
+  HB_PID=$!
+
+  wait "$RSCRIPT_PID"
+  STATUS_R=$?
+  sleep 1
+  kill "$TAIL_PID" 2>/dev/null || true
+  wait "$TAIL_PID" 2>/dev/null || true
+  kill "$HB_PID" 2>/dev/null || true
+  wait "$HB_PID" 2>/dev/null || true
+fi
 set -e
 
 # -----------------------------------------------------------------------------
