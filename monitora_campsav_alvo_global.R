@@ -19903,8 +19903,64 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     sort(vals)
   }
 
+  monitora_painel_tipos_auditoria_101 <- function() {
+    data.table::data.table(
+      tipo = c(
+        "atributo_101_nao_resolvido",
+        "atributo_101_alias_conflitante",
+        "cadastro_uc_ausente_ou_invalida",
+        "cadastro_ea_ausente_ou_invalida",
+        "cadastro_ua_ausente_ou_invalida",
+        "cadastro_ciclo_ausente_ou_invalido",
+        "cadastro_campanha_ausente_ou_invalida",
+        "atributo_101_formato_invalido",
+        "atributo_101_valor_fora_dominio"
+      ),
+      ocorrencia = c(
+        "Atributo 101 não resolvido",
+        "Atributo 101 com aliases conflitantes",
+        "Cadastro UC ausente ou inválida",
+        "Cadastro EA ausente ou inválida",
+        "Cadastro UA ausente ou inválida",
+        "Cadastro ciclo ausente ou inválido",
+        "Cadastro campanha ausente ou inválida",
+        "Atributo 101 com formato inválido",
+        "Atributo 101 com valor fora do domínio"
+      ),
+      severidade = "impeditiva"
+    )
+  }
+
+  monitora_painel_auditoria_101_dt <- function(x) {
+    if (!exists("monitora_registros_corrig_auditar_atributos_101", mode = "function")) return(data.table::data.table())
+    x <- data.table::as.data.table(x)
+    if (!nrow(x)) return(data.table::data.table())
+    tryCatch(
+      data.table::as.data.table(monitora_registros_corrig_auditar_atributos_101(data.table::as.data.table(data.table::copy(x)))),
+      error = function(e) data.table::data.table()
+    )
+  }
+
+  monitora_painel_coletas_auditoria_101 <- function(x) {
+    tipos_101 <- monitora_painel_tipos_auditoria_101()
+    out <- stats::setNames(vector("list", nrow(tipos_101)), tipos_101$tipo)
+    aud101 <- monitora_painel_auditoria_101_dt(x)
+    if (!nrow(aud101) || !("tipo_pendencia" %in% names(aud101))) return(lapply(out, function(z) character(0)))
+    if (!("COLETA" %in% names(aud101))) aud101[, COLETA := ""]
+    for (tp in names(out)) {
+      vals <- unique(as.character(aud101[tipo_pendencia == tp, COLETA]))
+      out[[tp]] <- sort(vals[!is.na(vals) & nzchar(vals)])
+    }
+    out
+  }
+
   coletas_triagem_por_tipo <- monitora_painel_coletas_diagnosticas_preferir_relatorios()
   coletas_triagem_por_tipo$uas_duplicadas_mesmo_ano <- monitora_painel_coletas_ua_ano_duplicadas()
+  tipos_auditoria_101_iniciais <- stats::setNames(
+    rep(list(character(0)), nrow(monitora_painel_tipos_auditoria_101())),
+    monitora_painel_tipos_auditoria_101()$tipo
+  )
+  coletas_triagem_por_tipo <- c(coletas_triagem_por_tipo, tipos_auditoria_101_iniciais)
   coletas_triagem_por_tipo <- lapply(coletas_triagem_por_tipo, function(z) {
     z <- unique(as.character(z))
     sort(z[!is.na(z) & nzchar(z)])
@@ -23351,6 +23407,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       for (nm in c("forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie")) {
         if (is.null(out[[nm]]) || !length(out[[nm]])) out[[nm]] <- coletas_triagem_por_tipo[[nm]]
       }
+      aud101_coletas <- monitora_painel_coletas_auditoria_101(x)
+      for (nm in names(aud101_coletas)) out[[nm]] <- aud101_coletas[[nm]]
       out
     }
 
@@ -24045,7 +24103,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "exotica_sem_forma_vida",
         "seca_morta_sem_forma_vida",
         "outra_forma_vida",
-        "forma_vida_desconhecida"
+        "forma_vida_desconhecida",
+        monitora_painel_tipos_auditoria_101()$tipo
       )
       rotulos <- c(
         "UAs duplicadas no mesmo ano",
@@ -24054,7 +24113,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "Exótica sem forma de vida",
         "Seca ou morta sem forma de vida",
         "Outra forma de vida",
-        "Forma de vida desconhecida"
+        "Forma de vida desconhecida",
+        monitora_painel_tipos_auditoria_101()$ocorrencia
       )
       tryCatch({
         data.table::rbindlist(lapply(seq_along(tipos), function(i) {
@@ -24065,7 +24125,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             tipo = tipos[i],
             ocorrencia = rotulos[i],
             n_linhas = NA_integer_,
-            n_coletas = length(z)
+            n_coletas = length(z),
+            n_corrigiveis_painel = NA_integer_,
+            n_nao_corrigiveis_painel = NA_integer_
           )
         }), fill = TRUE, use.names = TRUE)
       }, error = function(e) {
@@ -24090,11 +24152,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_resumo_impeditivas_dados <- function(x) {
       x <- data.table::as.data.table(x)
       n <- nrow(x)
+      tipos_101 <- monitora_painel_tipos_auditoria_101()
       res <- data.table::data.table(
-        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida"),
-        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida"),
+        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", tipos_101$tipo),
+        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", tipos_101$ocorrencia),
         n_linhas = 0L,
-        n_coletas = 0L
+        n_coletas = 0L,
+        n_corrigiveis_painel = NA_integer_,
+        n_nao_corrigiveis_painel = NA_integer_
       )
       if (!n) return(res)
       vazio <- function(v) { z <- tryCatch(monitora_correcao_vazio_vec(v), error = function(e) is.na(v) | !nzchar(trimws(as.character(v)))); z[is.na(z)] <- TRUE; z }
@@ -24152,6 +24217,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           }
         }
         set_res("forma_vida_desconhecida", which(m_desc))
+      }
+      aud101 <- monitora_painel_auditoria_101_dt(x)
+      if (nrow(aud101) && "tipo_pendencia" %in% names(aud101)) {
+        if (!("COLETA" %in% names(aud101))) aud101[, COLETA := ""]
+        if (!("corrigivel_no_painel" %in% names(aud101))) aud101[, corrigivel_no_painel := NA]
+        aud101_sum <- aud101[tipo_pendencia %in% tipos_101$tipo, .(
+          n_linhas = .N,
+          n_coletas = data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)]),
+          n_corrigiveis_painel = sum(corrigivel_no_painel %in% TRUE, na.rm = TRUE),
+          n_nao_corrigiveis_painel = sum(!(corrigivel_no_painel %in% TRUE), na.rm = TRUE)
+        ), by = .(tipo = tipo_pendencia)]
+        if (nrow(aud101_sum)) {
+          res[aud101_sum, on = .(tipo), `:=`(
+            n_linhas = i.n_linhas,
+            n_coletas = i.n_coletas,
+            n_corrigiveis_painel = i.n_corrigiveis_painel,
+            n_nao_corrigiveis_painel = i.n_nao_corrigiveis_painel
+          )]
+        }
       }
       res[]
     }
@@ -24420,6 +24504,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_tabela_impeditivas_ui <- function(resumo = NULL, titulo = NULL) {
       if (is.null(resumo)) resumo <- monitora_painel_resumo_impeditivas_pre()
       if (!("n_linhas" %in% names(resumo))) resumo[, n_linhas := NA_integer_]
+      if (!("n_corrigiveis_painel" %in% names(resumo))) resumo[, n_corrigiveis_painel := NA_integer_]
+      if (!("n_nao_corrigiveis_painel" %in% names(resumo))) resumo[, n_nao_corrigiveis_painel := NA_integer_]
       resumo <- resumo[(is.finite(n_coletas) & n_coletas > 0L) | (is.finite(n_linhas) & n_linhas > 0L)]
       corpo <- if (!nrow(resumo)) {
         shiny::p("Nenhuma ocorrência impeditiva pendente foi detectada nesta avaliação.")
@@ -24429,13 +24515,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::tags$thead(shiny::tags$tr(
             shiny::tags$th("Ocorrência impeditiva"),
             shiny::tags$th("Linhas"),
-            shiny::tags$th("Coletas")
+            shiny::tags$th("Coletas"),
+            shiny::tags$th("Corrigíveis no painel"),
+            shiny::tags$th("Não corrigíveis no painel")
           )),
           shiny::tags$tbody(lapply(seq_len(nrow(resumo)), function(i) {
             shiny::tags$tr(
               shiny::tags$td(as.character(resumo$ocorrencia[i])),
               shiny::tags$td(ifelse("n_linhas" %in% names(resumo) && is.finite(resumo$n_linhas[i]), as.character(resumo$n_linhas[i]), "—")),
-              shiny::tags$td(as.character(resumo$n_coletas[i]))
+              shiny::tags$td(as.character(resumo$n_coletas[i])),
+              shiny::tags$td(ifelse(is.finite(resumo$n_corrigiveis_painel[i]), as.character(resumo$n_corrigiveis_painel[i]), "—")),
+              shiny::tags$td(ifelse(is.finite(resumo$n_nao_corrigiveis_painel[i]), as.character(resumo$n_nao_corrigiveis_painel[i]), "—"))
             )
           }))
         )
