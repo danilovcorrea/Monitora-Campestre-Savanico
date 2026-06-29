@@ -11024,6 +11024,286 @@ monitora_registros_corrig_contrato_mestre_2025 <- function() {
   out[]
 }
 
+monitora_registros_corrig_auditar_atributos_101 <- function(dt, contrato = NULL) {
+  ### Auditoria autônoma dos 101 atributos editáveis. Não altera dt, não grava
+  ### arquivos e não é chamada pelo painel/materialização neste bloco.
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Pacote data.table é obrigatório.", call. = FALSE)
+  }
+  if (!inherits(dt, c("data.frame", "data.table"))) {
+    stop("Auditoria de atributos 101 exige data.frame/data.table.", call. = FALSE)
+  }
+  x <- data.table::as.data.table(data.table::copy(dt))
+  if (is.null(contrato)) contrato <- monitora_registros_corrig_contrato_mestre_2025()
+  contrato <- data.table::as.data.table(data.table::copy(contrato))
+
+  cols_contrato <- c(
+    "atributo_canonico", "coluna_materializada", "aliases_aceitos",
+    "painel_101", "editavel_painel", "tipo_base", "list_name"
+  )
+  faltantes <- setdiff(cols_contrato, names(contrato))
+  if (length(faltantes)) {
+    stop("Contrato 101 sem coluna(s) obrigatória(s): ", paste(faltantes, collapse = ", "), call. = FALSE)
+  }
+
+  normalizar <- function(v) {
+    if (exists("monitora_correcao_normalizar_nome_coluna", mode = "function")) {
+      return(monitora_correcao_normalizar_nome_coluna(v))
+    }
+    v <- trimws(tolower(as.character(v)))
+    v[is.na(v)] <- ""
+    v <- iconv(v, from = "", to = "ASCII//TRANSLIT")
+    v[is.na(v)] <- ""
+    gsub("[^a-z0-9]+", "_", v, perl = TRUE)
+  }
+  vazio <- function(v) {
+    if (exists("monitora_correcao_vazio_vec", mode = "function")) {
+      out <- tryCatch(monitora_correcao_vazio_vec(v), error = function(e) NULL)
+      if (!is.null(out)) {
+        out[is.na(out)] <- TRUE
+        return(out)
+      }
+    }
+    z <- trimws(as.character(v))
+    is.na(v) | is.na(z) | !nzchar(z) | tolower(z) %in% c("na", "nan", "null") |
+      grepl("^[[:space:]]*[-–—−]+[[:space:]]*$", z, perl = TRUE)
+  }
+  split_aliases <- function(...) {
+    vals <- unlist(list(...), use.names = FALSE)
+    vals <- unlist(strsplit(as.character(vals), "[|;]", perl = TRUE), use.names = FALSE)
+    vals <- unique(trimws(vals))
+    vals[!is.na(vals) & nzchar(vals)]
+  }
+  nms <- names(x)
+  nms_norm <- normalizar(nms)
+  resolver_cols <- function(aliases) {
+    aliases <- split_aliases(aliases)
+    aliases_norm <- normalizar(aliases)
+    idx <- which(nms %in% aliases | tolower(nms) %in% tolower(aliases) | nms_norm %in% aliases_norm)
+    unique(nms[idx])
+  }
+  valor_linha <- function(col, i) {
+    if (is.na(col) || !nzchar(col) || !(col %in% names(x)) || is.na(i) || i < 1L || i > nrow(x)) return("")
+    z <- as.character(x[[col]][i])
+    if (is.na(z)) "" else z
+  }
+  primeiro_valor_alias <- function(aliases, i) {
+    cols <- resolver_cols(aliases)
+    if (!length(cols)) return("")
+    vals <- vapply(cols, valor_linha, character(1), i = i)
+    vals[is.na(vals)] <- ""
+    hit <- vals[!vazio(vals)]
+    if (length(hit)) hit[1L] else ""
+  }
+  contexto_linha <- function(i) {
+    aliases_ctx <- list(
+      COLETA = c("COLETA", "coleta"),
+      UC = c("UC", "uc"),
+      EA = c("EA", "ea", "estacao_amostral", "estação amostral"),
+      UA = c("UA", "ua", "unidade_amostral", "unidade amostral"),
+      CICLO = c("CICLO", "Ciclo", "ciclo"),
+      CAMPANHA = c("CAMPANHA", "Campanha", "campanha")
+    )
+    as.list(vapply(aliases_ctx, primeiro_valor_alias, character(1), i = i))
+  }
+  saida_vazia <- function() {
+    data.table::data.table(
+      tipo_pendencia = character(),
+      severidade = character(),
+      corrigivel_no_painel = logical(),
+      atributo_canonico = character(),
+      coluna_materializada = character(),
+      aliases_aceitos = character(),
+      linha = integer(),
+      COLETA = character(),
+      UC = character(),
+      EA = character(),
+      UA = character(),
+      CICLO = character(),
+      CAMPANHA = character(),
+      valor_atual = character(),
+      valor_esperado = character(),
+      mensagem = character(),
+      acao_sugerida = character()
+    )
+  }
+  pendencias <- list()
+  add <- function(tipo_pendencia, severidade, corrigivel_no_painel, row, linha, valor_atual, valor_esperado, mensagem, acao_sugerida) {
+    ctx <- contexto_linha(linha)
+    pendencias[[length(pendencias) + 1L]] <<- data.table::data.table(
+      tipo_pendencia = as.character(tipo_pendencia)[1L],
+      severidade = as.character(severidade)[1L],
+      corrigivel_no_painel = isTRUE(corrigivel_no_painel),
+      atributo_canonico = as.character(row$atributo_canonico)[1L],
+      coluna_materializada = as.character(row$coluna_materializada)[1L],
+      aliases_aceitos = as.character(row$aliases_aceitos)[1L],
+      linha = suppressWarnings(as.integer(linha))[1L],
+      COLETA = ctx$COLETA,
+      UC = ctx$UC,
+      EA = ctx$EA,
+      UA = ctx$UA,
+      CICLO = ctx$CICLO,
+      CAMPANHA = ctx$CAMPANHA,
+      valor_atual = as.character(valor_atual)[1L],
+      valor_esperado = as.character(valor_esperado)[1L],
+      mensagem = as.character(mensagem)[1L],
+      acao_sugerida = as.character(acao_sugerida)[1L]
+    )
+    invisible(TRUE)
+  }
+
+  validar_formato <- function(v, tipo_base) {
+    z <- trimws(as.character(v))
+    z[is.na(z)] <- ""
+    ok <- rep(TRUE, length(z))
+    idx <- nzchar(z)
+    if (!any(idx)) return(ok)
+    if (identical(tipo_base, "date")) {
+      ok[idx] <- grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", z[idx], perl = TRUE) &
+        !is.na(as.Date(z[idx], format = "%Y-%m-%d"))
+      ok[idx] <- ok[idx] & format(as.Date(z[idx], format = "%Y-%m-%d"), "%Y-%m-%d") == z[idx]
+    } else if (identical(tipo_base, "time")) {
+      ok[idx] <- grepl("^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?)?$", z[idx], perl = TRUE)
+    } else if (identical(tipo_base, "datetime")) {
+      ok[idx] <- grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$", z[idx], perl = TRUE)
+      datas_dt <- sub("[ T].*$", "", z[idx], perl = TRUE)
+      ok[idx] <- ok[idx] & !is.na(as.Date(datas_dt, format = "%Y-%m-%d")) &
+        format(as.Date(datas_dt, format = "%Y-%m-%d"), "%Y-%m-%d") == datas_dt
+    } else if (identical(tipo_base, "integer")) {
+      ok[idx] <- grepl("^-?[0-9]+$", z[idx], perl = TRUE)
+    } else if (identical(tipo_base, "decimal")) {
+      ok[idx] <- grepl("^-?[0-9]+(\\.[0-9]+)?$", z[idx], perl = TRUE) &
+        is.finite(suppressWarnings(as.numeric(z[idx])))
+    }
+    ok[is.na(ok)] <- FALSE
+    ok
+  }
+  choices_seguras <- function(list_name) {
+    list_name <- as.character(list_name)[1L]
+    if (is.na(list_name) || !nzchar(trimws(list_name))) return(character(0))
+    choices <- character(0)
+    if (exists("monitora_validados_xlsform21_choices", mode = "function")) {
+      choices <- tryCatch(monitora_validados_xlsform21_choices(list_name), error = function(e) character(0))
+    }
+    if (!length(choices) && exists("monitora_correcao_choices_xlsform", mode = "function")) {
+      choices <- tryCatch(monitora_correcao_choices_xlsform(list_name, meta_xls = NULL), error = function(e) character(0))
+    }
+    unique(as.character(choices[!is.na(choices) & nzchar(choices)]))
+  }
+  tokens_select_multiple <- function(v) {
+    if (exists("monitora_correcao_tokens_valor", mode = "function")) {
+      return(tryCatch(monitora_correcao_tokens_valor(v), error = function(e) character(0)))
+    }
+    toks <- unlist(strsplit(gsub("[|;,]+", " ", as.character(v), perl = TRUE), "\\s+", perl = TRUE), use.names = FALSE)
+    unique(toks[!is.na(toks) & nzchar(toks)])
+  }
+
+  contrato_101 <- contrato[painel_101 == TRUE]
+  if (!nrow(contrato_101)) return(saida_vazia())
+  for (ii in seq_len(nrow(contrato_101))) {
+    row <- contrato_101[ii]
+    aliases <- split_aliases(row$coluna_materializada, row$atributo_canonico, row$aliases_aceitos)
+    cols_presentes <- resolver_cols(aliases)
+    col_principal <- as.character(row$coluna_materializada)[1L]
+    col_resolvida <- if (col_principal %in% cols_presentes) col_principal else if (length(cols_presentes)) cols_presentes[1L] else NA_character_
+
+    if (!length(cols_presentes)) {
+      add(
+        "atributo_101_nao_resolvido", "impeditiva", FALSE, row, NA_integer_, "",
+        paste(aliases, collapse = " | "),
+        "Atributo 101 sem coluna materializada e sem alias presente em registros_corrig.",
+        "Mapear/materializar o atributo antes de considerar registros_corrig final."
+      )
+      next
+    }
+
+    if (length(cols_presentes) >= 2L && nrow(x)) {
+      vals_mat <- as.data.frame(x[, ..cols_presentes], stringsAsFactors = FALSE)
+      for (linha in seq_len(nrow(x))) {
+        vals <- trimws(as.character(unlist(vals_mat[linha, ], use.names = TRUE)))
+        names(vals) <- cols_presentes
+        vals <- vals[!vazio(vals)]
+        if (length(unique(vals)) > 1L) {
+          add(
+            "atributo_101_alias_conflitante", "impeditiva", isTRUE(row$editavel_painel), row, linha,
+            paste(paste(names(vals), vals, sep = "="), collapse = " | "),
+            "aliases com o mesmo valor",
+            "Há aliases do mesmo atributo com valores não vazios diferentes na mesma linha.",
+            "Escolher e persistir um único valor coerente para o atributo."
+          )
+        }
+      }
+    }
+
+    cad_tipo <- switch(
+      normalizar(row$atributo_canonico)[1L],
+      uc = "cadastro_uc_ausente_ou_invalida",
+      ea = "cadastro_ea_ausente_ou_invalida",
+      ua = "cadastro_ua_ausente_ou_invalida",
+      ciclo = "cadastro_ciclo_ausente_ou_invalido",
+      campanha = "cadastro_campanha_ausente_ou_invalida",
+      NA_character_
+    )
+    if (!is.na(cad_tipo) && nrow(x)) {
+      for (linha in seq_len(nrow(x))) {
+        vals <- vapply(cols_presentes, valor_linha, character(1), i = linha)
+        if (!any(!vazio(vals))) {
+          add(
+            cad_tipo, "impeditiva", isTRUE(row$editavel_painel), row, linha,
+            "", "valor cadastral preenchido",
+            "Atributo cadastral principal ausente/vazio nos aliases resolvidos. TODO: validar domínio cadastral quando houver fonte segura.",
+            "Preencher valor cadastral correto a partir da documentação da coleta."
+          )
+        }
+      }
+    }
+
+    tipo_base <- as.character(row$tipo_base)[1L]
+    if (tipo_base %in% c("date", "time", "datetime", "integer", "decimal") && !is.na(col_resolvida) && nrow(x)) {
+      vals <- as.character(x[[col_resolvida]])
+      ok <- validar_formato(vals, tipo_base)
+      idx_bad <- which(!vazio(vals) & !ok)
+      for (linha in idx_bad) {
+        add(
+          "atributo_101_formato_invalido", "impeditiva", isTRUE(row$editavel_painel), row, linha,
+          vals[linha], tipo_base,
+          paste0("Valor incompatível com formato seguro do tipo ", tipo_base, "."),
+          "Corrigir o valor para o formato contratual; a auditoria não tenta corrigir automaticamente."
+        )
+      }
+    }
+
+    if (tipo_base %in% c("select_one", "select_multiple") && !is.na(col_resolvida) && nrow(x)) {
+      escolhas <- choices_seguras(row$list_name)
+      ### TODO bloco posterior: ampliar validação de domínio dos 101 com fonte
+      ### mestre explícita quando a lista XLSForm não estiver carregada. Sem
+      ### choices seguras, esta auditoria não gera falso positivo de domínio.
+      if (length(escolhas)) {
+        vals <- as.character(x[[col_resolvida]])
+        for (linha in which(!vazio(vals))) {
+          tokens <- if (identical(tipo_base, "select_multiple")) tokens_select_multiple(vals[linha]) else trimws(vals[linha])
+          invalidos <- setdiff(tokens, escolhas)
+          if (length(invalidos)) {
+            add(
+              "atributo_101_valor_fora_dominio", "impeditiva", isTRUE(row$editavel_painel), row, linha,
+              vals[linha], paste(utils::head(escolhas, 20L), collapse = " | "),
+              paste0("Valor/token fora do domínio XLSForm seguro: ", paste(invalidos, collapse = " | "), "."),
+              "Substituir por token presente no domínio XLSForm carregado."
+            )
+          }
+        }
+      }
+    }
+  }
+
+  ### TODO bloco posterior: edicao_nao_persistida e dirty_flag_pendente dependem
+  ### de trilha/log/estado reativo do painel; não são inferidos desta tabela.
+  if (!length(pendencias)) return(saida_vazia())
+  out <- data.table::rbindlist(pendencias, fill = TRUE, use.names = TRUE)
+  data.table::setcolorder(out, names(saida_vazia()))
+  out[]
+}
+
 monitora_registros_corrig_contrato_dropdown_painel_101 <- function(contrato = NULL) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Pacote data.table é obrigatório.", call. = FALSE)
