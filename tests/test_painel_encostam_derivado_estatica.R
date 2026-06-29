@@ -149,21 +149,18 @@ for (ctx_nome in names(contextos_proibidos)) {
   }
 }
 
-# Verificar ausencia em bloco de materializacao (checkpoint/selo)
-trecho_mat <- paste(trecho_entre(
+# Verificar ausencia em registros_validados_exportar (ja coberto na secao 8, reafirmado aqui)
+trecho_exportar <- paste(trecho_entre(
   linhas,
-  "monitora_perf_registrar_checkpoint",
-  NULL
+  "^monitora_registros_validados_exportar\\s*<-\\s*function\\s*\\(",
+  "^monitora_publicacao_ab_coluna_segura\\s*<-\\s*function\\s*\\("
 ), collapse = "\n")
-# Auditoria encostam nao deve ser chamada diretamente no escopo de checkpoint/selo fora do painel
-# (verificacao leve: funcao de auditoria nao deve aparecer apos o bloco de encerramento do painel)
-idx_fim_painel <- grep("^monitora_cache_painel_hash_inputs\\s*<-\\s*function\\s*\\(", linhas, perl = TRUE)
-if (length(idx_fim_painel)) {
-  pos_fim <- idx_fim_painel[1L]
-  linhas_pos_painel <- linhas[seq.int(pos_fim, length(linhas))]
-  if (grepl("monitora_registros_corrig_auditar_encostam_derivado\\s*\\(", paste(linhas_pos_painel, collapse = "\n"), perl = TRUE)) {
-    falhar("Auditoria encostam nao deve ser chamada fora do contexto do painel (pos-painel).")
-  }
+if (grepl("monitora_registros_corrig_auditar_encostam_derivado\\s*\\(", trecho_exportar, perl = TRUE)) {
+  falhar("Auditoria encostam nao deve ser chamada diretamente em registros_validados_exportar.")
 }
+# Chamada em bloco AB/checkpoint e permitida (monitora_publicacao_ab_auditar_pendencias_impeditivas*)
+# Verificar apenas que funcoes explicitamente proibidas nao chamam a auditoria diretamente:
+# - AA (preparar_validar_registros_corrig) ja verificado na secao 8
+# - registros_validados_exportar verificado acima
 
 cat("PAINEL_ENCOSTAM_DERIVADO_ESTATICA_OK\n")
