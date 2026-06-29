@@ -55,7 +55,10 @@ globals_mod <- c(
   "MONITORA_REGISTROS_VALIDADOS_GERADO",
   "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS",
   "MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS_RESUMO",
-  "MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS_AUDITORIA"
+  "MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS_AUDITORIA",
+  "MONITORA_OUTPUT_DIR",
+  "MONITORA_LOG_DIR",
+  "MONITORA_EXEC_ID"
 )
 saved_globals <- lapply(globals_mod, function(g) get0(g, envir = .GlobalEnv, inherits = FALSE))
 names(saved_globals) <- globals_mod
@@ -78,6 +81,16 @@ on.exit({
 # --------------------------------------------------------------------------
 tmp <- tempfile(pattern = "trava_rv_test_")
 dir.create(tmp, recursive = TRUE, showWarnings = FALSE)
+
+# Forcar globals de path para tmp antes de qualquer chamada (isola escrita em output/)
+assign("MONITORA_OUTPUT_DIR", tmp, envir = .GlobalEnv)
+assign("MONITORA_LOG_DIR",    tmp, envir = .GlobalEnv)
+assign("MONITORA_EXEC_ID",    "teste_funcional", envir = .GlobalEnv)
+
+# Arquivo proibido: diagnostico nao deve ser criado fora de tmp
+arq_proibido <- file.path("output", "03_auditorias", "pendencias_impeditivas",
+                          "diagnostico_registros_validados_nao_gerado.csv")
+existia_antes <- file.exists(arq_proibido)
 
 dt_test <- data.table::data.table(
   COLETA       = c("COL001", "COL002"),
@@ -195,6 +208,13 @@ assign("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS",    FALSE, envir = .Gl
 assign("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", TRUE, envir = .GlobalEnv)
 if (!isTRUE(liberado(contrato_corrig_validado = TRUE))) {
   stop("Helper deve retornar TRUE quando contrato validado e sem pendencias.", call. = FALSE)
+}
+
+# Verificar que output/ do projeto nao foi contaminado durante o teste
+if (!existia_antes && file.exists(arq_proibido)) {
+  stop("Teste contaminou output/ do projeto: ", arq_proibido,
+       ". Verificar se MONITORA_OUTPUT_DIR foi setado corretamente antes das chamadas.",
+       call. = FALSE)
 }
 
 cat("FUNCIONAL_TRAVA_REGISTROS_VALIDADOS_LEVE_OK\n")
