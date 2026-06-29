@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.5.6
-### Versão pública: v2.5.6
+### Versão do script: 2.6.0
+### Versão pública: v2.6.0
 ###
 ### Finalidade
 ###   Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -127,10 +127,66 @@
 
 ### BLOCO OPERACIONAL PRINCIPAL - EDITE AQUI ---------------------------------
 ### O padrão abaixo executa o pipeline completo sem abrir painel. Para curadoria
-### assistida, use MONITORA_MODO_EXECUCAO <- "completo".
+### assistida, use MONITORA_MODO_EXECUCAO <- "painel_e_parar".
 MONITORA_MODO_EXECUCAO <- "completo"
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
+
+### Produtos documentais de validação -----------------------------------------
+### Manual do usuário: documentação pública versionada, gerada sob demanda.
+### Relatório consolidado: produto local de governança da execução, com resumo
+### do input, correções, validação espacial, output e referências aos relatórios.
+MONITORA_OPCAO_GERAR_MANUAL_USUARIO <- "S"
+MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- "S"
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
+MONITORA_RESPONSAVEL_CORRECAO <- Sys.getenv("MONITORA_RESPONSAVEL_CORRECAO", unset = "")
+MONITORA_INSTITUICAO_RESPONSAVEL <- Sys.getenv("MONITORA_INSTITUICAO_RESPONSAVEL", unset = "ICMBio")
+
+
+### Reaplicação de correções semânticas anteriores --------------------------
+### Padrão público seguro: "N". Altere para "S" somente quando quiser reaproveitar,
+### sobre o input bruto/original, operações realizadas em rodada anterior do painel.
+### O arquivo preferencial é uma trilha semântica exportada pelo script
+### (correcoes_semanticas_consolidada.csv), mas correcoes_campos.csv legado também
+### é aceito. Quando habilitado, o replay ocorre antes dos relatórios pré-painel e
+### antes da abertura do Shiny, para que diagnósticos e contadores já reflitam o
+### estado corrigido reaplicado.
+MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- "N"
+MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- ""
+MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES <- "S"
+### Contrato público/versionado da trilha de roll-forward semântico.
+### Alterações futuras do script devem manter compatibilidade retroativa com este
+### contrato ou registrar incompatibilidade explícita antes de aplicar operações.
+
+### Roll-forward semântico de correções anteriores --------------------------
+### Padrão público seguro: desligado. Para reaplicar correções previamente
+### consolidadas, copie output/correcoes_campos/correcoes_semanticas_consolidada.csv
+### para input/correcoes_semanticas.csv e altere a opção abaixo para "S".
+### A comparação com run-oráculo é recurso avançado de auditoria/transição entre
+### versões e permanece desligada por padrão.
+MONITORA_REPLAY_CONTRATO_SEMANTICO_VERSAO <- "replay_semantico_v1"
+
+### Auditoria não bloqueante do replay semântico ---------------------------
+### Use "S" para manter o painel acessível mesmo quando a auditoria do replay
+### encontrar divergência. As divergências são gravadas para comparação com a
+### run-oráculo; use abortar divergência somente em validações finais.
+MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- "S"
+
+### Oráculo de replay semântico ----------------------------------------------
+### Padrão público seguro: "N". Use "S" quando houver uma run anterior considerada
+### correta, especialmente em transições de versão do script. O script NÃO usa o
+### registros_corrig.csv da run-oráculo como entrada operacional. Ele usa a run
+### apenas para auditar se o replay semântico sobre o input bruto chegou ao mesmo
+### estado esperado. Pasta recomendada: input/oraculo_replay/ contendo produtos
+### copiados da run correta, especialmente output_01_produtos_dados/registros_corrig.csv
+### e output_02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/resumo_*.csv.
+MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO <- "N"
+MONITORA_DIR_RUN_ORACULO <- "input/oraculo_replay"
+MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- "N"
+### Colunas que variam legitimamente entre a run-oráculo e a nova run.
+### A comparação estrutural do replay ignora essas diferenças de valor, mas
+### ainda registra a lista de colunas ignoradas no selo de convergência.
+MONITORA_ORACULO_COLUNAS_IGNORAR <- c("MONITORA_CAMINHO_ARQUIVO_ENTRADA")
 
 ### Snapshot opcional da leitura/montagem bruta ------------------------------
 ### Padrão público seguro: "N". Altere para "S" somente em execução local e
@@ -153,7 +209,7 @@ MONITORA_ACURACIA_GPS_MAX_ALERTA_M <- 10
 MONITORA_VALIDAR_COMPRIMENTO_TRANSECTO <- "S"
 MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M <- 50
 MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M <- 20
-MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
+MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "N"
 MONITORA_APLICAR_CORRECOES_ESPACIAIS <- TRUE
 
 ### Otimizações e segurança operacional --------------------------------------
@@ -223,7 +279,7 @@ if (identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache")) {
   ### equivale a uma solicitação deliberada de reabrir o painel pelo cache.
   MONITORA_OPCAO_REABRIR_PAINEL_DO_CACHE <- "S"
 }
-### v2.5.6 -------------------------------
+### v2.6.0 -------------------------------
 ### Modos novos combinam duas dimensões: origem em registros_corrig.csv já
 ### produzido e destino equivalente aos modos públicos completos. As flags abaixo
 ### evitam duplicar blocos de pipeline e preservam data.table/fluxo principal.
@@ -275,7 +331,10 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- toupper(trimws(as.character(MONITORA_OP
 MONITORA_MODOS_FORCAM_PAINEL <- c("painel_e_parar", "abrir_painel_cache", MONITORA_MODOS_PAINEL_INCREMENTAL)
 MONITORA_MODO_FORCA_PAINEL <- MONITORA_MODO_EXECUCAO %in% MONITORA_MODOS_FORCAM_PAINEL
 if (isTRUE(MONITORA_MODO_FORCA_PAINEL)) {
-  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
+  ### Modos orientados a painel prevalecem sobre a chave manual.
+  ### Assim, painel_e_parar, abrir_painel_cache e painel_incremental_*
+  ### sempre abrem o Shiny mesmo se MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = "N".
+  MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 }
 if (!(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
@@ -298,6 +357,45 @@ MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- toupper(trimws(as.character(MONITOR
 if (!(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS deve ser 'S' ou 'N'.", call. = FALSE)
 }
+
+
+
+### v2.6.0 - configuração dos produtos documentais ----------------------------
+MONITORA_OPCAO_GERAR_MANUAL_USUARIO <- Sys.getenv(
+  "MONITORA_OPCAO_GERAR_MANUAL_USUARIO",
+  unset = as.character(get0("MONITORA_OPCAO_GERAR_MANUAL_USUARIO", ifnotfound = "N", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_GERAR_MANUAL_USUARIO <- toupper(trimws(as.character(MONITORA_OPCAO_GERAR_MANUAL_USUARIO)[1]))
+if (!(MONITORA_OPCAO_GERAR_MANUAL_USUARIO %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_GERAR_MANUAL_USUARIO deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- Sys.getenv(
+  "MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO",
+  unset = as.character(get0("MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", ifnotfound = "S", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- toupper(trimws(as.character(MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO)[1]))
+if (!(MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_GERAR_MANUAL_USUARIO <- identical(MONITORA_OPCAO_GERAR_MANUAL_USUARIO, "S")
+MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- identical(MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO, "S")
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- Sys.getenv(
+  "MONITORA_FORMATOS_RELATORIO_VALIDACAO",
+  unset = paste(as.character(get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)), collapse = ",")
+)
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- unique(tolower(trimws(unlist(strsplit(as.character(MONITORA_FORMATOS_RELATORIO_VALIDACAO)[1], ",", fixed = TRUE)))))
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- MONITORA_FORMATOS_RELATORIO_VALIDACAO[nzchar(MONITORA_FORMATOS_RELATORIO_VALIDACAO)]
+if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- intersect(MONITORA_FORMATOS_RELATORIO_VALIDACAO, c("rmd", "md", "html", "pdf"))
+if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
+MONITORA_RESPONSAVEL_CORRECAO <- Sys.getenv(
+  "MONITORA_RESPONSAVEL_CORRECAO",
+  unset = as.character(get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE))[1]
+)
+MONITORA_INSTITUICAO_RESPONSAVEL <- Sys.getenv(
+  "MONITORA_INSTITUICAO_RESPONSAVEL",
+  unset = as.character(get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE))[1]
+)
 
 ### Sobrescrita por variáveis de ambiente para o módulo espacial.
 monitora_cfg_env_num <- function(nome, valor_padrao) {
@@ -356,11 +454,13 @@ MONITORA_ESPACIAL_LOTE_AMPLO_JUSTIFICATIVA_MIN_CHARS <- monitora_cfg_env_int("MO
 
 MONITORA_GERAR_REGISTROS_VALIDADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS, "S")
 MONITORA_GERAR_REGISTROS_IMPORTADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS, "S")
-### v2.5.6: calcular a variável derivada do painel antes de qualquer uso.
+### v2.6.0: calcular a variável derivada do painel antes de qualquer uso.
 ### Em painel_e_parar/abrir_painel_cache/painel_incremental_registros_corrig,
 ### MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES já foi forçada para "S" acima.
 MONITORA_ABRIR_PAINEL_CORRECOES <- identical(MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES, "S")
-### v2.5.6/v2.5.6: registros_importados.csv é produto seletivo. Fora dos modos
+### v2.6.0: o manual deve estar materializado antes de abrir o painel.
+if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) MONITORA_GERAR_MANUAL_USUARIO <- TRUE
+### v2.6.0/v2.6.0: registros_importados.csv é produto seletivo. Fora dos modos
 ### de painel/edição e salvo opção explícita "S", nenhum código de exportação
 ### desse produto deve executar. Em modos com painel, o snapshot bruto é
 ### necessário antes da edição porque serve como referência fiel da entrada.
@@ -430,7 +530,7 @@ monitora_sanitizar_ausencias_produto <- function(x) {
     if (is.character(v) || is.factor(v)) {
       v <- as.character(v)
       z <- trimws(v)
-      ### v2.5.6: produtos corrigidos usam ausência física como literal NA.
+      ### v2.6.0: produtos corrigidos usam ausência física como literal NA.
       ### Além de vazio/NA/"NA", qualquer token composto só por traços
       ### ASCII/Unicode ("-", "--", "---", "—", etc.) é ausência.
       ausente <- is.na(v) | !nzchar(z) | tolower(z) == "na" |
@@ -487,6 +587,908 @@ library("readxl")
 if (!require("openxlsx"))
   install.packages("openxlsx")
 library("openxlsx")
+
+### Pacotes dos produtos documentais de validação ----------------------------
+### Usados para gerar o manual do usuário e o relatório consolidado em Rmd,
+### HTML, PDF e JSON. Seguem o mesmo padrão operacional dos demais pacotes:
+### checar, instalar se ausente e carregar antes do uso. A instalação é feita
+### somente quando algum produto documental está habilitado.
+if (isTRUE(MONITORA_GERAR_MANUAL_USUARIO) ||
+    isTRUE(MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO)) {
+  if (!require("rmarkdown"))
+    install.packages("rmarkdown")
+  library("rmarkdown")
+  if (!require("knitr"))
+    install.packages("knitr")
+  library("knitr")
+  if (!require("kableExtra"))
+    install.packages("kableExtra")
+  library("kableExtra")
+  if (!require("jsonlite"))
+    install.packages("jsonlite")
+  library("jsonlite")
+  if (!require("digest"))
+    install.packages("digest")
+  library("digest")
+  if ("pdf" %in% MONITORA_FORMATOS_RELATORIO_VALIDACAO) {
+    if (!require("pagedown"))
+      install.packages("pagedown")
+    library("pagedown")
+  }
+}
+
+### MONITORA_DOCS_VALIDACAO_V260_INICIO ---------------------------------------
+### Produtos documentais v2.6.0: manual do usuário e relatório consolidado.
+### O bloco evita dependência obrigatória de rmarkdown/pandoc: sempre grava Rmd,
+### CSVs de apoio e relatório Markdown; HTML/PDF são tentados quando disponíveis.
+monitora_doc_chr <- function(x, vazio = "") {
+  if (is.null(x) || !length(x)) return(vazio)
+  x <- as.character(x)[1]
+  if (is.na(x) || !nzchar(trimws(x))) vazio else x
+}
+
+monitora_doc_dir <- function(...) {
+  d <- file.path(...)
+  dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  d
+}
+
+monitora_doc_fwrite <- function(x, arquivo, na = "") {
+  dir.create(dirname(arquivo), recursive = TRUE, showWarnings = FALSE)
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    data.table::fwrite(data.table::as.data.table(x), arquivo, na = na)
+  } else {
+    utils::write.csv(as.data.frame(x), arquivo, row.names = FALSE, na = na, fileEncoding = "UTF-8")
+  }
+  invisible(arquivo)
+}
+
+monitora_doc_sha256 <- function(arquivo) {
+  arquivo <- as.character(arquivo)[1]
+  if (!file.exists(arquivo)) return(NA_character_)
+  if (requireNamespace("digest", quietly = TRUE)) {
+    return(tryCatch(digest::digest(file = arquivo, algo = "sha256"), error = function(e) NA_character_))
+  }
+  sh <- Sys.which("sha256sum")
+  if (nzchar(sh)) {
+    res <- tryCatch(system2(sh, shQuote(arquivo), stdout = TRUE, stderr = FALSE), error = function(e) character())
+    if (length(res) && nzchar(res[1])) return(strsplit(res[1], "\\s+")[[1]][1])
+  }
+  md5 <- tryCatch(as.character(tools::md5sum(arquivo)), error = function(e) NA_character_)
+  if (!is.na(md5) && nzchar(md5)) paste0("md5:", md5) else NA_character_
+}
+
+monitora_doc_info_arquivos <- function(arquivos, base_dir = getwd()) {
+  if (is.null(arquivos) || !length(arquivos)) {
+    return(data.table::data.table(arquivo = character(), extensao = character(), tamanho_bytes = numeric(), modificado_em = character(), hash = character()))
+  }
+  arquivos <- unique(normalizePath(as.character(arquivos), winslash = "/", mustWork = FALSE))
+  arquivos <- arquivos[file.exists(arquivos) & !dir.exists(arquivos)]
+  if (!length(arquivos)) {
+    return(data.table::data.table(arquivo = character(), extensao = character(), tamanho_bytes = numeric(), modificado_em = character(), hash = character()))
+  }
+  info <- file.info(arquivos)
+  base_norm <- normalizePath(base_dir, winslash = "/", mustWork = FALSE)
+  rel <- sub(paste0("^", gsub("([\\.\\+\\*\\?\\^\\$\\(\\)\\[\\]\\{\\}\\|\\\\])", "\\\\\\1", base_norm), "/?"), "", arquivos)
+  data.table::data.table(
+    arquivo = rel,
+    extensao = tolower(tools::file_ext(arquivos)),
+    tamanho_bytes = as.numeric(info$size),
+    modificado_em = format(info$mtime, "%Y-%m-%d %H:%M:%S %z"),
+    hash = vapply(arquivos, monitora_doc_sha256, character(1))
+  )
+}
+
+monitora_doc_md_escape <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("\\|", "\\\\|", x)
+  x <- gsub("\\r?\\n", " ", x)
+  x
+}
+
+monitora_doc_md_table <- function(dt, n = 30L) {
+  if (is.null(dt)) return("_Tabela não disponível._\n")
+  dt <- data.table::as.data.table(dt)
+  if (!nrow(dt)) return("_Sem registros._\n")
+  if (nrow(dt) > n) dt <- dt[seq_len(n)]
+  dt[] <- lapply(dt, monitora_doc_md_escape)
+  cab <- paste0("| ", paste(names(dt), collapse = " | "), " |")
+  sep <- paste0("| ", paste(rep("---", ncol(dt)), collapse = " | "), " |")
+  linhas <- apply(as.data.frame(dt, stringsAsFactors = FALSE), 1, function(z) paste0("| ", paste(z, collapse = " | "), " |"))
+  paste(c(cab, sep, linhas), collapse = "\n")
+}
+
+monitora_doc_resumo_base <- function(dt, nome = "registros_corrig") {
+  dt <- data.table::as.data.table(dt)
+  cols <- names(dt)
+  pick <- function(pat) {
+    hit <- cols[grepl(pat, cols, ignore.case = TRUE)]
+    if (length(hit)) hit[1] else NA_character_
+  }
+  campo_coleta <- pick("(^|/)COLETA$|coleta")
+  campo_uc <- pick("(^|/)UC$|unidade.*conserv|\\bUC\\b")
+  campo_ea <- pick("(^|/)EA$|estacao|estação|\\bEA\\b")
+  campo_ua <- pick("(^|/)UA$|unidade.*amostral|\\bUA\\b")
+  campo_ano <- pick("(^|/)ANO$|ano")
+  nu <- function(campo) if (!is.na(campo) && campo %in% cols) data.table::uniqueN(dt[[campo]], na.rm = TRUE) else NA_integer_
+  data.table::data.table(
+    base = nome,
+    linhas = nrow(dt),
+    colunas = ncol(dt),
+    coletas = nu(campo_coleta),
+    ucs = nu(campo_uc),
+    eas = nu(campo_ea),
+    uas = nu(campo_ua),
+    anos = nu(campo_ano)
+  )
+}
+
+monitora_doc_listar_relatorios_especificos <- function(output_dir = "output", log_dir = "log") {
+  dirs <- c(
+    file.path(output_dir, "correcoes_campos"),
+    file.path(output_dir, "validacao_espacial"),
+    file.path(output_dir, "relatorios"),
+    file.path(output_dir, "plots"),
+    log_dir
+  )
+  arquivos <- unlist(lapply(dirs[file.exists(dirs)], function(d) list.files(d, recursive = TRUE, full.names = TRUE)), use.names = FALSE)
+  if (!length(arquivos)) return(data.table::data.table(grupo = character(), arquivo = character(), descricao = character()))
+  arquivos <- arquivos[file.exists(arquivos) & !dir.exists(arquivos)]
+  rel <- sub(paste0("^", gsub("([\\.\\+\\*\\?\\^\\$\\(\\)\\[\\]\\{\\}\\|\\\\])", "\\\\\\1", normalizePath(getwd(), winslash = "/", mustWork = FALSE)), "/?"), "", normalizePath(arquivos, winslash = "/", mustWork = FALSE))
+  grupo <- ifelse(grepl("correcoes_campos", rel), "correções assistidas",
+           ifelse(grepl("validacao_espacial", rel), "validação espacial",
+           ifelse(grepl("plot|grafico|figura", rel, ignore.case = TRUE), "gráficos",
+           ifelse(grepl("log/", rel), "logs", "relatórios gerais"))))
+  descricao <- ifelse(grepl("exotica|exótica", rel, ignore.case = TRUE), "Relatório específico de exóticas",
+               ifelse(grepl("desconhecida", rel, ignore.case = TRUE), "Relatório específico de formas de vida desconhecidas",
+               ifelse(grepl("outra_forma|outras_formas", rel, ignore.case = TRUE), "Relatório específico de outras formas de vida",
+               ifelse(grepl("espacial|coorden|kml", rel, ignore.case = TRUE), "Produto de validação espacial",
+               ifelse(grepl("auditoria", rel, ignore.case = TRUE), "Auditoria técnica", "Produto auxiliar da execução")))))
+  data.table::data.table(grupo = grupo, arquivo = rel, descricao = descricao)
+}
+
+monitora_doc_operacoes_dt <- function() {
+  objs <- list()
+  if (exists("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE)) {
+    x <- get("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE)
+    if (!is.null(x)) { x <- data.table::as.data.table(x); x[, origem_documental := "auditoria_correcoes_campos"]; objs[[length(objs) + 1L]] <- x }
+  }
+  if (exists("MONITORA_AUDITORIA_CORRECOES_ESPACIAIS_ULTIMA", inherits = TRUE)) {
+    x <- get("MONITORA_AUDITORIA_CORRECOES_ESPACIAIS_ULTIMA", inherits = TRUE)
+    if (!is.null(x)) { x <- data.table::as.data.table(x); x[, origem_documental := "auditoria_correcoes_espaciais"]; objs[[length(objs) + 1L]] <- x }
+  }
+  if (exists("MONITORA_SANITIZACAO_ENCOSTAM_DESCONHECIDA_PRE_PAINEL", inherits = TRUE)) {
+    z <- get("MONITORA_SANITIZACAO_ENCOSTAM_DESCONHECIDA_PRE_PAINEL", inherits = TRUE)
+    if (is.list(z) && "auditoria" %in% names(z) && !is.null(z$auditoria)) {
+      x <- data.table::as.data.table(z$auditoria); x[, origem_documental := "sanitizacao_encostam_desconhecida_pre_painel"]; objs[[length(objs) + 1L]] <- x
+    }
+  }
+  if (!length(objs)) return(data.table::data.table(origem_documental = character(), n = integer()))
+  data.table::rbindlist(objs, fill = TRUE, use.names = TRUE)
+}
+
+monitora_doc_resumo_operacoes <- function(ops) {
+  ops <- data.table::as.data.table(ops)
+  if (!nrow(ops)) return(data.table::data.table(origem_documental = character(), tipo = character(), acao = character(), n_operacoes = integer()))
+  tipo_col <- intersect(c("tipo_correcao", "tipo_operacao", "tipo", "status", "contexto"), names(ops))[1]
+  acao_col <- intersect(c("acao", "operação", "operacao", "status", "motivo_falha"), names(ops))[1]
+  attr_col <- intersect(c("atributo_coluna_registros_corrig", "atributo", "campo", "campos_alterados"), names(ops))[1]
+  if (is.na(tipo_col)) ops[, tipo_documental := "não informado"] else ops[, tipo_documental := as.character(get(tipo_col))]
+  if (is.na(acao_col)) ops[, acao_documental := "não informado"] else ops[, acao_documental := as.character(get(acao_col))]
+  if (is.na(attr_col)) ops[, atributo_documental := "não informado"] else ops[, atributo_documental := as.character(get(attr_col))]
+  ops[, .(n_operacoes = .N), by = .(origem_documental, tipo_documental, acao_documental, atributo_documental)][order(-n_operacoes)]
+}
+
+
+monitora_doc_sanitizacoes_automaticas_dt <- function(output_dir = "output", log_dir = "log") {
+  candidatos <- character(0)
+  dirs <- c(output_dir, log_dir)
+  dirs <- dirs[dir.exists(dirs)]
+  if (length(dirs)) candidatos <- unlist(lapply(dirs, function(d) list.files(d, recursive = TRUE, full.names = TRUE, all.files = FALSE)), use.names = FALSE)
+  candidatos <- candidatos[file.exists(candidatos) & !dir.exists(candidatos)]
+  pad <- "sanit|normaliz|padroniz|deduplic|fechamento|contrato|cadastral|ponto_metro|data_hora|canela|desconhecida|limpeza_colunas|recalculo|encostam|xlsform|quarenten"
+  arquivos <- candidatos[grepl(pad, basename(candidatos), ignore.case = TRUE) | grepl(pad, candidatos, ignore.case = TRUE)]
+  rel <- if (length(arquivos)) sub(paste0("^", gsub("([\\.\\+\\*\\?\\^\\$\\(\\)\\[\\]\\{\\}\\|\\\\])", "\\\\\\1", normalizePath(getwd(), winslash = "/", mustWork = FALSE)), "/?"), "", normalizePath(arquivos, winslash = "/", mustWork = FALSE)) else character()
+  dt <- data.table::data.table(
+    etapa = character(),
+    tipo_modificacao = character(),
+    arquivo_auditoria = character(),
+    descricao = character(),
+    escopo = character(),
+    finalidade = character()
+  )
+  if (length(rel)) {
+    dt <- data.table::data.table(
+      etapa = data.table::fifelse(grepl("pre_painel", rel, ignore.case = TRUE), "pré-painel", data.table::fifelse(grepl("pos|pós|checkpoint|final", rel, ignore.case = TRUE), "pós-correção/fechamento", "processamento")),
+      tipo_modificacao = data.table::fifelse(grepl("deduplic", rel, ignore.case = TRUE), "deduplicação", data.table::fifelse(grepl("ponto_metro", rel, ignore.case = TRUE), "normalização de ponto_metro", data.table::fifelse(grepl("desconhecida|canela|sanit", rel, ignore.case = TRUE), "sanitização automática", data.table::fifelse(grepl("xlsform|contrato", rel, ignore.case = TRUE), "fechamento/validação contratual", "normalização automática")))),
+      arquivo_auditoria = rel,
+      descricao = data.table::fifelse(grepl("desconhecida", rel, ignore.case = TRUE), "Tratamento automático de forma de vida desconhecida quando contratualmente definido.", data.table::fifelse(grepl("canela", rel, ignore.case = TRUE), "Migração contratual de canela-de-ema de exótica para nativa quando aplicável.", data.table::fifelse(grepl("ponto_metro", rel, ignore.case = TRUE), "Correção/normalização sistemática do ponto_metro.", data.table::fifelse(grepl("deduplic", rel, ignore.case = TRUE), "Deduplicação semântica/técnica de registros.", data.table::fifelse(grepl("xlsform|contrato", rel, ignore.case = TRUE), "Auditoria/fechamento do contrato XLSForm/template.", "Sanitização, padronização ou auditoria automática registrada pelo script."))))),
+      escopo = "do input bruto aos produtos corrigidos/validados, conforme arquivo de auditoria",
+      finalidade = "registrar modificações automáticas feitas pelo script sem edição manual no painel"
+    )
+  }
+  extras <- data.table::data.table(
+    etapa = c("importação", "pré-painel", "pré-painel", "fechamento", "fechamento"),
+    tipo_modificacao = c("limpeza de colunas técnicas legadas", "padronização de categorias e campos condicionais", "correção de ponto_metro", "fechamento de Encostam e campos dependentes", "projeção contratual para registros_validados"),
+    arquivo_auditoria = c("ver logs e auditorias de importação", "ver relatórios pré-painel e auditorias XLSForm", "ver auditorias de ponto_metro quando geradas", "ver auditorias contratuais/checkpoint", "ver auditorias de registros_validados quando habilitado"),
+    descricao = c(
+      "Remove ou ignora colunas técnicas legadas de execuções anteriores antes da montagem operacional.",
+      "Normaliza tokens, categorias, espécies, hábitos e campos condicionais conforme contrato do formulário.",
+      "Padroniza o ponto_metro antes do painel e antes das estatísticas.",
+      "Recalcula superiores/inferiores, sincroniza Encostam e aplica invariantes contratuais antes da materialização.",
+      "Gera registros_validados.csv na estrutura contratual quando habilitado e sem bloqueios impeditivos."
+    ),
+    escopo = c("arquivos de input", "registros_importados/registros_corrig", "registros_corrig", "registros_corrig", "registros_validados"),
+    finalidade = c("evitar contaminação por artefatos antigos", "harmonizar entradas heterogêneas", "garantir chave espacial/linear consistente", "garantir consistência semântica final", "produzir entrega contratual final")
+  )
+  data.table::unique(data.table::rbindlist(list(dt, extras), fill = TRUE))
+}
+
+monitora_doc_replay_contrato_dt <- function() {
+  data.table::data.table(
+    item = c(
+      "versao_contrato_replay",
+      "reaplicar_correcoes_anteriores",
+      "arquivo_correcoes_anteriores",
+      "arquivo_reaplicado_detectado",
+      "comparar_com_oraculo",
+      "diretorio_oraculo",
+      "abortar_divergencia_oraculo",
+      "diagnostico_replay_nao_abortar",
+      "colunas_ignoradas_oraculo",
+      "interpretacao"
+    ),
+    valor = c(
+      monitora_doc_chr(get0("MONITORA_REPLAY_CONTRATO_SEMANTICO_VERSAO", ifnotfound = "replay_semantico_v1", inherits = TRUE), "replay_semantico_v1"),
+      monitora_doc_chr(get0("MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = "N", inherits = TRUE), "N"),
+      monitora_doc_chr(get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = "", inherits = TRUE), ""),
+      monitora_doc_chr(get0("MONITORA_CORRECOES_REAPLICADAS_ARQUIVO", ifnotfound = "não reaplicado", inherits = TRUE), "não reaplicado"),
+      monitora_doc_chr(get0("MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = "N", inherits = TRUE), "N"),
+      monitora_doc_chr(get0("MONITORA_DIR_RUN_ORACULO", ifnotfound = "input/oraculo_replay", inherits = TRUE), "input/oraculo_replay"),
+      monitora_doc_chr(get0("MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = "N", inherits = TRUE), "N"),
+      monitora_doc_chr(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "S", inherits = TRUE), "S"),
+      paste(as.character(get0("MONITORA_ORACULO_COLUNAS_IGNORAR", ifnotfound = character(), inherits = TRUE)), collapse = "; "),
+      "O arquivo correcoes_semanticas.csv é tratado como trilha mestre de roll-forward: reaplica intenções sobre o input bruto; não é rollback inverso. Mudanças futuras no script devem preservar compatibilidade ou registrar incompatibilidade explícita."
+    )
+  )
+}
+
+monitora_doc_operacoes_amostra <- function(operacoes, n = 30L) {
+  ops <- data.table::as.data.table(operacoes)
+  if (!nrow(ops)) return(ops)
+  nomes <- names(ops)
+  preferidas <- c(
+    "id_correcao", "tipo_correcao", "tipo_operacao", "status", "mensagem", "acao", "atributo", "atributo_coluna_registros_corrig",
+    "valor_antes", "valor_depois", "COLETA", "coleta_uuid", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Data (data_hora)", "ponto_amostral", "ponto_metro",
+    "origem_documental", "responsavel", "justificativa"
+  )
+  cols <- intersect(preferidas, nomes)
+  if (!length(cols)) {
+    cols <- nomes[!grepl("uuid|arquivo_origem|linhagem|indice|row|hash|md5", nomes, ignore.case = TRUE)]
+    cols <- head(cols, 16L)
+  }
+  cols <- cols[!grepl("uuid_registro$|arquivo_origem|linhagem|indice", cols, ignore.case = TRUE)]
+  ops <- ops[, ..cols]
+  if (nrow(ops) > n) ops <- ops[seq_len(n)]
+  ops
+}
+
+monitora_doc_modos_passo_a_passo <- function(docs_dir = "docs") {
+  data.table::data.table(
+    modo = c("completo", "painel_e_parar", "abrir_painel_cache", "registros_corrig_completo", "registros_corrig_sem_png", "registros_corrig_estatisticas_sem_graficos", "painel_incremental_registros_corrig", "painel_incremental_completo", "painel_incremental_sem_png", "painel_incremental_estatisticas_sem_graficos"),
+    quando_usar = c(
+      "Rodada integral de tratamento, validação, painel opcional, estatísticas e gráficos.",
+      "Rodada focada em curadoria; abre painel, grava registros_corrig.csv e encerra de forma controlada.",
+      "Retomar uma sessão de painel a partir de cache compatível com o mesmo input.",
+      "Prosseguir a partir de registros_corrig.csv já materializado e gerar produtos finais.",
+      "Prosseguir de registros_corrig.csv sem gerar PNGs pesados.",
+      "Prosseguir de registros_corrig.csv apenas para estatísticas/tabelas, sem gráficos.",
+      "Reabrir painel sobre registros_corrig.csv e parar no checkpoint corrigido.",
+      "Reabrir painel sobre registros_corrig.csv e depois executar fluxo completo.",
+      "Reabrir painel sobre registros_corrig.csv e depois executar sem PNGs.",
+      "Reabrir painel sobre registros_corrig.csv e depois executar estatísticas sem gráficos."
+    ),
+    passo_a_passo = c(
+      "1) Conferir input bruto. 2) Ajustar variáveis iniciais. 3) Rodar script. 4) Revisar painel se aberto. 5) Conferir registros_corrig/registros_validados, relatórios e gráficos.",
+      "1) Conferir input bruto e correcoes_semanticas.csv quando houver. 2) Rodar. 3) Corrigir no painel. 4) Salvar/fechar. 5) Conferir relatórios pós-painel e registros_corrig.csv.",
+      "1) Confirmar cache correto. 2) Abrir painel. 3) Continuar curadoria. 4) Salvar. 5) Conferir auditorias de sessão.",
+      "1) Colocar registros_corrig.csv validado em input. 2) Rodar. 3) Conferir contrato e registros_validados. 4) Conferir estatísticas/relatórios.",
+      "1) Usar registros_corrig.csv validado. 2) Rodar sem PNG. 3) Conferir tabelas e relatórios essenciais.",
+      "1) Usar registros_corrig.csv validado. 2) Rodar estatísticas sem gráficos. 3) Conferir saídas tabulares.",
+      "1) Usar registros_corrig.csv. 2) Reabrir painel. 3) Aplicar ajustes incrementais. 4) Conferir novo registros_corrig.csv.",
+      "1) Usar registros_corrig.csv. 2) Reabrir painel. 3) Aplicar ajustes. 4) Seguir para produtos finais.",
+      "1) Usar registros_corrig.csv. 2) Reabrir painel. 3) Aplicar ajustes. 4) Gerar produtos finais sem PNG.",
+      "1) Usar registros_corrig.csv. 2) Reabrir painel. 3) Aplicar ajustes. 4) Gerar estatísticas/tabelas sem gráficos."
+    ),
+    conferir = c(
+      "output/01_produtos_dados/, output/correcoes_campos/, output/relatorios_validacao/, output/05_estatisticas/ e output/06_graficos/",
+      "output/01_produtos_dados/registros_corrig.csv, output/correcoes_campos/relatorios_pos_painel/ e output/relatorios_validacao/",
+      "output/correcoes_campos/correcoes_campos_sessao_*.csv e relatórios pós-painel",
+      "output/01_produtos_dados/registros_validados.csv, auditorias XLSForm e estatísticas",
+      "produtos tabulares e relatório consolidado; PNGs não são esperados",
+      "estatísticas e relatórios; gráficos não são esperados",
+      "novo registros_corrig.csv e trilhas semânticas da sessão",
+      "registros_corrig/registros_validados, relatórios, estatísticas e gráficos",
+      "produtos finais sem PNG e relatório consolidado",
+      "estatísticas/tabelas sem gráficos e relatório consolidado"
+    )
+  )
+}
+
+monitora_doc_mapa_coletas <- function(registros_corrig, output_dir = "output", exec_id = format(Sys.time(), "%Y%m%d_%H%M%S")) {
+  dir_mapa <- monitora_doc_dir(output_dir, "relatorios_validacao", "mapas")
+  dt <- data.table::as.data.table(registros_corrig)
+  cols <- names(dt)
+  pick <- function(pat) {
+    hit <- cols[grepl(pat, cols, ignore.case = TRUE)]
+    if (length(hit)) hit[1] else NA_character_
+  }
+  lon <- pick("longitude|long|lng|lon$|_lon|coord.*x|x_utm")
+  lat <- pick("latitude|lat$|_lat|coord.*y|y_utm")
+  coleta <- pick("(^|/)COLETA$|coleta")
+  uc <- pick("(^|/)UC$|unidade.*conserv|\\bUC\\b")
+  ua <- pick("(^|/)UA$|unidade.*amostral|\\bUA\\b")
+  if (is.na(lon) || is.na(lat) || !(lon %in% cols) || !(lat %in% cols)) {
+    arq <- file.path(dir_mapa, paste0("mapa_coletas_validadas_nao_gerado_", exec_id, ".txt"))
+    writeLines(c(
+      "Mapa não gerado automaticamente.",
+      "Motivo: não foram detectadas colunas explícitas de latitude/longitude ou X/Y no objeto registros_corrig.",
+      "A validação espacial permanece referenciada pelos arquivos em output/validacao_espacial/."
+    ), arq, useBytes = TRUE)
+    return(arq)
+  }
+  pts <- data.table::data.table(
+    COLETA = if (!is.na(coleta) && coleta %in% cols) as.character(dt[[coleta]]) else seq_len(nrow(dt)),
+    UC = if (!is.na(uc) && uc %in% cols) as.character(dt[[uc]]) else NA_character_,
+    UA = if (!is.na(ua) && ua %in% cols) as.character(dt[[ua]]) else NA_character_,
+    lon = suppressWarnings(as.numeric(gsub(",", ".", as.character(dt[[lon]]), fixed = TRUE))),
+    lat = suppressWarnings(as.numeric(gsub(",", ".", as.character(dt[[lat]]), fixed = TRUE)))
+  )
+  pts <- pts[is.finite(lon) & is.finite(lat)]
+  if (!nrow(pts)) {
+    arq <- file.path(dir_mapa, paste0("mapa_coletas_validadas_sem_pontos_", exec_id, ".txt"))
+    writeLines("Mapa não gerado: colunas de coordenada detectadas, mas sem pontos numéricos válidos.", arq, useBytes = TRUE)
+    return(arq)
+  }
+  pts <- unique(pts, by = c("COLETA", "lon", "lat"))
+  csv_pts <- file.path(dir_mapa, paste0("pontos_mapa_coletas_validadas_", exec_id, ".csv"))
+  monitora_doc_fwrite(pts, csv_pts)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(csv_pts)
+  png <- file.path(dir_mapa, paste0("mapa_coletas_validadas_", exec_id, ".png"))
+  grDevices::png(png, width = 1800, height = 1200, res = 160)
+  print(
+    ggplot2::ggplot(pts, ggplot2::aes(x = lon, y = lat)) +
+      ggplot2::geom_point(alpha = 0.75, size = 1.8) +
+      ggplot2::coord_equal() +
+      ggplot2::labs(
+        title = "Mapa das COLETAS validadas",
+        subtitle = paste0("Pontos únicos: ", nrow(pts), " | arquivo de apoio: ", basename(csv_pts)),
+        x = "Longitude / X",
+        y = "Latitude / Y"
+      ) +
+      ggplot2::theme_minimal()
+  )
+  grDevices::dev.off()
+  png
+}
+
+
+### v2.6.0 revisão documental: helpers de descrição robusta ------------------
+monitora_doc_linhas_csv_rapido <- function(arquivo) {
+  if (!file.exists(arquivo)) return(NA_integer_)
+  wc <- Sys.which("wc")
+  if (nzchar(wc)) {
+    out <- tryCatch(system2(wc, c("-l", shQuote(arquivo)), stdout = TRUE, stderr = FALSE), error = function(e) character())
+    if (length(out)) {
+      n <- suppressWarnings(as.integer(strsplit(trimws(out[1]), "\\s+")[[1]][1]))
+      if (!is.na(n)) return(max(0L, n - 1L))
+    }
+  }
+  NA_integer_
+}
+
+monitora_doc_colunas_csv_rapido <- function(arquivo) {
+  if (!file.exists(arquivo)) return(NA_integer_)
+  x <- tryCatch(data.table::fread(arquivo, nrows = 0L, encoding = "UTF-8", showProgress = FALSE), error = function(e) NULL)
+  if (is.null(x)) return(NA_integer_)
+  ncol(x)
+}
+
+monitora_doc_resumo_por_tipo <- function(info) {
+  info <- data.table::as.data.table(info)
+  if (!nrow(info)) return(data.table::data.table(extensao = character(), n_arquivos = integer(), tamanho_total_bytes = numeric()))
+  info[, .(n_arquivos = .N, tamanho_total_bytes = sum(as.numeric(tamanho_bytes), na.rm = TRUE)), by = extensao][order(-n_arquivos)]
+}
+
+monitora_doc_descricao_input <- function(arq, ext) {
+  bn <- tolower(basename(arq)); ext <- tolower(ext)
+  if (grepl("registros_corrig", bn)) return("retomada por registros_corrig.csv de execução anterior; não representa download bruto desta execução")
+  if (ext == "zip") return("pacote ZIP de entrada do SISMONITORA ou de download em lote; conteúdo interno inventariado neste relatório")
+  if (ext == "csv") return("arquivo CSV de entrada, metadado, correção ou base tabular usada conforme o modo")
+  if (ext %in% c("xlsx", "xls")) return("planilha de entrada, XLSForm ou template de contrato")
+  "arquivo auxiliar presente em input/"
+}
+
+monitora_doc_origem_input <- function(arq, ext) {
+  bn <- tolower(basename(arq)); ext <- tolower(ext)
+  if (grepl("registros_corrig", bn)) return("retomada por registros_corrig")
+  if (grepl("lote|batch|download_lote|sismonitora_lote", bn)) return("provável download em lote via script/agrupador SISMONITORA")
+  if (ext == "zip") return("provável download bruto/pacote ZIP do SISMONITORA")
+  if (ext %in% c("csv", "xlsx", "xls")) return("exportação tabular ou arquivo de apoio")
+  "origem não inferida automaticamente"
+}
+
+monitora_doc_descricao_saida <- function(arq, ext) {
+  r <- tolower(arq)
+  if (grepl("registros_importados_bruto\\.csv$", r)) return("snapshot técnico bruto da leitura/montagem dos arquivos de entrada")
+  if (grepl("registros_importados\\.csv$", r)) return("snapshot saneado de entrada, comparável a registros_corrig e registros_validados")
+  if (grepl("registros_corrig\\.csv$", r)) return("base corrigida, padronizada e auditável; fonte central das etapas posteriores")
+  if (grepl("registros_validados\\.csv$", r)) return("produto opcional compatível com contrato XLSForm/template SISMONITORA")
+  if (grepl("correcoes_campos|02_painel_correcoes", r)) return("produto do painel: triagens, receitas, dicionários ou auditorias de correção")
+  if (grepl("validacao_espacial", r)) return("produto de validação espacial: consensos, alertas, correções, KMLs ou mapas")
+  if (grepl("relatorios_validacao", r)) return("relatório consolidado de validação ou arquivo de apoio")
+  if (grepl("auditoria|log/|performance|perf", r)) return("log, auditoria técnica, rastreabilidade ou performance")
+  if (grepl("plot|grafico|gráfico|png$", r)) return("gráfico, figura ou mapa estático")
+  "arquivo de saída produzido ou mantido pela execução"
+}
+
+monitora_doc_enriquecer_info <- function(info, contexto = c("input", "output")) {
+  contexto <- match.arg(contexto)
+  info <- data.table::as.data.table(info)
+  if (!nrow(info)) {
+    info[, origem_provavel := character()]
+    info[, descricao := character()]
+    info[, conteudo_tratado := character()]
+    info[, serve_de_subsidio_para := character()]
+    return(info)
+  }
+  if (contexto == "input") {
+    info[, origem_provavel := mapply(monitora_doc_origem_input, arquivo, extensao, USE.NAMES = FALSE)]
+    info[, descricao := mapply(monitora_doc_descricao_input, arquivo, extensao, USE.NAMES = FALSE)]
+    info[, conteudo_tratado := ifelse(extensao == "zip", "arquivos compactados; ver inventário interno de ZIPs", ifelse(extensao %in% c("csv", "xlsx", "xls"), "registros/metadados tabulares", "arquivo auxiliar"))]
+    info[, serve_de_subsidio_para := "leitura inicial, montagem de registros_importados_bruto/registros_importados, correções ou contrato de validação"]
+  } else {
+    info[, origem_provavel := "produto gerado ou atualizado pelo script"]
+    info[, descricao := mapply(monitora_doc_descricao_saida, arquivo, extensao, USE.NAMES = FALSE)]
+    info[, conteudo_tratado := ifelse(grepl("registros_", arquivo), "bases de registros e atributos do alvo", ifelse(grepl("correcoes|validacao_espacial", arquivo), "auditorias, triagens, coordenadas, operações e validações", ifelse(extensao %in% c("csv", "tsv"), "tabela estruturada", "documento, log, figura ou arquivo auxiliar")))]
+    info[, serve_de_subsidio_para := ifelse(grepl("registros_corrig", arquivo), "estatísticas, relatórios, validação espacial, painel incremental e registros_validados", ifelse(grepl("registros_importados", arquivo), "comparação antes/depois e descrição da entrada", ifelse(grepl("validacao_espacial", arquivo), "decisão espacial, mapa, KML e relatório consolidado", "auditoria, conferência e documentação da execução")))]
+  }
+  info
+}
+
+monitora_doc_zip_inventory <- function(zip_files, base_dir = getwd(), max_depth = 2L) {
+  zip_files <- zip_files[file.exists(zip_files) & tolower(tools::file_ext(zip_files)) == "zip"]
+  if (!length(zip_files)) return(data.table::data.table(zip_raiz = character(), zip_pai = character(), nivel = integer(), arquivo_interno = character(), extensao = character(), tamanho_bytes = numeric(), descricao = character()))
+  out <- list()
+  process_zip <- function(z, raiz, pai, nivel) {
+    lst <- tryCatch(utils::unzip(z, list = TRUE), error = function(e) NULL)
+    if (is.null(lst) || !nrow(lst)) return(invisible(NULL))
+    nm <- as.character(lst$Name)
+    len <- if ("Length" %in% names(lst)) suppressWarnings(as.numeric(lst$Length)) else NA_real_
+    ext <- tolower(tools::file_ext(nm))
+    out[[length(out) + 1L]] <<- data.table::data.table(zip_raiz = basename(raiz), zip_pai = pai, nivel = as.integer(nivel), arquivo_interno = nm, extensao = ext, tamanho_bytes = len, descricao = ifelse(ext == "zip", "ZIP aninhado", ifelse(ext %in% c("csv", "xlsx", "xls"), "arquivo tabular interno", "arquivo interno")))
+    if (nivel < max_depth && any(ext == "zip")) {
+      td <- tempfile("monitora_zip_"); dir.create(td, recursive = TRUE, showWarnings = FALSE); on.exit(unlink(td, recursive = TRUE, force = TRUE), add = TRUE)
+      for (zi in nm[ext == "zip"]) {
+        try(utils::unzip(z, files = zi, exdir = td), silent = TRUE)
+        cand <- file.path(td, zi); if (!file.exists(cand)) cand <- file.path(td, basename(zi))
+        if (file.exists(cand)) process_zip(cand, raiz = raiz, pai = paste0(pai, "::", zi), nivel = nivel + 1L)
+      }
+    }
+    invisible(NULL)
+  }
+  for (z in zip_files) process_zip(z, raiz = z, pai = basename(z), nivel = 1L)
+  if (!length(out)) return(data.table::data.table(zip_raiz = character(), zip_pai = character(), nivel = integer(), arquivo_interno = character(), extensao = character(), tamanho_bytes = numeric(), descricao = character()))
+  data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+}
+
+monitora_doc_produtos_dados_descricoes <- function(registros_corrig = NULL, output_dir = "output") {
+  produtos <- data.table::data.table(
+    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv"),
+    como_e_criado = c("montado a partir dos arquivos lidos, preservando leitura técnica", "saneado após normalização inicial de nomes/aliases", "gerado após harmonização, deduplicação, sanitizações e correções", "projetado a partir de registros_corrig no contrato XLSForm/template"),
+    escopo = c("entrada bruta da execução", "entrada saneada pré-correção", "base corrigida e auditável", "produto final contratual opcional"),
+    pre_requisitos = c("input válido e modo que demande snapshot", "leitura e mapeamento inicial", "schema operacional e correções sem falha crítica", "opção ligada, contrato resolvido e sem bloqueios impeditivos"),
+    finalidade = c("auditar importação", "comparar entrada saneada com saída corrigida", "subsidiar estatísticas, relatórios, painel incremental e validação", "devolutiva/integração compatível com SISMONITORA"),
+    subsidia = c("depuração de input", "painel, relatório consolidado e comparação pré/pós", "estatísticas, gráficos, validação espacial e registros_validados", "auditoria final e integração externa")
+  )
+  candidatos <- list(
+    registros_importados_bruto.csv = c(file.path(output_dir, "registros_importados_bruto.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados_bruto.csv")),
+    registros_importados.csv = c(file.path(output_dir, "registros_importados.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados.csv")),
+    registros_corrig.csv = c(file.path(output_dir, "registros_corrig.csv"), file.path(output_dir, "01_produtos_dados", "registros_corrig.csv")),
+    registros_validados.csv = c(file.path(output_dir, "registros_validados.csv"), file.path(output_dir, "01_produtos_dados", "registros_validados.csv"))
+  )
+  produtos[, arquivo_detectado := vapply(produto, function(p) { hit <- candidatos[[p]][file.exists(candidatos[[p]])]; if (length(hit)) hit[1] else "não materializado" }, character(1))]
+  produtos[, materializado := arquivo_detectado != "não materializado"]
+  produtos[, linhas := vapply(produto, function(p) { if (p == "registros_corrig.csv" && !is.null(registros_corrig)) return(nrow(data.table::as.data.table(registros_corrig))); hit <- candidatos[[p]][file.exists(candidatos[[p]])]; if (length(hit)) monitora_doc_linhas_csv_rapido(hit[1]) else NA_integer_ }, integer(1))]
+  produtos[, colunas := vapply(produto, function(p) { if (p == "registros_corrig.csv" && !is.null(registros_corrig)) return(ncol(data.table::as.data.table(registros_corrig))); hit <- candidatos[[p]][file.exists(candidatos[[p]])]; if (length(hit)) monitora_doc_colunas_csv_rapido(hit[1]) else NA_integer_ }, integer(1))]
+  produtos
+}
+
+monitora_doc_resolver_responsavel <- function(responsavel = "") {
+  r <- monitora_doc_chr(responsavel, "")
+  if (nzchar(r) && !tolower(r) %in% c("não informado", "nao informado")) return(r)
+  fontes <- list()
+  if (exists("MONITORA_CORRECOES_GERADAS_PAINEL", inherits = TRUE)) fontes[[length(fontes)+1L]] <- get("MONITORA_CORRECOES_GERADAS_PAINEL", inherits = TRUE)
+  if (exists("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE)) fontes[[length(fontes)+1L]] <- get("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", inherits = TRUE)
+  arq <- get0("MONITORA_ARQUIVO_CORRECOES_CAMPOS", ifnotfound = file.path("input", "correcoes_campos.csv"), inherits = TRUE)
+  if (file.exists(arq)) fontes[[length(fontes)+1L]] <- tryCatch(data.table::fread(arq, encoding = "UTF-8", colClasses = "character", showProgress = FALSE), error = function(e) NULL)
+  for (x in fontes) {
+    if (is.null(x)) next; x <- data.table::as.data.table(x)
+    cols <- names(x)[grepl("respons", names(x), ignore.case = TRUE)]
+    for (cc in cols) { vals <- unique(trimws(as.character(x[[cc]]))); vals <- vals[!is.na(vals) & nzchar(vals) & !tolower(vals) %in% c("na", "não informado", "nao informado")]; if (length(vals)) return(vals[1]) }
+  }
+  "não informado"
+}
+
+monitora_doc_rmd_setup <- function() {
+  c("```{r setup-documental, echo=FALSE, warning=FALSE, message=FALSE}",
+    "options(width = 120)",
+    ".monitora_doc_sanitize_link_latex <- function(s) {",
+    "  s <- as.character(s)",
+    "  s <- gsub(\"<a[^>]*href=['\\\"]([^'\\\"]+)['\\\"][^>]*>(.*?)</a>\", \"\\\\2 (\\\\1)\", s, perl=TRUE)",
+    "  s <- gsub('<[^>]+>', '', s, perl=TRUE)",
+    "  s",
+    "}",
+    ".monitora_doc_wrap_cell <- function(s, width = 55, html = FALSE) {",
+    "  s <- as.character(s)",
+    "  s[is.na(s)] <- ''",
+    "  s <- gsub('([_/\\\\.:-])', '\\\\1 ', s, perl = TRUE)",
+    "  vapply(s, function(si) paste(strwrap(si, width = width), collapse = if (html) '<br>' else '\\\\n'), character(1))",
+    "}",
+    ".monitora_doc_print_table <- function(path, n = 30, cols = NULL, largura = 55) {",
+    "  if (!file.exists(path)) { cat('_Arquivo não encontrado._'); return(invisible()) }",
+    "  x <- if (requireNamespace('data.table', quietly=TRUE)) as.data.frame(data.table::fread(path, encoding='UTF-8', nrows=n, showProgress=FALSE, fill=TRUE)) else utils::read.csv(path, stringsAsFactors=FALSE, check.names=FALSE, nrows=n)",
+    "  if (!nrow(x)) { cat('_Sem registros._'); return(invisible()) }",
+    "  if (!is.null(cols)) { cols <- intersect(cols, names(x)); if (length(cols)) x <- x[, cols, drop=FALSE] }",
+    "  if (knitr::is_latex_output()) {",
+    "    x[] <- lapply(x, function(v) .monitora_doc_wrap_cell(.monitora_doc_sanitize_link_latex(v), width = largura, html = FALSE))",
+    "    if (requireNamespace('kableExtra', quietly=TRUE)) {",
+    "      x[] <- lapply(x, function(v) kableExtra::linebreak(v, align='l'))",
+    "      tab <- knitr::kable(x, format='latex', booktabs=TRUE, longtable=TRUE, escape=FALSE)",
+    "      tab <- kableExtra::kable_styling(tab, latex_options=c('repeat_header','scale_down'), font_size=7, full_width=FALSE)",
+    "      print(tab)",
+    "    } else {",
+    "      x[] <- lapply(x, function(v) gsub('\\\\n', ' / ', v, fixed=TRUE))",
+    "      print(knitr::kable(x, format='latex', booktabs=TRUE, longtable=TRUE, escape=TRUE))",
+    "    }",
+    "    return(invisible())",
+    "  }",
+    "  x[] <- lapply(x, .monitora_doc_wrap_cell, width = largura, html = TRUE)",
+    "  print(knitr::kable(x, format='html', escape=FALSE, table.attr='class=\"monitora-tabela\"'))",
+    "}",
+    "```",
+    "<style>table.monitora-tabela,table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;}td,th{white-space:normal;word-break:break-word;overflow-wrap:anywhere;vertical-align:top;padding:4px;}pre,code{white-space:pre-wrap;word-break:break-word;}</style>")
+}
+
+monitora_doc_rmd_table_chunk <- function(arquivo, label, n = 30L, cols = NULL, largura = 55L) {
+  cols_txt <- if (is.null(cols) || !length(cols)) "NULL" else paste0("c(", paste(shQuote(cols), collapse = ","), ")")
+  c(paste0("```{r ", label, ", echo=FALSE, warning=FALSE, message=FALSE, results='asis'}"), paste0(".monitora_doc_print_table(", shQuote(normalizePath(arquivo, winslash = "/", mustWork = FALSE)), ", n=", as.integer(n), ", cols=", cols_txt, ", largura=", as.integer(largura), ")"), "```")
+}
+
+monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf")) {
+  formatos <- unique(tolower(as.character(formatos)))
+  formatos <- intersect(formatos, c("html", "pdf"))
+  if (!length(formatos)) return(character())
+  log_arq <- file.path(dirname(rmd), paste0("relatorio_validacao_renderizacao_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log"))
+  log_msg <- function(...) {
+    cat(paste0(format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"), " ", paste(..., collapse = ""), "\n"), file = log_arq, append = TRUE)
+  }
+  if (!requireNamespace("rmarkdown", quietly = TRUE)) {
+    log_msg("rmarkdown ausente; Rmd/MD/JSON foram gravados, mas HTML/PDF não foram renderizados.")
+    return(character())
+  }
+  out <- character()
+  html <- sub("\\.Rmd$", ".html", rmd)
+  if ("html" %in% formatos || "pdf" %in% formatos) {
+    ok_html <- tryCatch({
+      rmarkdown::render(rmd, output_format = rmarkdown::html_document(toc = TRUE, toc_depth = 3, number_sections = TRUE, df_print = "paged"), output_file = basename(html), output_dir = dirname(html), quiet = TRUE)
+      TRUE
+    }, error = function(e) {
+      log_msg("Falha ao renderizar HTML: ", conditionMessage(e))
+      FALSE
+    })
+    if (ok_html && file.exists(html)) {
+      if ("html" %in% formatos) out <- c(out, html)
+      log_msg("HTML gerado: ", html)
+    }
+  }
+  if ("pdf" %in% formatos) {
+    pdf <- sub("\\.Rmd$", ".pdf", rmd)
+    ok_pdf <- FALSE
+    if (requireNamespace("pagedown", quietly = TRUE) && file.exists(html)) {
+      ok_pdf <- tryCatch({ pagedown::chrome_print(html, output = pdf); TRUE }, error = function(e) {
+        log_msg("Falha ao gerar PDF via pagedown/chrome_print: ", conditionMessage(e))
+        FALSE
+      })
+    } else {
+      log_msg("pagedown ou HTML ausente; tentando fallback LaTeX quando possível.")
+    }
+    if (!ok_pdf) {
+      ok_pdf <- tryCatch({
+        rmarkdown::render(rmd, output_format = rmarkdown::pdf_document(toc = TRUE, number_sections = TRUE, latex_engine = "xelatex"), output_file = basename(pdf), output_dir = dirname(pdf), quiet = TRUE)
+        TRUE
+      }, error = function(e) {
+        log_msg("Falha ao gerar PDF via rmarkdown/pdf_document: ", conditionMessage(e))
+        FALSE
+      })
+    }
+    if (ok_pdf && file.exists(pdf)) {
+      out <- c(out, pdf)
+      log_msg("PDF gerado: ", pdf)
+    } else {
+      aviso <- file.path(dirname(rmd), paste0("PDF_NAO_GERADO_", tools::file_path_sans_ext(basename(rmd)), ".txt"))
+      writeLines(c(
+        "PDF não gerado automaticamente.",
+        paste0("Rmd: ", rmd),
+        paste0("HTML: ", if (file.exists(html)) html else "não gerado"),
+        paste0("Log de renderização: ", log_arq),
+        "Consulte o HTML/MD/JSON. A falha de PDF geralmente decorre de ausência de Chrome/pagedown funcional, LaTeX ou dependências de renderização."
+      ), aviso, useBytes = TRUE)
+      log_msg("PDF não gerado; aviso gravado em: ", aviso)
+    }
+  }
+  out
+}
+
+
+monitora_doc_link_relativo <- function(path, label = NULL, docs_dir = "docs") {
+  label <- if (is.null(label) || !nzchar(as.character(label)[1])) path else as.character(label)[1]
+  rel <- file.path("..", path)
+  paste0("<a href='", rel, "'>", label, "</a><br><code>", path, "</code>")
+}
+
+monitora_doc_roteiro_bolsista <- function(docs_dir = "docs") {
+  data.table::data.table(
+    situacao = c(
+      "Forma de vida desconhecida",
+      "Ponto amostral sem interceptação",
+      "Nativa sem forma de vida",
+      "Exótica sem forma de vida",
+      "Seca ou morta sem forma de vida",
+      "Outra forma de vida",
+      "Revisão: forma de vida exótica sem espécie",
+      "Revisão: forma de vida exótica com espécie",
+      "Replay de correções anteriores",
+      "Comparação contra oráculo"
+    ),
+    consultar_antes = c(
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas/", "Ocorrências diagnósticas pré-painel"),
+      monitora_doc_link_relativo("output/03_auditorias/completude/coletas_quarentenadas_por_incompletude_pre_painel.csv", "Auditoria de completude 101 pontos"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas/", "Ocorrências de nativa sem forma de vida"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas/", "Ocorrências de exótica sem forma de vida"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas/", "Ocorrências de seca/morta sem forma de vida"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas/", "Relatórios de outras formas de vida"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/", "Relatório de exóticas pré-painel"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pre_painel/", "Relatório de exóticas com espécie vinculada"),
+      monitora_doc_link_relativo("input/correcoes_semanticas.csv", "Arquivo de intenções semânticas reaplicadas"),
+      monitora_doc_link_relativo("output/correcoes_campos/diagnostico_oraculo_replay/", "Diagnóstico de convergência com oráculo")
+    ),
+    operacao_no_painel = c(
+      "Selecionar a coleta/linha indicada, mover desconhecida para a categoria e forma tecnicamente correta ou aplicar operação em lote quando a decisão for comum ao escopo.",
+      "Verificar se a coleta deve permanecer quarentenada, ser excluída do painel ou demandar correção do ponto/interceptação; não forçar preenchimento sem evidência.",
+      "Preencher a forma de vida inferior compatível com o token superior em Encostam.",
+      "Preencher a forma de vida exótica inferior compatível; se houver espécie conhecida, preencher também o vínculo de espécie.",
+      "Preencher a forma de vida de seca/morta inferior compatível com a interceptação.",
+      "Mover ou limpar o conteúdo de outra forma de vida conforme contrato XLSForm; evitar manter texto livre quando houver categoria padronizada.",
+      "Revisar se a ausência de espécie é aceitável. Quando houver identificação, preencher espécie exótica ou outra espécie exótica.",
+      "Revisar coerência entre forma de vida exótica e espécie vinculada; confirmar se a espécie corresponde ao ponto/coleta.",
+      "Não editar como dado bruto. Conferir se o replay foi aplicado antes do painel e se não há duplicação de operações.",
+      "Não editar como entrada. Usar apenas para verificar se a run atual convergiu com a run de referência."
+    ),
+    conferir_depois = c(
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_painel/ocorrencias_diagnosticas/", "Ocorrências diagnósticas pós-painel"),
+      monitora_doc_link_relativo("output/03_auditorias/completude/", "Auditorias de completude pós-processamento"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_painel/ocorrencias_diagnosticas/", "Relatórios pós-painel"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_painel/ocorrencias_diagnosticas/", "Relatórios pós-painel"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_painel/ocorrencias_diagnosticas/", "Relatórios pós-painel"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_painel/ocorrencias_diagnosticas/", "Relatórios pós-painel de outras formas"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_correcoes/", "Relatório de exóticas pós-correções"),
+      monitora_doc_link_relativo("output/correcoes_campos/relatorios_pos_correcoes/", "Relatório de exóticas pós-correções"),
+      monitora_doc_link_relativo("output/correcoes_campos/auditoria_reaplicacao_correcoes_anteriores_ultima_execucao.csv", "Auditoria de reaplicação"),
+      monitora_doc_link_relativo("output/correcoes_campos/diagnostico_oraculo_replay/oraculo_replay_selo_convergencia_pos_replay_pre_sanitizacao.csv", "Selo de convergência com oráculo")
+    ),
+    criterio_sucesso = c(
+      "contador de forma de vida desconhecida = 0 e ausência de bloqueio em registros_corrig/registros_validados",
+      "coletas incompletas explicadas por quarentena ou saneadas com evidência; painel sem ponto amostral sem interceptação impeditivo",
+      "contador de nativa sem forma de vida = 0",
+      "contador de exótica sem forma de vida = 0",
+      "contador de seca ou morta sem forma de vida = 0",
+      "contador de outra forma de vida impeditiva = 0",
+      "lista revisada; pendência não impeditiva documentada ou espécie preenchida quando houver evidência",
+      "lista revisada; vínculo forma/espécie coerente",
+      "operações anteriores aparecem em auditoria e os contadores impeditivos esperados não reaparecem",
+      "replay_equivalente_ao_oraculo = SIM ou divergências explicitamente justificadas"
+    )
+  )
+}
+
+monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = "2.6.0", formatos = c("html", "pdf")) {
+  dir.create(docs_dir, recursive = TRUE, showWarnings = FALSE)
+  dados_dir <- file.path(docs_dir, paste0("manual_usuario_v", versao, "_dados"))
+  dir.create(dados_dir, recursive = TRUE, showWarnings = FALSE)
+  rmd <- file.path(docs_dir, paste0("manual_usuario_v", versao, ".Rmd"))
+
+  cfg <- data.table::data.table(
+    variavel = c("MONITORA_MODO_EXECUCAO", "MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES", "MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS", "MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", "MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", "MONITORA_OPCAO_GERAR_MANUAL_USUARIO", "MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", "MONITORA_FORMATOS_RELATORIO_VALIDACAO", "MONITORA_RESPONSAVEL_CORRECAO", "MONITORA_INSTITUICAO_RESPONSAVEL", "MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES", "MONITORA_ARQUIVO_CORRECOES_ANTERIORES", "MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES", "MONITORA_OPCAO_REABRIR_PAINEL_DO_CACHE", "MONITORA_CACHE_PAINEL_DIR", "MONITORA_CACHE_PAINEL_ARQUIVO"),
+    valores = c("completo; sem_png; estatisticas_sem_graficos; ate_registros_corrig; painel_e_parar; abrir_painel_cache; registros_corrig_completo; registros_corrig_sem_png; registros_corrig_estatisticas_sem_graficos; painel_incremental_registros_corrig; painel_incremental_completo; painel_incremental_sem_png; painel_incremental_estatisticas_sem_graficos", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "html, pdf, md, rmd", "texto livre ou variável de ambiente", "texto livre; padrão ICMBio", "S ou N", "caminho para correcoes_semanticas.csv ou correcoes_campos.csv", "S ou N", "S ou N; compatibilidade histórica com reabertura de cache", "caminho opcional para pasta de cache", "arquivo opcional de cache"),
+    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em docs/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/relatorios_validacao/ após a materialização de registros_corrig.csv.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o arquivo de operações a reaplicar; se vazio, o script procura input/correcoes_semanticas.csv e depois input/correcoes_campos.csv.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
+    cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N impede o painel. Em painel_e_parar, abrir_painel_cache e painel_incremental_*, o painel abre mesmo se estiver N.", "Produto sensível; não publicar. Em modos com painel a geração bruta/saneada pode ser obrigatória para auditoria pré-painel.", "Não é substituto de revisão humana; depende de registros_corrig consistente e sem bloqueios impeditivos.", "A validação espacial depende de coordenadas detectáveis e deve ser interpretada junto com relatórios específicos.", "Se leaflet não estiver instalado, o script mantém tabela e relatórios, mas pode omitir mapa interativo.", "Não depende de dados reais e pode ser gerado isoladamente, mas em execução com painel fica disponível antes da edição.", "Produto local de governança; pode conter nomes de arquivos e caminhos locais.", "HTML é o formato técnico principal; PDF é preferencialmente gerado via HTML/pagedown para evitar tabelas largas.", "Preencha no painel ou por variável de ambiente. O valor digitado no painel tem prioridade.", "Evite deixar vazio em execução institucional.", "Use deliberadamente: replay muda o estado da base antes do painel. O relatório audita o arquivo reaplicado.", "Prefira correcoes_semanticas_consolidada.csv exportado pelo script; correcoes_campos.csv legado é aceito, mas pode depender mais da estrutura da rodada original.", "Mantenha ligado para preservar a intenção das operações independentemente da evolução posterior do script.", "Mantida para compatibilidade; o modo explícito é mais claro e auditável.", "Só use se souber qual cache pertence ao input atual.", "O uso de cache incorreto pode aplicar correções fora de contexto.")
+  )
+
+  modos <- data.table::data.table(
+    modo = c("completo", "sem_png", "estatisticas_sem_graficos", "ate_registros_corrig", "painel_e_parar", "abrir_painel_cache", "registros_corrig_completo", "registros_corrig_sem_png", "registros_corrig_estatisticas_sem_graficos", "painel_incremental_registros_corrig", "painel_incremental_completo", "painel_incremental_sem_png", "painel_incremental_estatisticas_sem_graficos"),
+    finalidade = c("Executa o fluxo integral desde a entrada bruta até bases, relatórios, estatísticas, gráficos e validações finais.", "Executa o fluxo integral, mas suprime exportação de PNGs para reduzir tempo e volume de saída.", "Executa leitura, correções e estatísticas tabulares/textuais, omitindo objetos gráficos e PNGs.", "Executa até materializar registros_corrig.csv e encerra de forma controlada, sem abrir painel automaticamente.", "Executa pré-processamento, materializa manual antes do Shiny, abre painel obrigatoriamente e para após registros_corrig.csv.", "Reabre painel a partir de cache pré-painel válido, aplica correções novas e para após registros_corrig.csv.", "Retoma de registros_corrig*.csv em input/ e segue para produtos finais completos sem reconstruir a entrada bruta.", "Retoma de registros_corrig*.csv em input/ e segue sem PNGs.", "Retoma de registros_corrig*.csv em input/ e gera estatísticas sem gráficos.", "Abre painel a partir de registros_corrig*.csv em input/ e para após novo registros_corrig.csv.", "Abre painel a partir de registros_corrig*.csv, aplica correções e segue para fluxo completo.", "Abre painel a partir de registros_corrig*.csv, aplica correções e segue sem PNGs.", "Abre painel a partir de registros_corrig*.csv, aplica correções e segue apenas para estatísticas tabulares/textuais."),
+    entrada_principal = c("download bruto, ZIP, CSV, XLSX/XLS ou lote em input/", "download bruto, ZIP, CSV, XLSX/XLS ou lote em input/", "download bruto, ZIP, CSV, XLSX/XLS ou lote em input/", "download bruto, ZIP, CSV, XLSX/XLS ou lote em input/", "download bruto, ZIP, CSV, XLSX/XLS ou lote em input/", "cache_painel_*.rds gerado em execução anterior compatível", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/", "exatamente um registros_corrig*.csv em input/"),
+    painel = c("opcional por MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES", "opcional", "opcional", "não forçado", "forçado", "forçado", "não abre automaticamente", "não abre automaticamente", "não abre automaticamente", "forçado", "forçado", "forçado", "forçado"),
+    saida_esperada = c("produtos finais completos", "produtos finais sem PNG", "bases e estatísticas sem gráficos", "checkpoint registros_corrig.csv", "manual + painel + checkpoint registros_corrig.csv", "painel reaberto + checkpoint registros_corrig.csv", "produtos finais a partir de registros_corrig", "produtos sem PNG a partir de registros_corrig", "estatísticas sem gráficos a partir de registros_corrig", "novo checkpoint corrigido", "produtos finais pós-painel incremental", "produtos sem PNG pós-painel incremental", "estatísticas sem gráficos pós-painel incremental")
+  )
+
+  produtos <- data.table::data.table(
+    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv"),
+    como_e_criado = c("Criado como snapshot técnico da montagem dos arquivos lidos, preservando leitura bruta/operacional antes das sanitizações principais.", "Criado após normalização inicial de cabeçalhos, aliases e saneamento preliminar da entrada.", "Criado após harmonização, deduplicação, sanitizações automáticas, aplicação das receitas do painel e validações de consistência.", "Criado opcionalmente pela projeção de registros_corrig.csv no contrato do XLSForm/template de destino."),
+    escopo = c("Entrada bruta da execução e montagem técnica.", "Entrada saneada pré-correção final.", "Base corrigida central e auditável.", "Produto contratual final, quando habilitado."),
+    pre_requisitos = c("Input válido e modo que demande snapshot bruto, especialmente painel ou auditoria de importação.", "Leitura inicial concluída e mapeamento mínimo de atributos.", "Schema operacional resolvido, input processável e ausência de falhas críticas impeditivas.", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S, contrato resolvido e registros_corrig sem bloqueios impeditivos."),
+    finalidade = c("Auditar importação, diagnosticar problemas de ZIP, codificação, cabeçalhos e montagem.", "Comparar a entrada saneada com registros_corrig e apoiar o relatório consolidado.", "Subsidiar estatísticas, relatórios específicos, painel incremental, validação espacial e registros_validados.", "Disponibilizar uma base compatível com estrutura, ordem, domínios e formatos esperados pelo contrato de destino."),
+    subsidia = c("Depuração do input e descrição dos arquivos de entrada.", "Painel, comparação pré/pós e rastreabilidade documental.", "Toda a etapa pós-correção: relatórios, estatísticas, mapas, KML, auditorias e contrato final.", "Auditoria final, integração/devolutiva e conferência formal de schema/formato.")
+  )
+
+  painel <- data.table::data.table(
+    controle = c("Responsável", "Filtros UC/EA/UA/Ciclo/Campanha", "COLETA", "Atributo", "Valor novo", "Justificativa", "Aplicar correção", "Aplicar em lote", "Mover exótica para nativa", "Substituir desconhecida", "Limpar outras formas", "Operação espacial", "Atualizar diagnóstico", "Salvar e fechar", "Fechar sem salvar"),
+    funcao = c("Identifica a pessoa responsável pela sessão de curadoria.", "Restringem o universo de linhas analisadas e editadas.", "Define foco de diagnóstico por coleta, reduzindo custo e risco de escopo.", "Define qual campo será corrigido.", "Define o valor a ser aplicado no campo selecionado.", "Registra motivação técnica da correção.", "Aplica a correção à linha ou escopo selecionado conforme o estado do painel.", "Aplica a mesma regra a múltiplas linhas selecionadas ou filtradas.", "Move marcações e campos dependentes de exótica para nativa quando a triagem indicar erro de classificação.", "Reclassifica forma de vida desconhecida ou registra decisão de tratamento.", "Remove resíduos indevidos de outras formas de vida e atualiza diagnósticos.", "Corrige, copia, inverte ou valida coordenadas conforme alertas espaciais.", "Recalcula pendências, contadores e pré-visualizações após mudanças.", "Encerra a sessão, devolve controle ao script e aplica/grava as correções.", "Sai do painel sem aplicar operações pendentes da sessão."),
+    quando_usar = c("Sempre antes de salvar operações.", "Antes de qualquer operação que possa afetar mais de uma linha.", "Quando a curadoria for por coleta ou quando a pré-visualização global estiver pesada.", "Em correções simples ou assistidas.", "Quando houver valor correto definido tecnicamente.", "Sempre que uma operação alterar dados.", "Correções pontuais.", "Correções repetitivas com mesmo critério e escopo seguro.", "Exótica marcada por engano como nativa.", "Pendências de desconhecida em Encostam ou campos inferiores.", "Pendências de outra forma de vida sem compatibilidade com contrato.", "Alertas de coordenada, duplicidade espacial ou inconsistência de coleta.", "Após filtros, mudanças manuais ou operações em lote.", "Encerramento normal da curadoria.", "Sessão exploratória ou erro de seleção."),
+    auditoria_efeito = c("Valor resgatado no relatório consolidado.", "Escopo fica registrado nas operações e reduz risco de alteração indevida.", "Opera sobre subconjunto auditável.", "Atributo/documento aparece nos relatórios de modificação.", "Valor anterior e novo compõem a trilha de auditoria quando disponíveis.", "Justificativa acompanha CSVs e relatório consolidado.", "Gera receita/registro de correção.", "Gera múltiplas operações rastreáveis.", "Atualiza superiores/inferiores relacionados conforme regras do script.", "Atualiza pendências e relatórios pré/pós-painel.", "Reduz pendências contratuais e registra operação.", "Alimenta output/validacao_espacial e mapa quando possível.", "Não deve alterar dados sozinho; atualiza visualização/diagnóstico.", "Materializa registros_corrig.csv e auditorias.", "Não deve materializar operações novas não salvas.")
+  )
+
+  arq_cfg <- file.path(dados_dir, "configuracao_inicial.csv"); monitora_doc_fwrite(cfg, arq_cfg)
+  arq_modos <- file.path(dados_dir, "modos_operacao.csv"); monitora_doc_fwrite(modos, arq_modos)
+  modos_passos <- monitora_doc_modos_passo_a_passo(docs_dir)
+  arq_modos_passos <- file.path(dados_dir, "modos_operacao_passo_a_passo.csv"); monitora_doc_fwrite(modos_passos, arq_modos_passos)
+  arq_produtos <- file.path(dados_dir, "produtos_dados.csv"); monitora_doc_fwrite(produtos, arq_produtos)
+  arq_painel <- file.path(dados_dir, "controles_painel.csv"); monitora_doc_fwrite(painel, arq_painel)
+  roteiro <- monitora_doc_roteiro_bolsista(docs_dir)
+  arq_roteiro <- file.path(dados_dir, "roteiro_operacional_bolsista.csv"); monitora_doc_fwrite(roteiro, arq_roteiro)
+
+  conteudo <- c(
+    "---",
+    "title: 'Manual do usuário — Script monitora_campsav_alvo_global'",
+    paste0("subtitle: 'Versão ", versao, "'"),
+    "output:", "  html_document:", "    toc: true", "    toc_depth: 3", "    number_sections: true", "  pdf_document:", "    toc: true", "    number_sections: true", "geometry: margin=1.2cm", "fontsize: 9pt", "---", "",
+    monitora_doc_rmd_setup(), "",
+    "# Finalidade", "", "Este manual descreve a operação do script do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico. O foco é orientar a configuração inicial, a escolha do modo de execução, a interpretação dos produtos de dados e o uso do painel de correções assistidas.", "",
+    "O manual é materializado antes da abertura do painel sempre que o modo de execução for orientado a painel ou quando `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'`. Assim, o usuário pode consultar o documento durante a curadoria.", "",
+    "# Configuração inicial", "", "As variáveis abaixo ficam no bloco operacional inicial do script. Elas também podem ser sobrescritas por variáveis de ambiente. Em caso de conflito, os modos orientados a painel prevalecem sobre a chave manual de abertura do painel.", "",
+    monitora_doc_rmd_table_chunk(arq_cfg, "manual-config", 100L, c("variavel", "valores", "finalidade", "cuidados"), 42L), "",
+    "# Modos de operação", "", "A escolha do modo define a origem dos dados, se o painel será aberto, onde o script para e quais produtos finais serão gerados. Os modos `painel_e_parar`, `abrir_painel_cache` e todos os `painel_incremental_*` forçam a abertura do painel mesmo quando `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'N'`.", "",
+    monitora_doc_rmd_table_chunk(arq_modos, "manual-modos", 100L, c("modo", "finalidade", "entrada_principal", "painel", "saida_esperada"), 40L), "",
+    "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
+    "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
+    "# Reaplicação de correções anteriores", "", "`correcoes_campos.csv` é o arquivo operacional produzido pelo painel. A partir da v2.6.0, o script também grava uma trilha consolidada em `output/correcoes_campos/correcoes_semanticas_consolidada.csv`, cujo objetivo é preservar a intenção semântica das operações realizadas pelo bolsista: escopo, coleta, atributos, ação, valores, justificativa, responsável, data/hora e tipo de operação.", "", "Para reaplicar correções de uma rodada anterior sobre o input bruto/original, coloque o arquivo em `input/correcoes_semanticas.csv` ou informe seu caminho em `MONITORA_ARQUIVO_CORRECOES_ANTERIORES`, e defina `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. O padrão público é `N`, para impedir alterações acidentais quando um arquivo de controle for deixado em `input/`. O replay ocorre antes dos relatórios pré-painel e antes da abertura do Shiny. Assim, tabelas diagnósticas, contadores e ocorrências do painel já nascem no estado corrigido reaplicado.", "", "O contrato de replay é versionado como `replay_semantico_v1`. Alterações futuras do script devem manter compatibilidade retroativa com esse contrato ou registrar incompatibilidade explícita antes de aplicar operações. Para transições de versão, ative temporariamente a comparação com oráculo; para uso público rotineiro, mantenha `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'N'`.", "", "Após o replay, o script separa o arquivo antigo do arquivo da sessão atual. Novas operações do painel são gravadas em um novo `correcoes_campos_sessao_<exec_id>.csv`, evitando reaplicação dupla. O replay é auditado em `auditoria_reaplicacao_correcoes_anteriores_*.csv`.", "", "Use `registros_corrig.csv` como entrada quando quiser retomar exatamente o estado materializado de uma rodada. Use replay semântico quando quiser reconstruir o processamento a partir do input original e reaplicar a intenção das operações sobre uma versão nova do script.", "",
+    "# Produtos de dados", "", "Os quatro produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
+    "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
+    "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atributo, valor novo e justificativa. Ao salvar, o script aplica as operações, recalcula campos superiores quando necessário, atualiza diagnósticos e materializa os produtos pós-painel.", "", monitora_doc_rmd_table_chunk(arq_painel, "manual-painel", 100L, c("controle", "funcao", "quando_usar", "auditoria_efeito"), 40L), "",
+    "# Roteiro operacional do bolsista", "", "A tabela abaixo indica quais arquivos consultar antes de cada operação, como operar no painel e quais produtos verificar depois para confirmar o efeito da correção. Os links são relativos à pasta `docs/`; se o manual for movido, abra-o a partir da pasta da execução para preservar os hiperlinks.", "", monitora_doc_rmd_table_chunk(arq_roteiro, "manual-roteiro-bolsista", 100L, c("situacao", "consultar_antes", "operacao_no_painel", "conferir_depois", "criterio_sucesso"), 36L), "",
+    "# Conferência final", "", "Após uma execução com painel, conferir `output/01_produtos_dados/registros_corrig.csv`, relatórios pós-painel em `output/correcoes_campos/relatorios_pos_painel/`, produtos espaciais em `output/04_validacao_espacial/` quando materializados, `output/01_produtos_dados/registros_validados.csv` quando habilitado e o relatório consolidado em `output/relatorios_validacao/`. Produtos locais podem conter dados sensíveis, nomes de arquivos e caminhos de trabalho; não devem ser publicados sem triagem."
+  )
+  writeLines(conteudo, rmd, useBytes = TRUE)
+  renderizados <- monitora_doc_render_rmd(rmd, formatos = formatos)
+  assign("MONITORA_MANUAL_USUARIO_ULTIMO", c(rmd, renderizados), envir = .GlobalEnv)
+  invisible(c(rmd, renderizados))
+}
+
+monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
+                                                            output_dir = "output",
+                                                            log_dir = "log",
+                                                            exec_id = format(Sys.time(), "%Y%m%d_%H%M%S"),
+                                                            responsavel = get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE),
+                                                            instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
+                                                            formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)) {
+  base_dir <- monitora_doc_dir(output_dir, "relatorios_validacao")
+  data_dir <- monitora_doc_dir(base_dir, "dados")
+  exec_id <- monitora_doc_chr(exec_id, format(Sys.time(), "%Y%m%d_%H%M%S"))
+  responsavel <- monitora_doc_resolver_responsavel(responsavel)
+  instituicao <- monitora_doc_chr(instituicao, "ICMBio")
+  formatos <- unique(tolower(as.character(formatos)))
+  input_files <- if (dir.exists("input")) list.files("input", recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
+  output_files <- if (dir.exists(output_dir)) list.files(output_dir, recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
+  input_info <- monitora_doc_enriquecer_info(monitora_doc_info_arquivos(input_files, base_dir = getwd()), "input")
+  output_info <- monitora_doc_enriquecer_info(monitora_doc_info_arquivos(output_files, base_dir = getwd()), "output")
+  input_resumo <- monitora_doc_resumo_por_tipo(input_info)
+  output_resumo <- monitora_doc_resumo_por_tipo(output_info)
+  zip_inventory <- monitora_doc_zip_inventory(input_files, base_dir = getwd(), max_depth = 2L)
+  produtos_dados <- monitora_doc_produtos_dados_descricoes(registros_corrig, output_dir)
+  resumo_base <- monitora_doc_resumo_base(registros_corrig, "registros_corrig")
+  relatorios_ref <- monitora_doc_listar_relatorios_especificos(output_dir, log_dir)
+  operacoes <- monitora_doc_operacoes_dt()
+  resumo_operacoes <- monitora_doc_resumo_operacoes(operacoes)
+  operacoes_amostra <- monitora_doc_operacoes_amostra(operacoes, 30L)
+  sanitizacoes_auto <- monitora_doc_sanitizacoes_automaticas_dt(output_dir, log_dir)
+  replay_contrato <- monitora_doc_replay_contrato_dt()
+  mapa <- tryCatch(monitora_doc_mapa_coletas(registros_corrig, output_dir, exec_id), error = function(e) NA_character_)
+  tempos <- data.table::data.table(item = c("data_hora_relatorio", "exec_id", "arquivo_correcoes_campos", "arquivo_correcoes_anteriores_reaplicado", "responsavel_resgatado_do_painel"), valor = c(format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"), exec_id, get0("MONITORA_ARQUIVO_CORRECOES_CAMPOS", ifnotfound = "não definido", inherits = TRUE), get0("MONITORA_CORRECOES_REAPLICADAS_ARQUIVO", ifnotfound = "não reaplicado", inherits = TRUE), responsavel))
+  meta <- data.table::data.table(item = c("versao_script", "exec_id", "responsavel_correcao", "instituicao_responsavel", "modo_execucao", "diretorio_trabalho", "repositorio_github", "como_citar", "n_arquivos_input", "n_arquivos_output", "mapa_coletas_validadas"), valor = c("2.6.0", exec_id, responsavel, instituicao, monitora_doc_chr(get0("MONITORA_MODO_EXECUCAO", ifnotfound = "", inherits = TRUE), "não informado"), normalizePath(getwd(), winslash = "/", mustWork = FALSE), "https://github.com/danilovcorrea/Monitora-Campestre-Savanico", "Citar o repositório GitHub, a versão do script, a data da execução e o relatório consolidado gerado nesta run.", as.character(nrow(input_info)), as.character(nrow(output_info)), monitora_doc_chr(mapa, "não gerado")))
+  arq_meta <- file.path(data_dir, paste0("metadados_execucao_", exec_id, ".csv")); monitora_doc_fwrite(meta, arq_meta)
+  arq_tempos <- file.path(data_dir, paste0("tempos_correcoes_", exec_id, ".csv")); monitora_doc_fwrite(tempos, arq_tempos)
+  arq_input <- file.path(data_dir, paste0("descricao_arquivos_entrada_", exec_id, ".csv")); monitora_doc_fwrite(input_info, arq_input)
+  arq_input_resumo <- file.path(data_dir, paste0("resumo_arquivos_entrada_por_tipo_", exec_id, ".csv")); monitora_doc_fwrite(input_resumo, arq_input_resumo)
+  arq_zip <- file.path(data_dir, paste0("inventario_zips_entrada_", exec_id, ".csv")); monitora_doc_fwrite(zip_inventory, arq_zip)
+  arq_output <- file.path(data_dir, paste0("descricao_arquivos_saida_", exec_id, ".csv")); monitora_doc_fwrite(output_info, arq_output)
+  arq_output_resumo <- file.path(data_dir, paste0("resumo_arquivos_saida_por_tipo_", exec_id, ".csv")); monitora_doc_fwrite(output_resumo, arq_output_resumo)
+  arq_produtos <- file.path(data_dir, paste0("descricao_produtos_dados_", exec_id, ".csv")); monitora_doc_fwrite(produtos_dados, arq_produtos)
+  arq_resumo_base <- file.path(data_dir, paste0("resumo_registros_corrig_", exec_id, ".csv")); monitora_doc_fwrite(resumo_base, arq_resumo_base)
+  arq_ops <- file.path(data_dir, paste0("modificacoes_detalhadas_", exec_id, ".csv")); monitora_doc_fwrite(operacoes, arq_ops)
+  arq_ops_amostra <- file.path(data_dir, paste0("modificacoes_amostra_relatorio_", exec_id, ".csv")); monitora_doc_fwrite(operacoes_amostra, arq_ops_amostra)
+  arq_resumo_ops <- file.path(data_dir, paste0("resumo_modificacoes_", exec_id, ".csv")); monitora_doc_fwrite(resumo_operacoes, arq_resumo_ops)
+  arq_sanit_auto <- file.path(data_dir, paste0("sanitizacoes_automaticas_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacoes_auto, arq_sanit_auto)
+  arq_replay_contrato <- file.path(data_dir, paste0("contrato_rollforward_semantico_", exec_id, ".csv")); monitora_doc_fwrite(replay_contrato, arq_replay_contrato)
+  arq_refs <- file.path(data_dir, paste0("referencias_relatorios_especificos_", exec_id, ".csv")); monitora_doc_fwrite(relatorios_ref, arq_refs)
+  dir_oraculo <- file.path(output_dir, "correcoes_campos", "diagnostico_oraculo_replay")
+  if (!dir.exists(dir_oraculo)) dir_oraculo <- file.path(output_dir, "02_painel_correcoes", "diagnostico_oraculo_replay")
+  oraculo_files <- if (dir.exists(dir_oraculo)) list.files(dir_oraculo, recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
+  oraculo_info <- monitora_doc_info_arquivos(oraculo_files, base_dir = getwd())
+  if (nrow(oraculo_info)) {
+    oraculo_info[, tipo_diagnostico := data.table::fifelse(grepl("selo_convergencia", arquivo), "selo de convergência", data.table::fifelse(grepl("diferencas|diferentes", arquivo), "diferenças detalhadas", "arquivo de apoio do oráculo"))]
+    oraculo_info[, interpretacao := data.table::fifelse(grepl("oraculo_replay_selo", arquivo), "verificar replay_equivalente_ao_oraculo = SIM", data.table::fifelse(grepl("oraculo_ocorrencias_selo", arquivo), "verificar convergência dos tipos de ocorrência diagnóstica", "usar para rastrear chaves, colunas ou células divergentes"))]
+  } else {
+    oraculo_info <- data.table::data.table(arquivo = character(), extensao = character(), tamanho_bytes = numeric(), data_modificacao = character(), tipo_diagnostico = character(), interpretacao = character())
+  }
+  arq_oraculo <- file.path(data_dir, paste0("diagnostico_oraculo_replay_", exec_id, ".csv")); monitora_doc_fwrite(oraculo_info, arq_oraculo)
+  if (requireNamespace("jsonlite", quietly = TRUE)) jsonlite::write_json(list(metadados = meta, produtos_dados = produtos_dados, resumo_input = input_resumo, resumo_output = output_resumo, sanitizacoes_automaticas = sanitizacoes_auto, replay_contrato = replay_contrato, mapa = mapa, diagnostico_oraculo = oraculo_info), path = file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".json")), pretty = TRUE, auto_unbox = TRUE, na = "null")
+  rmd <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".Rmd"))
+  md <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".md"))
+  mapa_bloco <- if (file.exists(mapa) && grepl("\\.png$", mapa, ignore.case = TRUE)) c("```{r mapa-coletas, echo=FALSE, out.width='100%'}", paste0("knitr::include_graphics(", shQuote(normalizePath(mapa, winslash = "/", mustWork = FALSE)), ")"), "```") else paste0("Mapa automático: `", monitora_doc_chr(mapa, "não gerado"), "`.")
+  conteudo <- c("---", "title: 'Relatório de validação de dados das campanhas amostrais do Protocolo de Monitoramento do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico - Programa Monitora'", "subtitle: 'Script de tratamento, validação e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico - Programa Monitora - versão 2.6.0'", "output:", "  html_document:", "    toc: true", "    toc_depth: 3", "    number_sections: true", "  pdf_document:", "    toc: true", "    number_sections: true", "geometry: margin=1.2cm", "fontsize: 9pt", "---", "", monitora_doc_rmd_setup(), "",
+    "# Identificação da execução", "", monitora_doc_rmd_table_chunk(arq_meta, "tab-metadados", 100L, c("item", "valor"), 85L), "",
+    "## Repositório, script e citação", "", "Repositório GitHub: <https://github.com/danilovcorrea/Monitora-Campestre-Savanico>.", "", "Script utilizado: `monitora_campsav_alvo_global_v2.6.0.R` ou arquivo equivalente desta execução.", "", "Como citar: citar o repositório GitHub, a versão do script, a data/hora da execução e este relatório consolidado. Quando aplicável, citar também o DOI/release da versão pública do GitHub.", "",
+    "# Responsável, data e horário das correções", "", paste0("Responsável pela correção: **", responsavel, "**. Instituição: **", instituicao, "**."), "", "O responsável é resgatado prioritariamente das operações salvas no painel. Se não houver valor salvo, usa a configuração `MONITORA_RESPONSAVEL_CORRECAO`. A instituição é automática: ICMBio, salvo sobrescrita explícita.", "", monitora_doc_rmd_table_chunk(arq_tempos, "tab-tempos", 100L, c("item", "valor"), 85L), "",
+    "# Descrição dos arquivos de entrada", "", paste0("Arquivos detectados em `input/`: **", nrow(input_info), "**. A tabela completa está em `dados/", basename(arq_input), "`."), "", "## Sumário por tipo", "", monitora_doc_rmd_table_chunk(arq_input_resumo, "tab-input-resumo", 50L, c("extensao", "n_arquivos", "tamanho_total_bytes"), 55L), "", "## Arquivos de entrada", "", monitora_doc_rmd_table_chunk(arq_input, "tab-input-arqs", 60L, c("arquivo", "extensao", "tamanho_bytes", "origem_provavel", "descricao"), 55L), "", "## Conteúdo interno de ZIPs", "", "Lista os arquivos internos de ZIPs em `input/`, inclusive ZIPs aninhados extraíveis, para casos como `input/pnb_input.zip`.", "", monitora_doc_rmd_table_chunk(arq_zip, "tab-zips", 100L, c("zip_raiz", "zip_pai", "nivel", "arquivo_interno", "extensao", "tamanho_bytes", "descricao"), 45L), "",
+    "# Descrição das bases de dados produzidas", "", monitora_doc_rmd_table_chunk(arq_produtos, "tab-produtos", 20L, c("produto", "materializado", "arquivo_detectado", "linhas", "colunas", "como_e_criado", "finalidade", "subsidia"), 48L), "", monitora_doc_rmd_table_chunk(arq_resumo_base, "tab-resumo-base", 10L, NULL, 60L), "",
+    "# Descrição detalhada das modificações", "", "Esta seção registra a cadeia de modificação desde os arquivos de input até `registros_corrig.csv` e, quando habilitado, `registros_validados.csv`. Inclui operações do painel, replay semântico, sanitizações automáticas, normalizações, deduplicações e fechamentos contratuais documentados em auditorias.", "", paste0("Operações/auditorias consolidadas: **", nrow(operacoes), "**. A tabela detalhada completa, inclusive campos técnicos preservados para rastreabilidade, está em `dados/", basename(arq_ops), "`."), "", monitora_doc_rmd_table_chunk(arq_resumo_ops, "tab-resumo-ops", 80L, c("origem_documental", "tipo_documental", "acao_documental", "atributo_documental", "n_operacoes"), 45L), "", "## Sanitizações automáticas e transformações internas", "", "As linhas abaixo documentam modificações automáticas feitas pelo script, sem edição manual no painel. Elas incluem normalizações, deduplicações, fechamento de campos derivados, sincronizações condicionais e validações contratuais. Consulte os CSVs de auditoria indicados para rastreabilidade completa.", "", monitora_doc_rmd_table_chunk(arq_sanit_auto, "tab-sanit-auto", 200L, c("etapa", "tipo_modificacao", "arquivo_auditoria", "descricao", "escopo", "finalidade"), 42L), "", "## Amostra legível das modificações detalhadas", "", "A tabela abaixo remove campos técnicos muito largos, como `uuid_registro` e caminhos de arquivo, para manter o relatório legível. O CSV completo permanece preservado como anexo em `dados/`.", "", monitora_doc_rmd_table_chunk(arq_ops_amostra, "tab-ops", 30L, NULL, 44L), "",
+    "# Roll-forward semântico e comparação com oráculo", "", "Quando `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`, o relatório registra o arquivo de intenções reaplicado. Esse arquivo é uma trilha mestre de roll-forward: ele reaplica intenções de correção sobre o input bruto/original para reconstruir o estado corrigido. Não é um rollback inverso.", "", "Mudanças futuras no script devem preservar compatibilidade com o contrato semântico abaixo ou registrar incompatibilidade explícita antes da aplicação. Quando `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'`, os selos de convergência comparam a run atual com uma run de referência sem usar `registros_corrig.csv` como entrada operacional.", "", "Diferenças de caminho local, como `MONITORA_CAMINHO_ARQUIVO_ENTRADA`, são esperadas e podem ser ignoradas na interpretação de convergência ecológica/operacional.", "", monitora_doc_rmd_table_chunk(arq_replay_contrato, "tab-replay-contrato", 100L, c("item", "valor"), 70L), "", monitora_doc_rmd_table_chunk(arq_oraculo, "tab-oraculo", 100L, c("arquivo", "tipo_diagnostico", "interpretacao"), 46L), "",
+    "# Validação espacial", "", "A validação espacial deve ser interpretada junto com os produtos específicos em `output/validacao_espacial/`. O mapa abaixo é gerado quando há coordenadas detectáveis em `registros_corrig`.", "", mapa_bloco, "",
+    "# Descrição dos arquivos de saída", "", paste0("Arquivos descritos em `output/`: **", nrow(output_info), "**. A tabela completa está em `dados/", basename(arq_output), "`."), "", "## Sumário por tipo", "", monitora_doc_rmd_table_chunk(arq_output_resumo, "tab-output-resumo", 60L, c("extensao", "n_arquivos", "tamanho_total_bytes"), 55L), "", "## Arquivos de saída e o que tratam", "", monitora_doc_rmd_table_chunk(arq_output, "tab-output-arqs", 100L, c("arquivo", "extensao", "descricao", "conteudo_tratado", "serve_de_subsidio_para"), 43L), "",
+    "# Referenciamento aos relatórios específicos", "", monitora_doc_rmd_table_chunk(arq_refs, "tab-referencias", 100L, c("grupo", "arquivo", "descricao"), 55L), "",
+    "# Conclusão técnica", "", "Este relatório consolida autoria, horários, descrição dos arquivos de entrada, inventário de ZIPs, produtos de dados, operações do painel, sanitizações automáticas, roll-forward semântico, validação espacial, arquivos de saída e referências aos relatórios específicos. A conclusão operacional deve considerar auditorias impeditivas, relatórios pós-painel, produtos espaciais, selos de convergência quando habilitados e o contrato de `registros_validados.csv`.")
+  writeLines(conteudo, rmd, useBytes = TRUE)
+  writeLines(grep("^---$|^output:|^  html_document:|^  pdf_document:|^    |^geometry:|^fontsize:", conteudo, invert = TRUE, value = TRUE), md, useBytes = TRUE)
+  renderizados <- monitora_doc_render_rmd(rmd, formatos = formatos)
+  assign("MONITORA_RELATORIO_VALIDACAO_CONSOLIDADO_ULTIMO", c(rmd, md, renderizados), envir = .GlobalEnv)
+  invisible(c(rmd, md, renderizados))
+}
+
+monitora_relatorio_validacao_consolidado_tentar <- function(registros_corrig, contexto = "execucao") {
+  if (!isTRUE(get0("MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", ifnotfound = TRUE, inherits = TRUE))) return(invisible(character()))
+  if (!exists("monitora_relatorio_validacao_consolidado_gerar", mode = "function")) return(invisible(character()))
+  out <- tryCatch({
+    res <- monitora_relatorio_validacao_consolidado_gerar(
+      registros_corrig = registros_corrig,
+      output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+      log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+      exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
+      responsavel = get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE),
+      instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
+      formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)
+    )
+    if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
+      monitora_perf_registrar_checkpoint(
+        paste0("relatorio_validacao_consolidado_", contexto),
+        "relatório consolidado de validação gerado em output/relatorios_validacao/",
+        registros_corrig
+      )
+    }
+    if (exists("monitora_correcao_console_msg", mode = "function")) {
+      monitora_correcao_console_msg("Relatório consolidado de validação gerado em output/relatorios_validacao/.")
+    }
+    res
+  }, error = function(e) {
+    warning("Falha ao gerar relatório consolidado de validação: ", conditionMessage(e), call. = FALSE)
+    character()
+  })
+  invisible(out)
+}
+### MONITORA_DOCS_VALIDACAO_V260_FIM -----------------------------------------
+
+
 if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
   if (!require("shiny"))
     install.packages("shiny")
@@ -842,7 +1844,91 @@ MONITORA_ARQUIVO_CORRECOES_ESPACIAIS <- Sys.getenv(
   unset = file.path(MONITORA_INPUT_DIR, "correcoes_espaciais.csv")
 )
 
+### v2.6.0 - replay opcional de correções semânticas anteriores -------------
+MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- Sys.getenv(
+  "MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES",
+  unset = as.character(get0("MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = "N", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- toupper(trimws(as.character(MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES)[1]))
+if (!(MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_REAPLICAR_CORRECOES_ANTERIORES <- identical(MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES, "S")
+MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- Sys.getenv(
+  "MONITORA_ARQUIVO_CORRECOES_ANTERIORES",
+  unset = as.character(get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = "", inherits = TRUE))[1]
+)
+MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- trimws(as.character(MONITORA_ARQUIVO_CORRECOES_ANTERIORES)[1])
+if (!nzchar(MONITORA_ARQUIVO_CORRECOES_ANTERIORES)) {
+  candidatos_replay <- c(
+    file.path(MONITORA_INPUT_DIR, "correcoes_semanticas.csv"),
+    file.path(MONITORA_INPUT_DIR, "correcoes_campos.csv")
+  )
+  candidatos_replay <- candidatos_replay[file.exists(candidatos_replay)]
+  MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- if (length(candidatos_replay)) candidatos_replay[1] else file.path(MONITORA_INPUT_DIR, "correcoes_campos.csv")
+}
+MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES <- Sys.getenv(
+  "MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES",
+  unset = as.character(get0("MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES", ifnotfound = "S", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES <- toupper(trimws(as.character(MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES)[1]))
+if (!(MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_GRAVAR_TRILHA_SEMANTICA_CORRECOES <- identical(MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES, "S")
+
+MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- Sys.getenv(
+  "MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR",
+  unset = as.character(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "S", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- toupper(trimws(as.character(MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR)[1]))
+if (!(MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- identical(MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR, "S")
+
+### v2.6.0 - oráculo opcional para replay semântico -------------------------
+MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO <- Sys.getenv(
+  "MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO",
+  unset = as.character(get0("MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = "N", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO <- toupper(trimws(as.character(MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO)[1]))
+if (!(MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_COMPARAR_REPLAY_COM_ORACULO <- identical(MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO, "S")
+MONITORA_DIR_RUN_ORACULO <- Sys.getenv(
+  "MONITORA_DIR_RUN_ORACULO",
+  unset = as.character(get0("MONITORA_DIR_RUN_ORACULO", ifnotfound = "", inherits = TRUE))[1]
+)
+MONITORA_DIR_RUN_ORACULO <- trimws(as.character(MONITORA_DIR_RUN_ORACULO)[1])
+MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- Sys.getenv(
+  "MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA",
+  unset = as.character(get0("MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = "N", inherits = TRUE))[1]
+)
+MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- toupper(trimws(as.character(MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA)[1]))
+if (!(MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- identical(MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA, "S")
+
 MONITORA_EXEC_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
+
+### v2.6.0 - materialização antecipada do manual do usuário ------------------
+### O manual é documentação pública e deve estar disponível antes da abertura do painel Shiny.
+if (isTRUE(get0("MONITORA_GERAR_MANUAL_USUARIO", ifnotfound = FALSE, inherits = TRUE)) &&
+    exists("monitora_manual_usuario_gerar", mode = "function")) {
+  tryCatch({
+    monitora_manual_usuario_gerar(
+      docs_dir = "docs",
+      versao = "2.6.0",
+      formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)
+    )
+    message("Manual do usuário v2.6.0 materializado em docs/ antes do painel.")
+  }, error = function(e) {
+    warning("Falha ao gerar manual do usuário antes do painel: ", conditionMessage(e), call. = FALSE)
+  })
+}
 
 
 ### Formatação defensiva de datas/horários técnicos -------------------------
@@ -1391,7 +2477,7 @@ monitora_correcao_normalizar_nome_coluna <- function(x) {
 
 
 
-### v2.5.6 -------------------------------
+### v2.6.0 -------------------------------
 ### Helpers genéricos de cache/data.table usados por todos os contratos XLSForm
 ### embutidos (2022, 2023, 2024 e 2025), não apenas pelo contrato 21FEV25.
 monitora_publicacao_ae_cache_env <- function(nome = "global") {
@@ -1439,7 +2525,7 @@ monitora_publicacao_ae_colnames_norm_dt <- function(dt) {
   assign(sig, ans, envir = env)
   ans
 }
-### FIM v2.5.6 ---------------------------
+### FIM v2.6.0 ---------------------------
 
 monitora_correcao_campo_multiselect_auditoria <- function(atributo, chaves = NULL) {
   ### Campos exportados como listas/multiple choice podem voltar em ordem
@@ -1479,8 +2565,10 @@ monitora_correcao_canonizar_multiselect <- function(x) {
 monitora_correcao_valores_equivalentes <- function(valor_final, valor_esperado, atributo, chaves = NULL) {
   ### Comparação vetorizada usada nas travas de persistência. Campos escalares
   ### continuam com comparação literal normalizada. Campos multiselect usam
-  ### comparação semântica por conjunto de tokens, preservando integridade sem
-  ### bloquear recálculos que apenas reordenam os tokens.
+  ### comparação semântica por tokens. Em replay de operações semânticas antigas,
+  ### uma operação do tipo append_token deve ser considerada persistida quando o
+  ### token esperado está contido no valor final, mesmo que o valor final contenha
+  ### outros tokens adicionados por outra operação compatível.
   valor_final <- as.character(valor_final)
   valor_esperado <- as.character(valor_esperado)
   n <- max(length(valor_final), length(valor_esperado), length(atributo), 1L)
@@ -1490,8 +2578,19 @@ monitora_correcao_valores_equivalentes <- function(valor_final, valor_esperado, 
   multi <- monitora_correcao_campo_multiselect_auditoria(atributo, chaves)
   out <- monitora_correcao_na_para_vazio(valor_final) == monitora_correcao_na_para_vazio(valor_esperado)
   if (any(multi, na.rm = TRUE)) {
-    out[multi] <- monitora_correcao_canonizar_multiselect(valor_final[multi]) ==
-      monitora_correcao_canonizar_multiselect(valor_esperado[multi])
+    canon_final <- monitora_correcao_canonizar_multiselect(valor_final[multi])
+    canon_esp <- monitora_correcao_canonizar_multiselect(valor_esperado[multi])
+    out_multi <- mapply(function(ff, ee) {
+      ff <- trimws(as.character(ff)); ee <- trimws(as.character(ee))
+      if (!nzchar(ee)) return(!nzchar(ff))
+      toks_esp <- unique(strsplit(ee, "\\s+")[[1]])
+      toks_fin <- unique(strsplit(ff, "\\s+")[[1]])
+      toks_esp <- toks_esp[nzchar(toks_esp)]
+      toks_fin <- toks_fin[nzchar(toks_fin)]
+      if (!length(toks_esp)) return(!length(toks_fin))
+      all(toks_esp %in% toks_fin)
+    }, canon_final, canon_esp, USE.NAMES = FALSE)
+    out[multi] <- out_multi
   }
   out[is.na(out)] <- FALSE
   out
@@ -1552,8 +2651,8 @@ monitora_correcao_resolver_atributo_auditoria <- function(dt, atributo) {
 }
 
 
-### v2.5.6 ----------------------
-### O painel funcional da v2.5.6 não deve ser reconstruído para compensar
+### v2.6.0 ----------------------
+### O painel funcional da v2.6.0 não deve ser reconstruído para compensar
 ### efeitos colaterais do fluxo de montagem/normalização de registros_corrig.
 ### Esta camada atua antes do painel, no contrato estrutural do objeto entregue
 ### a ele: resolve chaves operacionais com critérios explícitos e audita o
@@ -1731,7 +2830,7 @@ monitora_publicacao_p_auditar_schema_pre_painel <- function(dt, contexto = "pre_
   }
   invisible(aud)
 }
-### FIM v2.5.6 ------------------
+### FIM v2.6.0 ------------------
 
 monitora_correcao_colunas_chave <- function(dt) {
   list(
@@ -5300,7 +6399,7 @@ monitora_correcao_anexar_contexto_operacao <- function(op, dt, linhas, chaves = 
     if (!(cc %in% names(op))) op[, (cc) := NA_character_]
     data.table::set(op, j = cc, value = ctx[[cc]][1L])
   }
-  ### v2.5.6: manter também as chaves técnicas de ponto nas operações compostas.
+  ### v2.6.0: manter também as chaves técnicas de ponto nas operações compostas.
   ### A aplicação das correções usa ponto_amostral/ponto_metro como chaves estáveis;
   ### se apenas os rótulos "Ponto amostral"/"Ponto metro" forem preenchidos, ações
   ### contratuais derivadas podem voltar para o escopo da COLETA inteira.
@@ -5638,7 +6737,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
 
 
 
-    ### v2.5.6-dev run8 --------------------------
+    ### v2.6.0 --------------------------
     ### Auditoria de persistência com helpers nomeados e indexação segura.
     ### Corrige a colisão de nomes gerada por múltiplas funções locais chamadas
     ### `v2.5.4`, que fazia `linhas_estado` deixar de ser vetor inteiro e ser
@@ -5801,7 +6900,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
 
     res <- monitora_persist_reclassificar_estado_contratual(res, dt, chaves, contexto_estado = contexto)
 
-    ### v2.5.6-dev: auditoria de persistência por efeito diagnóstico final --------
+    ### v2.6.0: auditoria de persistência por efeito diagnóstico final --------
     ### A partir da run6, preview/modal e aplicação já convergem para o estado sem
     ### ocorrências impeditivas. A trava de persistência, porém, ainda comparava
     ### valores intermediários auditados com o objeto final depois de operações
@@ -5889,7 +6988,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     }
 
     res <- monitora_persist_reclassificar_por_efeito_diagnostico_final(res, dt, contexto_estado = contexto)
-    ### FIM v2.5.6-dev auditoria por efeito diagnóstico final ----------------------
+    ### FIM v2.6.0 auditoria por efeito diagnóstico final ----------------------
 
   if (nrow(res) > 0L) {
     exec_id_pers <- if (exists("MONITORA_EXEC_ID", inherits = TRUE)) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -5900,12 +6999,24 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     monitora_correcao_gravar_resumo_operacoes_atomicas(audit, res, contexto = contexto)
     falhas <- res[grepl("^falha", status_persistencia)]
     if (nrow(falhas) > 0L) {
-      monitora_log_registrar_evento(
-        "persistencia_correcoes", "ERRO", arq_log,
-        paste0(nrow(falhas), " divergência(s) entre auditoria de correções e objeto final em ", contexto),
+      modo_replay_nao_abortivo <- isTRUE(get0("MONITORA_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = FALSE, inherits = TRUE)) &&
+        isTRUE(get0("MONITORA_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = FALSE, inherits = TRUE)) &&
+        (isTRUE(get0("MONITORA_REPLAY_SEMANTICO_EM_EXECUCAO", ifnotfound = FALSE, inherits = TRUE)) ||
+           isTRUE(get0("MONITORA_CORRECOES_REAPLICADAS_PRE_PAINEL", ifnotfound = FALSE, inherits = TRUE)) ||
+           exists("MONITORA_CORRECOES_REAPLICADAS_ARQUIVO", inherits = TRUE) ||
+           exists("MONITORA_ARQUIVO_CORRECOES_CAMPOS_REAPLICADO", inherits = TRUE))
+      nivel_persist <- if (isTRUE(modo_replay_nao_abortivo)) "AVISO" else "ERRO"
+      acao_persist <- if (isTRUE(modo_replay_nao_abortivo)) {
+        "diagnóstico não bloqueante ativo; execução continuará até o painel para coletar estado pós-replay"
+      } else {
         "execução bloqueada; revisar auditoria_persistencia_correcoes_*"
+      }
+      monitora_log_registrar_evento(
+        "persistencia_correcoes", nivel_persist, arq_log,
+        paste0(nrow(falhas), " divergência(s) entre auditoria de correções e objeto final em ", contexto),
+        acao_persist
       )
-      if (isTRUE(abortar)) stop(paste0("Correções auditadas não persistiram em registros_corrig (", contexto, "). Ver ", basename(arq_ult), "."), call. = FALSE)
+      if (isTRUE(abortar) && !isTRUE(modo_replay_nao_abortivo)) stop(paste0("Correções auditadas não persistiram em registros_corrig (", contexto, "). Ver ", basename(arq_ult), "."), call. = FALSE)
     } else {
       monitora_log_registrar_evento(
         "persistencia_correcoes", "INFO", arq_log,
@@ -6194,7 +7305,7 @@ monitora_correcao_aplicar_operacao <- function(valor_atual, acao, valor_novo, va
   rep(valor_novo, length(valor_atual))
 }
 
-### v2.5.6 ------------------------------------------
+### v2.6.0 ------------------------------------------
 ### Contrato transacional por tipo de operação:
 ### - update/substituir_valor e clear/limpar continuam sendo operações de célula inteira;
 ###   quando valor_original_esperado é informado, ele precisa coincidir com o valor completo atual.
@@ -6288,17 +7399,17 @@ monitora_publicacao_d_precondicao_valor_original <- function(valor_atual, acao, 
   }
   list(ok = FALSE, mensagem = paste0("valor_original_esperado não confere em ", sum(!iguais), " linha(s)"))
 }
-### FIM v2.5.6 --------------------------------------
+### FIM v2.6.0 --------------------------------------
 
 
-### v2.5.6 ----------------------------------
-### Proteção transacional para erro de operação ambígua observado na v2.5.6.
+### v2.6.0 ----------------------------------
+### Proteção transacional para erro de operação ambígua observado na v2.6.0.
 ### Caso real: o painel gravou acao=update para lista select_multiple de forma
 ### de vida, com valor_original_esperado="graminoide" e valor_novo="samambaia",
 ### enquanto a célula real era "serrapilheira graminoide". Como update é
 ### operação de célula inteira, a pré-condição falhou corretamente. Porém, para
 ### listas de tokens, esse padrão é inequivocamente uma substituição de token.
-### A v2.5.6 reclassifica esse caso para replace_token antes da pré-validação,
+### A v2.6.0 reclassifica esse caso para replace_token antes da pré-validação,
 ### preservando update estrito quando valor_original_esperado for a célula
 ### inteira ou quando a coluna não for select_multiple/lista principal.
 
@@ -6402,12 +7513,12 @@ monitora_publicacao_s_reclassificar_updates_tokenizados <- function(dt, corr, ch
 
   list(corr = corr, audit = audit, n = length(idx))
 }
-### FIM v2.5.6 ------------------------------
+### FIM v2.6.0 ------------------------------
 
 
 
 
-### v2.5.6 --------------------------------------
+### v2.6.0 --------------------------------------
 ### Harmonização contratual de serrapilheira/material botânico.
 ### Interpretação consolidada dos XLSForms:
 ### - ago/2022: serrapilheira apareceu nas listas inferiores nativa/exotica/seca_morta.
@@ -6549,11 +7660,11 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
   }
   invisible(dt)
 }
-### FIM v2.5.6 ----------------------------------
+### FIM v2.6.0 ----------------------------------
 
-### v2.5.6 -----------------------------------------
-### v2.5.6: correção robusta da materialização de registros_importados.csv com cabeçalhos duplicados.
-### v2.5.6 -----------------------------
+### v2.6.0 -----------------------------------------
+### v2.6.0: correção robusta da materialização de registros_importados.csv com cabeçalhos duplicados.
+### v2.6.0 -----------------------------
 ### Correção de fluxo: registros_importados.csv é produto bruto obrigatório e
 ### deve ser materializado logo após a concatenação dos CSVs lidos, antes de
 ### validações, harmonizações, deduplicações finais, painel ou registros_corrig.
@@ -6574,7 +7685,7 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
 ### - append de auditoria, sem reler/regravar CSVs grandes;
 ### - simulações de persistência sem efeitos colaterais em disco.
 ###
-### v2.5.6
+### v2.6.0
 ### Regra de produto: registros_importados.csv é snapshot fiel da leitura/
 ### montagem dos arquivos de entrada antes de padronizações semânticas,
 ### harmonizações históricas, painel e correções. Nunca deve ser usado como
@@ -6585,9 +7696,9 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
 monitora_publicacao_g_log <- function(..., nivel = "INFO") {
   msg <- paste0(..., collapse = "")
   if (exists("monitora_correcao_console_msg", mode = "function")) {
-    try(monitora_correcao_console_msg("[v2.5.6] ", msg), silent = TRUE)
+    try(monitora_correcao_console_msg("[v2.6.0] ", msg), silent = TRUE)
   } else {
-    message("[v2.5.6] ", msg)
+    message("[v2.6.0] ", msg)
   }
   invisible(TRUE)
 }
@@ -6889,7 +8000,7 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt,
 }
 
 
-### v2.5.6 --------------------------------------------
+### v2.6.0 --------------------------------------------
 ### Selo leve de contrato para evitar fechamentos globais repetidos quando
 ### registros_corrig já foi saneado, fechado e não sofreu mutação contratual
 ### depois do último fechamento. A assinatura é propositalmente estrutural
@@ -6897,7 +8008,7 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt,
 ### dirty interno): não substitui auditoria completa, apenas impede chamadas
 ### redundantes dentro da mesma execução.
 monitora_publicacao_z_assinatura_registros_corrig <- function(dt) {
-  ### v2.5.6: assinatura intencionalmente barata. A integridade contra
+  ### v2.6.0: assinatura intencionalmente barata. A integridade contra
   ### mutações semânticas depende das dirty flags/selo; recalcular uniqueN e
   ### nchar de todas as colunas a cada checagem anulava parte do ganho de
   ### performance do pipeline contratual.
@@ -6971,9 +8082,9 @@ monitora_publicacao_z_selo_registros_corrig_valido <- function(dt) {
   assinatura_atual <- monitora_publicacao_z_assinatura_registros_corrig(dt)
   identical(as.character(assinatura_ant)[1L], as.character(assinatura_atual)[1L])
 }
-### FIM v2.5.6 ----------------------------------------
+### FIM v2.6.0 ----------------------------------------
 
-### v2.5.6 -------------------------------------------
+### v2.6.0 -------------------------------------------
 ### Telemetria leve para preparar otimizações incrementais. Ela não altera o
 ### contrato nem substitui auditorias semânticas; apenas registra escopos sujos
 ### e fragmenta blocos PERF longos para identificar gargalos reais.
@@ -7057,11 +8168,11 @@ monitora_publicacao_ac_gravar_dirty_flags <- function(output_dir = MONITORA_OUTP
   data.table::fwrite(resumo, arq_out, sep = ",", quote = "auto", na = "")
   invisible(resumo)
 }
-### FIM v2.5.6 ---------------------------------------
+### FIM v2.6.0 ---------------------------------------
 
 
-### v2.5.6 ---------------------------------------
-### A v2.5.6 foi validado. A v2.5.6 preserva a regra física definida para
+### v2.6.0 ---------------------------------------
+### A v2.6.0 foi validado. A v2.6.0 preserva a regra física definida para
 ### registros_corrig.csv: ausências devem sair como literal "NA", não como campo
 ### vazio, enquanto registros_validados.csv continua exportando vazios efetivos.
 ### Também adiciona caches leves para reduzir custo de consulta repetida ao
@@ -7138,11 +8249,11 @@ monitora_publicacao_ae_preparar_registros_corrig_para_csv <- function(dt,
 monitora_publicacao_ae_auditoria_mapeamento_leve <- function() {
   isTRUE(get0("MONITORA_PUBLICACAO_AE_AUDITORIA_CONTRATO_LEVE", ifnotfound = TRUE, inherits = TRUE))
 }
-### FIM v2.5.6 -----------------------------------
+### FIM v2.6.0 -----------------------------------
 
 
-### v2.5.6 ---------------------------
-### Foco: ajuste parcial para a base v2.5.6, preservando contratos e ganhos
+### v2.6.0 ---------------------------
+### Foco: ajuste parcial para a base v2.6.0, preservando contratos e ganhos
 ### válidos, e telemetria temporizado correto do bloco matriz/mapeamento.
 monitora_publicacao_aj_cache_env <- function(nome = "matriz") {
   env_nome <- paste0("MONITORA_PUBLICACAO_AJ_CACHE_", gsub("[^A-Za-z0-9]+", "_", toupper(as.character(nome)[1L])))
@@ -7539,7 +8650,7 @@ monitora_publicacao_aj_constroi_matriz_validados <- function(registros_corrig,
 
   list(out = out, auditoria = auditoria_dt)
 }
-### FIM v2.5.6 -----------------------
+### FIM v2.6.0 -----------------------
 
 monitora_publicacao_g_gravar_selo_contrato <- function(dt, contexto, escopo, linhas_avaliadas, invariantes = NULL) {
   out_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path("output", "correcoes_campos"), inherits = TRUE)
@@ -7564,7 +8675,7 @@ monitora_publicacao_g_gravar_selo_contrato <- function(dt, contexto, escopo, lin
   invisible(selo)
 }
 
-### v2.5.6
+### v2.6.0
 ### Esta função é destinada a registros_corrig.csv e registros_validados.csv.
 ### Nunca chamar para registros_importados.csv, que deve permanecer como snapshot
 ### fiel dos arquivos de entrada lidos.
@@ -7616,11 +8727,11 @@ monitora_publicacao_c_normalizar_contratos_pre_exportacao <- function(dt, contex
   }
   invisible(dt)
 }
-### FIM v2.5.6 -------------------------------------
+### FIM v2.6.0 -------------------------------------
 
 
 monitora_correcao_calcular_tipo_forma_vida_esperado <- function(dt, linhas = NULL, chaves = monitora_correcao_colunas_chave(dt)) {
-  ### v2.5.6
+  ### v2.6.0
   ### Calcula o valor esperado do campo superior de forma de vida a partir do
   ### estado FINAL do ponto, resolvendo automaticamente condicionantes do contrato.
   ### Regra central: solo_nu/solo exposto é mutuamente exclusivo com qualquer
@@ -7731,7 +8842,7 @@ monitora_correcao_sincronizar_encostam_final <- function(dt,
   list(dt = dt, audit = audit, linhas = linhas_mudou, afetacoes = afetacoes)
 }
 
-### v2.5.6-dev: sanitização pré-painel de Encostam = desconhecida
+### v2.6.0: sanitização pré-painel de Encostam = desconhecida
 ### -------------------------------------------------------------------------
 ### Caso estrito e auditável: quando o campo superior Encostam/tipo_forma_vida
 ### contém exclusivamente o token desconhecida/desconhecido e as listas
@@ -8337,7 +9448,7 @@ monitora_correcao_localizar_linhas_limpeza_outras_formas <- function(dt, linha_c
   esc <- if ("escopo_aplicacao" %in% names(linha_corr)) tolower(trimws(as.character(linha_corr$escopo_aplicacao[1L]))) else ""
   if (is.na(esc)) esc <- ""
 
-  ### v2.5.6-dev: TRIOUT é operação por ocorrência diagnóstica estável.
+  ### v2.6.0: TRIOUT é operação por ocorrência diagnóstica estável.
   ### Prioridade de resolução:
   ### 1) UUID(s) do registro;
   ### 2) chave composta de contexto (COLETA + ponto_amostral/ponto_metro, quando gravados);
@@ -8441,7 +9552,7 @@ monitora_correcao_aplicar_limpeza_outras_formas_atomica <- function(dt, linhas, 
   audit <- data.table::data.table()
   afetacoes <- data.table::data.table(linha_indice = integer(), atributo = character())
   if (!length(linhas)) {
-    ### v2.5.6-dev: limpeza de outras formas deve ser idempotente.
+    ### v2.6.0: limpeza de outras formas deve ser idempotente.
     ### Escopo vazio pode ocorrer quando as COLETAS-alvo foram quarentenadas,
     ### excluídas na mesma sessão ou quando o lote filtrado não contém resíduo
     ### remanescente. Isso é sucesso auditável; pendências reais serão capturadas
@@ -8622,7 +9733,7 @@ monitora_correcao_eh_operacao_limpeza_outras_formas <- function(corr) {
 }
 
 
-### v2.5.6-dev: contagem semântica global e aplicação vetorizada de operações
+### v2.6.0: contagem semântica global e aplicação vetorizada de operações
 ### -------------------------------------------------------------------------
 ### A fila do painel pode conter muitos itens auditáveis para uma única decisão
 ### do bolsista. As funções abaixo mantêm a rastreabilidade por item, mas aplicam
@@ -8676,7 +9787,7 @@ monitora_correcao_linhas_pendfv_grupo <- function(dt, grupo, col, chaves = monit
     uu <- uu[!is.na(uu) & nzchar(uu)]
     if (length(uu)) idx <- which(trimws(as.character(dt[[chaves$uuid_registro]])) %chin% uu)
   }
-  ### v2.5.6-dev motor único: PENDFV também é ocorrência diagnóstica por linha.
+  ### v2.6.0 motor único: PENDFV também é ocorrência diagnóstica por linha.
   ### Se o painel gravou linha_indice/linhas_alvo_serializadas, essas linhas são
   ### preferidas ao escopo amplo de COLETAS. COLETA é apenas fallback legado.
   if (!length(idx)) {
@@ -8785,7 +9896,7 @@ monitora_correcao_linhas_escopo_operacao_outras_estado_corrente <- function(dt, 
   dt <- data.table::as.data.table(dt)
   grupo <- data.table::as.data.table(grupo)
 
-  ### v2.5.6-dev: TRIOUT atômico e vetorizado, com COLETA como filtro
+  ### v2.6.0: TRIOUT atômico e vetorizado, com COLETA como filtro
   ### operacional estável. A operação de limpeza de outras formas não deve
   ### depender de linha_indice depois que outras operações podem deslocar o
   ### data.table, nem precisa expandir uma aplicação por item. O fluxo seguro é:
@@ -9818,7 +10929,30 @@ monitora_correcao_localizar_linhas_movimento_lote <- function(dt, linha_lote, ch
   linha_lote <- data.table::as.data.table(linha_lote)
   if (!nrow(dt) || !nrow(linha_lote)) return(integer(0))
 
-  ### v2.5.6-dev debug: MVLOTE pode carregar um escopo diagnóstico já
+  ### v2.6.0: quando o MVLOTE representa a correção semântica de
+  ### "desconhecida" em uma categoria-base, as linhas serializadas da
+  ### sessão anterior não são estáveis entre versões/reruns. Nesse caso,
+  ### o replay deve reconstruir o escopo por COLETA no estado corrente; a
+  ### filtragem fina da ocorrência desconhecida é feita depois por
+  ### monitora_correcao_linhas_desconhecida_categoria_base().
+  mv_desc_vals <- character(0)
+  for (cc_mv in intersect(c("escopo_diagnostico_mvlote", "categoria_base_diagnostica", "token_pai", "token_removido", "valor_original_esperado"), names(linha_lote))) {
+    mv_desc_vals <- c(mv_desc_vals, as.character(linha_lote[[cc_mv]][1L]))
+  }
+  mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
+  mv_desc_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
+  if (isTRUE(mv_desc_semantica) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt) && "coleta" %in% names(linha_lote)) {
+    coletas_desc <- monitora_correcao_parse_lista_serializada(linha_lote$coleta[1L])
+    coletas_desc <- unique(as.character(coletas_desc))
+    coletas_desc <- coletas_desc[!is.na(coletas_desc) & nzchar(trimws(coletas_desc))]
+    if (length(coletas_desc)) {
+      idx_coletas_desc <- which(as.character(dt[[chaves$coleta]]) %chin% coletas_desc)
+      idx_coletas_desc <- unique(as.integer(idx_coletas_desc))
+      if (length(idx_coletas_desc)) return(idx_coletas_desc)
+    }
+  }
+
+  ### v2.6.0 diagnóstico: MVLOTE pode carregar um escopo diagnóstico já
   ### calculado pelo painel (ex.: nativa/desconhecida -> nativa/samambaia).
   ### Nesse caso, o alvo correto são as linhas diagnósticas serializadas, não
   ### as 101 linhas de cada COLETA do lote. Isto evita comparar 8*101 linhas
@@ -10652,7 +11786,7 @@ monitora_correcao_aplicar_movimentos_forma_vida_lote_atomicos <- function(dt, co
   list(dt = dt[], corr = corr_out[], audit = audit[], linhas = linhas, afetacoes = unique(afetacoes), falha = falha, n_grupos = length(grupos))
 }
 
-### v2.5.6-dev: MVLOTE generalizado (movimento entre categorias e substituição intralista)
+### v2.6.0: MVLOTE generalizado (movimento entre categorias e substituição intralista)
 ### -------------------------------------------------------------------------
 ### Esta definição substitui a versão anterior por busca dinâmica em runtime.
 ### Permite origem==destino quando a forma de origem difere da forma de destino
@@ -10686,6 +11820,13 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
   if (monitora_correcao_vazio(origem) || monitora_correcao_vazio(destino) || !origem %in% cats || !destino %in% cats) {
     return(falhar("falha_lote_categoria", "origem/destino ausentes ou inválidos"))
   }
+  mv_desc_vals <- character(0)
+  for (cc_mv in intersect(c("escopo_diagnostico_mvlote", "categoria_base_diagnostica", "token_pai", "token_removido", "valor_original_esperado"), names(linha_lote))) {
+    mv_desc_vals <- c(mv_desc_vals, as.character(linha_lote[[cc_mv]][1L]))
+  }
+  mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
+  mv_lote_desconhecida_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
+
   col_origem <- tryCatch(monitora_correcao_coluna_forma_vida(dt, origem), error = function(e) NA_character_)
   col_destino <- tryCatch(monitora_correcao_coluna_forma_vida(dt, destino), error = function(e) NA_character_)
   if (is.na(col_origem) || !(col_origem %in% names(dt))) return(falhar("falha_coluna_origem", paste0("coluna de origem não localizada para ", origem)))
@@ -10696,7 +11837,7 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
   linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
   n_esperado <- if ("n_linhas_esperado" %in% names(linha_lote)) suppressWarnings(as.integer(linha_lote$n_linhas_esperado[1L])) else NA_integer_
   if (!length(linhas)) return(falhar("falha_sem_linhas", "nenhuma linha-alvo diagnóstica localizada para o movimento em lote"))
-  if (!is.na(n_esperado) && n_esperado > 0L && length(linhas) != n_esperado) {
+  if (!is.na(n_esperado) && n_esperado > 0L && length(linhas) != n_esperado && !isTRUE(mv_lote_desconhecida_semantica)) {
     return(falhar("falha_n_linhas", paste0("n_linhas_alvo=", length(linhas), " diferente de n_linhas_esperado=", n_esperado, "; o MVLOTE deve usar as linhas diagnósticas serializadas, não a COLETA inteira")))
   }
 
@@ -11410,7 +12551,7 @@ monitora_correcao_aplicar_triagens_desconhecida_atomicas <- function(dt, corr, c
   list(dt = dt[], corr = corr_out[], audit = audit[], linhas = linhas, afetacoes = unique(afetacoes), falha = falha, n_grupos = length(grupos))
 }
 
-### v2.5.6-dev: transação semântica agrupada para operações do painel
+### v2.6.0: transação semântica agrupada para operações do painel
 ### -------------------------------------------------------------------------
 ### O painel pode gerar muitos itens auditáveis para uma única decisão do
 ### bolsista. A partir daqui, a regra é: a fila guarda operações semânticas
@@ -11794,10 +12935,384 @@ monitora_correcao_aplicar_exclusoes_coleta_atomicas <- function(dt, corr, chaves
 }
 
 
+### v2.6.0 -----------------------------------------------------------------
+### Replay semântico em nova execução: o arquivo de correções é uma trilha de
+### intenção, não um vetor de posições. Este bloco corrige três pontos críticos:
+### 1) PENDFV agrupado não pode parar nos poucos UUIDs que ainda batem; deve
+###    reconstruir o escopo corrente por COLETA e filtrar pendências reais.
+### 2) EXCCOL em replay não deve falhar quando a COLETA já não existe no input
+###    corrente; isso é estado já materializado/ausente, não erro fatal.
+### 3) MVLOTE de desconhecida não deve depender de linha_indice antigo; deve
+###    reaplicar a intenção "desconhecida -> forma válida/destino" sobre as
+###    ocorrências diagnósticas atuais da categoria-base no escopo de COLETAS.
+
+monitora_replay_v263_parse_lista <- function(x) {
+  if (is.null(x)) return(character(0))
+  x <- as.character(x)
+  x <- x[!is.na(x)]
+  if (!length(x)) return(character(0))
+  vals <- unlist(strsplit(x, "[|;\n\r]+", perl = TRUE), use.names = FALSE)
+  vals <- trimws(as.character(vals))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- vals[!(toupper(vals) %in% c("NA", "NAN", "NULL", "NONE", "---"))]
+  unique(vals)
+}
+
+monitora_replay_v263_parse_colunas <- function(tab, cols) {
+  tab <- data.table::as.data.table(tab)
+  vals <- character(0)
+  for (cc in intersect(cols, names(tab))) {
+    vals <- c(vals, unlist(lapply(as.character(tab[[cc]]), monitora_replay_v263_parse_lista), use.names = FALSE))
+  }
+  vals <- trimws(as.character(vals))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  unique(vals)
+}
+
+monitora_replay_v263_filtrar_valores <- function(dt, linhas, col, vals) {
+  dt <- data.table::as.data.table(dt)
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  vals <- unique(trimws(as.character(vals)))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  if (!length(linhas) || is.na(col) || !nzchar(col) || !(col %in% names(dt)) || !length(vals)) return(linhas)
+  linhas[trimws(as.character(dt[[col]][linhas])) %chin% vals]
+}
+
+monitora_correcao_linhas_pendfv_grupo <- function(dt, grupo, col, chaves = monitora_correcao_colunas_chave(dt)) {
+  dt <- data.table::as.data.table(dt)
+  grupo <- data.table::as.data.table(grupo)
+  if (!nrow(dt) || !nrow(grupo) || is.na(col) || !(col %in% names(dt))) return(integer(0))
+
+  ### Escopo preferencial para replay: COLETA(s) + estado diagnóstico corrente.
+  ### Isso evita perder a maior parte de um lote quando apenas alguns UUIDs da
+  ### rodada antiga ainda batem no input reprocessado.
+  idx <- integer(0)
+  coletas <- monitora_replay_v263_parse_colunas(grupo, c("coleta", "COLETA", "coletas", "coletas_alvo", "coletas_lote"))
+  if (length(coletas) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt)) {
+    idx <- which(trimws(as.character(dt[[chaves$coleta]])) %chin% coletas)
+  }
+
+  ### UUIDs continuam úteis para arquivos não agrupados, mas são união, não
+  ### condição de parada. Em grupos grandes eles costumam ser incompletos.
+  uuids <- monitora_replay_v263_parse_colunas(grupo, c("uuid_registro", "uuid_registro_serializado", "uuids_registro"))
+  if (length(uuids) && !is.na(chaves$uuid_registro) && chaves$uuid_registro %in% names(dt)) {
+    idx_uuid <- which(trimws(as.character(dt[[chaves$uuid_registro]])) %chin% uuids)
+    idx <- unique(c(idx, idx_uuid))
+  }
+
+  ### Fallback por linha antiga apenas se não houver escopo estável.
+  if (!length(idx) && !length(coletas) && !length(uuids)) {
+    li <- suppressWarnings(as.integer(monitora_replay_v263_parse_colunas(grupo, c("linhas_alvo_serializadas", "linha_indice", "linhas_alvo"))))
+    li <- unique(li[!is.na(li) & li >= 1L & li <= nrow(dt)])
+    if (length(li)) idx <- li
+  }
+
+  idx <- unique(as.integer(idx))
+  idx <- idx[!is.na(idx) & idx >= 1L & idx <= nrow(dt)]
+  if (!length(idx)) return(integer(0))
+
+  categoria <- monitora_correcao_inferir_categoria_pendfv(grupo, col)
+  vazio_destino <- monitora_correcao_vazio_vec(dt[[col]][idx])
+  if (!is.na(categoria) && nzchar(categoria) && !is.na(chaves$tipo_forma_vida) && chaves$tipo_forma_vida %in% names(dt)) {
+    tem_cat <- monitora_correcao_contem_qualquer_token_vec(dt[[chaves$tipo_forma_vida]][idx], categoria)
+  } else {
+    tem_cat <- rep(TRUE, length(idx))
+  }
+  idx[tem_cat & vazio_destino]
+}
+
+monitora_correcao_aplicar_exclusoes_coleta_atomicas <- function(dt, corr, chaves = monitora_correcao_colunas_chave(dt), indice = NULL, arquivo_correcao = NA_character_) {
+  dt <- monitora_dt_referenciar(dt)
+  corr <- data.table::as.data.table(corr)
+  if (!nrow(corr)) return(list(dt = dt, corr = corr, audit = data.table::data.table(), coletas = character(), linhas_removidas = integer(), falha = FALSE, n_grupos = 0L))
+  if (!("ordem_tmp" %in% names(corr))) corr[, ordem_tmp := seq_len(.N)]
+  if (!("id_correcao" %in% names(corr))) corr[, id_correcao := NA_character_]
+  acao_vec <- if ("acao" %in% names(corr)) as.character(corr$acao) else rep("", nrow(corr))
+  tipo_vec <- if ("tipo_correcao" %in% names(corr)) as.character(corr$tipo_correcao) else rep("", nrow(corr))
+  idx_exc <- which(mapply(monitora_correcao_acao_exclusao_coleta, acao_vec, tipo_vec))
+  if (!length(idx_exc)) return(list(dt = dt, corr = corr, audit = data.table::data.table(), coletas = character(), linhas_removidas = integer(), falha = FALSE, n_grupos = 0L))
+
+  corr[, .grupo_exc_atom := data.table::fifelse(!is.na(id_correcao) & nzchar(as.character(id_correcao)), as.character(id_correcao), paste0("__linha_", ordem_tmp))]
+  grupos <- unique(corr[idx_exc, .grupo_exc_atom])
+  audit <- data.table::data.table()
+  linhas_remover_total <- integer()
+  coletas_removidas <- character()
+  grupos_processados <- character()
+  falha <- FALSE
+
+  for (gid in grupos) {
+    grp <- corr[.grupo_exc_atom == gid]
+    grupos_processados <- unique(c(grupos_processados, gid))
+    coletas_grp <- monitora_replay_v263_parse_colunas(grp, c("coleta", "COLETA", "coletas", "coletas_alvo"))
+    if (is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) {
+      falha <- TRUE
+      audit <- data.table::rbindlist(list(audit, data.table::data.table(
+        id_correcao = grp$id_correcao[1L], ordem_operacao = NA_character_,
+        status = "falha_coluna_coleta_exclusao", mensagem = "Coluna de COLETA não localizada; exclusão bloqueada",
+        atributo = "COLETA", linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao
+      )), fill = TRUE, use.names = TRUE)
+      next
+    }
+    if (!length(coletas_grp)) {
+      falha <- TRUE
+      audit <- data.table::rbindlist(list(audit, data.table::data.table(
+        id_correcao = grp$id_correcao[1L], ordem_operacao = NA_character_,
+        status = "falha_sem_coleta_exclusao", mensagem = "Operação de exclusão sem COLETA identificável",
+        atributo = chaves$coleta, linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_, arquivo_correcao = arquivo_correcao
+      )), fill = TRUE, use.names = TRUE)
+      next
+    }
+
+    for (co in coletas_grp) {
+      linhas <- which(trimws(as.character(dt[[chaves$coleta]])) == trimws(as.character(co)))
+      linhas <- unique(as.integer(linhas))
+      linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+      if (!length(linhas)) {
+        audit <- data.table::rbindlist(list(audit, data.table::data.table(
+          id_correcao = grp$id_correcao[1L], ordem_operacao = NA_character_,
+          status = "ok_coleta_ausente_estado_corrente",
+          mensagem = "Exclusão em replay sem ação: COLETA não existe no input/estado corrente ou já foi removida anteriormente",
+          atributo = chaves$coleta, linha_indice = NA_integer_, valor_antes = as.character(co),
+          valor_depois = "<COLETA_AUSENTE_ESTADO_CORRENTE>", arquivo_correcao = arquivo_correcao
+        )), fill = TRUE, use.names = TRUE)
+        next
+      }
+      audit_del <- data.table::data.table(
+        id_correcao = grp$id_correcao[1L],
+        ordem_operacao = NA_character_,
+        status = "excluida_coleta",
+        mensagem = paste0("Exclusão atômica/replay de COLETA: ", length(linhas), " registro(s) removido(s)"),
+        atributo = chaves$coleta,
+        linha_indice = linhas,
+        valor_antes = as.character(dt[[chaves$coleta]][linhas]),
+        valor_depois = "<REGISTRO_REMOVIDO>",
+        arquivo_correcao = arquivo_correcao
+      )
+      audit_del <- monitora_correcao_anexar_contexto_auditoria(audit_del, dt, chaves)
+      audit <- data.table::rbindlist(list(audit, audit_del), fill = TRUE, use.names = TRUE)
+      linhas_remover_total <- unique(c(linhas_remover_total, linhas))
+      coletas_removidas <- unique(c(coletas_removidas, as.character(co)))
+    }
+  }
+
+  linhas_remover_total <- sort(unique(as.integer(linhas_remover_total)))
+  linhas_remover_total <- linhas_remover_total[!is.na(linhas_remover_total) & linhas_remover_total >= 1L & linhas_remover_total <= nrow(dt)]
+  if (length(linhas_remover_total) > 0L) dt <- dt[-linhas_remover_total]
+  corr_out <- corr[!(.grupo_exc_atom %in% grupos_processados)]
+  corr_out[, .grupo_exc_atom := NULL]
+  corr[, .grupo_exc_atom := NULL]
+  list(dt = dt[], corr = corr_out[], audit = audit[], coletas = coletas_removidas, linhas_removidas = linhas_remover_total, falha = falha, n_grupos = length(grupos_processados))
+}
+
+monitora_correcao_localizar_linhas_movimento_lote <- function(dt, linha_lote, chaves = monitora_correcao_colunas_chave(dt)) {
+  dt <- data.table::as.data.table(dt)
+  linha_lote <- data.table::as.data.table(linha_lote)
+  if (!nrow(dt) || !nrow(linha_lote)) return(integer(0))
+
+  mv_desc_vals <- character(0)
+  for (cc_mv in intersect(c("escopo_diagnostico_mvlote", "categoria_base_diagnostica", "token_pai", "token_removido", "valor_original_esperado"), names(linha_lote))) {
+    mv_desc_vals <- c(mv_desc_vals, as.character(linha_lote[[cc_mv]][1L]))
+  }
+  mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
+  mv_desc_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
+
+  coletas <- monitora_replay_v263_parse_colunas(linha_lote, c("coleta", "COLETA", "coletas", "coletas_alvo"))
+  if (length(coletas) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt)) {
+    idx <- which(trimws(as.character(dt[[chaves$coleta]])) %chin% coletas)
+    idx <- unique(as.integer(idx))
+    idx <- idx[!is.na(idx) & idx >= 1L & idx <= nrow(dt)]
+    if (length(idx)) return(idx)
+  }
+
+  ### Somente arquivos legados sem COLETA podem cair para linha_indice.
+  linhas_serial <- integer(0)
+  if (!isTRUE(mv_desc_semantica)) {
+    linhas_serial <- suppressWarnings(as.integer(monitora_replay_v263_parse_colunas(linha_lote, c("linhas_alvo_serializadas", "linha_indice", "linhas_alvo"))))
+    linhas_serial <- unique(linhas_serial[!is.na(linhas_serial) & linhas_serial >= 1L & linhas_serial <= nrow(dt)])
+    if (length(linhas_serial)) return(linhas_serial)
+  }
+
+  integer(0)
+}
+
+monitora_correcao_aplicar_movimento_forma_vida_lote_atomico__v262 <- monitora_correcao_aplicar_movimento_forma_vida_lote_atomico
+
+monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linha_lote, chaves = monitora_correcao_colunas_chave(dt), indice = NULL, arquivo_correcao = NA_character_, dicionario = NULL, gravar_relatorio_ambiguidades = TRUE) {
+  dt <- monitora_dt_referenciar(dt)
+  linha_lote <- data.table::as.data.table(linha_lote)
+  if (!nrow(linha_lote)) return(list(dt = dt[], audit = data.table::data.table(), linhas = integer(), afetacoes = data.table::data.table(linha_indice = integer(), atributo = character()), falha = FALSE))
+
+  mv_desc_vals <- character(0)
+  for (cc_mv in intersect(c("escopo_diagnostico_mvlote", "categoria_base_diagnostica", "token_pai", "token_removido", "valor_original_esperado"), names(linha_lote))) {
+    mv_desc_vals <- c(mv_desc_vals, as.character(linha_lote[[cc_mv]][1L]))
+  }
+  mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
+  mv_desc_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
+  if (!isTRUE(mv_desc_semantica)) {
+    return(monitora_correcao_aplicar_movimento_forma_vida_lote_atomico__v262(dt, linha_lote, chaves, indice, arquivo_correcao, dicionario, gravar_relatorio_ambiguidades))
+  }
+
+  id_cor <- if ("id_correcao" %in% names(linha_lote)) as.character(linha_lote$id_correcao[1L]) else NA_character_
+  ordem <- if ("ordem_operacao" %in% names(linha_lote)) linha_lote$ordem_operacao[1L] else NA_character_
+  registrar <- function(status, msg, atributo, idx, antes, depois) {
+    data.table::data.table(
+      id_correcao = id_cor, ordem_operacao = ordem, status = status, mensagem = msg,
+      atributo = atributo, linha_indice = as.integer(idx), valor_antes = as.character(antes),
+      valor_depois = as.character(depois), arquivo_correcao = arquivo_correcao
+    )
+  }
+  nofatal <- function(status, msg, linhas_info = integer()) {
+    list(
+      dt = dt[],
+      audit = registrar(status, paste0("Replay MVLOTE desconhecida sem alteração fatal: ", msg), "__mover_forma_vida_lote__", if (length(linhas_info)) linhas_info else NA_integer_, NA_character_, NA_character_),
+      linhas = unique(as.integer(linhas_info)),
+      afetacoes = data.table::data.table(linha_indice = integer(), atributo = character()),
+      falha = FALSE
+    )
+  }
+  falhar <- function(status, msg) {
+    list(
+      dt = dt[],
+      audit = registrar(status, paste0("Replay MVLOTE desconhecida bloqueado: ", msg), "__mover_forma_vida_lote__", NA_integer_, NA_character_, NA_character_),
+      linhas = integer(),
+      afetacoes = data.table::data.table(linha_indice = integer(), atributo = character()),
+      falha = TRUE
+    )
+  }
+
+  origem <- if ("categoria_origem" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$categoria_origem[1L]))) else NA_character_
+  destino <- if ("categoria_destino" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$categoria_destino[1L]))) else NA_character_
+  cats <- c("nativa", "exotica", "seca_morta")
+  if (monitora_correcao_vazio(origem) || !(origem %in% cats)) return(falhar("falha_categoria_origem", "categoria de origem ausente/inválida"))
+  if (monitora_correcao_vazio(destino) || !(destino %in% cats)) destino <- origem
+
+  col_origem <- tryCatch(monitora_correcao_coluna_forma_vida(dt, origem), error = function(e) NA_character_)
+  col_destino <- tryCatch(monitora_correcao_coluna_forma_vida(dt, destino), error = function(e) NA_character_)
+  if (is.na(col_origem) || !(col_origem %in% names(dt))) return(falhar("falha_coluna_origem", paste0("coluna de origem não localizada para ", origem)))
+  if (is.na(col_destino) || !(col_destino %in% names(dt))) return(falhar("falha_coluna_destino", paste0("coluna de destino não localizada para ", destino)))
+
+  forma_destino <- monitora_replay_v263_parse_colunas(linha_lote, c("forma_valida_escolhida", "valor_novo", "forma_destino_lote"))
+  forma_destino <- forma_destino[!tolower(forma_destino) %in% c("__todas__", "todas", "todos", "all", "desconhecida", "desconhecido")]
+  forma_destino <- tryCatch(monitora_correcao_forma_canonica_lote(forma_destino), error = function(e) forma_destino)
+  forma_destino <- unique(forma_destino[!is.na(forma_destino) & nzchar(forma_destino)])
+  if (!length(forma_destino)) return(falhar("falha_forma_destino", "forma válida de destino não informada"))
+  forma_destino <- forma_destino[1L]
+
+  linhas_base <- monitora_correcao_localizar_linhas_movimento_lote(dt, linha_lote, chaves)
+  linhas_base <- unique(as.integer(linhas_base))
+  linhas_base <- linhas_base[!is.na(linhas_base) & linhas_base >= 1L & linhas_base <= nrow(dt)]
+  if (!length(linhas_base)) return(nofatal("ok_sem_escopo_corrente", "nenhuma COLETA/linha do escopo foi localizada no estado corrente"))
+
+  linhas_alvo <- tryCatch(monitora_correcao_linhas_desconhecida_categoria_base(dt, origem, linhas_base, dicionario = dicionario), error = function(e) integer(0))
+  linhas_alvo <- unique(as.integer(linhas_alvo))
+  linhas_alvo <- linhas_alvo[!is.na(linhas_alvo) & linhas_alvo >= 1L & linhas_alvo <= nrow(dt)]
+  if (!length(linhas_alvo)) {
+    ### v2.6.0: em algumas runs de replay o MVLOTE de "desconhecida"
+    ### é executado antes da sanitização que transforma Encostam=desconhecida
+    ### superior-only em categoria-base nativa + forma_vida_nativa=desconhecida.
+    ### Nesse intervalo, a intenção semântica do bolsista só está visível no
+    ### campo superior Encostam/tipo_forma_vida. Portanto, antes de declarar
+    ### "sem efeito", reconstruímos o alvo por COLETA + ponto/métro da operação
+    ### e presença de desconhecida superior-only no estado corrente.
+    linhas_sup <- tryCatch(monitora_correcao_linhas_desconhecida_sem_categoria_base(dt, linhas_base, chaves), error = function(e) integer(0))
+    linhas_sup <- unique(as.integer(linhas_sup))
+    linhas_sup <- linhas_sup[!is.na(linhas_sup) & linhas_sup >= 1L & linhas_sup <= nrow(dt)]
+    if (length(linhas_sup)) {
+      pa_vals <- tryCatch(monitora_replay_v263_parse_colunas(linha_lote, c("ponto_amostral", "Ponto amostral")), error = function(e) character(0))
+      pm_vals <- tryCatch(monitora_replay_v263_parse_colunas(linha_lote, c("ponto_metro", "Ponto metro")), error = function(e) character(0))
+      pa_vals <- unique(trimws(as.character(pa_vals)))
+      pm_vals <- unique(trimws(as.character(pm_vals)))
+      pa_vals <- pa_vals[!is.na(pa_vals) & nzchar(pa_vals) & !grepl("^multiplos\\(", pa_vals, ignore.case = TRUE)]
+      pm_vals <- pm_vals[!is.na(pm_vals) & nzchar(pm_vals) & !grepl("^multiplos\\(", pm_vals, ignore.case = TRUE)]
+      if (length(pa_vals) && !is.na(chaves$ponto_amostral) && chaves$ponto_amostral %in% names(dt)) {
+        linhas_sup <- linhas_sup[trimws(as.character(dt[[chaves$ponto_amostral]][linhas_sup])) %chin% pa_vals]
+      }
+      if (length(pm_vals) && !is.na(chaves$ponto_metro) && chaves$ponto_metro %in% names(dt)) {
+        linhas_sup <- linhas_sup[trimws(as.character(dt[[chaves$ponto_metro]][linhas_sup])) %chin% pm_vals]
+      }
+    }
+    if (length(linhas_sup)) {
+      linhas_alvo <- unique(as.integer(linhas_sup))
+      ### A auditoria detalhada será registrada nos blocos de aplicação abaixo,
+      ### quando o valor efetivamente mudar.
+    } else {
+      return(nofatal("ok_sem_desconhecida_estado_corrente", paste0("nenhuma ocorrência de desconhecida permaneceu em ", origem, " no escopo corrente"), linhas_base))
+    }
+  }
+
+  audit <- data.table::data.table()
+  afetacoes <- data.table::data.table(linha_indice = integer(), atributo = character())
+  tokens_desc <- unique(c("desconhecida", "desconhecido", tryCatch(monitora_correcao_tokens_desconhecida(), error = function(e) character(0))))
+
+  if (identical(col_origem, col_destino)) {
+    antes <- as.character(dt[[col_origem]][linhas_alvo])
+    depois <- antes
+    for (tok in tokens_desc) depois <- vapply(depois, monitora_correcao_remove_token_valor, character(1), token = tok)
+    depois <- vapply(depois, monitora_correcao_append_token_valor, character(1), token = forma_destino)
+    mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+    if (any(mudou, na.rm = TRUE)) {
+      data.table::set(dt, i = linhas_alvo[mudou], j = col_origem, value = depois[mudou])
+      audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Replay MVLOTE: desconhecida substituída por forma válida na mesma categoria", col_origem, linhas_alvo[mudou], antes[mudou], depois[mudou])), fill = TRUE, use.names = TRUE)
+      afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas_alvo[mudou], atributo = col_origem)), fill = TRUE, use.names = TRUE)
+    }
+  } else {
+    antes_o <- as.character(dt[[col_origem]][linhas_alvo])
+    depois_o <- antes_o
+    for (tok in tokens_desc) depois_o <- vapply(depois_o, monitora_correcao_remove_token_valor, character(1), token = tok)
+    mudou_o <- monitora_correcao_na_para_vazio(antes_o) != monitora_correcao_na_para_vazio(depois_o)
+    if (any(mudou_o, na.rm = TRUE)) {
+      data.table::set(dt, i = linhas_alvo[mudou_o], j = col_origem, value = depois_o[mudou_o])
+      audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Replay MVLOTE: desconhecida removida da categoria-base de origem", col_origem, linhas_alvo[mudou_o], antes_o[mudou_o], depois_o[mudou_o])), fill = TRUE, use.names = TRUE)
+      afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas_alvo[mudou_o], atributo = col_origem)), fill = TRUE, use.names = TRUE)
+    }
+    antes_d <- as.character(dt[[col_destino]][linhas_alvo])
+    depois_d <- vapply(antes_d, monitora_correcao_append_token_valor, character(1), token = forma_destino)
+    mudou_d <- monitora_correcao_na_para_vazio(antes_d) != monitora_correcao_na_para_vazio(depois_d)
+    if (any(mudou_d, na.rm = TRUE)) {
+      data.table::set(dt, i = linhas_alvo[mudou_d], j = col_destino, value = depois_d[mudou_d])
+      audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Replay MVLOTE: forma válida garantida na categoria de destino", col_destino, linhas_alvo[mudou_d], antes_d[mudou_d], depois_d[mudou_d])), fill = TRUE, use.names = TRUE)
+      afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas_alvo[mudou_d], atributo = col_destino)), fill = TRUE, use.names = TRUE)
+    }
+  }
+
+  res_desc_dep <- tryCatch(monitora_correcao_sanitizar_dependentes_desconhecida(
+    dt, linhas = linhas_alvo, categorias = c("nativa", "exotica", "seca_morta"), id_correcao = id_cor,
+    ordem_operacao = ordem, arquivo_correcao = arquivo_correcao, dicionario = dicionario, registrar_preservadas = TRUE
+  ), error = function(e) NULL)
+  if (is.list(res_desc_dep)) {
+    dt <- res_desc_dep$dt
+    if (data.table::is.data.table(res_desc_dep$audit) && nrow(res_desc_dep$audit)) audit <- data.table::rbindlist(list(audit, res_desc_dep$audit), fill = TRUE, use.names = TRUE)
+    if (data.table::is.data.table(res_desc_dep$afetacoes) && nrow(res_desc_dep$afetacoes)) afetacoes <- data.table::rbindlist(list(afetacoes, res_desc_dep$afetacoes), fill = TRUE, use.names = TRUE)
+  }
+
+  tipo_col <- chaves$tipo_forma_vida
+  if (!is.na(tipo_col) && tipo_col %in% names(dt)) {
+    antes_tipo <- as.character(dt[[tipo_col]][linhas_alvo])
+    try(monitora_correcao_recalcular_tipo_forma_vida(dt, linhas_alvo), silent = TRUE)
+    depois_tipo <- as.character(dt[[tipo_col]][linhas_alvo])
+    mudou_tipo <- monitora_correcao_na_para_vazio(antes_tipo) != monitora_correcao_na_para_vazio(depois_tipo)
+    if (any(mudou_tipo, na.rm = TRUE)) {
+      audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Replay MVLOTE: Encostam/tipo_forma_vida recalculado após substituição de desconhecida", tipo_col, linhas_alvo[mudou_tipo], antes_tipo[mudou_tipo], depois_tipo[mudou_tipo])), fill = TRUE, use.names = TRUE)
+      afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas_alvo[mudou_tipo], atributo = tipo_col)), fill = TRUE, use.names = TRUE)
+    }
+  }
+
+  if (!nrow(audit)) return(nofatal("ok_estado_final_ja_coerente", "as linhas-alvo já estavam coerentes após avaliação semântica", linhas_alvo))
+  audit[, formas_origem := "desconhecida"]
+  audit[, forma_destino := forma_destino]
+  audit[, modo_movimento := ifelse(identical(origem, destino), "substituicao_intralista_replay", "movimento_entre_categorias_replay")]
+  list(dt = dt[], audit = audit[], linhas = unique(linhas_alvo), afetacoes = unique(afetacoes), falha = FALSE)
+}
+### FIM v2.6.0 -------------------------------------------------------------
 
 
-### v2.5.6 ---------------------------------
-### v2.5.6: reforço para limpeza sem alvo em sessão com exclusões dominantes.
+
+
+
+
+### v2.6.0 ---------------------------------
+### v2.6.0: reforço para limpeza sem alvo em sessão com exclusões dominantes.
 ### Orquestração pós-painel de operações que interagem entre si.
 ### Regra central: exclusão de COLETAS é operação dominante na sessão.
 ### Operações modificadoras cujo alvo foi removido por uma exclusão da mesma
@@ -11890,7 +13405,7 @@ monitora_publicacao_q_auditoria_subsumida_por_exclusao <- function(linha_corr,
     arquivo_correcao = arquivo_correcao
   )
 }
-### FIM v2.5.6 -----------------------------
+### FIM v2.6.0 -----------------------------
 
 monitora_correcao_arquivo_ler_defensivo <- function(arquivo_correcao) {
   if (is.null(arquivo_correcao) || !file.exists(arquivo_correcao)) return(data.table::data.table())
@@ -11983,7 +13498,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
                                                            aplicar_exclusoes = TRUE,
                                                            silencioso = TRUE,
                                                            registrar_perf = FALSE) {
-  ### v2.5.6-dev: motor único de preview/modal/aplicação lógica.
+  ### v2.6.0: motor único de preview/modal/aplicação lógica.
   ### A ordem replica o backend real: MVLOTE/TRIDESC, sanitizações vinculadas,
   ### PENDFV/TRIOUT por ocorrência diagnóstica, exclusões de COLETA e só então
   ### operações genéricas restantes.
@@ -12162,7 +13677,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
     )
   }
 
-  ### v2.5.6-dev: limpeza de outras formas (TRIOUT) é normalização de base.
+  ### v2.6.0: limpeza de outras formas (TRIOUT) é normalização de base.
   ### Deve rodar antes de PENDFV e antes das exclusões, sempre recalculando
   ### resíduos no estado corrente por filtro estável de COLETA/contexto.
   falha_limpeza_outras_formas <- FALSE
@@ -12535,7 +14050,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   if (nrow(corr) > 0L) {
     if (!("id_correcao" %in% names(corr))) corr[, id_correcao := NA_character_]
     corr[, grupo_correcao := fifelse(!is.na(id_correcao) & nzchar(as.character(id_correcao)), as.character(id_correcao), paste0("__linha_", ordem_tmp))]
-  ### v2.5.6: reclassificar operações ambíguas de token antes da pré-validação
+  ### v2.6.0: reclassificar operações ambíguas de token antes da pré-validação
   ### transacional. Isso evita que um update em lista select_multiple com
   ### valor_original_esperado parcial ("graminoide") bloqueie um grupo cuja
   ### intenção operacional é substituir token ("graminoide" -> "samambaia").
@@ -12860,13 +14375,20 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
     audit <- monitora_correcao_anexar_contexto_auditoria(audit, dt, chaves)
     MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA <<- data.table::copy(audit)
     MONITORA_COLETAS_EXCLUIDAS_CORRECOES_ULTIMA <<- unique(coletas_excluidas_aplicadas)
+    abortar_persistencia_objeto <- TRUE
+    if (isTRUE(get0("MONITORA_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = FALSE, inherits = TRUE)) &&
+        isTRUE(get0("MONITORA_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = FALSE, inherits = TRUE)) &&
+        (isTRUE(get0("MONITORA_REPLAY_SEMANTICO_EM_EXECUCAO", ifnotfound = FALSE, inherits = TRUE)) ||
+           exists("MONITORA_ARQUIVO_CORRECOES_CAMPOS_REAPLICADO", inherits = TRUE))) {
+      abortar_persistencia_objeto <- FALSE
+    }
     monitora_correcao_auditar_persistencia_operacoes(
       dt,
       audit,
       chaves = chaves,
       coletas_excluidas = coletas_excluidas_aplicadas,
       contexto = "pos_aplicacao_objeto",
-      abortar = TRUE
+      abortar = abortar_persistencia_objeto
     )
     saida_audit <- file.path(MONITORA_LOG_DIR, paste0("auditoria_correcoes_campos_", MONITORA_EXEC_ID, ".csv"))
     monitora_fwrite(audit, saida_audit, na = "")
@@ -12900,6 +14422,423 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   }
   dt[]
 }
+
+### v2.6.0 - trilha semântica e reaplicação de correções anteriores ---------
+monitora_correcao_arquivo_tem_operacoes <- function(arquivo) {
+  if (is.na(arquivo) || !nzchar(as.character(arquivo)[1]) || !file.exists(arquivo)) return(FALSE)
+  info <- tryCatch(file.info(arquivo), error = function(e) NULL)
+  if (is.null(info) || is.na(info$size[1]) || info$size[1] <= 0) return(FALSE)
+  x <- tryCatch(data.table::fread(arquivo, nrows = 2L, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) data.table::data.table())
+  nrow(x) > 0L
+}
+
+monitora_correcao_ler_operacoes_semanticas <- function(arquivo) {
+  if (!monitora_correcao_arquivo_tem_operacoes(arquivo)) return(data.table::data.table())
+  corr <- tryCatch(data.table::fread(arquivo, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) data.table::data.table())
+  if (!nrow(corr)) return(data.table::data.table())
+  template <- monitora_correcao_template()
+  for (cc in setdiff(names(template), names(corr))) corr[, (cc) := NA_character_]
+  data.table::setDT(corr)
+  corr[]
+}
+
+monitora_correcao_hash_texto <- function(x) {
+  x <- paste(as.character(x), collapse = "|")
+  if (requireNamespace("digest", quietly = TRUE)) return(digest::digest(x, algo = "sha256"))
+  paste0("hash_indisponivel_", nchar(x), "_", sum(utf8ToInt(enc2utf8(x)), na.rm = TRUE))
+}
+
+monitora_correcao_assinatura_linha_semantica <- function(corr) {
+  corr <- data.table::as.data.table(corr)
+  if (!nrow(corr)) return(character())
+  campos <- intersect(
+    c("id_correcao", "tipo_correcao", "ordem_operacao", "escopo_aplicacao", "coleta", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Ponto amostral", "Ponto metro", "uuid_registro", "atributo_coluna_registros_corrig", "acao", "token_pai", "categoria_origem", "categoria_destino", "tipo_triagem", "token_removido", "forma_valida_escolhida", "lista_destino", "campo_dependente_preenchido", "habito_escolhido", "valor_original_esperado", "valor_novo", "motivo"),
+    names(corr)
+  )
+  if (!length(campos)) return(rep(NA_character_, nrow(corr)))
+  apply(as.data.frame(corr[, ..campos]), 1L, monitora_correcao_hash_texto)
+}
+
+monitora_correcao_gravar_trilha_semantica <- function(corr,
+                                                      arquivo_origem = NA_character_,
+                                                      fase = "sessao_painel",
+                                                      status = "registrada",
+                                                      contexto = "") {
+  if (!isTRUE(get0("MONITORA_GRAVAR_TRILHA_SEMANTICA_CORRECOES", ifnotfound = TRUE, inherits = TRUE))) return(invisible(data.table::data.table()))
+  corr <- data.table::as.data.table(corr)
+  if (!nrow(corr)) return(invisible(data.table::data.table()))
+  template <- monitora_correcao_template()
+  for (cc in setdiff(names(template), names(corr))) corr[, (cc) := NA_character_]
+  corr[, trilha_schema := "correcoes_semanticas_v1"]
+  corr[, script_versao_replay := "2.6.0"]
+  corr[, exec_id_registro := get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)]
+  corr[, fase_trilha := as.character(fase)]
+  corr[, status_trilha := as.character(status)]
+  corr[, contexto_trilha := as.character(contexto)]
+  corr[, arquivo_origem_trilha := as.character(arquivo_origem)[1]]
+  corr[, data_hora_trilha := format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")]
+  corr[, hash_operacao_semantica := monitora_correcao_assinatura_linha_semantica(.SD)]
+  corr_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
+  dir.create(corr_dir, showWarnings = FALSE, recursive = TRUE)
+  exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
+  arq_exec <- file.path(corr_dir, paste0("correcoes_semanticas_", fase, "_", exec_id, ".csv"))
+  arq_ultima <- file.path(corr_dir, "correcoes_semanticas_ultima_execucao.csv")
+  arq_consolidada <- file.path(corr_dir, "correcoes_semanticas_consolidada.csv")
+  try(monitora_fwrite(corr, arq_exec, na = ""), silent = TRUE)
+  try(monitora_fwrite(corr, arq_ultima, na = ""), silent = TRUE)
+  if (file.exists(arq_consolidada)) {
+    old <- tryCatch(data.table::fread(arq_consolidada, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character"), error = function(e) data.table::data.table())
+    comb <- data.table::rbindlist(list(old, corr), fill = TRUE, use.names = TRUE)
+    if ("hash_operacao_semantica" %in% names(comb)) comb <- comb[!duplicated(hash_operacao_semantica)]
+  } else {
+    comb <- corr
+  }
+  try(monitora_fwrite(comb, arq_consolidada, na = ""), silent = TRUE)
+  if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
+    monitora_log_registrar_evento("trilha_semantica_correcoes", "INFO", arq_exec, paste0(nrow(corr), " item(ns) auditável(is) registrados na trilha semântica de correções"), "use correcoes_semanticas_consolidada.csv para replay em versões futuras")
+  }
+  invisible(corr[])
+}
+
+monitora_correcao_preparar_arquivo_sessao_pos_replay <- function() {
+  corr_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
+  dir.create(corr_dir, showWarnings = FALSE, recursive = TRUE)
+  exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
+  arq <- file.path(corr_dir, paste0("correcoes_campos_sessao_", exec_id, ".csv"))
+  try(unlink(arq), silent = TRUE)
+  MONITORA_ARQUIVO_CORRECOES_CAMPOS <<- arq
+  MONITORA_CORRECOES_ARQUIVO_EXISTE <<- FALSE
+  arq
+}
+
+monitora_correcao_reaplicar_arquivo_semantico <- function(dt,
+                                                          arquivo,
+                                                          dicionario = NULL,
+                                                          contexto = "pre_painel") {
+  ### v2.6.0: marcar replay semântico antes da auditoria interna de persistência.
+  ### A própria função audita persistência antes de retornar; portanto o marcador
+  ### precisa existir antes de chamar monitora_correcao_aplicar_operacoes().
+  MONITORA_REPLAY_SEMANTICO_EM_EXECUCAO <<- TRUE
+  MONITORA_ARQUIVO_CORRECOES_CAMPOS_REAPLICADO <<- arquivo
+  on.exit({
+    MONITORA_REPLAY_SEMANTICO_EM_EXECUCAO <<- FALSE
+  }, add = TRUE)
+  if (!monitora_correcao_arquivo_tem_operacoes(arquivo)) {
+    if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
+      monitora_log_registrar_evento("reaplicacao_correcoes", "INFO", arquivo, "Arquivo de correções anteriores não encontrado, vazio ou sem operações", "replay ignorado")
+    }
+    return(dt)
+  }
+  corr <- monitora_correcao_ler_operacoes_semanticas(arquivo)
+  n_sem <- tryCatch(monitora_correcao_contar_operacoes_semanticas(corr), error = function(e) nrow(corr))
+  if (exists("monitora_correcao_console_msg", mode = "function", inherits = TRUE)) {
+    monitora_correcao_console_msg("Reaplicando correções semânticas anteriores antes do painel: ", n_sem, " operação(ões) semântica(s), arquivo=", arquivo, ".")
+  }
+  monitora_correcao_gravar_trilha_semantica(corr, arquivo_origem = arquivo, fase = "replay_pre_painel", status = "planejada", contexto = contexto)
+  dt2 <- monitora_correcao_aplicar_arquivo(dt, arquivo, dicionario = dicionario)
+  MONITORA_CORRECOES_REAPLICADAS_ARQUIVO <<- arquivo
+  MONITORA_CORRECOES_REAPLICADAS_N_ITENS <<- nrow(corr)
+  MONITORA_CORRECOES_REAPLICADAS_N_OPERACOES_SEMANTICAS <<- n_sem
+  MONITORA_CORRECOES_REAPLICADAS_PRE_PAINEL <<- TRUE
+  aud <- data.table::data.table(
+    data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
+    exec_id = get0("MONITORA_EXEC_ID", ifnotfound = NA_character_, inherits = TRUE),
+    contexto = contexto,
+    arquivo_reaplicado = arquivo,
+    n_itens_auditaveis = nrow(corr),
+    n_operacoes_semanticas = n_sem,
+    observacao = "Correções anteriores reaplicadas antes dos relatórios pré-painel e antes da abertura do Shiny. O arquivo de sessão atual foi separado para evitar reaplicação duplicada."
+  )
+  corr_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
+  log_dir <- get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE)
+  dir.create(corr_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
+  try(monitora_fwrite(aud, file.path(corr_dir, "auditoria_reaplicacao_correcoes_anteriores_ultima_execucao.csv"), na = ""), silent = TRUE)
+  try(monitora_fwrite(aud, file.path(log_dir, paste0("auditoria_reaplicacao_correcoes_anteriores_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".csv")), na = ""), silent = TRUE)
+  if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
+    monitora_log_registrar_evento("reaplicacao_correcoes", "INFO", arquivo, paste0(n_sem, " operação(ões) semântica(s) anteriores reaplicadas antes do painel"), "diagnósticos pré-painel e contadores devem refletir o estado reaplicado")
+  }
+  dt2[]
+}
+
+
+### v2.6.0 - replay semântico estável e comparação por oráculo ----------------
+### O oráculo é somente uma referência de validação. Nenhum arquivo da pasta do
+### oráculo é usado como entrada operacional do pipeline. O resultado esperado é
+### que o input bruto + correcoes_semanticas.csv reproduza o estado corrigido da
+### run-oráculo, ignorando apenas metadados legitimamente dependentes do caminho
+### local de execução, como MONITORA_CAMINHO_ARQUIVO_ENTRADA.
+
+monitora_oraculo_fwrite <- function(x, path) {
+  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+  if (exists("monitora_fwrite", mode = "function", inherits = TRUE)) {
+    monitora_fwrite(x, path, na = "")
+  } else {
+    data.table::fwrite(x, path, na = "")
+  }
+  invisible(path)
+}
+
+monitora_oraculo_ler_csv <- function(path) {
+  if (!nzchar(path) || !file.exists(path)) return(data.table::data.table())
+  tryCatch(
+    data.table::fread(path, encoding = "UTF-8", na.strings = c("", "NA"), colClasses = "character", showProgress = FALSE),
+    error = function(e) data.table::data.table(.erro_leitura = conditionMessage(e), .arquivo = path)
+  )
+}
+
+monitora_oraculo_dir_resolver <- function() {
+  if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return("")
+  dir_cfg <- trimws(as.character(get0("MONITORA_DIR_RUN_ORACULO", ifnotfound = "", inherits = TRUE))[1])
+  candidatos <- c(
+    dir_cfg,
+    file.path(get0("MONITORA_INPUT_DIR", ifnotfound = "input", inherits = TRUE), "oraculo_replay"),
+    file.path(get0("MONITORA_INPUT_DIR", ifnotfound = "input", inherits = TRUE), "referencia_replay"),
+    file.path(get0("MONITORA_INPUT_DIR", ifnotfound = "input", inherits = TRUE), "diagnostico_run_referencia")
+  )
+  candidatos <- unique(candidatos[nzchar(candidatos)])
+  candidatos[file.exists(candidatos) & file.info(candidatos)$isdir][1] %||% ""
+}
+
+monitora_oraculo_localizar <- function(subcaminhos) {
+  base <- monitora_oraculo_dir_resolver()
+  if (!nzchar(base)) return("")
+  candidatos <- file.path(base, subcaminhos)
+  candidatos <- candidatos[file.exists(candidatos)]
+  if (length(candidatos)) normalizePath(candidatos[1], winslash = "/", mustWork = FALSE) else ""
+}
+
+monitora_oraculo_key <- function(dt, preferir_uuid = TRUE) {
+  if (!is.data.table(dt)) dt <- data.table::as.data.table(dt)
+  candidatos <- c("COLETA", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Data (data_hora)", "ponto_amostral", "ponto_metro")
+  if (isTRUE(preferir_uuid)) candidatos <- c(candidatos, "uuid_registro")
+  cols <- candidatos[candidatos %in% names(dt)]
+  if (!length(cols)) return(sprintf("linha_%08d", seq_len(nrow(dt))))
+  vals <- lapply(cols, function(cc) {
+    x <- as.character(dt[[cc]])
+    x[is.na(x)] <- ""
+    trimws(x)
+  })
+  do.call(paste, c(vals, sep = "||"))
+}
+
+monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_replay_pre_painel") {
+  if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return(invisible(NULL))
+  arq_ref <- monitora_oraculo_localizar(c(
+    "output_01_produtos_dados/registros_corrig.csv",
+    "output/01_produtos_dados/registros_corrig.csv",
+    "01_produtos_dados/registros_corrig.csv",
+    "registros_corrig.csv"
+  ))
+  out_dir <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes"), inherits = TRUE), "diagnostico_oraculo_replay")
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
+  resumo_base <- data.table::data.table(
+    data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
+    exec_id = exec_id,
+    fase = fase,
+    oraculo_dir = monitora_oraculo_dir_resolver(),
+    arquivo_oraculo_registros_corrig = arq_ref,
+    status = if (nzchar(arq_ref)) "oraculo_encontrado" else "oraculo_nao_encontrado"
+  )
+  if (!nzchar(arq_ref)) {
+    monitora_oraculo_fwrite(resumo_base, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")))
+    return(invisible(resumo_base))
+  }
+  ref <- monitora_oraculo_ler_csv(arq_ref)
+  cur <- data.table::as.data.table(data.table::copy(dt_atual))
+  for (cc in names(ref)) ref[[cc]] <- as.character(ref[[cc]])
+  for (cc in names(cur)) cur[[cc]] <- as.character(cur[[cc]])
+  col_ref <- names(ref); col_cur <- names(cur); col_comuns <- intersect(col_ref, col_cur)
+  resumo <- data.table::copy(resumo_base)
+  resumo[, `:=`(
+    n_linhas_oraculo = nrow(ref),
+    n_linhas_atual = nrow(cur),
+    n_colunas_oraculo = length(col_ref),
+    n_colunas_atual = length(col_cur),
+    n_colunas_comuns = length(col_comuns),
+    n_colunas_so_oraculo = length(setdiff(col_ref, col_cur)),
+    n_colunas_so_atual = length(setdiff(col_cur, col_ref))
+  )]
+  diagnostico_colunas <- data.table::rbindlist(list(
+    data.table::data.table(tipo = "coluna_so_oraculo", coluna = setdiff(col_ref, col_cur)),
+    data.table::data.table(tipo = "coluna_so_atual", coluna = setdiff(col_cur, col_ref)),
+    data.table::data.table(tipo = "coluna_comum", coluna = col_comuns)
+  ), fill = TRUE)
+  monitora_oraculo_fwrite(diagnostico_colunas, file.path(out_dir, paste0("oraculo_registros_corrig_colunas_", fase, ".csv")))
+  key_ref <- monitora_oraculo_key(ref); key_cur <- monitora_oraculo_key(cur)
+  ref[, .chave_oraculo_replay := key_ref]
+  cur[, .chave_oraculo_replay := key_cur]
+  dup_ref <- ref[, .N, by = .chave_oraculo_replay][N > 1]
+  dup_cur <- cur[, .N, by = .chave_oraculo_replay][N > 1]
+  keys_ref <- unique(ref$.chave_oraculo_replay); keys_cur <- unique(cur$.chave_oraculo_replay)
+  somente_ref <- setdiff(keys_ref, keys_cur)
+  somente_cur <- setdiff(keys_cur, keys_ref)
+  comum <- intersect(keys_ref, keys_cur)
+  resumo[, `:=`(
+    n_chaves_oraculo = length(keys_ref),
+    n_chaves_atual = length(keys_cur),
+    n_chaves_comuns = length(comum),
+    n_chaves_so_oraculo = length(somente_ref),
+    n_chaves_so_atual = length(somente_cur),
+    n_chaves_duplicadas_oraculo = nrow(dup_ref),
+    n_chaves_duplicadas_atual = nrow(dup_cur)
+  )]
+  amostra_chaves <- data.table::rbindlist(list(
+    data.table::data.table(tipo = "chave_so_oraculo", chave = head(somente_ref, 5000)),
+    data.table::data.table(tipo = "chave_so_atual", chave = head(somente_cur, 5000))
+  ), fill = TRUE)
+  monitora_oraculo_fwrite(amostra_chaves, file.path(out_dir, paste0("oraculo_registros_corrig_chaves_diferentes_", fase, ".csv")))
+  cols_ignorar_padrao <- grep("^(linha_|arquivo_|data_hora_auditoria|exec_id$|\\.chave_oraculo_replay$)", col_comuns, value = TRUE)
+  cols_ignorar_config <- as.character(get0("MONITORA_ORACULO_COLUNAS_IGNORAR", ifnotfound = character(0), inherits = TRUE))
+  cols_ignorar_config <- cols_ignorar_config[!is.na(cols_ignorar_config) & nzchar(cols_ignorar_config)]
+  cols_ignorar <- unique(c(cols_ignorar_padrao, intersect(cols_ignorar_config, col_comuns)))
+  cols_cmp <- setdiff(col_comuns, cols_ignorar)
+  ref_u <- ref[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum]
+  cur_u <- cur[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum]
+  data.table::setkey(ref_u, .chave_oraculo_replay)
+  data.table::setkey(cur_u, .chave_oraculo_replay)
+  ref_u <- ref_u[comum]
+  cur_u <- cur_u[comum]
+  dif_cols <- data.table::data.table()
+  dif_cells <- data.table::data.table()
+  if (length(cols_cmp) && length(comum)) {
+    dif_list <- vector("list", length(cols_cmp))
+    names(dif_list) <- cols_cmp
+    sample_list <- list(); si <- 0L
+    for (cc in cols_cmp) {
+      a <- ref_u[[cc]]; b <- cur_u[[cc]]
+      a[is.na(a)] <- ""; b[is.na(b)] <- ""
+      idx <- which(a != b)
+      dif_list[[cc]] <- data.table::data.table(coluna = cc, n_diferencas = length(idx), n_chaves_comparadas = length(comum))
+      if (length(idx) && si < 5000L) {
+        take <- head(idx, min(length(idx), 5000L - si))
+        sample_list[[length(sample_list) + 1L]] <- data.table::data.table(
+          chave = ref_u$.chave_oraculo_replay[take], coluna = cc, valor_oraculo = a[take], valor_atual = b[take]
+        )
+        si <- si + length(take)
+      }
+    }
+    dif_cols <- data.table::rbindlist(dif_list, fill = TRUE)
+    dif_cols <- dif_cols[order(-n_diferencas, coluna)]
+    dif_cells <- if (length(sample_list)) data.table::rbindlist(sample_list, fill = TRUE) else data.table::data.table()
+  }
+  resumo[, n_colunas_com_diferencas_valor := if (nrow(dif_cols)) sum(dif_cols$n_diferencas > 0, na.rm = TRUE) else 0L]
+  resumo[, n_celulas_diferentes_amostradas := nrow(dif_cells)]
+  resumo[, colunas_ignoradas_na_comparacao := paste(cols_ignorar, collapse = " | ")]
+  resumo[, status_convergencia := ifelse(
+    n_chaves_so_oraculo == 0 & n_chaves_so_atual == 0 & n_colunas_so_oraculo == 0 & n_colunas_so_atual == 0 & n_colunas_com_diferencas_valor == 0,
+    "convergente_com_oraculo", "divergente_do_oraculo"
+  )]
+  resumo[, replay_equivalente_ao_oraculo := ifelse(status_convergencia == "convergente_com_oraculo", "SIM", "NAO")]
+  resumo[, interpretacao := ifelse(
+    replay_equivalente_ao_oraculo == "SIM",
+    "O input bruto somado à trilha semântica reproduziu o registros_corrig da run-oráculo; diferenças de caminho local foram ignoradas quando configuradas.",
+    "O replay semântico ainda diverge do oráculo; consultar chaves, colunas e amostras de células divergentes."
+  )]
+  selo_oraculo <- resumo[, .(
+    data_hora, exec_id, fase, replay_equivalente_ao_oraculo, status_convergencia,
+    n_linhas_oraculo, n_linhas_atual, n_chaves_so_oraculo, n_chaves_so_atual,
+    n_colunas_so_oraculo, n_colunas_so_atual, n_colunas_com_diferencas_valor,
+    colunas_ignoradas_na_comparacao, interpretacao
+  )]
+  monitora_oraculo_fwrite(resumo, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")))
+  monitora_oraculo_fwrite(selo_oraculo, file.path(out_dir, paste0("oraculo_replay_selo_convergencia_", fase, ".csv")))
+  monitora_oraculo_fwrite(dif_cols, file.path(out_dir, paste0("oraculo_registros_corrig_diferencas_por_coluna_", fase, ".csv")))
+  monitora_oraculo_fwrite(dif_cells, file.path(out_dir, paste0("oraculo_registros_corrig_amostra_celulas_diferentes_", fase, ".csv")))
+  if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
+    nivel <- if (identical(resumo$status_convergencia[1], "convergente_com_oraculo")) "INFO" else "AVISO"
+    monitora_log_registrar_evento("oraculo_replay", nivel, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")), paste0("Comparação do registros_corrig pós-replay com oráculo: ", resumo$status_convergencia[1]), "não usa o oráculo como entrada; apenas audita a convergência")
+  }
+  if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE)) && !identical(resumo$status_convergencia[1], "convergente_com_oraculo")) {
+    stop("Replay semântico divergiu do oráculo em registros_corrig. Ver output/02_painel_correcoes/diagnostico_oraculo_replay/.", call. = FALSE)
+  }
+  invisible(resumo[])
+}
+
+monitora_oraculo_resumo_ocorrencias_localizar <- function(fase_oraculo = "pos_painel") {
+  nome <- paste0("resumo_ocorrencias_diagnosticas_", fase_oraculo, ".csv")
+  monitora_oraculo_localizar(c(
+    file.path("output_correcoes_campos", "ocorrencias_diagnosticas", fase_oraculo, nome),
+    file.path("output_correcoes_campos", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
+    file.path("output_correcoes_campos", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
+    file.path("output_02_painel_correcoes", "ocorrencias_diagnosticas", fase_oraculo, nome),
+    file.path("output_02_painel_correcoes", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
+    file.path("output_02_painel_correcoes", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
+    file.path("output/02_painel_correcoes", "ocorrencias_diagnosticas", fase_oraculo, nome),
+    file.path("output/02_painel_correcoes", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
+    file.path("output/02_painel_correcoes", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
+    nome
+  ))
+}
+
+monitora_oraculo_comparar_resumo_ocorrencias <- function(fase_atual = "pre_painel", fase_oraculo = "pos_painel") {
+  if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return(invisible(NULL))
+  out_dir <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes"), inherits = TRUE), "diagnostico_oraculo_replay")
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  arq_ref <- monitora_oraculo_resumo_ocorrencias_localizar(fase_oraculo)
+  nome_atual <- paste0("resumo_ocorrencias_diagnosticas_", fase_atual, ".csv")
+  candidatos_atual <- c(
+    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "ocorrencias_diagnosticas", fase_atual, nome_atual),
+    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "relatorios_pre_painel", "ocorrencias_diagnosticas", nome_atual),
+    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "ocorrencias_diagnosticas", fase_atual, nome_atual),
+    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "relatorios_pre_painel", "ocorrencias_diagnosticas", nome_atual)
+  )
+  arq_atual <- candidatos_atual[file.exists(candidatos_atual)][1] %||% ""
+  resumo <- data.table::data.table(
+    data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
+    exec_id = get0("MONITORA_EXEC_ID", ifnotfound = NA_character_, inherits = TRUE),
+    fase_atual = fase_atual,
+    fase_oraculo = fase_oraculo,
+    arquivo_atual = arq_atual,
+    arquivo_oraculo = arq_ref,
+    status = if (nzchar(arq_atual) && nzchar(arq_ref)) "arquivos_encontrados" else "arquivo_ausente"
+  )
+  if (!nzchar(arq_atual) || !nzchar(arq_ref)) {
+    monitora_oraculo_fwrite(resumo, file.path(out_dir, paste0("oraculo_ocorrencias_resumo_", fase_atual, "_vs_", fase_oraculo, ".csv")))
+    return(invisible(resumo))
+  }
+  atual <- monitora_oraculo_ler_csv(arq_atual)
+  ref <- monitora_oraculo_ler_csv(arq_ref)
+  key <- intersect(c("tipo_ocorrencia", "rotulo_ocorrencia", "severidade"), intersect(names(atual), names(ref)))
+  if (!length(key)) key <- intersect(names(atual), names(ref))[1]
+  for (cc in names(atual)) atual[[cc]] <- as.character(atual[[cc]])
+  for (cc in names(ref)) ref[[cc]] <- as.character(ref[[cc]])
+  atual[, .origem_comparacao := "atual"]
+  ref[, .origem_comparacao := "oraculo"]
+  cmp <- merge(
+    ref[, c(key, intersect(c("n_linhas", "n_coletas"), names(ref))), with = FALSE],
+    atual[, c(key, intersect(c("n_linhas", "n_coletas"), names(atual))), with = FALSE],
+    by = key, all = TRUE, suffixes = c("_oraculo", "_atual")
+  )
+  for (cc in grep("^n_(linhas|coletas)_", names(cmp), value = TRUE)) cmp[[cc]] <- suppressWarnings(as.integer(cmp[[cc]]))
+  if (all(c("n_linhas_oraculo", "n_linhas_atual") %in% names(cmp))) cmp[, dif_n_linhas := n_linhas_atual - n_linhas_oraculo]
+  if (all(c("n_coletas_oraculo", "n_coletas_atual") %in% names(cmp))) cmp[, dif_n_coletas := n_coletas_atual - n_coletas_oraculo]
+  cmp[, status_convergencia := ifelse((is.na(dif_n_linhas) | dif_n_linhas == 0) & (is.na(dif_n_coletas) | dif_n_coletas == 0), "convergente", "divergente")]
+  resumo[, `:=`(
+    n_ocorrencias_comparadas = nrow(cmp),
+    n_ocorrencias_divergentes = sum(cmp$status_convergencia == "divergente", na.rm = TRUE),
+    status_convergencia = ifelse(sum(cmp$status_convergencia == "divergente", na.rm = TRUE) == 0, "convergente_com_oraculo", "divergente_do_oraculo")
+  )]
+  resumo[, ocorrencias_equivalentes_ao_oraculo := ifelse(status_convergencia == "convergente_com_oraculo", "SIM", "NAO")]
+  resumo[, interpretacao := ifelse(
+    ocorrencias_equivalentes_ao_oraculo == "SIM",
+    "As ocorrências diagnósticas da nova run, após replay, convergiram com a fase comparada da run-oráculo.",
+    "Há diferenças entre ocorrências diagnósticas da nova run e da run-oráculo; consultar comparativo por tipo."
+  )]
+  arq_cmp <- file.path(out_dir, paste0("oraculo_ocorrencias_comparativo_", fase_atual, "_vs_", fase_oraculo, ".csv"))
+  arq_res <- file.path(out_dir, paste0("oraculo_ocorrencias_resumo_", fase_atual, "_vs_", fase_oraculo, ".csv"))
+  arq_selo <- file.path(out_dir, paste0("oraculo_ocorrencias_selo_convergencia_", fase_atual, "_vs_", fase_oraculo, ".csv"))
+  monitora_oraculo_fwrite(cmp, arq_cmp)
+  monitora_oraculo_fwrite(resumo, arq_res)
+  monitora_oraculo_fwrite(resumo[, .(data_hora, exec_id, fase_atual, fase_oraculo, ocorrencias_equivalentes_ao_oraculo, status_convergencia, n_ocorrencias_comparadas, n_ocorrencias_divergentes, interpretacao)], arq_selo)
+  if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
+    nivel <- if (identical(resumo$status_convergencia[1], "convergente_com_oraculo")) "INFO" else "AVISO"
+    monitora_log_registrar_evento("oraculo_replay_ocorrencias", nivel, arq_res, paste0("Comparação de ocorrências diagnósticas: ", resumo$status_convergencia[1]), "esperado: pre_painel pós-replay igual ao pos_painel da run-oráculo")
+  }
+  invisible(resumo[])
+}
+
 
 monitora_correcao_corrigir_ponto_metro <- function(dt) {
   if (!isTRUE(MONITORA_CORRIGIR_PONTO_METRO_AUTOMATICO)) return(dt)
@@ -13167,7 +15106,7 @@ if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inhe
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
-try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.5.6."), silent = TRUE)
+try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.6.0."), silent = TRUE)
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -14736,7 +16675,7 @@ monitora_espacial_lote_amplo_diagnostico <- function(ops, confirmar = FALSE, jus
 ### Fim do módulo incorporado de validação espacial de COLETAS ---------------
 
 
-### v2.5.6 --------------------------------------------------
+### v2.6.0 --------------------------------------------------
 ### Funções auxiliares para materialização pré-painel, schema editável completo
 ### e auditoria das condicionantes automáticas. Mantém atualização por referência
 ### via data.table::set() e evita varreduras globais no Shiny.
@@ -14993,7 +16932,7 @@ monitora_registros_importados_garantir_pre_painel <- function(dt, contexto = "pr
   }
   invisible(FALSE)
 }
-### FIM v2.5.6 ----------------------------------------------
+### FIM v2.6.0 ----------------------------------------------
 
 
 
@@ -15151,7 +17090,7 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
       "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie"
     ),
     rotulo_ocorrencia = c(
-      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", "Forma de vida exótica sem espécie", "Forma de vida exótica com espécie"
+      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie"
     ),
     severidade = c(rep("impeditiva", 7L), rep("revisao", 2L)),
     arquivo = c(
@@ -16511,8 +18450,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$seca_morta_sem_forma_vida), " com seca ou morta sem forma de vida; ",
     length(coletas_triagem_por_tipo$outra_forma_vida), " com outra forma de vida; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida), " com forma de vida desconhecida; ",
-    length(coletas_triagem_por_tipo$forma_vida_exotica_sem_especie), " com forma de vida exótica sem espécie; ",
-    length(coletas_triagem_por_tipo$forma_vida_exotica_com_especie), " com forma de vida exótica com espécie."
+    length(coletas_triagem_por_tipo$forma_vida_exotica_sem_especie), " em lista de revisão de exótica sem espécie; ",
+    length(coletas_triagem_por_tipo$forma_vida_exotica_com_especie), " em lista de revisão de exótica com espécie."
   )
 
   tryCatch({
@@ -16574,8 +18513,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "forma_vida_exotica_com_especie"
         ),
         c(
-          paste0("Forma de vida exótica sem espécie (", n_tipo("forma_vida_exotica_sem_especie"), " coletas com ocorrência)"),
-          paste0("Forma de vida exótica com espécie (", n_tipo("forma_vida_exotica_com_especie"), " coletas com ocorrência)")
+          paste0("Revisão: forma de vida exótica sem espécie (", n_tipo("forma_vida_exotica_sem_especie"), " coletas com ocorrência)"),
+          paste0("Revisão: forma de vida exótica com espécie (", n_tipo("forma_vida_exotica_com_especie"), " coletas com ocorrência)")
         )
       )
     )
@@ -16836,10 +18775,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         }
       "))
     ),
-    shiny::titlePanel(shiny::tagList(
-      shiny::div("Programa Monitora - Componente Campestre Savânico - Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas"),
-      shiny::div(shiny::strong("Painel de validação - correções assistidas de registros"))
-    )),
+    shiny::tags$head(
+      shiny::tags$title("Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas")
+    ),
+    shiny::titlePanel("Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas"),
     shiny::sidebarLayout(
       shiny::sidebarPanel(
         shiny::textInput("responsavel", "Responsável pela correção", value = Sys.info()[["user"]]),
@@ -17796,7 +19735,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!length(linhas_alvo)) return(NULL)
       if (!nzchar(monitora_painel_valor(motivo_val))) motivo_val <- "Limpeza atômica de outra(s) forma(s) de vida: remover tokens históricos e limpar descritores dependentes."
 
-      ### v2.5.6-dev: TRIOUT é gravada por ocorrência diagnóstica estável.
+      ### v2.6.0: TRIOUT é gravada por ocorrência diagnóstica estável.
       ### Cada item recebe UUID/contexto próprios. A etapa de agrupamento semântico
       ### pode compactar os itens sob o mesmo id_correcao, mas preserva a lista de
       ### UUIDs/chaves; assim exclusões de COLETA não deslocam o alvo operacional.
@@ -17902,7 +19841,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_notificar("O escopo selecionado não contém resíduos de outra(s) forma(s) de vida detectáveis.", type = "warning", duration = 8)
         return(NULL)
       }
-      ### v2.5.6-dev motor único: a COLETA seleciona o universo, mas a operação
+      ### v2.6.0 motor único: a COLETA seleciona o universo, mas a operação
       ### TRIOUT gravada é apenas nas linhas diagnósticas com resíduo real.
       linhas_alvo_original <- linhas_alvo
       linhas_alvo <- unique(as.integer(linhas_residuo))
@@ -19579,7 +21518,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     monitora_painel_publicacao_t_atualizar_valor_original <- function() {
-      ### v2.5.6:
+      ### v2.6.0:
       ### atualiza a trava com o valor calculado pelo escopo efetivo atual.
       ### Chamada após mudanças automáticas de escopo para evitar que o campo
       ### permaneça vazio por uma reação transitória anterior.
@@ -19589,7 +21528,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
     shiny::observeEvent(input$coleta, {
-      ### v2.5.6:
+      ### v2.6.0:
       ### escolher explicitamente uma COLETA no campo principal deve recolocar o
       ### painel em escopo de COLETAS = Coleta individual. O lote continua
       ### disponível, mas só é usado quando selecionado de forma explícita.
@@ -19600,7 +21539,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$ponto, {
-      ### v2.5.6:
+      ### v2.6.0:
       ### escolher um ponto amostral válido implica escopo de aplicação pontual.
       ### Isso elimina a ambiguidade ponto selecionado + escopo de 101 registros
       ### e faz o Valor original esperado voltar a ser preenchido com o valor da
@@ -19633,7 +21572,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira")
         shiny::updateNumericInput(session, "n_esperado", value = 101)
       } else {
-        ### v2.5.6:
+        ### v2.6.0:
         ### se já existe ponto amostral selecionado, o estado operacional do
         ### formulário deve permanecer em escopo de ponto, mesmo que a troca de
         ### atributo dispare a sugestão padrão do dicionário. Isso evita o
@@ -20156,7 +22095,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       ponto_val <- monitora_painel_valor(input$ponto)
       escopo_efetivo <- monitora_painel_escopo_efetivo_atributo(atributo_sel, input$escopo)
-      ### v2.5.6: trava defensiva no momento de
+      ### v2.6.0: trava defensiva no momento de
       ### adicionar a operação. Se há ponto selecionado e o atributo aceita
       ### escopo pontual, a operação deve ser registrada como ponto, mesmo que
       ### alguma reação transitória ainda tenha deixado input$escopo em
@@ -22348,8 +24287,8 @@ monitora_registros_importados_reordenar <- function(dt) {
 }
 
 
-### v2.5.6 ------------------------
-### v2.5.6 ----------------------------------
+### v2.6.0 ------------------------
+### v2.6.0 ----------------------------------
 ### Escreve registros_importados.csv mesmo quando os CSVs históricos geram
 ### cabeçalhos duplicados. O data.table::fwrite() não aceita nomes duplicados no
 ### objeto, mesmo quando col.names = FALSE em alguns caminhos. Por isso o corpo é
@@ -22384,7 +24323,7 @@ monitora_publicacao_i_file_append_binary <- function(destino, arquivos) {
 monitora_publicacao_h_csv_quote <- monitora_publicacao_i_csv_quote
 
 monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
-  ### v2.5.6: caminho único e robusto de escrita do snapshot bruto.
+  ### v2.6.0: caminho único e robusto de escrita do snapshot bruto.
   ### Requisitos:
   ### - aceitar nomes duplicados herdados de XLSForms históricos;
   ### - não normalizar valores;
@@ -22461,7 +24400,7 @@ monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
 
   invisible(list(ok = TRUE, colunas_duplicadas = unique(duplicadas)))
 }
-### FIM v2.5.6 ------------------------------
+### FIM v2.6.0 ------------------------------
 
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
@@ -22479,12 +24418,12 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
     dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
     dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
 
-    ### v2.5.6: materialização bruta e robusta. Duplicidades de cabeçalho são
+    ### v2.6.0: materialização bruta e robusta. Duplicidades de cabeçalho são
     ### preservadas no CSV de saída, pois fazem parte do snapshot fiel dos dados
     ### lidos. Para contornar a restrição de data.table::fwrite() a nomes
     ### duplicados, usamos nomes internos temporários únicos e escrevemos o
     ### cabeçalho original manualmente.
-    ### v2.5.6: não reordenar por nomes neste snapshot bruto. Bases históricas
+    ### v2.6.0: não reordenar por nomes neste snapshot bruto. Bases históricas
     ### podem conter nomes duplicados; a reordenação por nome aciona erros no
     ### data.table antes do gravador robusto. A ordem da montagem pós-rbindlist é
     ### preservada como melhor aproximação fiel da entrada consolidada.
@@ -22529,7 +24468,7 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
 }
 
 
-### v2.5.6 publicação ---------------------------------
+### v2.6.0 publicação ---------------------------------
 ### registros_importados.csv passa a ser produto saneado/comparável para uso do
 ### bolsista. O snapshot fiel e potencialmente heterogêneo fica em
 ### registros_importados_bruto.csv. A geração saneada ocorre depois do merge de
@@ -22624,7 +24563,7 @@ monitora_registros_importados_saneado_exportar <- function(dt,
   })
 }
 
-### v2.5.6-dev -------------------------------------------------------------
+### v2.6.0 -------------------------------------------------------------
 ### Auditoria/correção de pipes residuais e organização de output.
 if (!exists("MONITORA_OPCAO_ORGANIZAR_OUTPUT_SUBPASTAS", inherits = FALSE)) MONITORA_OPCAO_ORGANIZAR_OUTPUT_SUBPASTAS <- "S"
 if (!exists("MONITORA_OPCAO_MANTER_COPIAS_COMPAT_RAIZ", inherits = FALSE)) MONITORA_OPCAO_MANTER_COPIAS_COMPAT_RAIZ <- "S"
@@ -22808,13 +24747,14 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "04_validacao_espacial/: produtos do módulo espacial quando ativado.",
     "05_estatisticas/ e 06_graficos/: produtos inferenciais e figuras.",
     "90_cache/: cache de painel.",
+    "relatorios_validacao/: relatório consolidado da execução, dados de apoio, logs de renderização, HTML/PDF/JSON/Rmd/MD.",
     "99_legacy_compat/: arquivos não classificados ou mantidos por compatibilidade."
   )
   writeLines(readme, file.path(output_dir, "README_OUTPUT.txt"), useBytes = TRUE)
   data.table::fwrite(ind, file.path(output_dir, "indice_produtos.csv"), na = "")
   invisible(ind)
 }
-### FIM v2.5.6-dev ---------------------------------------------------------
+### FIM v2.6.0 ---------------------------------------------------------
 
 monitora_registros_importados_coluna_coleta <- function(dt) {
   if (!inherits(dt, c("data.frame", "data.table"))) return(NA_character_)
@@ -22924,10 +24864,10 @@ monitora_registros_importados_auditar_comparacao_produtos <- function(output_dir
     invisible(data.table::data.table())
   })
 }
-### FIM v2.5.6 publicação -----------------------------
+### FIM v2.6.0 publicação -----------------------------
 
 
-### v2.5.6 ---------------------------------
+### v2.6.0 ---------------------------------
 ### Em modos que retomam por registros_corrig.csv, registros_importados.csv não é
 ### produto da execução corrente. Se houver arquivo legado em output/, ele é
 ### auditado como legado/não aplicável para evitar interpretação de que representa
@@ -22977,7 +24917,7 @@ monitora_registros_importados_auditar_nao_aplicavel <- function(output_dir = MON
     invisible(data.table::data.table())
   })
 }
-### FIM v2.5.6 -----------------------------
+### FIM v2.6.0 -----------------------------
 
 monitora_registros_corrig_reordenar_colunas <- function(dt) {
   dt <- monitora_dt_referenciar(dt)
@@ -23089,6 +25029,15 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
       output_dir = MONITORA_OUTPUT_DIR,
       log_dir = MONITORA_LOG_DIR,
       exec_id = MONITORA_EXEC_ID,
+      contexto = paste0("checkpoint_parcial_", as.character(motivo)[1L])
+    )
+  }
+
+  if (identical(basename(produto), "registros_corrig.csv") &&
+      isTRUE(get0("MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", ifnotfound = TRUE, inherits = TRUE)) &&
+      exists("monitora_relatorio_validacao_consolidado_tentar", mode = "function")) {
+    monitora_relatorio_validacao_consolidado_tentar(
+      obj,
       contexto = paste0("checkpoint_parcial_", as.character(motivo)[1L])
     )
   }
@@ -23783,6 +25732,10 @@ monitora_painel_cache_incremental_executar <- function(registros_corrig, meta_xl
   monitora_registros_importados_garantir_pre_painel(NULL, contexto = modo)
   monitora_publicacao_p_auditar_schema_pre_painel(registros_corrig, contexto = paste0("pre_painel_", modo))
   MONITORA_CORRECOES_GERADAS_PAINEL <<- monitora_correcao_painel(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES, arquivo_campos_sessao)
+  if (exists("monitora_correcao_gravar_trilha_semantica", mode = "function", inherits = TRUE) &&
+      isTRUE(nrow(data.table::as.data.table(MONITORA_CORRECOES_GERADAS_PAINEL)) > 0L)) {
+    try(monitora_correcao_gravar_trilha_semantica(MONITORA_CORRECOES_GERADAS_PAINEL, arquivo_origem = arquivo_campos_sessao, fase = "sessao_painel_incremental", status = "salva_pelo_painel", contexto = modo), silent = TRUE)
+  }
   tem_corr_campos <- isTRUE(nrow(MONITORA_CORRECOES_GERADAS_PAINEL) > 0L) && monitora_cache_arquivo_tem_linhas(arquivo_campos_sessao)
   if (tem_corr_campos) {
     monitora_correcao_console_msg("Aplicando somente correções de campos criadas nesta sessão: ", arquivo_campos_sessao, ".")
@@ -24762,8 +26715,8 @@ monitora_auditoria_criar_resumo_achados <- function() {
 
 
 
-### v2.5.6
-### v2.5.6 -----------------------------
+### v2.6.0
+### v2.6.0 -----------------------------
 ### Sanitização contratual obrigatória antes de registros_validados.csv.
 ### A exportação 21FEV25 não deve herdar diretamente campos históricos de
 ### "outra forma de vida" nem dependentes de "desconhecida" quando o token
@@ -24862,7 +26815,7 @@ monitora_registros_validados_sanitizar_forma_outros_atual <- function(dt,
 }
 
 
-### v2.5.6 --------------------------
+### v2.6.0 --------------------------
 ### Regra taxonômica/contratual 21FEV25: não há Velloziaceae exótica conhecida
 ### para o escopo tratado. Registros históricos com canela_de_ema em formas
 ### exóticas devem migrar para a lista de formas nativas antes da validação do
@@ -24986,7 +26939,7 @@ monitora_publicacao_ab_migrar_canela_de_ema_exotica_para_nativa <- function(dt,
 
   list(dt = dt[], audit = audit[], afetacoes = unique(afetacoes), linhas = unique(idx), falha = FALSE)
 }
-### FIM v2.5.6 ----------------------
+### FIM v2.6.0 ----------------------
 
 monitora_registros_validados_gravar_auditoria_pre_sanitizacao <- function(audit, nome, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID) {
   audit <- data.table::as.data.table(audit)
@@ -25131,8 +27084,8 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
   }
   dt
 }
-### FIM v2.5.6
-### v2.5.6 -------------------------
+### FIM v2.6.0
+### v2.6.0 -------------------------
 
 ### Exportação opcional: registros_validados.csv ---------------------------
 ### As funções do contrato SISMONITORA são sempre carregadas para permitir
@@ -25531,7 +27484,7 @@ monitora_validados_normalizar_hora_hms_millis_tz <- function(x, tz_padrao = "-03
   yy <- gsub("T", " ", yy, fixed = TRUE)
   yy <- gsub(",", ".", yy, fixed = TRUE)
 
-  ## v2.5.6: contrato único para data_hora/hora. Aceita HH:MM,
+  ## v2.6.0: contrato único para data_hora/hora. Aceita HH:MM,
   ## HH:MM:SS, HH:MM:SS.mmm, hora com fuso -0300/-03:00, datetime
   ## completo/ISO com T e separador histórico com hífen (HH-MM ou
   ## HH-MM-SS). Emite sempre HH:MM:SS.mmm-03:00. Valores não
@@ -25654,9 +27607,9 @@ monitora_validados_formatar_valor <- function(x, formato = "texto", largura = NA
   y
 }
 
-### v2.5.6: ativação tardia do wrapper por valores distintos. Este ponto fica
+### v2.6.0: ativação tardia do wrapper por valores distintos. Este ponto fica
 ### depois da definição original de monitora_validados_formatar_valor; a seção
-### de helpers v2.5.6 é carregada antes, então o if inicial pode ter sido falso.
+### de helpers v2.6.0 é carregada antes, então o if inicial pode ter sido falso.
 if (exists("monitora_validados_formatar_valor", mode = "function") &&
     !exists("monitora_validados_formatar_valor_base_publicacao_aj", mode = "function")) {
   monitora_validados_formatar_valor_base_publicacao_aj <- monitora_validados_formatar_valor
@@ -25914,7 +27867,7 @@ monitora_validados_derivar_num_placa <- function(dt, alvo = c("num_placa", "num_
   p_num <- monitora_validados_pegar(dt, c("Número da plaqueta (amostragem)", "amostragem/num_placa", "num_placa"), n)
   p_ua <- monitora_validados_numero_ua(dt, n)
 
-  ## v2.5.6: não preservar texto inválido em campos de plaqueta. Usa-se
+  ## v2.6.0: não preservar texto inválido em campos de plaqueta. Usa-se
   ## extração numérica defensiva e fallback para UA; isso mantém o contrato
   ## de inteiro textual com zero à esquerda sem inventar valores quando já há
   ## número recuperável.
@@ -26116,7 +28069,7 @@ monitora_validados_normalizar_select_vetor <- function(x, lista, multiple = TRUE
 }
 
 monitora_validados_tem_token <- function(x, token) {
-  ### v2.5.6: caminho genérico sem regex para selected() de select_multiple.
+  ### v2.6.0: caminho genérico sem regex para selected() de select_multiple.
   ### Vale para contratos 2022/2023/2024/2025 porque todos usam tokens separados por espaço.
   x <- monitora_validados_limpar_ausencia_saida(x)
   if (!length(x)) return(logical(0))
@@ -26551,7 +28504,7 @@ monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, l
     return(monitora_validados_derivar_num_placa(dt, "num_placa_formatado"))
   }
   if (identical(atributo, "amostragem/registro/forma_vida_outros")) {
-    ## v2.5.6: registros_validados.csv não herda diretamente campos históricos
+    ## v2.6.0: registros_validados.csv não herda diretamente campos históricos
     ## de "outra forma de vida". Esses campos são consumidos e auditados pela
     ## sanitização validados em registros_corrig. A saída validada deve usar
     ## somente o campo atual 21FEV25 já sanitizado.
@@ -26654,7 +28607,7 @@ monitora_validados_auditar_cardinalidade <- function(out) {
 }
 
 
-### v2.5.6 --------------------
+### v2.6.0 --------------------
 ### Auditoria contratual do produto registros_corrig.csv nos atributos que
 ### alimentam registros_validados.csv. Ela reaproveita as interpretações,
 ### normalizações e validações do exportador validado, mas materializa o status no
@@ -26682,7 +28635,7 @@ monitora_publicacao_z_motivos_por_atributo <- function(dt, atributo) {
 
 
 
-### v2.5.6-dev -------------------------------------------------------------
+### v2.6.0 -------------------------------------------------------------
 ### Governança de bloqueios de registros_validados.csv. Bloqueios contratuais
 ### da exportação validada NÃO podem impedir a materialização de
 ### registros_corrig.csv; eles apenas bloqueiam registros_validados.csv e geram
@@ -26760,7 +28713,7 @@ monitora_registros_validados_gravar_bloqueios <- function(resumo = NULL,
   }
   invisible(bloq)
 }
-### FIM v2.5.6-dev ---------------------------------------------------------
+### FIM v2.6.0 ---------------------------------------------------------
 
 monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(auditoria,
                                                                            vazias_obrig = NULL,
@@ -26873,7 +28826,7 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
   }
   invisible(list(auditoria = contrato_auditoria, resumo = resumo))
 }
-### FIM v2.5.6 ----------------
+### FIM v2.6.0 ----------------
 
 monitora_registros_validados_exportar <- function(registros_corrig,
                                                   output_dir = MONITORA_OUTPUT_DIR,
@@ -26907,7 +28860,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     return(invisible(list(bloqueado = TRUE, motivo = "registros_corrig_com_pendencias_impeditivas", resumo = resumo_pend)))
   }
 
-  ### v2.5.6: quando registros_corrig já foi saneado e validado pelo contrato
+  ### v2.6.0: quando registros_corrig já foi saneado e validado pelo contrato
   ### XLSForm21 antes da materialização, registros_validados.csv deve herdar a
   ### matriz já montada/formatada na validação contratual. Isso evita repetir a
   ### interpretação completa do schema quando nada mudou desde o selo.
@@ -27008,7 +28961,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   }
 
   ## Recalcula métricas da auditoria de mapeamento após normalização/relevance.
-  ## v2.5.6: em auditoria contratual pré-registros_corrig, a integridade depende
+  ## v2.6.0: em auditoria contratual pré-registros_corrig, a integridade depende
   ## de vazios/bloqueios. uniqueN/exemplos em 129 colunas são diagnóstico rico,
   ## mas custoso; por padrão, ficam leves nesse modo e continuam completos na
   ## exportação final sem cache, quando ela realmente precisar rodar.
@@ -27160,7 +29113,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   data.table::fwrite(resumo, caminhos$resumo_log, sep = ",", quote = "auto", na = "")
   data.table::fwrite(resumo, caminhos$resumo_out, sep = ",", quote = "auto", na = "")
 
-  ### v2.5.6: modo de auditoria contratual de registros_corrig. Nesta chamada,
+  ### v2.6.0: modo de auditoria contratual de registros_corrig. Nesta chamada,
   ### o exportador monta a mesma matriz que alimentará registros_validados.csv,
   ### grava as auditorias e bloqueia antes da materialização de registros_corrig
   ### caso algum atributo do template 21FEV25 esteja inválido.
@@ -27266,7 +29219,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
 
 
 
-### v2.5.6-dev -------------------------------------------------------------
+### v2.6.0 -------------------------------------------------------------
 ### Permite preservar o trabalho do bolsista como checkpoint quando ainda houver
 ### pendências impeditivas. Essas pendências bloqueiam registros_validados.csv e
 ### produtos finais, mas não impedem a gravação marcada de registros_corrig.csv.
@@ -27509,12 +29462,12 @@ monitora_publicacao_ab_logar_resumo_pendencias <- function(resumo, contexto = "r
   }
   invisible(NULL)
 }
-### FIM v2.5.6-dev ---------------------------------------------------------
+### FIM v2.6.0 ---------------------------------------------------------
 
 
 
 
-### v2.5.6-dev -------------------------------------------------------------
+### v2.6.0 -------------------------------------------------------------
 ### Auditoria cadastral não bloqueante com sanitização automática inequívoca.
 ### Escopo: valores aparentemente deslocados entre campos cadastrais. Regras
 ### seguras são aplicadas diretamente em registros_corrig; demais ocorrências
@@ -27732,9 +29685,9 @@ monitora_publicacao_ac_sanitizar_cadastro_nao_bloqueante <- function(dt,
   }
   invisible(list(dt = dt, auditoria = aud_out, ocorrencias = occ_out, resumo = resumo))
 }
-### FIM v2.5.6-dev ---------------------------------------------------------
+### FIM v2.6.0 ---------------------------------------------------------
 
-### v2.5.6 ----------------------------
+### v2.6.0 ----------------------------
 ### Fechamento único pós-painel/pre-materialização. Esta função torna
 ### registros_corrig.csv o produto mestre: sanitiza, fecha invariantes, audita
 ### contrato XLSForm21 nos atributos que alimentam registros_validados.csv e só
@@ -27771,7 +29724,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
   }
 
   if (exists("monitora_publicacao_g_log", mode = "function")) {
-    monitora_publicacao_g_log("v2.5.6 fechamento mestre registros_corrig: contexto=", contexto, "; linhas=", nrow(dt))
+    monitora_publicacao_g_log("fechamento mestre registros_corrig: contexto=", contexto, "; linhas=", nrow(dt))
   }
   if (exists("monitora_publicacao_ac_perf_checkpoint", mode = "function")) {
     monitora_publicacao_ac_perf_checkpoint("checkpoint_registros_corrig_inicio", paste0("início do fechamento contratual de registros_corrig; contexto=", contexto), dt)
@@ -27844,7 +29797,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
         isTRUE(monitora_publicacao_z_selo_registros_corrig_valido(dt)) &&
         isTRUE(get0("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", ifnotfound = FALSE, inherits = TRUE))) {
       if (exists("monitora_publicacao_g_log", mode = "function")) {
-        monitora_publicacao_g_log("v2.5.6 fechamento mestre registros_corrig reutilizado; selo contratual válido; contexto=", contexto)
+        monitora_publicacao_g_log("fechamento mestre registros_corrig reutilizado; selo contratual válido; contexto=", contexto)
       }
     } else {
       monitora_publicacao_c_normalizar_contratos_pre_exportacao(dt, contexto = contexto)
@@ -27915,7 +29868,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
 }
 
 
-### v2.5.6-dev -------------------------------------------------------------
+### v2.6.0 -------------------------------------------------------------
 ### Estado final canônico de registros_validados.csv. Evita falso aviso de
 ### bloqueio quando o contrato XLSForm21 já aprovou e o produto validado foi
 ### materializado em 01_produtos_dados antes da exportação final de
@@ -27960,7 +29913,7 @@ monitora_registros_validados_materializado_sem_bloqueio <- function(output_dir =
   sem_bloqueio <- isTRUE(gerado_global) || (!is.na(n_bloq_global) && n_bloq_global == 0L) || (!is.na(n_bloq_arquivo) && n_bloq_arquivo == 0L)
   isTRUE(produto_existe && sem_bloqueio)
 }
-### FIM v2.5.6-dev ---------------------------------------------------------
+### FIM v2.6.0 ---------------------------------------------------------
 
 monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_corrig,
                                                                 caminho_saida,
@@ -27979,7 +29932,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
     assign("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_VALIDADOS_GERADO", TRUE, envir = .GlobalEnv)
   }
-  ### v2.5.6-dev: o exportador de registros_corrig.csv não deve emitir
+  ### v2.6.0: o exportador de registros_corrig.csv não deve emitir
   ### warning sobre registros_validados.csv. A geração/bloqueio real de
   ### registros_validados é decidida pelo bloco contratual próprio, com auditoria
   ### XLSForm21. Este ponto só grava registros_corrig; manter warning aqui gerava
@@ -28042,7 +29995,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
   }
   invisible(TRUE)
 }
-### FIM v2.5.6 ------------------------
+### FIM v2.6.0 ------------------------
 
 monitora_deduplicar_registros_amostrais <- function(dt, arquivos_entrada = NULL) {
   # Deduplicação semântica com tabela auxiliar estreita.
@@ -28894,7 +30847,7 @@ monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_IO_D
   out[]
 }
 
-### v2.5.6 ----------------------------------
+### v2.6.0 ----------------------------------
 ### Modos registros_corrig_* e painel_incremental_* retomam de um produto
 ### corrigido já produzido pelo script. Essa entrada não reconstrói
 ### registros_importados.csv e não mistura correções antigas com a sessão atual.
@@ -29103,6 +31056,10 @@ all_csvfiles_base <- basename(all_csvfiles_norm)
 # também encontraria produtos antigos em output/, log/ e extrações antigas.
 exclude_dirs <- grepl("/(output|log|plots_png)/", all_csvfiles_norm)
 
+# v2.6.0: a pasta de oráculo/referência pode ficar dentro de input/ para
+# comparação diagnóstica, mas seus CSVs nunca são dados de campo.
+exclude_oraculo <- grepl("/(oraculo_replay|referencia_replay|diagnostico_run_referencia)/", all_csvfiles_norm, ignore.case = TRUE)
+
 # Exclusões de produtos analíticos/relatórios conhecidos.
 # NÃO exclui registros_corrig*.csv: estes podem ser insumos válidos de nova rodada
 # quando o usuário os coloca deliberadamente em input/.
@@ -29112,30 +31069,90 @@ exclude_outputs <- grepl(
   ignore.case = TRUE
 )
 
-csvfiles_excluidos <- unique(all_csvfiles[exclude_dirs | exclude_outputs])
+# v2.6.0: arquivos de controle de correção/replay não são dados de campo.
+# Eles podem ficar em input/ para controlar a reaplicação, mas nunca podem ser
+# lidos na concatenação de registros do SISMONITORA. A v2.6.1/v2.6.3 aceitava
+# input/correcoes_semanticas.csv como candidato a CSV de dados, o que contaminava
+# registros_importados.csv com colunas como id_correcao, tipo_correcao, acao,
+# responsavel e uuid_registro.
+monitora_io_eh_csv_controle_correcao <- function(nome_arquivo) {
+  bn <- tolower(basename(as.character(nome_arquivo)))
+  grepl(
+    paste0(
+      "^(",
+      "correcoes_semanticas",
+      "|correcoes_campos",
+      "|correcoes_espaciais",
+      "|modelo_correcoes_campos",
+      "|auditoria_reaplicacao",
+      "|auditoria_correcoes_campos",
+      ")",
+      "([_.].*)?\\.csv$"
+    ),
+    bn,
+    perl = TRUE
+  )
+}
+exclude_controle_correcao <- monitora_io_eh_csv_controle_correcao(all_csvfiles_base)
+
+csvfiles_excluidos <- unique(all_csvfiles[exclude_dirs | exclude_oraculo | exclude_outputs | exclude_controle_correcao])
 if (length(csvfiles_excluidos) > 0) {
-  monitora_fwrite(
-    data.table(
-      arquivo = csvfiles_excluidos,
-      motivo = ifelse(
+  motivos_excl <- ifelse(
+    exclude_controle_correcao[match(csvfiles_excluidos, all_csvfiles)],
+    "arquivo_controle_correcao_replay_nao_importado_como_dado",
+    ifelse(
+      exclude_oraculo[match(csvfiles_excluidos, all_csvfiles)],
+      "arquivo_oraculo_replay_nao_importado_como_dado",
+      ifelse(
         grepl("^(registros_corrig_stat|sum_|cob_|prop_rel_|relatorio_execucao|auditoria_|duplicidades_|conflitos_)",
               basename(csvfiles_excluidos), ignore.case = TRUE),
         "produto_analitico_saida_ou_relatorio",
         "diretorio_gerenciado_output_log"
       )
+    )
+  )
+  monitora_fwrite(
+    data.table(
+      arquivo = csvfiles_excluidos,
+      motivo = motivos_excl
     ),
     file.path(MONITORA_LOG_DIR, paste0("arquivos_csv_excluidos_da_importacao_", MONITORA_EXEC_ID, ".csv"))
   )
+  monitora_fwrite(
+    data.table(
+      arquivo = csvfiles_excluidos,
+      motivo = motivos_excl
+    ),
+    file.path(MONITORA_OUTPUT_DIR, "arquivos_csv_excluidos_da_importacao_ultima_execucao.csv")
+  )
+  if (any(motivos_excl == "arquivo_controle_correcao_replay_nao_importado_como_dado")) {
+    monitora_log_registrar_evento(
+      "filtro_csv_entrada",
+      "INFO",
+      paste(basename(csvfiles_excluidos[motivos_excl == "arquivo_controle_correcao_replay_nao_importado_como_dado"]), collapse = " | "),
+      paste0(sum(motivos_excl == "arquivo_controle_correcao_replay_nao_importado_como_dado"), " CSV(s) de controle de correção/replay excluído(s) da importação de dados"),
+      "arquivo usado apenas como controle de reaplicação, não como registro SISMONITORA"
+    )
+  }
+  if (any(motivos_excl == "arquivo_oraculo_replay_nao_importado_como_dado")) {
+    monitora_log_registrar_evento(
+      "filtro_csv_entrada",
+      "INFO",
+      paste(basename(csvfiles_excluidos[motivos_excl == "arquivo_oraculo_replay_nao_importado_como_dado"]), collapse = " | "),
+      paste0(sum(motivos_excl == "arquivo_oraculo_replay_nao_importado_como_dado"), " CSV(s) da run-oráculo excluído(s) da importação de dados"),
+      "arquivos usados apenas como oráculo diagnóstico, não como registros SISMONITORA"
+    )
+  }
   monitora_log_registrar_evento(
     "filtro_csv_entrada",
     "INFO",
     NA_character_,
-    paste0(length(csvfiles_excluidos), " CSVs excluidos da importacao por serem produtos analiticos/relatorios ou estarem em output/log"),
+    paste0(length(csvfiles_excluidos), " CSVs excluidos da importacao por filtro de output/log/produtos/controle de correções"),
     "ver arquivos_csv_excluidos_da_importacao"
   )
 }
 
-csvfiles <- unique(all_csvfiles[!exclude_dirs & !exclude_outputs])
+csvfiles <- unique(all_csvfiles[!exclude_dirs & !exclude_oraculo & !exclude_outputs & !exclude_controle_correcao])
 monitora_recurso_controlar("filtro_csv_entrada", risco = if (length(csvfiles) > 1000) "alto" else "normal", force_log = TRUE)
 monitora_perf_registrar_checkpoint("filtro_csv_entrada", paste0(length(csvfiles), " CSV(s) candidatos após filtros"))
 
@@ -29329,6 +31346,37 @@ monitora_perf_registrar_checkpoint("leitura_csv", paste0(length(csvfiles_sucesso
 
 monitora_recurso_controlar("concatenacao_rbindlist_pre", risco = "muito_alto", force_log = TRUE)
 registros <- data.table::rbindlist(registros_batches, fill = TRUE, use.names = TRUE)
+
+# v2.6.0: trava diagnóstica contra contaminação de registros por arquivos de
+# controle de correção/replay. Estes campos são esperados na trilha semântica,
+# mas não podem aparecer na base concatenada de registros importados.
+monitora_cols_controle_replay_vazaram <- intersect(
+  c(
+    "id_correcao", "tipo_correcao", "acao", "responsavel", "ordem_operacao",
+    "escopo_aplicacao", "arquivo_origem_trilha", "hash_operacao_semantica",
+    "linha_indice", "linhas_alvo_serializadas", "valor_original_esperado",
+    "valor_novo", "forma_valida_escolhida", "token_removido", "uuid_registro"
+  ),
+  names(registros)
+)
+if (length(monitora_cols_controle_replay_vazaram) > 0L) {
+  aud_vaz <- data.table::data.table(
+    coluna_controle_detectada = monitora_cols_controle_replay_vazaram,
+    motivo = "coluna_de_trilha_semantica_detectada_em_registros_importados",
+    acao_requerida = "remover arquivos de controle de input/ ou garantir filtro de exclusao antes da importacao"
+  )
+  monitora_fwrite(aud_vaz, file.path(MONITORA_LOG_DIR, paste0("ERRO_vazamento_correcoes_semanticas_em_registros_", MONITORA_EXEC_ID, ".csv")))
+  monitora_fwrite(aud_vaz, file.path(MONITORA_OUTPUT_DIR, "ERRO_vazamento_correcoes_semanticas_em_registros_ultima_execucao.csv"))
+  stop(
+    "Arquivos de controle de correção/replay foram importados como dados de campo. ",
+    "Colunas de controle detectadas em registros: ",
+    paste(monitora_cols_controle_replay_vazaram, collapse = ", "),
+    ". O script interrompeu para evitar diagnósticos incorretos.",
+    call. = FALSE
+  )
+}
+rm(monitora_cols_controle_replay_vazaram)
+
 monitora_auditar_esquema_colunas(registros, fase = "pos_concatenacao_csv", arquivo = "registros_concatenados")
 
 # Remove objetos temporários usados na leitura dos CSVs para evitar que
@@ -29345,7 +31393,7 @@ data.table::set(registros, j = "MONITORA_ARQUIVO_ENTRADA", value = as.character(
 data.table::set(registros, j = ".id", value = registros[["MONITORA_ARQUIVO_ENTRADA"]])
 
 
-### v2.5.6-dev consolidado -----------------------------------------------
+### v2.6.0 consolidado -----------------------------------------------
 ### Produtos canônicos, espelhamento de compatibilidade e organização final.
 ### Este bloco substitui as rotinas experimentais anteriores de organização
 ### por regras efetivas:
@@ -29591,7 +31639,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
     assign("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_VALIDADOS_GERADO", TRUE, envir = .GlobalEnv)
   }
-  ### v2.5.6-dev: o exportador de registros_corrig.csv não deve emitir
+  ### v2.6.0: o exportador de registros_corrig.csv não deve emitir
   ### warning sobre registros_validados.csv. A geração/bloqueio real de
   ### registros_validados é decidida pelo bloco contratual próprio, com auditoria
   ### XLSForm21. Este ponto só grava registros_corrig; manter warning aqui gerava
@@ -29774,9 +31822,9 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   data.table::fwrite(ind, file.path(output_dir, "indice_produtos.csv"), na = "")
   invisible(ind)
 }
-### FIM v2.5.6-dev consolidado -------------------------------------------
+### FIM v2.6.0 consolidado -------------------------------------------
 
-### v2.5.6-dev run8 -------------------------------------------------------
+### v2.6.0 -------------------------------------------------------
 ### Organização canônica efetiva do output.
 ### A raiz é limpa por whitelist; arquivos de relatório/auditoria são movidos
 ### para subpastas, auditados por MD5 e removidos da raiz após cópia válida.
@@ -29947,9 +31995,9 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   }
   invisible(ind)
 }
-### FIM v2.5.6-dev run8 ---------------------------------------------------
+### FIM v2.6.0 run8 ---------------------------------------------------
 
-### v2.5.6-dev raiz limpa -------------------------------------------------
+### v2.6.0 raiz limpa -------------------------------------------------
 ### Política final acordada: a raiz de output/ contém apenas documentação e
 ### índice. Produtos de dados são canônicos exclusivamente em
 ### output/01_produtos_dados/. Diretórios legados criados por rotinas antigas
@@ -30254,7 +32302,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   nomes_raiz <- basename(itens_raiz)
   arquivos_raiz <- if (length(nomes_raiz)) nomes_raiz[!(info_raiz$isdir %in% TRUE)] else character(0)
   diretorios_raiz <- if (length(nomes_raiz)) nomes_raiz[info_raiz$isdir %in% TRUE] else character(0)
-  diretorios_estruturais_permitidos <- c("00_manifesto_execucao", "01_produtos_dados", "02_painel_correcoes", "03_auditorias", "04_validacao_espacial", "05_estatisticas", "06_graficos", "90_cache", "99_legacy_compat")
+  diretorios_estruturais_permitidos <- c("00_manifesto_execucao", "01_produtos_dados", "02_painel_correcoes", "03_auditorias", "04_validacao_espacial", "05_estatisticas", "06_graficos", "90_cache", "99_legacy_compat", "relatorios_validacao")
   arquivos_raiz_sujos <- setdiff(arquivos_raiz, manter_raiz)
   dirs_legados_sujos <- setdiff(diretorios_raiz, diretorios_estruturais_permitidos)
   if (length(arquivos_raiz_sujos) || length(dirs_legados_sujos)) {
@@ -30270,10 +32318,10 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   }
   invisible(ind)
 }
-### FIM v2.5.6-dev painel preview/rejeicoes ----------------------------------
+### FIM v2.6.0 painel preview/rejeicoes ----------------------------------
 
 
-### v2.5.6: registros_importados.csv é produto seletivo. A exportação bruta
+### v2.6.0: registros_importados.csv é produto seletivo. A exportação bruta
 ### só executa quando solicitada explicitamente ou quando necessária antes do
 ### painel. Em execuções sem painel e com opção "N", não há custo nem bloqueio.
 ok_registros_importados <- TRUE
@@ -34282,9 +36330,12 @@ if (isTRUE(MONITORA_MODO_PAINEL_INCREMENTAL_DESTINO)) {
 
 MONITORA_CORRECOES_ARQUIVO_EXISTE <- isTRUE(file.exists(MONITORA_ARQUIVO_CORRECOES_CAMPOS)) &&
   isTRUE(file.info(MONITORA_ARQUIVO_CORRECOES_CAMPOS)$size > 0)
+MONITORA_CORRECOES_REAPLICACAO_ARQUIVO_EXISTE <- isTRUE(get0("MONITORA_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = FALSE, inherits = TRUE)) &&
+  isTRUE(monitora_correcao_arquivo_tem_operacoes(get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = "", inherits = TRUE)))
 
 MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS <- isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES) ||
   isTRUE(MONITORA_GERAR_DICIONARIOS_CORRECOES) ||
+  isTRUE(MONITORA_CORRECOES_REAPLICACAO_ARQUIVO_EXISTE) ||
   (isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS) && isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE))
 
 MONITORA_META_XLSFORMS_CORRECOES <- list(
@@ -34377,6 +36428,27 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
   MONITORA_N_ATRIBUTOS_TEMPLATE_SISMONITORA <- if ("atende_template_sismonitora" %in% names(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES)) sum(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES$atende_template_sismonitora %in% TRUE, na.rm = TRUE) else NA_integer_
   monitora_correcao_console_msg("Dicionário do painel preparado: ", nrow(MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES), " atributo(s) em registros_corrig; ", MONITORA_N_ATRIBUTOS_TEMPLATE_SISMONITORA, " constante(s) no template SISMONITORA/XLSForm 2025; ", MONITORA_N_ATRIBUTOS_PAINEL_EDITAVEIS, " editável(is) exibido(s) ao bolsista.")
 
+  ### v2.6.0: replay de correções anteriores antes dos diagnósticos e do painel.
+  ### Esse bloco transforma correcoes_campos.csv/correcoes_semanticas.csv em uma
+  ### reaplicação explícita do estado corrigido, sem confundir o arquivo antigo
+  ### com o arquivo de novas operações da sessão atual.
+  if (isTRUE(get0("MONITORA_CORRECOES_REAPLICACAO_ARQUIVO_EXISTE", ifnotfound = FALSE, inherits = TRUE))) {
+    arquivo_replay <- get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = file.path(MONITORA_INPUT_DIR, "correcoes_campos.csv"), inherits = TRUE)
+    registros_corrig <- monitora_correcao_reaplicar_arquivo_semantico(
+      registros_corrig,
+      arquivo = arquivo_replay,
+      dicionario = MONITORA_META_XLSFORMS_CORRECOES$campos,
+      contexto = "pre_painel_fluxo_principal"
+    )
+    MONITORA_ARQUIVO_CORRECOES_CAMPOS_REAPLICADO <<- arquivo_replay
+    MONITORA_ARQUIVO_CORRECOES_CAMPOS <<- monitora_correcao_preparar_arquivo_sessao_pos_replay()
+    monitora_correcao_console_msg("Replay concluído. Novas operações do painel serão gravadas separadamente em ", MONITORA_ARQUIVO_CORRECOES_CAMPOS, ".")
+    monitora_perf_registrar_checkpoint("reaplicacao_correcoes_anteriores_pre_painel", "correções anteriores reaplicadas antes dos diagnósticos pré-painel", registros_corrig)
+    if (exists("monitora_oraculo_comparar_registros_corrig", mode = "function", inherits = TRUE)) {
+      try(monitora_oraculo_comparar_registros_corrig(registros_corrig, fase = "pos_replay_pre_sanitizacao"), silent = TRUE)
+    }
+  }
+
   ### Sanitização automática pré-painel: Encostam exclusivamente desconhecida
   ### superior-only passa a nativa/desconhecida, com relatório próprio. Isso
   ### preserva a pendência dentro da ocorrência única "Forma de vida desconhecida"
@@ -34397,6 +36469,9 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
   if (isTRUE(MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL)) {
     MONITORA_RELATORIOS_SUPORTE_PRE_PAINEL <- monitora_relatorios_suporte_painel_gravar(registros_corrig, fase = "pre_painel", atualizar_saida_principal = FALSE)
     monitora_perf_registrar_checkpoint("relatorios_suporte_pre_painel", "relatórios de exóticas e apoio gerados antes da abertura do painel", registros_corrig)
+    if (exists("monitora_oraculo_comparar_resumo_ocorrencias", mode = "function", inherits = TRUE)) {
+      try(monitora_oraculo_comparar_resumo_ocorrencias(fase_atual = "pre_painel", fase_oraculo = "pos_painel"), silent = TRUE)
+    }
   }
 
   if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
@@ -34411,6 +36486,10 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
     MONITORA_TEMPO_USUARIO_PAINEL_SEG <- tryCatch({
       res_painel <- monitora_correcao_painel(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES, MONITORA_ARQUIVO_CORRECOES_CAMPOS)
       MONITORA_CORRECOES_GERADAS_PAINEL <- res_painel
+      if (exists("monitora_correcao_gravar_trilha_semantica", mode = "function", inherits = TRUE) &&
+          isTRUE(nrow(data.table::as.data.table(res_painel)) > 0L)) {
+        try(monitora_correcao_gravar_trilha_semantica(res_painel, arquivo_origem = MONITORA_ARQUIVO_CORRECOES_CAMPOS, fase = "sessao_painel", status = "salva_pelo_painel", contexto = "fluxo_principal"), silent = TRUE)
+      }
       0
     }, error = function(e) {
       stop(e)
@@ -34618,6 +36697,9 @@ if (!isTRUE(MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE)) {
 ### Esta etapa ocorre depois das correções finais e antes das estatísticas,
 ### evitando gasto computacional adicional caso registros_validados.csv esteja
 ### ativo e alguma inconsistência estrutural bloqueante seja detectada.
+
+
+
 if (exists("registros_corrig")) {
   dir.create(MONITORA_OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
   if (exists("monitora_publicacao_aa_preparar_validar_registros_corrig", mode = "function")) {
@@ -34667,7 +36749,25 @@ if (exists("registros_corrig")) {
       monitora_perf_registrar_checkpoint("exportacao_registros_validados", "schema SISMONITORA embutido aplicado a registros_corrig final", registros_corrig)
     }
   }
-  if (isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound = FALSE, inherits = TRUE)) &&
+  
+  if (isTRUE(get0("MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", ifnotfound = TRUE, inherits = TRUE)) && exists("monitora_relatorio_validacao_consolidado_gerar", mode = "function")) {
+    tryCatch({
+      monitora_relatorio_validacao_consolidado_gerar(
+        registros_corrig = registros_corrig,
+        output_dir = MONITORA_OUTPUT_DIR,
+        log_dir = MONITORA_LOG_DIR,
+        exec_id = MONITORA_EXEC_ID,
+        responsavel = get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE),
+        instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
+        formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)
+      )
+      monitora_perf_registrar_checkpoint("relatorio_validacao_consolidado_v2_6_0", "relatório consolidado de validação gerado em output/relatorios_validacao/", registros_corrig)
+    }, error = function(e) {
+      warning("Falha ao gerar relatório consolidado de validação: ", conditionMessage(e), call. = FALSE)
+    })
+  }
+
+if (isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound = FALSE, inherits = TRUE)) &&
       isTRUE(get0("MONITORA_PARAR_SE_REGISTROS_CORRIG_COM_PENDENCIAS", ifnotfound = TRUE, inherits = TRUE))) {
     monitora_correcao_console_msg("Execução interrompida após materializar registros_corrig.csv como checkpoint com pendências impeditivas. Reinsira esse arquivo no input e continue em modo painel/incremental após resolver as pendências. Estatísticas, produtos finais e registros_validados.csv não serão gerados nesta execução.")
     MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE <- TRUE
