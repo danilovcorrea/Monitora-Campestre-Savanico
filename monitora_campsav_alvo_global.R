@@ -10837,6 +10837,181 @@ monitora_correcao_coluna_real_admin_sismonitora <- function(dt, col) {
   nms[idx[1L]]
 }
 
+monitora_registros_corrig_contrato_mestre_2025 <- function() {
+  ### Contrato mestre declarativo de registros_corrig. Esta função apenas monta
+  ### metadados a partir do template 2025 e das listas de edição já versionadas;
+  ### ela não altera painel, exportação nem materialização.
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Pacote data.table é obrigatório.", call. = FALSE)
+  }
+
+  normalizar <- function(x) {
+    if (exists("monitora_correcao_normalizar_nome_coluna", mode = "function")) {
+      return(monitora_correcao_normalizar_nome_coluna(x))
+    }
+    x <- trimws(tolower(as.character(x)))
+    x[is.na(x)] <- ""
+    x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
+    x[is.na(x)] <- ""
+    gsub("[^a-z0-9]+", "_", x, perl = TRUE)
+  }
+  colapsar <- function(x) {
+    x <- unique(trimws(as.character(x)))
+    x <- x[!is.na(x) & nzchar(x)]
+    paste(x, collapse = "|")
+  }
+
+  tpl <- data.table::as.data.table(monitora_painel_template_sismonitora_2025())
+  editaveis <- as.character(monitora_painel_atributos_editaveis_sismonitora_2025())
+  edit_norm <- unique(normalizar(editaveis))
+  bloqueados <- if (exists("monitora_painel_atributos_bloqueados_sismonitora_2025", mode = "function")) {
+    as.character(monitora_painel_atributos_bloqueados_sismonitora_2025())
+  } else {
+    character(0)
+  }
+  bloqueados_norm <- unique(normalizar(bloqueados))
+
+  admin <- if (exists("monitora_painel_admin_controlados_sismonitora_2025", mode = "function")) {
+    tryCatch(data.table::as.data.table(monitora_painel_admin_controlados_sismonitora_2025()), error = function(e) data.table::data.table())
+  } else {
+    data.table::data.table()
+  }
+  if (!nrow(admin)) admin <- data.table::data.table(atributo_coluna_registros_corrig = character())
+  for (cc in c("atributo_coluna_registros_corrig", "xlsform_tipo", "xlsform_tipo_base", "xlsform_list_name", "acoes_permitidas")) {
+    if (!(cc %in% names(admin))) admin[, (cc) := NA_character_]
+  }
+  admin[, atributo_norm := normalizar(atributo_coluna_registros_corrig)]
+
+  tipo_parse <- function(tipo, list_name = "") {
+    tipo <- as.character(tipo)[1L]
+    list_name <- as.character(list_name)[1L]
+    if (is.na(tipo)) tipo <- ""
+    if (is.na(list_name)) list_name <- ""
+    out <- tryCatch(
+      if (exists("monitora_correcao_tipo_xlsform", mode = "function")) monitora_correcao_tipo_xlsform(tipo) else NULL,
+      error = function(e) NULL
+    )
+    if (is.data.frame(out) && nrow(out)) {
+      base <- as.character(out$tipo_base[1L])
+      lista <- as.character(out$list_name[1L])
+    } else {
+      tipo_low <- tolower(trimws(tipo))
+      base <- if (grepl("^select_multiple", tipo_low)) "select_multiple" else if (grepl("^select_one", tipo_low)) "select_one" else if (grepl("^calculate", tipo_low)) "calculate" else if (grepl("^hidden", tipo_low)) "hidden" else if (grepl("^date$", tipo_low)) "date" else if (grepl("^time$", tipo_low)) "time" else if (grepl("^decimal$", tipo_low)) "decimal" else if (grepl("^integer$", tipo_low)) "integer" else if (grepl("^geopoint$", tipo_low)) "geopoint" else if (grepl("^image$", tipo_low)) "image" else if (grepl("^metadata", tipo_low)) "metadata" else "text"
+      lista <- sub("^select_(one|multiple)\\s+", "", tipo_low, perl = TRUE)
+      if (identical(lista, tipo_low)) lista <- ""
+    }
+    if (is.na(base) || !nzchar(base)) base <- "text"
+    if ((is.na(lista) || !nzchar(lista)) && nzchar(list_name)) lista <- list_name
+    list(tipo_base = base, list_name = ifelse(is.na(lista), "", lista))
+  }
+
+  aliases_admin <- function(atributo) {
+    aliases <- tryCatch(
+      if (exists("monitora_correcao_aliases_admin_sismonitora", mode = "function")) monitora_correcao_aliases_admin_sismonitora(atributo) else character(0),
+      error = function(e) character(0)
+    )
+    if (!length(aliases)) {
+      z <- normalizar(atributo)
+      aliases <- switch(
+        z,
+        uc = c("uc", "UC"),
+        ea = c("ea", "EA", "estacao_amostral", "Estação Amostral", "estacao amostral"),
+        ua = c("ua", "UA", "unidade_amostral", "Unidade Amostral", "unidade amostral"),
+        ciclo = c("ciclo", "CICLO", "Ciclo"),
+        campanha = c("campanha", "CAMPANHA", "Campanha"),
+        character(0)
+      )
+    }
+    unique(c(atributo, aliases))
+  }
+
+  linhas <- vector("list", nrow(tpl))
+  for (ii in seq_len(nrow(tpl))) {
+    att <- as.character(tpl$atributo[ii])
+    att_norm <- normalizar(att)
+    admin_hit <- admin[atributo_norm == att_norm]
+    tipo <- as.character(tpl$tipo_template[ii])
+    lista <- as.character(tpl$list_name_template[ii])
+    if (nrow(admin_hit)) {
+      if (!is.na(admin_hit$xlsform_tipo[1L]) && nzchar(admin_hit$xlsform_tipo[1L])) tipo <- admin_hit$xlsform_tipo[1L]
+      if (!is.na(admin_hit$xlsform_list_name[1L]) && nzchar(admin_hit$xlsform_list_name[1L])) lista <- admin_hit$xlsform_list_name[1L]
+    }
+    tipo_info <- tipo_parse(tipo, lista)
+    if (nrow(admin_hit) && !is.na(admin_hit$xlsform_tipo_base[1L]) && nzchar(admin_hit$xlsform_tipo_base[1L])) {
+      tipo_info$tipo_base <- as.character(admin_hit$xlsform_tipo_base[1L])
+    }
+
+    painel_101 <- att_norm %in% edit_norm
+    protegido <- att_norm %in% bloqueados_norm ||
+      isTRUE(tryCatch(exists("monitora_correcao_coluna_protegida", mode = "function") && any(monitora_correcao_coluna_protegida(att)), error = function(e) FALSE))
+    editavel <- isTRUE(painel_101) && !isTRUE(protegido)
+    obrig <- tolower(trimws(as.character(tpl$required_template[ii]))) %in% c("yes", "true", "1", "sim", "required")
+
+    acao <- ""
+    if (isTRUE(editavel)) {
+      if (nrow(admin_hit) && !is.na(admin_hit$acoes_permitidas[1L]) && nzchar(admin_hit$acoes_permitidas[1L])) {
+        acao <- as.character(admin_hit$acoes_permitidas[1L])
+      } else if (identical(att, "amostragem/registro/tipo_forma_vida")) {
+        acao <- "recalcular_tipo_forma_vida"
+      } else if (identical(tipo_info$tipo_base, "select_multiple")) {
+        acao <- "append_token;remove_token;replace_token"
+      } else if (tipo_info$tipo_base %in% c("select_one", "text", "note", "date", "datetime", "time", "integer", "decimal", "geopoint", "calculate")) {
+        acao <- "update;clear"
+      }
+    }
+
+    aliases <- unique(c(
+      att,
+      sub("^.*/", "", att),
+      aliases_admin(att),
+      if (att_norm %in% c("uc", "ea", "ua", "ciclo", "campanha")) aliases_admin(att_norm) else character(0)
+    ))
+    aliases <- aliases[!is.na(aliases) & nzchar(aliases)]
+
+    origem <- c("template_xlsform_2025")
+    if (nrow(admin_hit)) origem <- c(origem, "atributo_administrativo_controlado")
+    if (isTRUE(painel_101)) origem <- c(origem, "painel_101")
+
+    dominio <- if (nzchar(tipo_info$list_name)) {
+      paste0("xlsform:", tipo_info$list_name)
+    } else if (tipo_info$tipo_base %in% c("calculate", "hidden", "metadata")) {
+      tipo_info$tipo_base
+    } else {
+      "livre"
+    }
+
+    linhas[[ii]] <- data.table::data.table(
+      atributo_canonico = att,
+      coluna_materializada = att,
+      aliases_aceitos = colapsar(aliases),
+      origem_contrato = colapsar(origem),
+      ordem_template = suppressWarnings(as.integer(tpl$posicao[ii])),
+      painel_101 = isTRUE(painel_101),
+      editavel_painel = isTRUE(editavel),
+      protegido = isTRUE(protegido),
+      tipo_base = tipo_info$tipo_base,
+      dominio_tipo = dominio,
+      list_name = tipo_info$list_name,
+      obrigatorio_registros_corrig = isTRUE(obrig),
+      obrigatorio_registros_validados = isTRUE(obrig),
+      acao_painel = acao,
+      validacao_materializacao = if (isTRUE(protegido)) {
+        "protegido; nao editar no painel"
+      } else if (isTRUE(editavel)) {
+        "validar dominio/formato antes de materializar registros_corrig"
+      } else if (tipo_info$tipo_base %in% c("calculate", "hidden", "metadata")) {
+        "derivado/metadata; materializar por regra controlada"
+      } else {
+        "materializar conforme template 2025"
+      }
+    )
+  }
+
+  out <- data.table::rbindlist(linhas, fill = TRUE, use.names = TRUE)
+  data.table::setorder(out, ordem_template, atributo_canonico)
+  out[]
+}
+
 monitora_correcao_coluna_real_admin_ou_col <- function(dt, col) {
   hit <- tryCatch(monitora_correcao_coluna_real_admin_sismonitora(dt, col), error = function(e) NA_character_)
   if (!is.na(hit) && nzchar(hit)) hit else as.character(col)[1L]
