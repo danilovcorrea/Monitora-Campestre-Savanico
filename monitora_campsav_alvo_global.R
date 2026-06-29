@@ -8917,6 +8917,200 @@ monitora_correcao_calcular_tipo_forma_vida_esperado <- function(dt, linhas = NUL
   esperado
 }
 
+monitora_registros_corrig_auditar_encostam_derivado <- function(dt) {
+  x <- data.table::as.data.table(data.table::copy(dt))
+  n <- nrow(x)
+  cols_out <- c(
+    "tipo_pendencia", "severidade", "corrigivel_no_painel", "linha",
+    "COLETA", "UC", "EA", "UA", "CICLO", "CAMPANHA",
+    "coluna_encostam", "valor_atual", "valor_esperado",
+    "tokens_atual", "tokens_esperado", "mensagem", "acao_sugerida"
+  )
+  vazio <- function() {
+    out <- data.table::data.table(
+      tipo_pendencia = character(),
+      severidade = character(),
+      corrigivel_no_painel = logical(),
+      linha = integer(),
+      COLETA = character(),
+      UC = character(),
+      EA = character(),
+      UA = character(),
+      CICLO = character(),
+      CAMPANHA = character(),
+      coluna_encostam = character(),
+      valor_atual = character(),
+      valor_esperado = character(),
+      tokens_atual = character(),
+      tokens_esperado = character(),
+      mensagem = character(),
+      acao_sugerida = character()
+    )
+    out[, ..cols_out]
+  }
+  if (!n) return(vazio())
+
+  col_encostam <- NA_character_
+  aliases_encostam <- c(
+    "**Encostam** na vareta: (amostragem/registro)",
+    "amostragem/registro/tipo_forma_vida",
+    "tipo_forma_vida"
+  )
+  hit_alias <- aliases_encostam[aliases_encostam %in% names(x)]
+  if (length(hit_alias)) {
+    col_encostam <- hit_alias[1L]
+  } else {
+    ch <- tryCatch(monitora_correcao_colunas_chave(x), error = function(e) list(tipo_forma_vida = NA_character_))
+    cand <- tryCatch(as.character(ch$tipo_forma_vida)[1L], error = function(e) NA_character_)
+    if (!is.na(cand) && nzchar(cand) && cand %in% names(x)) col_encostam <- cand
+  }
+
+  pegar_contexto <- function(chave, padrao) {
+    ch <- tryCatch(monitora_correcao_colunas_chave(x), error = function(e) list())
+    cc <- tryCatch(as.character(ch[[chave]])[1L], error = function(e) NA_character_)
+    if ((is.na(cc) || !nzchar(cc) || !(cc %in% names(x))) && padrao %in% names(x)) cc <- padrao
+    if (!is.na(cc) && nzchar(cc) && cc %in% names(x)) as.character(x[[cc]]) else rep(NA_character_, n)
+  }
+  contexto <- data.table::data.table(
+    COLETA = pegar_contexto("coleta", "COLETA"),
+    UC = pegar_contexto("uc", "UC"),
+    EA = pegar_contexto("ea", "EA"),
+    UA = pegar_contexto("ua", "UA"),
+    CICLO = pegar_contexto("ciclo", "CICLO"),
+    CAMPANHA = pegar_contexto("campanha", "CAMPANHA")
+  )
+
+  if (is.na(col_encostam) || !nzchar(col_encostam) || !(col_encostam %in% names(x))) {
+    out <- vazio()
+    out <- data.table::rbindlist(list(out, data.table::data.table(
+      tipo_pendencia = "encostam_coluna_nao_resolvida",
+      severidade = "impeditiva",
+      corrigivel_no_painel = FALSE,
+      linha = NA_integer_,
+      COLETA = NA_character_,
+      UC = NA_character_,
+      EA = NA_character_,
+      UA = NA_character_,
+      CICLO = NA_character_,
+      CAMPANHA = NA_character_,
+      coluna_encostam = NA_character_,
+      valor_atual = NA_character_,
+      valor_esperado = NA_character_,
+      tokens_atual = NA_character_,
+      tokens_esperado = NA_character_,
+      mensagem = "Coluna Encostam/tipo_forma_vida nao resolvida na tabela.",
+      acao_sugerida = "verificar_coluna_encostam"
+    )), fill = TRUE, use.names = TRUE)
+    return(out[, ..cols_out])
+  }
+
+  linhas <- seq_len(n)
+  esperado <- tryCatch(
+    monitora_correcao_calcular_tipo_forma_vida_esperado(x, linhas = linhas),
+    error = function(e) rep(NA_character_, n)
+  )
+  atual <- as.character(x[[col_encostam]])
+  tokens_lista <- function(v) {
+    z <- tryCatch(monitora_correcao_tokenizar(v), error = function(e) character(0))
+    z <- monitora_correcao_normalizar_nome_coluna(z)
+    z[!is.na(z) & nzchar(z)]
+  }
+  toks_atual <- lapply(atual, tokens_lista)
+  toks_esperado <- lapply(esperado, tokens_lista)
+  colapsar <- function(z) {
+    z <- unique(z[!is.na(z) & nzchar(z)])
+    if (!length(z)) return(NA_character_)
+    paste(z, collapse = " ")
+  }
+  atual_norm <- vapply(toks_atual, colapsar, character(1))
+  esperado_norm <- vapply(toks_esperado, colapsar, character(1))
+  atual_vazio <- monitora_correcao_vazio_vec(atual)
+  esperado_vazio <- monitora_correcao_vazio_vec(esperado)
+
+  tokens_controlados <- monitora_correcao_normalizar_nome_coluna(c(
+    "nativa", "nativas", "nativo", "nativos",
+    "exotica", "exoticas", "exotico", "exoticos",
+    "seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos",
+    "material_botanico", "serrapilheira", "fragmentos_botanicos", "material_inundado",
+    "solo_nu", "solo_exposto", "solo", "rocha", "rochas"
+  ))
+  tokens_solo <- monitora_correcao_normalizar_nome_coluna(c("solo_nu", "solo_exposto", "solo", "rocha", "rochas"))
+  tokens_desc <- monitora_correcao_normalizar_nome_coluna(tryCatch(monitora_correcao_tokens_desconhecida(), error = function(e) c("desconhecida", "desconhecido")))
+  tokens_outra <- monitora_correcao_normalizar_nome_coluna(tryCatch(monitora_correcao_tokens_residuo_historico_outras_formas(), error = function(e) c("outra_forma_vida", "outras_formas_vida", "forma_vida_outros", "outra", "outro", "outras", "outros")))
+
+  cols_inf <- unique(unlist(lapply(c("nativa", "exotica", "seca_morta"), function(cat) {
+    cc <- tryCatch(monitora_correcao_colunas_forma_vida_categoria(x, cat), error = function(e) character(0))
+    cc[cc %in% names(x)]
+  }), use.names = FALSE))
+  tem_inferior <- rep(FALSE, n)
+  for (cc in cols_inf) {
+    hit <- tryCatch(!monitora_correcao_vazio_vec(x[[cc]]), error = function(e) rep(FALSE, n))
+    hit[is.na(hit)] <- FALSE
+    tem_inferior <- tem_inferior | hit
+  }
+
+  pend <- list()
+  adicionar <- function(tipo, idx, mensagem, acao = "recalcular_tipo_forma_vida", corrigivel = TRUE) {
+    idx <- unique(as.integer(idx))
+    idx <- idx[!is.na(idx) & idx >= 1L & idx <= n]
+    if (!length(idx)) return(invisible(NULL))
+    pend[[length(pend) + 1L]] <<- data.table::data.table(
+      tipo_pendencia = tipo,
+      severidade = "impeditiva",
+      corrigivel_no_painel = isTRUE(corrigivel),
+      linha = idx,
+      COLETA = contexto$COLETA[idx],
+      UC = contexto$UC[idx],
+      EA = contexto$EA[idx],
+      UA = contexto$UA[idx],
+      CICLO = contexto$CICLO[idx],
+      CAMPANHA = contexto$CAMPANHA[idx],
+      coluna_encostam = col_encostam,
+      valor_atual = atual[idx],
+      valor_esperado = esperado[idx],
+      tokens_atual = atual_norm[idx],
+      tokens_esperado = esperado_norm[idx],
+      mensagem = mensagem,
+      acao_sugerida = acao
+    )
+    invisible(NULL)
+  }
+
+  difere <- !atual_vazio & !esperado_vazio & monitora_correcao_na_para_vazio(atual_norm) != monitora_correcao_na_para_vazio(esperado_norm)
+  adicionar("encostam_desatualizado", which(difere), "Encostam/tipo_forma_vida difere do valor esperado derivado dos campos inferiores.")
+
+  token_sem_inferior <- which(vapply(seq_len(n), function(i) length(setdiff(toks_atual[[i]], toks_esperado[[i]])) > 0L, logical(1)))
+  adicionar("encostam_token_sem_inferior", token_sem_inferior, "Encostam contem token que nao aparece no valor esperado derivado dos inferiores.")
+
+  inferior_sem_token <- which(vapply(seq_len(n), function(i) length(setdiff(toks_esperado[[i]], toks_atual[[i]])) > 0L, logical(1)))
+  adicionar("encostam_inferior_sem_token", inferior_sem_token, "Valor esperado derivado dos inferiores contem token ausente em Encostam.")
+
+  solo_conflito <- which(vapply(toks_atual, function(z) any(z %in% tokens_solo) && length(setdiff(z, tokens_solo)) > 0L, logical(1)))
+  adicionar("encostam_solo_nu_conflitante", solo_conflito, "Encostam contem solo_nu/solo exposto junto com outra categoria.")
+
+  desconhecidos <- which(vapply(toks_atual, function(z) {
+    z <- setdiff(z, tokens_desc)
+    z <- setdiff(z, tokens_outra)
+    length(setdiff(z, tokens_controlados)) > 0L
+  }, logical(1)))
+  adicionar("encostam_token_desconhecido", desconhecidos, "Encostam contem token fora do conjunto controlado conhecido.")
+
+  desc_superior_only <- which(vapply(toks_atual, function(z) length(z) > 0L && all(z %in% tokens_desc), logical(1)) & !tem_inferior)
+  adicionar("encostam_desconhecida_superior_only", desc_superior_only, "Encostam contem somente desconhecida/desconhecido como superior, sem inferiores correspondentes.")
+
+  outra <- which(vapply(seq_len(n), function(i) any(toks_atual[[i]] %in% tokens_outra) || any(toks_esperado[[i]] %in% tokens_outra), logical(1)))
+  adicionar("encostam_outra_forma_vida", outra, "Encostam atual ou esperado contem token de outra forma de vida/outros fora do contrato.")
+
+  # TODO Bloco futuro: encostam_vazio_apos_recalculo depende de uma fonte segura
+  # para distinguir ponto sem interceptacao real de campo superior vazio indevido.
+
+  if (!length(pend)) return(vazio())
+  out <- data.table::rbindlist(pend, fill = TRUE, use.names = TRUE)
+  data.table::setorder(out, linha, tipo_pendencia)
+  out <- unique(out, by = c("tipo_pendencia", "linha"))
+  out[, ..cols_out]
+}
+
 monitora_correcao_sincronizar_encostam_final <- function(dt,
                                                           linhas = NULL,
                                                           chaves = monitora_correcao_colunas_chave(dt),
