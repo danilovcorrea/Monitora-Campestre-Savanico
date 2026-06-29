@@ -11382,6 +11382,9 @@ monitora_registros_corrig_auditar_atributos_101 <- function(dt, contrato = NULL)
     if (!length(choices) && exists("monitora_correcao_choices_xlsform", mode = "function")) {
       choices <- tryCatch(monitora_correcao_choices_xlsform(list_name, meta_xls = NULL), error = function(e) character(0))
     }
+    if (identical(list_name, "form_veg") && length(choices)) {
+      choices <- c(choices, "Campestre", "campestre", "Savânica", "savanica")
+    }
     unique(as.character(choices[!is.na(choices) & nzchar(choices)]))
   }
   tokens_select_multiple <- function(v) {
