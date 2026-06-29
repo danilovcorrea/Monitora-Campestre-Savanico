@@ -2,14 +2,24 @@
 
 Script de tratamento, validação e análise de dados do **Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico** do **Programa Monitora**.
 
-**Versão pública atual:** `v2.6.0`  
+**Versão pública atual:** `v2.6.1`  
 **Script principal:** [`monitora_campsav_alvo_global_v2.6.1.R`](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/blob/main/monitora_campsav_alvo_global_v2.6.1.R)
 
 ## Finalidade
 
 O script lê, padroniza, audita, deduplica, corrige e analisa registros exportados do SISMONITORA para campanhas amostrais do alvo global Plantas Herbáceas e Lenhosas. Também pode abrir painel Shiny para correções assistidas, validar espacialmente COLETAS, gerar relatórios de apoio, estatísticas, gráficos e produtos compatíveis com o contrato XLSForm/SISMONITORA quando habilitado.
 
-## Novidades da v2.6.0
+## Novidades da v2.6.1
+
+- Painel de correções assistidas com atributos administrativos controlados pelo contrato SISMONITORA/XLSForm 2025.
+- `registros_corrig.csv` tratado como produto mestre organizado, saneado e auditado antes da exportação contratual.
+- `registros_validados.csv` gerado por seleção e reordenação dos 129 atributos do template XLSForm/SISMONITORA 2025, quando não houver pendências impeditivas.
+- Relatório consolidado de validação em HTML por padrão, com auditorias de apoio e rastreabilidade das decisões.
+- Correções de aliases administrativos, estruturais, datas, formação vegetacional e cardinalidade de UUID na auditoria final.
+
+## Destaques preservados da v2.6.0
+
+
 
 - Roll-forward semântico de correções anteriores por `input/correcoes_semanticas.csv`.
 - Contrato público de replay `replay_semantico_v1`, com diagnóstico não abortivo por padrão.
@@ -68,7 +78,7 @@ Arquivos em `input/`, `output/`, `log/` e `extracted/` podem conter dados sensí
 
 ## Como citar
 
-CBC/ICMBio-MMA. 2026. *Script de tratamento, validação e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico do Programa Monitora*. Versão `v2.6.0`. Repositório GitHub: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
+CBC/ICMBio-MMA. 2026. *Script de tratamento, validação e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico do Programa Monitora*. Versão `v2.6.1`. Repositório GitHub: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
 ## Repositório
 
@@ -76,8 +86,6 @@ https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
 ## Atualização v2.6.1
 
-A versão v2.6.1 consolida o painel de correções assistidas com atributos administrativos, reforça o contrato XLSForm/SISMONITORA 2025 para `registros_corrig.csv` e gera `registros_validados.csv` por seleção e reordenação dos 129 atributos do template, quando não houver pendências impeditivas. O relatório consolidado de validação passa a priorizar HTML por padrão.
+A versão v2.6.1 consolida o painel de correções assistidas com atributos administrativos, reforça o contrato XLSForm/SISMONITORA 2025 para `registros_corrig.csv` e gera `registros_validados.csv` por seleção e reordenação dos 129 atributos do template, quando não houver pendências impeditivas.
 
-Arquivo principal versionado: [`monitora_campsav_alvo_global_v2.6.1.R`](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/blob/main/monitora_campsav_alvo_global_v2.6.1.R).
-Notas da release: [`RELEASE_NOTES_v2.6.1.md`](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/blob/main/RELEASE_NOTES_v2.6.1.md).
-
+O relatório consolidado de validação passa a priorizar HTML por padrão. Arquivo principal versionado: [`monitora_campsav_alvo_global_v2.6.1.R`](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/blob/main/monitora_campsav_alvo_global_v2.6.1.R). Notas da release: [`RELEASE_NOTES_v2.6.1.md`](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/blob/main/RELEASE_NOTES_v2.6.1.md).

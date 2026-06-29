@@ -1,1 +1,1 @@
-377962aef14db0d5bc120b6666fefb20ab31ac3ad712ac15e1927a2c2332ca36  releases/v2.6.1/Monitora-Campestre-Savanico_v2.6.1_release_completa.zip
+68fe681c944eaf93ca12d5d0fc07c2053d5c83ae51f94a930f5de5629b51a533  releases/v2.6.1/Monitora-Campestre-Savanico_v2.6.1_release_completa.zip
