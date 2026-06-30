@@ -427,9 +427,9 @@ MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M <- monitora_cfg_env_num("MONITORA_COMP
 MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M <- monitora_cfg_env_num("MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M", MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M)
 MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV <- Sys.getenv("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", unset = NA_character_)
 MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- if (
-  is.na(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV) &&
-    identical(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS, "S")
+  identical(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS, "S")
 ) {
+  ### VALIDAR_ESPACIAL=S sempre ativa a aba/mapa, independente de env var.
   "S"
 } else if (is.na(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV)) {
   as.character(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL)[1]
@@ -11627,11 +11627,13 @@ monitora_correcao_campo_dominio_dinamico_sismonitora <- function(col, list_name 
   vals <- unique(tolower(trimws(as.character(c(col, list_name)))))
   vals <- vals[!is.na(vals) & nzchar(vals)]
   norms <- unique(monitora_correcao_normalizar_nome_coluna(vals))
-  any(norms %in% c("uc", "ea", "ua", "estacao_amostral", "unidade_amostral", "ciclo", "campanha", "validado"))
+  any(norms %in% c("uc", "ea", "ua", "estacao_amostral", "unidade_amostral", "validado"))
 }
 
 monitora_correcao_choices_dominio_dinamico_sismonitora <- function(dt, col) {
   if (is.null(dt) || is.na(col) || !nzchar(col)) return(character(0))
+  ### EA restrita provisoriamente a EA-001_Cps; não expande para domínio observado.
+  if (monitora_correcao_normalizar_nome_coluna(col) %in% c("ea", "estacao_amostral")) return(c("EA-001_Cps"))
   col_real <- monitora_correcao_coluna_real_admin_ou_col(dt, col)
   if (is.na(col_real) || !nzchar(col_real) || !(col_real %in% names(dt))) return(character(0))
   vals <- unique(trimws(as.character(dt[[col_real]])))
@@ -11647,15 +11649,30 @@ monitora_correcao_choices_dominio_dinamico_sismonitora <- function(dt, col) {
 
 monitora_correcao_validar_dominio_dinamico_sismonitora <- function(dt, col, tipo_base, list_name, valor, acao) {
   acao <- monitora_correcao_acao_normalizar(acao)
+  col_norm_dyn <- monitora_correcao_normalizar_nome_coluna(col)
+  ### UA: validação por formato contratual, sem restrição ao domínio observado.
+  if (col_norm_dyn %in% c("ua", "unidade_amostral")) {
+    if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "ação sem valor novo"))
+    v_ua <- trimws(as.character(valor)[1L])
+    if (is.na(v_ua) || !nzchar(v_ua)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor de UA não pode ser vazio."))
+    if (!grepl("^UA-\\d+_[A-Za-z]+$", v_ua, perl = TRUE))
+      return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_formato_ua",
+                  mensagem = paste0("Formato inválido para UA. Use: UA-NNN_Xxx (ex: UA-001_VgCS). Recebido: '", v_ua, "'.")))
+    return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "formato de UA válido pelo contrato"))
+  }
   if (!identical(as.character(tipo_base)[1L], "select_one")) return(list(aplicou = FALSE, ok = TRUE, status = "ok", mensagem = "não é domínio dinâmico"))
   if (!isTRUE(monitora_correcao_campo_dominio_dinamico_sismonitora(col, list_name))) return(list(aplicou = FALSE, ok = TRUE, status = "ok", mensagem = "não é domínio dinâmico"))
   if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "ação sem valor novo"))
   valor <- trimws(as.character(valor)[1L])
   if (is.na(valor) || !nzchar(valor)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "valor novo vazio para domínio dinâmico"))
   escolhas <- monitora_correcao_choices_dominio_dinamico_sismonitora(dt, col)
-  if (!length(escolhas)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_dominio_dinamico_ausente", mensagem = paste0("Correção bloqueada: não há valores observados para o domínio dinâmico do atributo '", col, "' nesta execução.")))
+  if (!length(escolhas)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_dominio_dinamico_ausente", mensagem = paste0("Correção bloqueada: não há valores no domínio controlado do atributo '", col, "' nesta execução.")))
   if (!(valor %in% escolhas)) {
-    msg <- paste0("Valor fora do domínio dinâmico observado para '", col, "'. Use um valor já presente na base desta execução.")
+    if (col_norm_dyn %in% c("ea", "estacao_amostral")) {
+      msg <- paste0("EA '", valor, "' não permitida. Regra provisória: apenas EA-001_Cps é aceita nesta versão do painel.")
+    } else {
+      msg <- paste0("Valor '", valor, "' fora do domínio controlado para '", col, "'. Opções: ", paste(escolhas, collapse = ", "), ".")
+    }
     return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_dominio_dinamico", mensagem = msg))
   }
   list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "domínio dinâmico compatível")
@@ -11676,6 +11693,18 @@ monitora_correcao_validar_atributo_especifico_sismonitora_2025 <- function(col, 
     if (!grepl("^\\d{4}$", valor, perl = TRUE)) {
       return(list(ok = FALSE, status = "bloqueada_formato_num_placa_formatado", mensagem = "Número da plaqueta formatado inválido: use exatamente 4 dígitos, com zeros à esquerda quando necessário."))
     }
+  }
+  if (col_norm %in% c("ciclo")) {
+    if (!nzchar(valor)) return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor de CICLO não pode ser vazio."))
+    if (!grepl("^Ciclo-\\d{4}_[A-Za-z]+$", valor, perl = TRUE))
+      return(list(ok = FALSE, status = "bloqueada_formato_ciclo",
+                  mensagem = paste0("Formato inválido para CICLO. Use: Ciclo-AAAA_Xxx (ex: Ciclo-2025_VgCS). Recebido: '", valor, "'.")))
+  }
+  if (col_norm %in% c("campanha")) {
+    if (!nzchar(valor)) return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor de CAMPANHA não pode ser vazio."))
+    if (!grepl("^Campanha-\\d{4}_[A-Za-z]+$", valor, perl = TRUE))
+      return(list(ok = FALSE, status = "bloqueada_formato_campanha",
+                  mensagem = paste0("Formato inválido para CAMPANHA. Use: Campanha-AAAA_Xxx (ex: Campanha-2025_VgCS). Recebido: '", valor, "'.")))
   }
   list(ok = TRUE, status = "ok", mensagem = "validação específica compatível")
 }
@@ -16642,8 +16671,8 @@ if (!exists("MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M", inherits = FALSE)) {
 if (!exists("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", inherits = FALSE)) {
   MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
 }
-if (identical(toupper(trimws(as.character(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS)[1])), "S") &&
-    !identical(Sys.getenv("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", unset = NA_character_), "N")) {
+if (identical(toupper(trimws(as.character(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS)[1])), "S")) {
+  ### VALIDAR_ESPACIAL=S sempre ativa a aba/mapa, independente de ABRIR_ABA.
   MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
 }
 
@@ -19461,7 +19490,18 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       paste0("Papel da coluna: ", ifelse(is.na(info$papel) || !nzchar(info$papel), "não identificado", info$papel))
     )
     if (!is.na(info$list_name) && nzchar(info$list_name)) partes <- c(partes, paste0("Lista XLSForm: ", info$list_name))
-    if (length(info$escolhas)) partes <- c(partes, paste0("Opções válidas: ", monitora_correcao_colapsar_opcoes_msg(info$escolhas, 20L)))
+    col_norm_msg <- monitora_correcao_normalizar_nome_coluna(info$col)
+    if (col_norm_msg %in% c("ua", "unidade_amostral")) {
+      partes <- c(partes, "Controle por formato contratual (não domínio fechado). Padrão: UA-NNN_Xxx (ex: UA-001_VgCS).")
+    } else if (col_norm_msg %in% c("ciclo")) {
+      partes <- c(partes, "Controle por formato contratual (não domínio fechado). Padrão: Ciclo-AAAA_Xxx (ex: Ciclo-2025_VgCS).")
+    } else if (col_norm_msg %in% c("campanha")) {
+      partes <- c(partes, "Controle por formato contratual (não domínio fechado). Padrão: Campanha-AAAA_Xxx (ex: Campanha-2025_VgCS).")
+    } else if (col_norm_msg %in% c("ea", "estacao_amostral")) {
+      partes <- c(partes, "Regra provisória: apenas EA-001_Cps é aceita nesta versão do painel.")
+    } else if (length(info$escolhas)) {
+      partes <- c(partes, paste0("Opções válidas: ", monitora_correcao_colapsar_opcoes_msg(info$escolhas, 20L)))
+    }
     exemplos <- monitora_correcao_exemplos_formato_msg(info$tipo)
     if (nzchar(exemplos)) partes <- c(partes, exemplos)
     det <- monitora_painel_detalhar_forma_vida_contratual(atributo, acao, valor_novo)
@@ -20597,10 +20637,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::selectizeInput(
           "filtro_ea",
           "Filtrar EA(s)",
-          choices = valores_ea,
+          choices = "EA-001_Cps",
           selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Todas as EAs das UCs selecionadas", plugins = list("remove_button"))
+          options = list(placeholder = "Regra provisória: apenas EA-001_Cps", plugins = list("remove_button"))
         ),
         shiny::selectizeInput(
           "filtro_ano",
@@ -20616,7 +20656,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           choices = valores_ciclo,
           selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Todos os ciclos dos filtros superiores", plugins = list("remove_button"))
+          options = list(placeholder = "Todos os ciclos; ou digite Ciclo-AAAA_Xxx", plugins = list("remove_button"), create = TRUE, createOnBlur = FALSE)
         ),
         shiny::selectizeInput(
           "filtro_campanha",
@@ -20624,7 +20664,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           choices = valores_campanha,
           selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Todas as campanhas dos filtros superiores", plugins = list("remove_button"))
+          options = list(placeholder = "Todas as campanhas; ou digite Campanha-AAAA_Xxx", plugins = list("remove_button"), create = TRUE, createOnBlur = FALSE)
         ),
         shiny::selectizeInput(
           "filtro_ua",
@@ -20632,9 +20672,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           choices = valores_ua,
           selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Todas as UAs dos filtros superiores", plugins = list("remove_button"))
+          options = list(placeholder = "Todas as UAs; ou digite UA-NNN_Xxx", plugins = list("remove_button"), create = TRUE, createOnBlur = FALSE)
         ),
-        shiny::helpText("Nos filtros superiores, deixar vazio equivale a 'todos'. Se todos os valores de um nível forem selecionados, o nível também é tratado como sem restrição."),
+        shiny::helpText("Filtros de CICLO, CAMPANHA e UA aceitam digitação livre validada por formato contratual (Ciclo-AAAA_Xxx, Campanha-AAAA_Xxx, UA-NNN_Xxx). Filtro de EA restrito provisoriamente a EA-001_Cps. Deixar vazio equivale a 'todos'."),
         shiny::tags$div(
           class = "form-group shiny-input-container",
           shiny::tags$label(class = "control-label", "Filtrar coletas por ocorrência diagnóstica"),
@@ -20945,9 +20985,19 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       atributo <- monitora_painel_valor(input$atributo)
       acao_norm <- monitora_correcao_acao_normalizar(input$acao)
       if (!nzchar(atributo)) return(NULL)
-      info <- tryCatch(monitora_painel_info_contrato_atributo(atributo), error = function(e) list(tipo = "text", list_name = NA_character_, escolhas = character(0)))
+      info <- tryCatch(monitora_painel_info_contrato_atributo(atributo), error = function(e) list(tipo = "text", list_name = NA_character_, escolhas = character(0), col = atributo))
       tipo <- as.character(info$tipo)[1L]
       if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
+      ### UA/CICLO/CAMPANHA: entrada livre validada por formato contratual, não por domínio observado.
+      col_norm_widget <- tryCatch(monitora_correcao_normalizar_nome_coluna(if (!is.null(info$col) && !is.na(info$col) && nzchar(info$col)) info$col else atributo), error = function(e) "")
+      if (!acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) {
+        if (col_norm_widget %in% c("ua", "unidade_amostral"))
+          return(shiny::textInput("valor_novo", "Valor novo de UA", value = "", placeholder = "UA-NNN_Xxx (ex: UA-001_VgCS)"))
+        if (col_norm_widget %in% c("ciclo"))
+          return(shiny::textInput("valor_novo", "Valor novo de CICLO", value = "", placeholder = "Ciclo-AAAA_Xxx (ex: Ciclo-2025_VgCS)"))
+        if (col_norm_widget %in% c("campanha"))
+          return(shiny::textInput("valor_novo", "Valor novo de CAMPANHA", value = "", placeholder = "Campanha-AAAA_Xxx (ex: Campanha-2025_VgCS)"))
+      }
       if (acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) {
         return(shiny::div(class = "alert alert-warning", "Esta ação não usa valor novo. O valor será limpo ou recalculado pelo contrato do script."))
       }
@@ -21715,11 +21765,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       length(vals) > 0L && length(universo) > 0L && length(setdiff(universo, vals)) > 0L
     }
 
-    monitora_painel_filtrar_multi <- function(x, col, vals, universo = NULL) {
+    monitora_painel_filtrar_multi <- function(x, col, vals, universo = NULL, permitir_fora_dominio = FALSE) {
       x <- data.table::as.data.table(x)
       if (is.na(col) || !nzchar(col) || !(col %in% names(x))) return(x)
       universo <- if (is.null(universo)) monitora_painel_valores_coluna(x, col) else monitora_painel_valores_input(universo)
       vals <- monitora_painel_valores_input(vals)
+      if (isTRUE(permitir_fora_dominio)) {
+        if (!length(vals)) return(x)
+        return(x[as.character(get(col)) %in% vals])
+      }
       vals <- vals[vals %in% universo]
       if (!monitora_painel_selecao_restringe(vals, universo)) return(x)
       x[as.character(get(col)) %in% vals]
@@ -21762,7 +21816,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     dados_pos_ciclo <- shiny::reactive({
-      monitora_painel_filtrar_multi(dados_pos_ano(), chaves$ciclo, input$filtro_ciclo, valores_ciclo_filtrados())
+      monitora_painel_filtrar_multi(dados_pos_ano(), chaves$ciclo, input$filtro_ciclo, valores_ciclo_filtrados(), permitir_fora_dominio = TRUE)
     })
 
     valores_campanha_filtrados <- shiny::reactive({
@@ -21770,7 +21824,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     dados_pos_campanha <- shiny::reactive({
-      monitora_painel_filtrar_multi(dados_pos_ciclo(), chaves$campanha, input$filtro_campanha, valores_campanha_filtrados())
+      monitora_painel_filtrar_multi(dados_pos_ciclo(), chaves$campanha, input$filtro_campanha, valores_campanha_filtrados(), permitir_fora_dominio = TRUE)
     })
 
     valores_ua_filtrados <- shiny::reactive({
@@ -21778,7 +21832,23 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     dados_pre_coleta <- shiny::reactive({
-      monitora_painel_filtrar_multi(dados_pos_campanha(), chaves$ua, input$filtro_ua, valores_ua_filtrados())
+      monitora_painel_filtrar_multi(dados_pos_campanha(), chaves$ua, input$filtro_ua, valores_ua_filtrados(), permitir_fora_dominio = TRUE)
+    })
+
+    shiny::observe({
+      for (v in setdiff(monitora_painel_valores_input(input$filtro_ciclo), valores_ciclo_filtrados()))
+        if (!grepl("^Ciclo-\\d{4}_[A-Za-z]+$", v, perl = TRUE))
+          shiny::showNotification(paste0("CICLO '", v, "': formato inválido. Use Ciclo-AAAA_Xxx (ex: Ciclo-2025_VgCS)."), type = "warning", id = paste0("warn_ciclo_", gsub("[^A-Za-z0-9]", "_", v)), duration = 8)
+    })
+    shiny::observe({
+      for (v in setdiff(monitora_painel_valores_input(input$filtro_campanha), valores_campanha_filtrados()))
+        if (!grepl("^Campanha-\\d{4}_[A-Za-z]+$", v, perl = TRUE))
+          shiny::showNotification(paste0("CAMPANHA '", v, "': formato inválido. Use Campanha-AAAA_Xxx (ex: Campanha-2025_VgCS)."), type = "warning", id = paste0("warn_camp_", gsub("[^A-Za-z0-9]", "_", v)), duration = 8)
+    })
+    shiny::observe({
+      for (v in setdiff(monitora_painel_valores_input(input$filtro_ua), valores_ua_filtrados()))
+        if (!grepl("^UA-\\d+_[A-Za-z]+$", v, perl = TRUE))
+          shiny::showNotification(paste0("UA '", v, "': formato inválido. Use UA-NNN_Xxx (ex: UA-001_VgCS)."), type = "warning", id = paste0("warn_ua_", gsub("[^A-Za-z0-9]", "_", v)), duration = 8)
     })
 
     filtros_triagem_coleta_selecionados <- shiny::reactive({
