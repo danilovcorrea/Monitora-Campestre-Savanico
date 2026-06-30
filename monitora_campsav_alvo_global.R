@@ -11425,7 +11425,7 @@ monitora_registros_corrig_auditar_atributos_101 <- function(dt, contrato = NULL)
       add(
         "atributo_101_nao_resolvido", "impeditiva", FALSE, row, NA_integer_, "",
         paste(aliases, collapse = " | "),
-        "Atributo 101 sem coluna materializada e sem alias presente em registros_corrig.",
+        paste0("Atributo 101 '", as.character(row$atributo_canonico)[1L], "' (aliases: ", paste(aliases, collapse = " | "), ") sem coluna presente em registros_corrig."),
         "Mapear/materializar o atributo antes de considerar registros_corrig final."
       )
       next
@@ -11659,6 +11659,26 @@ monitora_correcao_validar_dominio_dinamico_sismonitora <- function(dt, col, tipo
       return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_formato_ua",
                   mensagem = paste0("Formato inválido para UA. Use: UA-NNN_Xxx (ex: UA-001_VgCS). Recebido: '", v_ua, "'.")))
     return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "formato de UA válido pelo contrato"))
+  }
+  ### CICLO: validação por formato contratual, sem restrição ao domínio XLSForm.
+  if (col_norm_dyn %in% c("ciclo")) {
+    if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "ação sem valor novo"))
+    v_ciclo <- trimws(as.character(valor)[1L])
+    if (is.na(v_ciclo) || !nzchar(v_ciclo)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor de CICLO não pode ser vazio."))
+    if (!grepl("^Ciclo-\\d{4}_[A-Za-z]+$", v_ciclo, perl = TRUE))
+      return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_formato_ciclo",
+                  mensagem = paste0("Formato inválido para CICLO. Use: Ciclo-AAAA_Xxx (ex: Ciclo-2025_VgCS). Recebido: '", v_ciclo, "'.")))
+    return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "formato de CICLO válido pelo contrato"))
+  }
+  ### CAMPANHA: validação por formato contratual, sem restrição ao domínio XLSForm.
+  if (col_norm_dyn %in% c("campanha")) {
+    if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "ação sem valor novo"))
+    v_camp <- trimws(as.character(valor)[1L])
+    if (is.na(v_camp) || !nzchar(v_camp)) return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor de CAMPANHA não pode ser vazio."))
+    if (!grepl("^Campanha-\\d{4}_[A-Za-z]+$", v_camp, perl = TRUE))
+      return(list(aplicou = TRUE, ok = FALSE, status = "bloqueada_formato_campanha",
+                  mensagem = paste0("Formato inválido para CAMPANHA. Use: Campanha-AAAA_Xxx (ex: Campanha-2025_VgCS). Recebido: '", v_camp, "'.")))
+    return(list(aplicou = TRUE, ok = TRUE, status = "ok", mensagem = "formato de CAMPANHA válido pelo contrato"))
   }
   if (!identical(as.character(tipo_base)[1L], "select_one")) return(list(aplicou = FALSE, ok = TRUE, status = "ok", mensagem = "não é domínio dinâmico"))
   if (!isTRUE(monitora_correcao_campo_dominio_dinamico_sismonitora(col, list_name))) return(list(aplicou = FALSE, ok = TRUE, status = "ok", mensagem = "não é domínio dinâmico"))
@@ -22960,7 +22980,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         v <- esp_validacao_mapa()
         m <- leaflet::leaflet(options = leaflet::leafletOptions(preferCanvas = TRUE))
         m <- leaflet::addTiles(m)
-        if (!nrow(v)) return(m)
+        if (!nrow(v)) {
+          m <- leaflet::addControl(m, html = "Sem dados de validação espacial disponíveis para este painel.", position = "topright")
+          return(m)
+        }
         cols_coord <- c("inicio_lat", "inicio_lon", "fim_lat", "fim_lon")
         if (!all(cols_coord %in% names(v))) {
           m <- leaflet::addControl(
@@ -27834,8 +27857,13 @@ monitora_painel_cache_incremental_executar <- function(registros_corrig, meta_xl
   } else {
     monitora_correcao_console_msg("Modo painel_incremental_registros_corrig detectado: painel aberto a partir de registros_corrig.csv já corrigido; correções antigas em input/ serão ignoradas nesta sessão.")
   }
-  if (!isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
-    monitora_correcao_console_msg("Este modo não força MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS=S; validação/aplicação espacial permanece conforme configuração explícita do usuário.")
+  ### Modo incremental: VALIDAR_ESPACIAL=S ativa aba/mapa no painel independente de ABRIR_ABA.
+  if (identical(toupper(trimws(as.character(get0("MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", ifnotfound = "S", inherits = TRUE))[1L])), "S")) {
+    MONITORA_VALIDAR_ESPACIAL_COLETAS <<- TRUE
+    MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <<- TRUE
+    monitora_correcao_console_msg("Modo incremental com VALIDAR_ESPACIAL=S: aba e mapa espacial ativados no painel.")
+  } else {
+    monitora_correcao_console_msg("Modo incremental com VALIDAR_ESPACIAL=N: validação/aplicação espacial desativada conforme configuração explícita.")
   }
   monitora_registros_importados_garantir_pre_painel(NULL, contexto = modo)
   monitora_publicacao_p_auditar_schema_pre_painel(registros_corrig, contexto = paste0("pre_painel_", modo))
@@ -27948,9 +27976,17 @@ if (identical(MONITORA_MODO_EXECUCAO, "painel_incremental_registros_corrig")) {
     }
   }
   validacao_inc_pre <- NULL
-  if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
+  if (identical(toupper(trimws(as.character(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS)[1])), "S")) {
+    MONITORA_VALIDAR_ESPACIAL_COLETAS <- TRUE
+    MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- TRUE
     monitora_correcao_console_msg("Validação espacial pré-painel incremental será gravada em output/validacao_espacial/pre_painel_incremental.")
-    validacao_inc_pre <- monitora_espacial_executar(registros_corrig, momento = "pre_painel_incremental", forcar = TRUE, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR)
+    validacao_inc_pre <- tryCatch(
+      monitora_espacial_executar(registros_corrig, momento = "pre_painel_incremental", forcar = TRUE, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR),
+      error = function(e) {
+        monitora_correcao_console_msg("Validação espacial pré-painel incremental não executada: ", conditionMessage(e), ". Aba espacial será exibida sem dados de validação.")
+        NULL
+      }
+    )
   }
   try(monitora_cache_painel_salvar(registros_corrig, MONITORA_META_XLSFORMS_CORRECOES, relatorios_pre = relatorios_inc_pre, validacao_espacial_pre = validacao_inc_pre), silent = TRUE)
   registros_corrig <- monitora_painel_cache_incremental_executar(

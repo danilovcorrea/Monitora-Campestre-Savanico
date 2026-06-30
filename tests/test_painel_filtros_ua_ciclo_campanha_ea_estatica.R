@@ -112,4 +112,51 @@ exigir(
   "Caixa informativa deve mencionar 'Controle por formato contratual' para UA/CICLO/CAMPANHA."
 )
 
+# --- 8. CICLO/CAMPANHA interceptados em validar_dominio_dinamico antes do tipo_base check ---
+
+linha_ciclo_intercept <- grep("col_norm_dyn.*ciclo", linhas, perl = TRUE)
+linha_tipo_base_check <- grep("!identical.*tipo_base.*select_one", linhas, perl = TRUE)
+exigir(
+  length(linha_ciclo_intercept) > 0L,
+  "Interceptacao de CICLO em validar_dominio_dinamico_sismonitora ausente."
+)
+exigir(
+  length(linha_tipo_base_check) > 0L,
+  "Verificacao tipo_base=select_one em validar_dominio_dinamico_sismonitora ausente."
+)
+exigir(
+  min(linha_ciclo_intercept) < min(linha_tipo_base_check),
+  "Interceptacao de CICLO deve aparecer ANTES da verificacao tipo_base em validar_dominio_dinamico_sismonitora."
+)
+
+linha_camp_intercept <- grep("col_norm_dyn.*campanha", linhas, perl = TRUE)
+exigir(
+  length(linha_camp_intercept) > 0L,
+  "Interceptacao de CAMPANHA em validar_dominio_dinamico_sismonitora ausente."
+)
+exigir(
+  min(linha_camp_intercept) < min(linha_tipo_base_check),
+  "Interceptacao de CAMPANHA deve aparecer ANTES da verificacao tipo_base em validar_dominio_dinamico_sismonitora."
+)
+
+exigir(
+  grepl("formato de CICLO válido pelo contrato", texto, fixed = TRUE),
+  "Retorno de sucesso para CICLO com formato valido ausente."
+)
+exigir(
+  grepl("formato de CAMPANHA válido pelo contrato", texto, fixed = TRUE),
+  "Retorno de sucesso para CAMPANHA com formato valido ausente."
+)
+
+# --- 9. Modo incremental forca VALIDAR_ESPACIAL e ABRIR_ABA quando OPCAO=S ---
+
+exigir(
+  grepl("MONITORA_VALIDAR_ESPACIAL_COLETAS <<- TRUE", texto, fixed = TRUE),
+  "Modo incremental deve forcar MONITORA_VALIDAR_ESPACIAL_COLETAS=TRUE quando OPCAO=S."
+)
+exigir(
+  grepl("MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <<- TRUE", texto, fixed = TRUE),
+  "Modo incremental deve forcar MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL=TRUE quando OPCAO=S."
+)
+
 cat("PAINEL_FILTROS_UA_CICLO_CAMPANHA_EA_ESTATICA_OK\n")
