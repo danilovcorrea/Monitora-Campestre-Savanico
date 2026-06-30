@@ -3919,7 +3919,7 @@ monitora_correcao_resolver_coluna_base_publicacao_ae <- function(dt, nome, dicio
   ### 4. resolução por dicionário XLSForm/atributos, também com normalização.
   if (!is.null(dicionario) && nrow(dicionario) > 0) {
     d <- data.table::as.data.table(dicionario)
-    for (cc in c("name", "caminho_registro", "label", "atributo_coluna_registros_corrig", "xlsform_name", "xlsform_label")) {
+    for (cc in c("name", "caminho_registro", "label", "atributo_coluna_registros_corrig", "xlsform_name", "xlsform_label", "xlsform_caminho_registro")) {
       if (!(cc %in% names(d))) d[, (cc) := NA_character_]
     }
     cand <- unique(c(
@@ -3934,7 +3934,8 @@ monitora_correcao_resolver_coluna_base_publicacao_ae <- function(dt, nome, dicio
       d[label == nome, label],
       d[atributo_coluna_registros_corrig == nome, atributo_coluna_registros_corrig],
       d[xlsform_name == nome, atributo_coluna_registros_corrig],
-      d[xlsform_label == nome, atributo_coluna_registros_corrig]
+      d[xlsform_label == nome, atributo_coluna_registros_corrig],
+      d[xlsform_caminho_registro == nome, atributo_coluna_registros_corrig]
     ))
     cand <- cand[!is.na(cand) & nzchar(cand)]
     cand <- monitora_correcao_filtrar_colunas_seguras(cand, NULL)
@@ -3948,7 +3949,7 @@ monitora_correcao_resolver_coluna_base_publicacao_ae <- function(dt, nome, dicio
 
     ### Match normalizado entre o nome solicitado e qualquer coluna de mapeamento do dicionário.
     alvo_norm <- monitora_correcao_normalizar_nome_coluna(nome)
-    vals <- unique(c(d$name, d$caminho_registro, d$label, d$atributo_coluna_registros_corrig, d$xlsform_name, d$xlsform_label))
+    vals <- unique(c(d$name, d$caminho_registro, d$label, d$atributo_coluna_registros_corrig, d$xlsform_name, d$xlsform_label, d$xlsform_caminho_registro))
     vals <- vals[!is.na(vals) & nzchar(vals)]
     vals_norm <- monitora_correcao_normalizar_nome_coluna(vals)
     vals_hit <- vals[vals_norm == alvo_norm]
@@ -6402,6 +6403,7 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
     out[, xlsform_list_name := NA_character_]
     out[, xlsform_required := NA_character_]
     out[, xlsform_relevant := NA_character_]
+    out[, xlsform_caminho_registro := NA_character_]
     for (ii in seq_len(nrow(out))) {
       cc <- out$atributo_coluna_registros_corrig[ii]
       hit <- campos[name == cc | caminho_registro == cc | label == cc]
@@ -6417,6 +6419,8 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
         data.table::set(out, i = ii, j = "xlsform_list_name", value = tipo_hit$list_name[1])
         if ("required" %in% names(hit)) data.table::set(out, i = ii, j = "xlsform_required", value = hit$required[1])
         if ("relevant" %in% names(hit)) data.table::set(out, i = ii, j = "xlsform_relevant", value = hit$relevant[1])
+        if ("caminho_registro" %in% names(hit) && !is.na(hit$caminho_registro[1]) && nzchar(hit$caminho_registro[1]))
+          data.table::set(out, i = ii, j = "xlsform_caminho_registro", value = as.character(hit$caminho_registro[1]))
       }
     }
   }
@@ -25063,6 +25067,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       out[!nzchar(ponto_amostral_exemplo), ponto_amostral_exemplo := NA_character_]
       out[!nzchar(ponto_metro_exemplo), ponto_metro_exemplo := NA_character_]
       out[!nzchar(acao_sugerida), acao_sugerida := NA_character_]
+      n_x <- nrow(x)
+      out[tipo_pendencia == "atributo_101_nao_resolvido", acao_sugerida := paste0(
+        "Pendência técnica de contrato/schema: atributo contratual '", atributo,
+        "' não resolvido no registros_corrig em ", n_x, " linha(s). ",
+        "Não corrigível pela bolsista no painel. ",
+        "Envie ao suporte técnico: COLETA, print do painel, ",
+        "auditoria_painel_controle_atributos.csv e auditoria_mapa_colunas_canonicas_ultima_execucao.csv."
+      )]
       data.table::setorder(out, escopo, tipo_pendencia, atributo)
       out[, ..cols_out]
     }

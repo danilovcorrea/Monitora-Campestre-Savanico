@@ -94,14 +94,30 @@ exigir(
   "acao_sugerida para atributo_101_nao_resolvido deve incluir 'Pendencia tecnica de contrato/schema'."
 )
 exigir(
-  grepl("Não corrigível no painel", texto, fixed = TRUE) ||
-    grepl("Nao corrigivel no painel", texto, fixed = TRUE),
-  "acao_sugerida para atributo_101_nao_resolvido deve explicitar que nao e corrigivel no painel."
+  grepl("Não corrigível pela bolsista no painel", texto, fixed = TRUE) ||
+    grepl("Nao corrigivel pela bolsista no painel", texto, fixed = TRUE),
+  "acao_sugerida para atributo_101_nao_resolvido deve explicitar que nao e corrigivel pela bolsista no painel."
 )
 exigir(
   grepl("suporte técnico", texto, fixed = TRUE) ||
     grepl("suporte tecnico", texto, fixed = TRUE),
   "acao_sugerida para atributo_101_nao_resolvido deve referenciar o suporte tecnico."
+)
+exigir(
+  grepl("auditoria_painel_controle_atributos.csv", texto, fixed = TRUE),
+  "acao_sugerida deve citar auditoria_painel_controle_atributos.csv."
+)
+exigir(
+  grepl("auditoria_mapa_colunas_canonicas_ultima_execucao.csv", texto, fixed = TRUE),
+  "acao_sugerida deve citar auditoria_mapa_colunas_canonicas_ultima_execucao.csv."
+)
+exigir(
+  grepl("linha(s)", texto, fixed = TRUE),
+  "acao_sugerida deve incluir 'linha(s)' para indicar quantas linhas sao afetadas."
+)
+exigir(
+  !grepl('"Escalar para desenvolvedor: corrigir contrato/schema/materialização."', texto, fixed = TRUE),
+  "Mensagem generica 'Escalar para desenvolvedor' nao deve ser a acao_sugerida para atributo_101_nao_resolvido."
 )
 
 # --- 9. atributo_101_nao_resolvido disparado por coluna ausente, nao por contagem de linhas ---
@@ -125,7 +141,27 @@ if (length(idx_add_101) > 0L) {
   )
 }
 
-# --- 10. Aba espacial preservada (regressao) ---
+# --- 10. Resolver coluna usa xlsform_caminho_registro para Data (data_hora/data) ---
+
+exigir(
+  grepl("xlsform_caminho_registro", texto, fixed = TRUE),
+  "dicionario_atributos e resolver_coluna devem usar xlsform_caminho_registro para resolver 'data_hora/data' -> 'Data (data_hora)'."
+)
+exigir(
+  grepl('xlsform_caminho_registro == nome', texto, fixed = TRUE),
+  "resolver_coluna deve fazer lookup por xlsform_caminho_registro == nome."
+)
+
+# --- 11. DATA DO REGISTRO e DATA_MONITORA_PARSEADA permanecem protegidas ---
+
+exigir(
+  grepl("DATA DO REGISTRO", texto, fixed = TRUE) &&
+    grepl("DATA_MONITORA_PARSEADA", texto, fixed = TRUE) &&
+    grepl("MONITORA_CORRECAO_COLUNAS_PROTEGIDAS", texto, fixed = TRUE),
+  "DATA DO REGISTRO e DATA_MONITORA_PARSEADA devem permanecer em MONITORA_CORRECAO_COLUNAS_PROTEGIDAS."
+)
+
+# --- 12. Aba espacial preservada (regressao) ---
 
 exigir(
   grepl('shiny::tabPanel', texto, fixed = TRUE) &&
