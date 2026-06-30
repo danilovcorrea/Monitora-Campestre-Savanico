@@ -11425,8 +11425,17 @@ monitora_registros_corrig_auditar_atributos_101 <- function(dt, contrato = NULL)
       add(
         "atributo_101_nao_resolvido", "impeditiva", FALSE, row, NA_integer_, "",
         paste(aliases, collapse = " | "),
-        paste0("Atributo 101 '", as.character(row$atributo_canonico)[1L], "' (aliases: ", paste(aliases, collapse = " | "), ") sem coluna presente em registros_corrig."),
-        "Mapear/materializar o atributo antes de considerar registros_corrig final."
+        paste0(
+          "Atributo 101 '", as.character(row$atributo_canonico)[1L],
+          "': coluna esperada '", col_principal,
+          "'; aliases procurados: ", paste(aliases, collapse = " | "),
+          "; nenhuma coluna encontrada em registros_corrig.",
+          if (isTRUE(row$editavel_painel))
+            paste0(" Corrigível pelo painel: selecione o atributo '", as.character(row$atributo_canonico)[1L], "' e use a ação disponível.")
+          else
+            " Não corrigível pelo painel (atributo protegido ou não editável); verifique o pipeline de entrada."
+        ),
+        paste0("Verificar se a coluna '", col_principal, "' foi gerada pelo pipeline; se não, contate o responsável técnico.")
       )
       next
     }
@@ -21035,8 +21044,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(shiny::selectizeInput("valor_novo", lab, choices = choices, selected = character(0), multiple = mult, options = list(placeholder = "Escolha token(s); não digite valor total do campo", plugins = if (mult) list("remove_button") else NULL)))
       }
       if (tipo == "date") return(shiny::textInput("valor_novo", "Valor novo", value = "", placeholder = "YYYY-MM-DD"))
-      if (tipo == "integer") return(shiny::numericInput("valor_novo", "Valor novo inteiro", value = NA, step = 1))
-      if (tipo == "decimal") return(shiny::numericInput("valor_novo", "Valor novo decimal", value = NA, step = 0.01))
+      if (tipo == "integer") return(shiny::textInput("valor_novo", "Valor novo inteiro", value = "", placeholder = "número inteiro (ex: 1)"))
+      if (tipo == "decimal") return(shiny::textInput("valor_novo", "Valor novo decimal", value = "", placeholder = "número decimal (ex: 1.5)"))
       if (tipo == "time") return(shiny::textInput("valor_novo", "Valor novo de hora", value = "", placeholder = "HH:MM:SS.000-03:00"))
       if (tipo == "datetime") return(shiny::textInput("valor_novo", "Valor novo de data/hora", value = "", placeholder = "YYYY-MM-DDTHH:MM:SS-03:00"))
       if (tipo == "geopoint") return(shiny::textInput("valor_novo", "Valor novo de coordenada", value = "", placeholder = "lat lon [alt acc]"))
@@ -27858,12 +27867,12 @@ monitora_painel_cache_incremental_executar <- function(registros_corrig, meta_xl
     monitora_correcao_console_msg("Modo painel_incremental_registros_corrig detectado: painel aberto a partir de registros_corrig.csv já corrigido; correções antigas em input/ serão ignoradas nesta sessão.")
   }
   ### Modo incremental: VALIDAR_ESPACIAL=S ativa aba/mapa no painel independente de ABRIR_ABA.
-  if (identical(toupper(trimws(as.character(get0("MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", ifnotfound = "S", inherits = TRUE))[1L])), "S")) {
+  if (identical(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS, "S")) {
     MONITORA_VALIDAR_ESPACIAL_COLETAS <<- TRUE
     MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <<- TRUE
     monitora_correcao_console_msg("Modo incremental com VALIDAR_ESPACIAL=S: aba e mapa espacial ativados no painel.")
   } else {
-    monitora_correcao_console_msg("Modo incremental com VALIDAR_ESPACIAL=N: validação/aplicação espacial desativada conforme configuração explícita.")
+    monitora_correcao_console_msg("Modo incremental com VALIDAR_ESPACIAL=N: validação/aplicação espacial desativada por configuração explícita do usuário.")
   }
   monitora_registros_importados_garantir_pre_painel(NULL, contexto = modo)
   monitora_publicacao_p_auditar_schema_pre_painel(registros_corrig, contexto = paste0("pre_painel_", modo))
