@@ -23450,7 +23450,19 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       x <- dados_filtrados()
       if (nrow(x) == 0L) return("")
       atributo_real <- tryCatch(monitora_correcao_resolver_coluna(x, atributo, dict), error = function(e) NA_character_)
-      if (is.na(atributo_real) || !nzchar(atributo_real) || !(atributo_real %in% names(x))) return("")
+      if (is.na(atributo_real) || !nzchar(atributo_real) || !(atributo_real %in% names(x))) {
+        if (grepl("/", atributo, fixed = TRUE)) {
+          leaf_norm   <- monitora_correcao_normalizar_nome_coluna(sub("^.*/", "", atributo))
+          parent_norm <- monitora_correcao_normalizar_nome_coluna(sub("/[^/]+$", "", atributo))
+          if (nzchar(leaf_norm) && nzchar(parent_norm)) {
+            nms_seg <- tryCatch(setdiff(names(x), monitora_correcao_colunas_protegidas_existentes(x)), error = function(e) names(x))
+            nms_seg_norm <- monitora_correcao_normalizar_nome_coluna(nms_seg)
+            hits <- nms_seg[startsWith(nms_seg_norm, leaf_norm) & grepl(parent_norm, nms_seg_norm, fixed = TRUE)]
+            if (length(hits) == 1L) atributo_real <- hits[1L]
+          }
+        }
+        if (is.na(atributo_real) || !nzchar(atributo_real) || !(atributo_real %in% names(x))) return("")
+      }
       escopo_efetivo <- monitora_painel_escopo_efetivo_atributo(atributo, input$escopo)
       linhas <- if (identical(escopo_efetivo, "ponto")) {
         ponto_val <- monitora_painel_valor(input$ponto)
@@ -24696,6 +24708,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             n_nao_corrigiveis_painel = i.n_nao_corrigiveis_painel
           )]
         }
+      }
+      if ("tipo" %in% names(res)) {
+        res[tipo == "atributo_101_nao_resolvido" & !is.na(n_linhas) & n_linhas > 0L, ocorrencia := paste0(
+          "Pendência técnica de contrato/schema: ", n_linhas, " linha(s) de atributo contratual não resolvido no registros_corrig. ",
+          "Não corrigível pela bolsista no painel. ",
+          "Envie ao suporte técnico: COLETA, print do painel, ",
+          "auditoria_painel_controle_atributos.csv e auditoria_mapa_colunas_canonicas_ultima_execucao.csv."
+        )]
       }
       res[]
     }

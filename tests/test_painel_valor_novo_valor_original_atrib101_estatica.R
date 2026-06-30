@@ -169,4 +169,37 @@ exigir(
   "Aba espacial com shiny::tabPanel e MONITORA_VALIDAR_ESPACIAL_COLETAS deve existir (regressao)."
 )
 
+# --- 13. Fallback XLSForm path (leaf+parent) em monitora_painel_valor_original_sugerido ---
+
+idx_sug_fallback <- grep("monitora_painel_valor_original_sugerido", linhas, fixed = TRUE)
+def_sug_fallback <- idx_sug_fallback[grepl("<-\\s*shiny::reactive", linhas[idx_sug_fallback], perl = TRUE)]
+exigir(
+  length(def_sug_fallback) > 0L,
+  "monitora_painel_valor_original_sugerido reactive nao encontrado (secao 13)."
+)
+bloco_fallback <- paste(linhas[seq(def_sug_fallback[1L], min(def_sug_fallback[1L] + 40L, length(linhas)))], collapse = "\n")
+exigir(
+  grepl("leaf_norm", bloco_fallback, fixed = TRUE) && grepl("parent_norm", bloco_fallback, fixed = TRUE),
+  "Fallback para XLSForm paths ('/') deve definir leaf_norm e parent_norm em monitora_painel_valor_original_sugerido."
+)
+exigir(
+  grepl("startsWith", bloco_fallback, fixed = TRUE),
+  "Fallback deve usar startsWith(nms_seg_norm, leaf_norm) para encontrar coluna real."
+)
+exigir(
+  grepl("colunas_protegidas_existentes", bloco_fallback, fixed = TRUE),
+  "Fallback deve excluir colunas protegidas (DATA DO REGISTRO, DATA_MONITORA_PARSEADA) via colunas_protegidas_existentes."
+)
+
+# --- 14. monitora_painel_resumo_impeditivas_dados expoe texto acionavel no modal ---
+
+exigir(
+  grepl('tipo == "atributo_101_nao_resolvido"[^\n]*ocorrencia\\s*:=', texto, perl = TRUE),
+  "monitora_painel_resumo_impeditivas_dados deve atualizar res$ocorrencia para atributo_101_nao_resolvido com texto acionavel."
+)
+exigir(
+  grepl("linha(s) de atributo contratual não resolvido", texto, fixed = TRUE),
+  "Texto acionavel no modal deve conter 'linha(s) de atributo contratual nao resolvido'."
+)
+
 cat("PAINEL_VALOR_NOVO_VALOR_ORIGINAL_ATRIB101_ESTATICA_OK\n")
