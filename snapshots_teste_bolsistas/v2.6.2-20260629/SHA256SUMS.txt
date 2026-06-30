@@ -1,0 +1,1 @@
+05011b04e4eae527fecfafabb4cdd8e8993fb01822e3d7f0e790969a5eb1ab62  snapshots_teste_bolsistas/v2.6.2-20260629/monitora_campsav_alvo_global_v2.6.2_teste_bolsistas_20260629.R
