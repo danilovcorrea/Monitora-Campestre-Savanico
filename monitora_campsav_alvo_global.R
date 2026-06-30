@@ -20764,6 +20764,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::h4("Correções pendentes nesta sessão"),
         shiny::uiOutput("status_correcoes"),
         shiny::uiOutput("preview_pendencias_sessao"),
+        shiny::h4("Pendências que impedem registros_validados"),
+        shiny::helpText("Detalhe operacional das pendências impeditivas avaliadas pela mesma auditoria que bloqueia registros_corrig aprovado e registros_validados.csv."),
+        monitora_painel_dt_output("pendencias_impeditivas_detalhadas"),
         shiny::actionButton("excluir_correcoes_pendentes", "Excluir correção(ões) pendente(s) selecionada(s)", class = "btn-danger"),
         monitora_painel_dt_output("correcoes")
           ),
@@ -22314,6 +22317,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
     })
 
+    output$pendencias_impeditivas_detalhadas <- DT::renderDT({
+      det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
+      if (!nrow(det)) {
+        return(DT::datatable(data.table::data.table(mensagem = "Sem pendências impeditivas detectadas nesta avaliação."), rownames = FALSE))
+      }
+      DT::datatable(det, options = monitora_painel_dt_options(), rownames = FALSE)
+    }, server = TRUE)
 
     output$preview_pendencias_sessao <- shiny::renderUI({
       resumo_pre <- tryCatch(monitora_painel_resumo_impeditivas_pre(), error = function(e) data.table::data.table())
@@ -24775,6 +24785,121 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_resumo_impeditivas_preview <- shiny::reactive({
       xprev <- tryCatch(monitora_painel_preview_dados_pos_operacoes(), error = function(e) dt)
       monitora_painel_resumo_impeditivas_dados(xprev)
+    })
+
+    monitora_painel_pendencias_impeditivas_detalhadas_dados <- function(x) {
+      x <- data.table::as.data.table(x)
+      cols_out <- c(
+        "severidade", "tipo_pendencia", "rotulo_pendencia", "atributo", "escopo",
+        "n_linhas", "n_coletas", "coletas_exemplo", "ponto_amostral_exemplo",
+        "ponto_metro_exemplo", "corrigivel_no_painel", "acao_sugerida"
+      )
+      vazio <- function() {
+        data.table::data.table(
+          severidade = character(), tipo_pendencia = character(), rotulo_pendencia = character(),
+          atributo = character(), escopo = character(), n_linhas = integer(), n_coletas = integer(),
+          coletas_exemplo = character(), ponto_amostral_exemplo = character(), ponto_metro_exemplo = character(),
+          corrigivel_no_painel = character(), acao_sugerida = character()
+        )
+      }
+      if (!nrow(x) || !exists("monitora_publicacao_ab_auditar_pendencias_impeditivas", mode = "function")) return(vazio())
+      res <- tryCatch(
+        monitora_publicacao_ab_auditar_pendencias_impeditivas(
+          data.table::copy(x),
+          contexto = "painel_pendencias_impeditivas_detalhadas",
+          output_dir = tempdir(),
+          log_dir = tempdir(),
+          gravar = FALSE,
+          marcar_base = FALSE
+        ),
+        error = function(e) NULL
+      )
+      aud <- tryCatch(data.table::as.data.table(res$auditoria), error = function(e) data.table::data.table())
+      if (!nrow(aud)) return(vazio())
+      for (cc in c("severidade", "tipo_pendencia", "rotulo_pendencia", "atributo", "COLETA", "ponto_amostral", "acao_sugerida")) {
+        if (!(cc %in% names(aud))) aud[, (cc) := NA_character_]
+      }
+      if (!("ponto_metro" %in% names(aud))) aud[, ponto_metro := NA_character_]
+      if (!("corrigivel_no_painel" %in% names(aud))) aud[, corrigivel_no_painel := NA]
+      if (!("linha_indice" %in% names(aud))) aud[, linha_indice := NA_integer_]
+
+      preencher_por_linha <- function(col_aud, chave) {
+        cc <- tryCatch(as.character(chaves[[chave]])[1L], error = function(e) NA_character_)
+        if (is.na(cc) || !nzchar(cc) || !(cc %in% names(x))) return(invisible(NULL))
+        idx <- suppressWarnings(as.integer(aud$linha_indice))
+        ok <- !is.na(idx) & idx >= 1L & idx <= nrow(x)
+        falta <- is.na(aud[[col_aud]]) | !nzchar(as.character(aud[[col_aud]]))
+        ii <- which(ok & falta)
+        if (length(ii)) data.table::set(aud, i = ii, j = col_aud, value = as.character(x[[cc]][idx[ii]]))
+        invisible(NULL)
+      }
+      preencher_por_linha("COLETA", "coleta")
+      preencher_por_linha("ponto_amostral", "ponto_amostral")
+      preencher_por_linha("ponto_metro", "ponto_metro")
+
+      aud[, escopo := data.table::fifelse(
+        tipo_pendencia == "atributo_101_nao_resolvido" | is.na(linha_indice),
+        "atributo_global",
+        data.table::fifelse(!is.na(COLETA) & nzchar(as.character(COLETA)), "linha", "contrato")
+      )]
+      aud[escopo == "atributo_global", `:=`(COLETA = NA_character_, ponto_amostral = NA_character_, ponto_metro = NA_character_)]
+      contrato_cols <- unique(c(
+        tryCatch(as.character(contrato_dropdown_painel_101$coluna_materializada), error = function(e) character(0)),
+        tryCatch(as.character(contrato_dropdown_painel_101$atributo_canonico), error = function(e) character(0))
+      ))
+      norm_col <- function(v) tryCatch(monitora_correcao_normalizar_nome_coluna(v), error = function(e) tolower(trimws(as.character(v))))
+      contrato_norm <- norm_col(contrato_cols)
+      atributo_norm <- norm_col(aud$atributo)
+      protegidas_norm <- norm_col(c(
+        get0("MONITORA_CORRECAO_COLUNAS_PROTEGIDAS", ifnotfound = character(), inherits = TRUE),
+        "monitora_status_registros_corrig", "monitora_pendencia_impeditiva",
+        "monitora_pendencia_impeditiva_tipo", "monitora_pendencia_impeditiva_msg",
+        "linha_indice", "arquivo_origem", "uuid_registro", "coleta_uuid"
+      ))
+      atributo_materializavel <- atributo_norm %in% contrato_norm
+      atributo_tecnico <- grepl("^monitora_|^linha_|^arquivo_|uuid", atributo_norm, perl = TRUE) | atributo_norm %in% protegidas_norm
+      aud[, corrigivel_no_painel := as.logical(corrigivel_no_painel)]
+      aud[tipo_pendencia %in% c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida"), `:=`(
+        corrigivel_no_painel = FALSE,
+        acao_sugerida = "Escalar para desenvolvedor: corrigir contrato/schema/materialização."
+      )]
+      aud[tipo_pendencia == "atributo_101_alias_conflitante" & (!atributo_materializavel | atributo_tecnico), `:=`(
+        corrigivel_no_painel = FALSE,
+        acao_sugerida = "Escalar para desenvolvedor: alias conflitante fora do contrato materializável exposto ao bolsista."
+      )]
+      aud[tipo_pendencia == "encostam_token_desconhecido", `:=`(
+        corrigivel_no_painel = FALSE,
+        acao_sugerida = "Escalar para desenvolvedor: revisar sanitização pré-painel de Encostam/token desconhecido."
+      )]
+      aud[tipo_pendencia == "ponto_sem_interceptacao" & (!atributo_materializavel | atributo_tecnico), `:=`(
+        corrigivel_no_painel = FALSE,
+        acao_sugerida = "Escalar para desenvolvedor: pendência exige alvo fora do contrato materializável."
+      )]
+      aud[atributo_tecnico, `:=`(
+        corrigivel_no_painel = FALSE,
+        acao_sugerida = "Escalar para desenvolvedor: coluna técnica de registros_corrig não é alvo editável do bolsista."
+      )]
+
+      out <- aud[, .(
+        n_linhas = if (identical(escopo[1L], "atributo_global")) NA_integer_ else data.table::uniqueN(linha_indice[!is.na(linha_indice)]),
+        n_coletas = if (identical(escopo[1L], "atributo_global")) NA_integer_ else data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)]),
+        coletas_exemplo = if (identical(escopo[1L], "atributo_global")) "não aplicável" else paste(utils::head(unique(COLETA[!is.na(COLETA) & nzchar(COLETA)]), 10L), collapse = " | "),
+        ponto_amostral_exemplo = if (identical(escopo[1L], "atributo_global")) "não aplicável" else paste(utils::head(unique(ponto_amostral[!is.na(ponto_amostral) & nzchar(ponto_amostral)]), 5L), collapse = " | "),
+        ponto_metro_exemplo = if (identical(escopo[1L], "atributo_global")) "não aplicável" else paste(utils::head(unique(ponto_metro[!is.na(ponto_metro) & nzchar(ponto_metro)]), 5L), collapse = " | "),
+        corrigivel_no_painel = paste(unique(as.character(corrigivel_no_painel)), collapse = " | "),
+        acao_sugerida = paste(unique(acao_sugerida[!is.na(acao_sugerida) & nzchar(acao_sugerida)]), collapse = " | ")
+      ), by = .(severidade, tipo_pendencia, rotulo_pendencia, atributo, escopo)]
+      out[!nzchar(coletas_exemplo), coletas_exemplo := NA_character_]
+      out[!nzchar(ponto_amostral_exemplo), ponto_amostral_exemplo := NA_character_]
+      out[!nzchar(ponto_metro_exemplo), ponto_metro_exemplo := NA_character_]
+      out[!nzchar(acao_sugerida), acao_sugerida := NA_character_]
+      data.table::setorder(out, escopo, tipo_pendencia, atributo)
+      out[, ..cols_out]
+    }
+
+    monitora_painel_pendencias_impeditivas_detalhadas_preview <- shiny::reactive({
+      xprev <- tryCatch(monitora_painel_preview_dados_pos_operacoes(), error = function(e) dt)
+      monitora_painel_pendencias_impeditivas_detalhadas_dados(xprev)
     })
 
     monitora_painel_tabela_impeditivas_ui <- function(resumo = NULL, titulo = NULL) {
