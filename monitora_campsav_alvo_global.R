@@ -195,9 +195,9 @@ MONITORA_ORACULO_COLUNAS_IGNORAR <- c("MONITORA_CAMINHO_ARQUIVO_ENTRADA")
 ### coordenadas, fotos, UUIDs, nomes de UC e observações de campo.
 MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 ### Módulo opcional de validação espacial de COLETAS -------------------------
-### O padrão é desligado. Altere para "S" para gerar validação espacial e habilitar
-### a aba espacial do painel. Também pode ser definido por variável de ambiente.
-MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
+### O padrão público é ligado. Defina explicitamente "N" para desativar a
+### validação espacial e a aba/mapa do painel.
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
 MONITORA_RAIO_VALIDACAO_ESPACIAL_M <- 20
 MONITORA_RAIO_ALERTA_ESPACIAL_M <- 10
 MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL <- 2L
@@ -208,7 +208,7 @@ MONITORA_ACURACIA_GPS_MAX_ALERTA_M <- 10
 MONITORA_VALIDAR_COMPRIMENTO_TRANSECTO <- "S"
 MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M <- 50
 MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M <- 20
-MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "N"
+MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
 MONITORA_APLICAR_CORRECOES_ESPACIAIS <- TRUE
 
 ### Otimizações e segurança operacional --------------------------------------
@@ -425,13 +425,30 @@ MONITORA_ACURACIA_GPS_MAX_ALERTA_M <- monitora_cfg_env_num("MONITORA_ACURACIA_GP
 MONITORA_VALIDAR_COMPRIMENTO_TRANSECTO <- Sys.getenv("MONITORA_VALIDAR_COMPRIMENTO_TRANSECTO", unset = as.character(MONITORA_VALIDAR_COMPRIMENTO_TRANSECTO)[1])
 MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M <- monitora_cfg_env_num("MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M", MONITORA_COMPRIMENTO_TRANSECTO_ESPERADO_M)
 MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M <- monitora_cfg_env_num("MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M", MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M)
-MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- Sys.getenv("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", unset = as.character(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL)[1])
+MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV <- Sys.getenv("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", unset = NA_character_)
+MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- if (
+  is.na(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV) &&
+    identical(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS, "S")
+) {
+  "S"
+} else if (is.na(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV)) {
+  as.character(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL)[1]
+} else {
+  MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL_ENV
+}
 MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- toupper(trimws(as.character(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL)[1]))
 if (!(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL deve ser 'S' ou 'N'.", call. = FALSE)
 }
 MONITORA_VALIDAR_ESPACIAL_COLETAS <- identical(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS, "S")
 MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL, "S")
+if (isTRUE(MONITORA_VALIDAR_ESPACIAL_COLETAS)) {
+  try(message(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    " [validacao_espacial] Validação espacial ativa; aba/mapa espacial ",
+    if (isTRUE(MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL)) "ativa." else "desativada por configuração explícita."
+  ), silent = TRUE)
+}
 MONITORA_OPCAO_PULAR_RECALCULO_DATA_HORA_SEM_ALTERACAO <- toupper(trimws(Sys.getenv("MONITORA_OPCAO_PULAR_RECALCULO_DATA_HORA_SEM_ALTERACAO", unset = as.character(MONITORA_OPCAO_PULAR_RECALCULO_DATA_HORA_SEM_ALTERACAO)[1])))
 if (!(MONITORA_OPCAO_PULAR_RECALCULO_DATA_HORA_SEM_ALTERACAO %in% c("S", "N"))) MONITORA_OPCAO_PULAR_RECALCULO_DATA_HORA_SEM_ALTERACAO <- "S"
 MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS <- toupper(trimws(Sys.getenv("MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS", unset = as.character(MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS)[1])))
@@ -16590,7 +16607,7 @@ monitora_correcao_criar_operacao <- function(id, responsavel, tipo, ordem, escop
 
 ### Configuração do módulo ---------------------------------------------------
 if (!exists("MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", inherits = FALSE)) {
-  MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
+  MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
 }
 if (!exists("MONITORA_RAIO_VALIDACAO_ESPACIAL_M", inherits = FALSE)) {
   MONITORA_RAIO_VALIDACAO_ESPACIAL_M <- 20
@@ -16625,6 +16642,10 @@ if (!exists("MONITORA_TOLERANCIA_COMPRIMENTO_TRANSECTO_M", inherits = FALSE)) {
 if (!exists("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", inherits = FALSE)) {
   MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
 }
+if (identical(toupper(trimws(as.character(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS)[1])), "S") &&
+    !identical(Sys.getenv("MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", unset = NA_character_), "N")) {
+  MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL <- "S"
+}
 
 MONITORA_VALIDAR_ESPACIAL_COLETAS <- identical(
   toupper(trimws(as.character(MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS)[1])),
@@ -16634,6 +16655,13 @@ MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL <- identical(
   toupper(trimws(as.character(MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL)[1])),
   "S"
 )
+if (isTRUE(MONITORA_VALIDAR_ESPACIAL_COLETAS)) {
+  try(message(
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    " [validacao_espacial] Módulo ativo; aba/mapa espacial ",
+    if (isTRUE(MONITORA_ABRIR_ABA_VALIDACAO_ESPACIAL)) "ativa." else "desativada por configuração explícita."
+  ), silent = TRUE)
+}
 
 MONITORA_VALIDACAO_ESPACIAL_VERSAO_MODULO <- "2.5.4"
 if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inherits = FALSE)) {
@@ -22879,7 +22907,24 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           fim_lat_num = suppressWarnings(as.numeric(fim_lat)),
           fim_lon_num = suppressWarnings(as.numeric(fim_lon))
         )]
-        v <- v[is.finite(inicio_lat_num) & is.finite(inicio_lon_num) & is.finite(fim_lat_num) & is.finite(fim_lon_num)]
+        v[, `:=`(
+          inicio_plotavel = is.finite(inicio_lat_num) & is.finite(inicio_lon_num),
+          fim_plotavel = is.finite(fim_lat_num) & is.finite(fim_lon_num)
+        )]
+        n_total_mapa <- nrow(v)
+        n_parcial_mapa <- sum(xor(v$inicio_plotavel, v$fim_plotavel), na.rm = TRUE)
+        n_sem_coord_mapa <- sum(!v$inicio_plotavel & !v$fim_plotavel, na.rm = TRUE)
+        if (n_parcial_mapa > 0L || n_sem_coord_mapa > 0L) {
+          msg_mapa <- paste0(
+            "Mapa espacial: ", n_total_mapa - n_sem_coord_mapa, " de ", n_total_mapa,
+            " COLETA(s) com ao menos um ponto plotável; ",
+            n_parcial_mapa, " com coordenada parcial; ",
+            n_sem_coord_mapa, " sem coordenadas plotáveis."
+          )
+          try(monitora_correcao_console_msg(msg_mapa), silent = TRUE)
+          m <- leaflet::addControl(m, html = msg_mapa, position = "topright")
+        }
+        v <- v[inicio_plotavel | fim_plotavel]
         if (!nrow(v)) return(m)
         data.table::setorder(v, pendencia_espacial, status_espacial, UC, EA, UA, ANO, COLETA)
         if (nrow(v) > 300L) v <- v[seq_len(300L)]
@@ -22897,29 +22942,36 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "<br>Comprimento transecto (m): ", if ("comprimento_transecto_m" %in% names(v)) round(as.numeric(v$comprimento_transecto_m), 2) else ""
         )
         labels <- paste0(if ("UA" %in% names(v)) as.character(v$UA) else "UA", " | ", if ("ANO" %in% names(v)) as.character(v$ANO) else "ANO")
-        m <- leaflet::addCircleMarkers(
-          m,
-          lng = v$inicio_lon_num,
-          lat = v$inicio_lat_num,
-          radius = 5,
-          stroke = TRUE,
-          fillOpacity = 0.8,
-          label = labels,
-          popup = paste0(popup, "<br>Ponto: vergalhão inicial"),
-          group = "Vergalhão inicial"
-        )
-        m <- leaflet::addCircleMarkers(
-          m,
-          lng = v$fim_lon_num,
-          lat = v$fim_lat_num,
-          radius = 5,
-          stroke = TRUE,
-          fillOpacity = 0.8,
-          label = labels,
-          popup = paste0(popup, "<br>Ponto: vergalhão final"),
-          group = "Vergalhão final"
-        )
-        for (ii in seq_len(nrow(v))) {
+        idx_inicio <- which(v$inicio_plotavel)
+        idx_fim <- which(v$fim_plotavel)
+        if (length(idx_inicio)) {
+          m <- leaflet::addCircleMarkers(
+            m,
+            lng = v$inicio_lon_num[idx_inicio],
+            lat = v$inicio_lat_num[idx_inicio],
+            radius = 5,
+            stroke = TRUE,
+            fillOpacity = 0.8,
+            label = labels[idx_inicio],
+            popup = paste0(popup[idx_inicio], "<br>Ponto: vergalhão inicial"),
+            group = "Vergalhão inicial"
+          )
+        }
+        if (length(idx_fim)) {
+          m <- leaflet::addCircleMarkers(
+            m,
+            lng = v$fim_lon_num[idx_fim],
+            lat = v$fim_lat_num[idx_fim],
+            radius = 5,
+            stroke = TRUE,
+            fillOpacity = 0.8,
+            label = labels[idx_fim],
+            popup = paste0(popup[idx_fim], "<br>Ponto: vergalhão final"),
+            group = "Vergalhão final"
+          )
+        }
+        idx_transectos <- which(v$inicio_plotavel & v$fim_plotavel)
+        for (ii in idx_transectos) {
           m <- leaflet::addPolylines(
             m,
             lng = c(v$inicio_lon_num[ii], v$fim_lon_num[ii]),
@@ -22931,6 +22983,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             group = "Transecções"
           )
         }
+        lng_bounds <- c(v$inicio_lon_num[v$inicio_plotavel], v$fim_lon_num[v$fim_plotavel])
+        lat_bounds <- c(v$inicio_lat_num[v$inicio_plotavel], v$fim_lat_num[v$fim_plotavel])
         m <- leaflet::addLayersControl(
           m,
           overlayGroups = c("Transecções", "Vergalhão inicial", "Vergalhão final"),
@@ -22938,10 +22992,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         )
         m <- leaflet::fitBounds(
           m,
-          lng1 = min(c(v$inicio_lon_num, v$fim_lon_num), na.rm = TRUE),
-          lat1 = min(c(v$inicio_lat_num, v$fim_lat_num), na.rm = TRUE),
-          lng2 = max(c(v$inicio_lon_num, v$fim_lon_num), na.rm = TRUE),
-          lat2 = max(c(v$inicio_lat_num, v$fim_lat_num), na.rm = TRUE)
+          lng1 = min(lng_bounds, na.rm = TRUE),
+          lat1 = min(lat_bounds, na.rm = TRUE),
+          lng2 = max(lng_bounds, na.rm = TRUE),
+          lat2 = max(lat_bounds, na.rm = TRUE)
         )
         m
       })
@@ -23737,6 +23791,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       atributo_operacional <- tryCatch(monitora_correcao_resolver_coluna(dt, atributo_sel, dict), error = function(e) atributo_sel)
       if (is.na(atributo_operacional) || !nzchar(atributo_operacional)) atributo_operacional <- atributo_sel
+      acao_val <- monitora_painel_valor(input$acao)
+      escopo_input_val <- monitora_painel_valor(input$escopo)
+      valor_original_val <- monitora_painel_valor(input$valor_original)
+      valor_novo_val <- monitora_painel_valor(input$valor_novo)
+      motivo_input_val <- monitora_painel_valor(input$motivo)
+      responsavel_val <- monitora_painel_valor(input$responsavel)
+      confirmar_abrangencia_val <- isTRUE(input$confirmar_abrangencia)
+      if (!nzchar(acao_val)) {
+        monitora_painel_notificar("Selecione uma ação válida antes de adicionar a correção.", type = "error", duration = 8)
+        return(NULL)
+      }
 
       if (isTRUE(monitora_painel_usar_lote_coletas())) {
         if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
@@ -23748,15 +23813,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_notificar("Selecione duas ou mais COLETAS no campo 'COLETAS do lote'.", type = "error", duration = 8)
           return(NULL)
         }
-        escopo_lote_val <- monitora_painel_valor(input$escopo)
-        if (!(escopo_lote_val %in% c("coleta_inteira", "linhas_pendentes_ocorrencia"))) {
+        escopo_lote_val <- escopo_input_val
+        if (!isTRUE(escopo_lote_val %in% c("coleta_inteira", "linhas_pendentes_ocorrencia"))) {
           monitora_painel_notificar("Lote de COLETAS exige escopo 'Aplicar aos 101 registros da coleta' ou 'Aplicar somente às linhas pendentes da ocorrência diagnóstica'.", type = "error", duration = 10)
           return(NULL)
         }
-        acao_val <- monitora_painel_valor(input$acao)
         info_lote <- monitora_painel_info_contrato_atributo(atributo_sel)
         acoes_lote_permitidas <- if (identical(info_lote$tipo, "select_multiple")) c("append_token", "remove_token", "replace_token") else c("update", "clear")
-        if (!(acao_val %in% acoes_lote_permitidas)) {
+        if (!isTRUE(acao_val %in% acoes_lote_permitidas)) {
           msg_lote <- if (identical(info_lote$tipo, "select_multiple")) {
             "Lote de COLETAS em lista de tokens permite apenas Adicionar token, Remover token ou Substituir token; não substitui o valor total do campo."
           } else {
@@ -23765,21 +23829,24 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_notificar(msg_lote, type = "error", duration = 10)
           return(NULL)
         }
-        valid_entrada_lote <- monitora_painel_validar_entrada(atributo_operacional, acao_val, monitora_painel_valor(input$valor_novo), monitora_painel_valor(input$valor_original))
+        valid_entrada_lote <- monitora_painel_validar_entrada(atributo_operacional, acao_val, valor_novo_val, valor_original_val)
         if (!isTRUE(valid_entrada_lote$ok)) {
           monitora_painel_bloquear_operacao(valid_entrada_lote$mensagem, etapa = "validacao_entrada_lote", atributo = atributo_sel, acao = acao_val, duration = 12)
           return(NULL)
         }
         papel_lote <- tryCatch(monitora_correcao_papel_coluna_canonico(atributo_sel), error = function(e) "")
         categoria_lote <- tryCatch(monitora_painel_categoria_por_coluna_forma(atributo_sel), error = function(e) NA_character_)
-        usar_contextual_sem_forma <- identical(escopo_lote_val, "linhas_pendentes_ocorrencia") && identical(papel_lote, "lista_principal_forma_vida") && acao_val %in% c("append_token", "adicionar_token") && categoria_lote %in% c("nativa", "exotica", "seca_morta")
+        usar_contextual_sem_forma <- identical(escopo_lote_val, "linhas_pendentes_ocorrencia") &&
+          identical(papel_lote, "lista_principal_forma_vida") &&
+          isTRUE(acao_val %in% c("append_token", "adicionar_token")) &&
+          isTRUE(categoria_lote %in% c("nativa", "exotica", "seca_morta"))
         if (isTRUE(usar_contextual_sem_forma)) {
-          motivo_val <- monitora_painel_valor(input$motivo)
-          if (!isTRUE(input$confirmar_abrangencia) || !nzchar(motivo_val)) {
+          motivo_val <- motivo_input_val
+          if (!isTRUE(confirmar_abrangencia_val) || !nzchar(motivo_val)) {
             monitora_painel_bloquear_operacao("Correção de pendência sem forma de vida exige confirmação de abrangência e motivo/justificativa.", etapa = "pendencia_sem_forma_confirmacao", atributo = atributo_sel, acao = acao_val, duration = 12)
             return(NULL)
           }
-          plano_pend <- monitora_painel_criar_ops_pendencia_sem_forma(coletas_lote, atributo_sel, acao_val, monitora_painel_valor(input$valor_novo), monitora_painel_valor(input$valor_original), motivo_val)
+          plano_pend <- monitora_painel_criar_ops_pendencia_sem_forma(coletas_lote, atributo_sel, acao_val, valor_novo_val, valor_original_val, motivo_val)
           if (!isTRUE(plano_pend$ok)) {
             monitora_painel_bloquear_operacao(plano_pend$mensagem, etapa = "pendencia_sem_forma_sem_alvo", atributo = atributo_sel, acao = acao_val, duration = 12)
             return(NULL)
@@ -23791,12 +23858,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_limpar_apos_correcao()
           return(NULL)
         }
-        det_lote_contrato <- monitora_painel_detalhar_forma_vida_contratual(atributo_sel, acao_val, monitora_painel_valor(input$valor_novo))
+        det_lote_contrato <- monitora_painel_detalhar_forma_vida_contratual(atributo_sel, acao_val, valor_novo_val)
         if (isTRUE(det_lote_contrato$eh) && length(det_lote_contrato$exige_habito)) {
           monitora_painel_notificar(paste0("Lote bloqueado pelo contrato XLSForm: a(s) forma(s) ", paste(det_lote_contrato$exige_habito, collapse = ", "), " exige(m) hábito e devem ser adicionadas por operação composta com hábito e recálculo de Encostam. Use correção individual/ponto ou movimento assistido até a operação composta em lote ser validada."), type = "error", duration = 15)
           return(NULL)
         }
-        if (identical(acao_val, "update") && !nzchar(monitora_painel_valor(input$valor_novo))) {
+        if (identical(acao_val, "update") && !nzchar(valor_novo_val)) {
           monitora_painel_notificar("Informe o valor novo para substituição em lote. Para esvaziar o campo, use a ação 'Limpar valor'.", type = "error", duration = 10)
           return(NULL)
         }
@@ -23805,8 +23872,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_bloquear_operacao(valid_lote$mensagem, etapa = "validacao_lote_multicoletas", atributo = atributo_sel, acao = acao_val, duration = 12)
           return(NULL)
         }
-        motivo_val <- monitora_painel_valor(input$motivo)
-        if (isTRUE(monitora_painel_atributo_lote_sensivel(atributo_sel)) && (!isTRUE(input$confirmar_abrangencia) || !nzchar(motivo_val))) {
+        motivo_val <- motivo_input_val
+        if (isTRUE(monitora_painel_atributo_lote_sensivel(atributo_sel)) && (!isTRUE(confirmar_abrangencia_val) || !nzchar(motivo_val))) {
           monitora_painel_notificar("Atributo analítico sensível em lote: marque a confirmação de abrangência e informe motivo/justificativa antes de adicionar.", type = "error", duration = 12)
           return(NULL)
         }
@@ -23822,14 +23889,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         }
         n_esperado <- suppressWarnings(as.integer(input$n_esperado))
         if (!is.finite(n_esperado) || n_esperado < 1L) n_esperado <- 101L
-        if (sum(resumo_lote$n_linhas, na.rm = TRUE) > 10100L && !isTRUE(input$confirmar_abrangencia)) {
+        if (sum(resumo_lote$n_linhas, na.rm = TRUE) > 10100L && !isTRUE(confirmar_abrangencia_val)) {
           monitora_painel_notificar("Lote com mais de 10.100 linhas-alvo. Marque a confirmação de abrangência antes de adicionar.", type = "error", duration = 12)
           return(NULL)
         }
         id <- monitora_correcao_novo_id("LOTECOL")
         ops <- vector("list", nrow(resumo_lote))
-        valor_original_global <- monitora_painel_valor(input$valor_original)
-        valor_novo_val <- monitora_painel_valor(input$valor_novo)
+        valor_original_global <- valor_original_val
         motivo_base <- if (nzchar(motivo_val)) motivo_val else paste0("Correção em lote de COLETAS: atributo '", atributo_sel, "'.")
         motivo_lote <- paste0(
           motivo_base,
@@ -23849,7 +23915,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           if (is.na(valor_original_op)) valor_original_op <- NA_character_
           ops[[ii]] <- monitora_correcao_criar_operacao(
             id = id,
-            responsavel = input$responsavel,
+            responsavel = responsavel_val,
             tipo = "lote_multicoletas_campo_superior",
             ordem = ii,
             escopo = "coleta_inteira",
@@ -23888,7 +23954,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(NULL)
       }
       ponto_val <- monitora_painel_valor(input$ponto)
-      escopo_efetivo <- monitora_painel_escopo_efetivo_atributo(atributo_sel, input$escopo)
+      escopo_efetivo <- monitora_painel_escopo_efetivo_atributo(atributo_sel, escopo_input_val)
       ### v2.6.1: trava defensiva no momento de
       ### adicionar a operação. Se há ponto selecionado e o atributo aceita
       ### escopo pontual, a operação deve ser registrada como ponto, mesmo que
@@ -23898,7 +23964,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         escopo_ponto_publicacao_t <- monitora_painel_escopo_efetivo_atributo(atributo_sel, "ponto")
         if (identical(escopo_ponto_publicacao_t, "ponto")) escopo_efetivo <- "ponto"
       }
-      if (!identical(escopo_efetivo, monitora_painel_valor(input$escopo))) {
+      if (!identical(escopo_efetivo, escopo_input_val)) {
         try(shiny::updateRadioButtons(session, "escopo", selected = escopo_efetivo), silent = TRUE)
         if (identical(escopo_efetivo, "ponto") && nzchar(ponto_val)) {
           try(shiny::updateNumericInput(session, "n_esperado", value = 1), silent = TRUE)
@@ -23914,30 +23980,32 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       n_esperado <- suppressWarnings(as.integer(input$n_esperado))
       if (!is.finite(n_esperado) || n_esperado < 1L || (identical(escopo_efetivo, "coleta_inteira") && n_esperado == 1L)) n_esperado <- ifelse(identical(escopo_efetivo, "coleta_inteira"), 101L, 1L)
-      if (length(linhas) != n_esperado && !isTRUE(input$confirmar_abrangencia)) {
+      if (!isTRUE(length(linhas) == n_esperado) && !isTRUE(confirmar_abrangencia_val)) {
         monitora_painel_notificar(paste0("A correção atingirá ", length(linhas), " linha(s), mas o esperado informado é ", n_esperado, ". Revise a abrangência e marque a confirmação para continuar."), type = "error", duration = 10)
         return(NULL)
       }
-      if (atributo_sel %in% c(chaves$coleta, chaves$coleta_uuid, chaves$uuid_registro) && input$acao %in% c("clear", "update") && !nzchar(monitora_painel_valor(input$valor_novo))) {
+      chaves_identificacao <- c(chaves$coleta, chaves$coleta_uuid, chaves$uuid_registro)
+      chaves_identificacao <- chaves_identificacao[!is.na(chaves_identificacao) & nzchar(as.character(chaves_identificacao))]
+      if (isTRUE(atributo_sel %in% chaves_identificacao) && isTRUE(acao_val %in% c("clear", "update")) && !nzchar(valor_novo_val)) {
         monitora_painel_notificar("Correção bloqueada: o atributo selecionado é uma chave de identificação e o valor novo está vazio. Se a intenção era mover exótica para nativa, selecione a linha na triagem e clique em adicionar; o painel converterá para movimento assistido.", type = "error", duration = 12)
         return(NULL)
       }
-      valid_entrada <- monitora_painel_validar_entrada(atributo_operacional, input$acao, input$valor_novo, input$valor_original)
+      valid_entrada <- monitora_painel_validar_entrada(atributo_operacional, acao_val, valor_novo_val, valor_original_val)
       if (!isTRUE(valid_entrada$ok)) {
         monitora_painel_notificar(valid_entrada$mensagem, type = "error", duration = 12)
         return(NULL)
       }
       id <- monitora_correcao_novo_id("CORR")
       op <- monitora_correcao_criar_operacao(
-        id = id, responsavel = input$responsavel, tipo = "simples_ou_lote", ordem = 1,
+        id = id, responsavel = responsavel_val, tipo = "simples_ou_lote", ordem = 1,
         escopo = escopo_efetivo, coleta = coleta_val, ponto_amostral = ifelse(nzchar(ponto_val) && identical(escopo_efetivo, "ponto"), ponto_val, NA_character_),
         ponto_metro = if (length(linhas) == 1 && monitora_painel_coluna_ok(chaves$ponto_metro, x)) as.character(x[[chaves$ponto_metro]][linhas]) else NA_character_,
-        atributo = atributo_operacional, acao = input$acao, valor_original = input$valor_original, valor_novo = input$valor_novo,
-        n_esperado = n_esperado, n_alvo = length(linhas), motivo = input$motivo
+        atributo = atributo_operacional, acao = acao_val, valor_original = valor_original_val, valor_novo = valor_novo_val,
+        n_esperado = n_esperado, n_alvo = length(linhas), motivo = motivo_input_val
       )
       op <- monitora_correcao_anexar_contexto_operacao(op, x, linhas, chaves)
       plano_contrato <- monitora_painel_expandir_operacao_contratual(
-        op, x, linhas, atributo_operacional, input$acao, input$valor_novo,
+        op, x, linhas, atributo_operacional, acao_val, valor_novo_val,
         input[["habito_correcao_contratual"]], n_esperado, length(linhas)
       )
       if (!isTRUE(plano_contrato$ok)) {
