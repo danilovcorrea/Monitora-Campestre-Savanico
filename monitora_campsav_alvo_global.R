@@ -30908,7 +30908,7 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
       "registros_corrig_contrato_xlsform21",
       ifelse(any(contrato_logico$bloqueante, na.rm = TRUE), "ERRO", "INFO"),
       arq_log,
-      paste0("auditoria contratual de registros_corrig nos atributos do XLSForm 21FEV25: ", nrow(contrato_logico), " atributo(s), bloqueios=", sum(contrato_logico$bloqueante, na.rm = TRUE)),
+      paste0("auditoria contratual de registros_corrig nos atributos do Contrato XLSForm 2025 (21FEV25): ", nrow(contrato_logico), " atributo(s), bloqueios=", sum(contrato_logico$bloqueante, na.rm = TRUE)),
       "registros_validados herda de registros_corrig saneado"
     )
   }
@@ -31196,7 +31196,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   n_bloq <- nrow(vazias_obrig) + nrow(problemas_fmt) + nrow(problemas_dom) + nrow(problemas_cond) + nrow(problemas_card) + nrow(problemas_chave) + nrow(problemas_sanitizacao_outras) + nrow(problemas_sanitizacao_desconhecida)
   resumo <- data.table::data.table(
     exec_id = as.character(exec_id), produto = "registros_validados.csv",
-    schema = "SISMONITORA_21FEV25_embutido_com_regras_xlsform21",
+    schema = "Contrato XLSForm/SISMONITORA 2025 (21FEV25)",
     n_linhas_registros_corrig = nrow(registros_corrig), n_linhas_saida = nrow(out),
     n_colunas_schema = length(cols), n_colunas_saida = ncol(out),
     n_colunas_mapeadas_ou_derivadas = auditoria[n_vazios_saida < n_linhas_saida, .N],
@@ -31276,7 +31276,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     ), envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
-      monitora_log_registrar_evento("registros_corrig_contrato_aprovado", "INFO", caminhos$resumo_log, paste0("registros_corrig aprovado no contrato XLSForm21 antes da materialização; bloqueios=0; atributos=", length(cols)), "v2.5.4 pre-materializacao")
+      monitora_log_registrar_evento("registros_corrig_contrato_aprovado", "INFO", caminhos$resumo_log, paste0("registros_corrig aprovado no Contrato XLSForm/SISMONITORA 2025 antes da materialização; bloqueios=0; atributos=", length(cols)), "v2.5.4 pre-materializacao")
     }
     return(invisible(list(auditoria = auditoria, resumo = resumo, contrato_registros_corrig = auditoria_contrato_corrig)))
   }
@@ -32483,7 +32483,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
     monitora_publicacao_ac_perf_checkpoint("reordenacao_registros_corrig_pre_materializacao", "reordenação técnica de colunas antes da auditoria contratual", dt)
   }
 
-  ### Auditoria contratual XLSForm21 antes da escrita de registros_corrig.csv.
+  ### Auditoria contratual do Contrato XLSForm/SISMONITORA 2025 antes da escrita de registros_corrig.csv.
   ### A chamada usa o mesmo montador dos validados em modo somente auditoria; em
   ### caso de pendência, para aqui e informa os relatórios ao bolsista.
   if (exists("monitora_registros_validados_exportar", mode = "function")) {
@@ -32501,7 +32501,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
     val <- NULL
   }
   if (exists("monitora_publicacao_ac_perf_checkpoint", mode = "function")) {
-    monitora_publicacao_ac_perf_checkpoint("auditoria_contrato_registros_corrig_xlsform21", "auditoria contratual XLSForm21 dos atributos que alimentam registros_validados", dt)
+    monitora_publicacao_ac_perf_checkpoint("auditoria_contrato_registros_corrig_xlsform21", "auditoria contratual do Contrato XLSForm/SISMONITORA 2025 dos atributos que alimentam registros_validados", dt)
   }
 
   n_bloq_val <- tryCatch({
@@ -32621,7 +32621,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
       try(monitora_log_registrar_evento(
         "registros_corrig_export_sem_trava_validados", "INFO", as.character(caminho_saida)[1L],
         paste0("Exportação de registros_corrig.csv sem pendências impeditivas no contexto ", contexto,
-               "; status de registros_validados.csv será determinado apenas pelo bloco contratual XLSForm21 próprio."),
+               "; status de registros_validados.csv será determinado apenas pelo bloco do Contrato XLSForm/SISMONITORA 2025 próprio."),
         "warning legado de falso bloqueio de registros_validados suprimido no exportador de registros_corrig"
       ), silent = TRUE)
     }
@@ -34328,7 +34328,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
       try(monitora_log_registrar_evento(
         "registros_corrig_export_sem_trava_validados", "INFO", as.character(caminho_saida)[1L],
         paste0("Exportação de registros_corrig.csv sem pendências impeditivas no contexto ", contexto,
-               "; status de registros_validados.csv será determinado apenas pelo bloco contratual XLSForm21 próprio."),
+               "; status de registros_validados.csv será determinado apenas pelo bloco do Contrato XLSForm/SISMONITORA 2025 próprio."),
         "warning legado de falso bloqueio de registros_validados suprimido no exportador de registros_corrig"
       ), silent = TRUE)
     }
@@ -34371,7 +34371,7 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
     if (isTRUE(pendente_imp)) {
       monitora_log_registrar_evento("registros_corrig_exportado_checkpoint_pendente", "AVISO", caminho_canon, paste0("registros_corrig.csv canônico materializado como checkpoint de trabalho COM PENDÊNCIAS IMPEDITIVAS: ", nrow(dt_export), " linhas e ", ncol(dt_export), " colunas; flags internas gravadas; registros_validados.csv bloqueado"), contexto)
     } else {
-      monitora_log_registrar_evento("registros_corrig_exportado_aprovado", "INFO", caminho_canon, paste0("registros_corrig.csv canônico materializado sem pendências impeditivas: ", nrow(dt_export), " linhas e ", ncol(dt_export), " colunas; status de registros_validados.csv registrado pelo bloco contratual XLSForm21 próprio"), contexto)
+      monitora_log_registrar_evento("registros_corrig_exportado_aprovado", "INFO", caminho_canon, paste0("registros_corrig.csv canônico materializado sem pendências impeditivas: ", nrow(dt_export), " linhas e ", ncol(dt_export), " colunas; status de registros_validados.csv registrado pelo bloco do Contrato XLSForm/SISMONITORA 2025 próprio"), contexto)
     }
   }
   invisible(TRUE)
