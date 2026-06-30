@@ -32221,6 +32221,84 @@ monitora_publicacao_v262_sincronizar_template_2025_registros_corrig <- function(
   dt
 }
 
+monitora_publicacao_v262_responsavel_validacao <- function() {
+  limpar <- function(x) {
+    x <- trimws(as.character(x))
+    x <- x[!is.na(x) & nzchar(x)]
+    x
+  }
+  audit <- get0("MONITORA_AUDITORIA_CORRECOES_CAMPOS_ULTIMA", ifnotfound = NULL, inherits = TRUE)
+  if (inherits(audit, "data.frame") && "responsavel" %in% names(audit)) {
+    vals <- limpar(audit$responsavel)
+    if (length(vals)) return(vals[1L])
+  }
+  validador_explicito <- limpar(c(
+    get0("MONITORA_RESPONSAVEL_VALIDACAO", ifnotfound = "", inherits = TRUE),
+    Sys.getenv("MONITORA_RESPONSAVEL_VALIDACAO", unset = "")
+  ))
+  if (length(validador_explicito)) return(validador_explicito[1L])
+  responsavel_correcao <- limpar(get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE))
+  if (length(responsavel_correcao)) return(responsavel_correcao[1L])
+  ""
+}
+
+monitora_publicacao_v262_preencher_metadados_validacao_registros_corrig <- function(dt,
+                                                                                    contexto = "checkpoint_aprovado_contrato_2025",
+                                                                                    output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                                                    log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                                                    exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório.", call. = FALSE)
+  dt <- data.table::as.data.table(dt)
+  n <- nrow(dt)
+  for (cc in c("validado", "validador", "data_validacao", "obs_validacao")) {
+    if (!(cc %in% names(dt))) data.table::set(dt, j = cc, value = rep("", n))
+  }
+  validador <- monitora_publicacao_v262_responsavel_validacao()
+  data_validacao <- format(Sys.Date(), "%Y-%m-%d")
+  hash_curto <- ""
+  if (requireNamespace("digest", quietly = TRUE)) {
+    hash_curto <- tryCatch(substr(digest::digest(dt, algo = "sha256"), 1L, 12L), error = function(e) "")
+  }
+  obs <- "checkpoint_ok"
+
+  antes <- data.table::data.table(
+    validado = dt[["validado"]],
+    validador = dt[["validador"]],
+    data_validacao = dt[["data_validacao"]],
+    obs_validacao = dt[["obs_validacao"]]
+  )
+  data.table::set(dt, j = "validado", value = rep("sim", n))
+  data.table::set(dt, j = "data_validacao", value = rep(data_validacao, n))
+  data.table::set(dt, j = "obs_validacao", value = rep(obs, n))
+  if (nzchar(validador)) data.table::set(dt, j = "validador", value = rep(validador, n))
+
+  audit <- data.table::data.table(
+    contexto = contexto,
+    atributo = c("validado", "data_validacao", "validador", "obs_validacao"),
+    acao = "preencher_metadados_validacao_em_registros_corrig",
+    valor_aplicado = c("sim", data_validacao, if (nzchar(validador)) "[informado]" else "", obs),
+    hash_interno_registros_corrig = c(hash_curto, hash_curto, hash_curto, hash_curto),
+    n_linhas_alteradas = c(
+      sum(as.character(antes$validado) != "sim", na.rm = TRUE),
+      sum(as.character(antes$data_validacao) != data_validacao, na.rm = TRUE),
+      if (nzchar(validador)) sum(as.character(antes$validador) != validador, na.rm = TRUE) else 0L,
+      sum(as.character(antes$obs_validacao) != obs, na.rm = TRUE)
+    ),
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  )
+  try(monitora_registros_validados_gravar_auditoria_pre_sanitizacao(audit, "auditoria_registros_corrig_metadados_validacao", output_dir, log_dir, exec_id), silent = TRUE)
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    nivel <- if (nzchar(validador)) "INFO" else "AVISO"
+    msg <- if (nzchar(validador)) {
+      "Metadados administrativos de validação preenchidos em registros_corrig aprovado."
+    } else {
+      "Metadados administrativos de validação preenchidos em registros_corrig aprovado; validador vazio por não haver fonte explícita."
+    }
+    monitora_log_registrar_evento("registros_corrig_metadados_validacao", nivel, NA_character_, msg, contexto)
+  }
+  dt[]
+}
+
 monitora_publicacao_v262_exportar_registros_validados_selecao <- function(registros_corrig,
                                                                           schema,
                                                                           output_dir,
@@ -32443,6 +32521,15 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
     return(invisible(list(registros_corrig = dt, auditoria = val)))
   }
 
+  if (exists("monitora_publicacao_v262_preencher_metadados_validacao_registros_corrig", mode = "function")) {
+    dt <- monitora_publicacao_v262_preencher_metadados_validacao_registros_corrig(
+      dt,
+      contexto = paste0(contexto, "_checkpoint_aprovado_contrato_2025"),
+      output_dir = output_dir,
+      log_dir = log_dir,
+      exec_id = exec_id
+    )
+  }
   if (exists("monitora_publicacao_z_gravar_selo_registros_corrig", mode = "function")) {
     monitora_publicacao_z_gravar_selo_registros_corrig(dt, contexto = paste0(contexto, "_aprovado_xlsform21"))
   }
