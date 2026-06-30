@@ -20211,7 +20211,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         "atributo_101_valor_fora_dominio"
       ),
       ocorrencia = c(
-        "Atributo 101 não resolvido",
+        "Atributo contratual não resolvido no registros_corrig",
         "Atributo 101 com aliases conflitantes",
         "Cadastro UC ausente ou inválida",
         "Cadastro EA ausente ou inválida",
@@ -20989,7 +20989,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
       try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
-      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "motivo", value = ""), silent = TRUE)
       try(shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira"), silent = TRUE)
       try(shiny::updateSelectInput(session, "acao", selected = "update"), silent = TRUE)
@@ -23457,8 +23456,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       if (!length(linhas)) return("")
       vals <- unique(as.character(x[[atributo_real]][linhas]))
-      vals <- vals[!is.na(vals)]
-      if (length(vals) == 1L) vals[1L] else ""
+      vals <- vals[!is.na(vals) & !(vals %in% c("", "NA", "<NA>", "NaN", "NULL", "null"))]
+      if (length(vals) == 0L) return("")
+      if (length(vals) == 1L) return(vals[1L])
+      paste0("Múltiplos valores no escopo: ", paste(utils::head(vals, 5L), collapse = "; "),
+             if (length(vals) > 5L) paste0("; ... (", length(vals) - 5L, " a mais)") else "")
     })
 
     monitora_painel_publicacao_t_atualizar_valor_original <- function() {
@@ -23511,7 +23513,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
       try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
-      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
       if (isTRUE(monitora_painel_usar_lote_coletas())) {
         shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira")
         shiny::updateNumericInput(session, "n_esperado", value = 101)
@@ -23537,7 +23538,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
       try(shiny::updateDateInput(session, "valor_novo", value = NULL), silent = TRUE)
-      try(shiny::updateNumericInput(session, "valor_novo", value = NA), silent = TRUE)
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(
@@ -25031,7 +25031,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       aud[, corrigivel_no_painel := as.logical(corrigivel_no_painel)]
       aud[tipo_pendencia %in% c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida"), `:=`(
         corrigivel_no_painel = FALSE,
-        acao_sugerida = "Escalar para desenvolvedor: corrigir contrato/schema/materialização."
+        acao_sugerida = "Pendência técnica de contrato/schema: atributo contratual não resolvido no registros_corrig. Não corrigível no painel. Envie ao suporte técnico com a COLETA, o print do painel e os relatórios de auditoria de atributos."
       )]
       aud[tipo_pendencia == "atributo_101_alias_conflitante" & (!atributo_materializavel | atributo_tecnico), `:=`(
         corrigivel_no_painel = FALSE,
@@ -31550,7 +31550,7 @@ monitora_publicacao_ab_auditar_pendencias_impeditivas_complementares_101_encosta
   dt <- data.table::as.data.table(dt)
   if (!nrow(dt)) return(data.table::data.table())
   rotulos <- c(
-    atributo_101_nao_resolvido             = "Atributo 101 não resolvido",
+    atributo_101_nao_resolvido             = "Atributo contratual não resolvido no registros_corrig",
     atributo_101_alias_conflitante         = "Atributo 101 com aliases conflitantes",
     cadastro_uc_ausente_ou_invalida        = "Cadastro UC ausente ou inválida",
     cadastro_ea_ausente_ou_invalida        = "Cadastro EA ausente ou inválida",
