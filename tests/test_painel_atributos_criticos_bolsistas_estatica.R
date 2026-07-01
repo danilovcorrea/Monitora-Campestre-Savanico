@@ -144,19 +144,21 @@ if (!grepl('"YYYY-MM-DD"', widget_fn, fixed = TRUE)) {
 }
 
 # -----------------------------------------------------------------------
-# 8. Movimento assistido individual e em lote: destino restrito a nativa/exotica/seca_morta
-#    ISSUE DIAGNOSTICADO: outra_forma_vida nao e destino no movimento assistido.
-#    Bolsistas que querem mover planta para 'outras plantas terrestres' precisam
-#    usar o campo forma_vida_outros diretamente pelo dropdown de correcao simples.
-#    Este assert documenta a ausencia do destino para rastreabilidade.
+# 8. Movimento assistido individual e em lote: destino agora inclui
+#    outra_forma_vida (outras plantas terrestres, liquens e/ou fungos).
+#    ISSUE HISTORICO (RESOLVIDO): outra_forma_vida nao era destino no
+#    movimento assistido; bolsistas precisavam usar o dropdown de correcao
+#    simples. Corrigido: MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO
+#    estende origem/destino do movimento assistido (simples e lote) para
+#    incluir outra_forma_vida. Ver tests/test_movimento_formas_vida_outras_plantas_estatica.R
+#    para a cobertura completa da correcao.
 # -----------------------------------------------------------------------
 painel_texto <- paste(linhas, collapse = "\n")
-mv_destino_individual <- grepl("mv_destino.*choices.*nativa.*exotica.*seca_morta|choices.*c.*nativa.*exotica.*seca_morta.*mv_destino", painel_texto, perl = TRUE)
-mv_destino_lote <- grepl("mv_lote_destino.*choices.*nativa.*exotica.*seca_morta|choices.*c.*nativa.*exotica.*seca_morta.*mv_lote_destino", painel_texto, perl = TRUE)
-if (mv_destino_individual || mv_destino_lote) {
-  if (grepl("outra_forma_vida.*mv_destino|mv_destino.*outra_forma_vida", painel_texto, perl = TRUE)) {
-    falhar("MUDANCA DETECTADA: outra_forma_vida aparece como destino no movimento assistido. Atualizar diagnostico.")
-  }
+if (!grepl("MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO\\s*<-\\s*c\\s*\\(\\s*MONITORA_TRIAGEM_CATEGORIAS_FORMA\\s*,\\s*\"outra_forma_vida\"\\s*\\)", painel_texto, perl = TRUE)) {
+  falhar("MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO (origem/destino do movimento assistido) nao encontrada ou nao inclui outra_forma_vida.")
+}
+if (!grepl('"mv_forma_origem"', painel_texto, fixed = TRUE) || !grepl('"mv_forma_destino"', painel_texto, fixed = TRUE)) {
+  falhar("Movimento assistido individual deve ter campos separados mv_forma_origem/mv_forma_destino.")
 }
 
 cat("PAINEL_ATRIBUTOS_CRITICOS_BOLSISTAS_OK\n")

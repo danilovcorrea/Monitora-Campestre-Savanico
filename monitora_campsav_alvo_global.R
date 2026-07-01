@@ -3174,6 +3174,28 @@ monitora_correcao_colunas_forma_vida_categoria <- function(dt, categoria) {
   unique(cand$coluna_registros_corrig)
 }
 
+### Catálogo operacional de categorias de forma de vida para o movimento
+### assistido (simples/lote). Cobre nativa/exotica/seca_morta (já suportadas
+### por monitora_correcao_coluna_forma_vida) e acrescenta outra_forma_vida
+### (amostragem/registro/forma_vida_outros; contrato XLSForm 2025: musgos,
+### hepaticas, antoceros, liquens, fungos), sem alterar as funções antigas.
+MONITORA_CORRECAO_CATEGORIAS_FORMA_VIDA_OPERACIONAL <- c("nativa", "exotica", "seca_morta", "outra_forma_vida")
+
+monitora_correcao_coluna_lista_forma_vida_operacional <- function(dt, categoria) {
+  cat_val <- tolower(trimws(as.character(categoria)[1L]))
+  if (!identical(cat_val, "outra_forma_vida")) return(monitora_correcao_coluna_forma_vida(dt, cat_val))
+  if (is.null(dt) || !length(names(dt))) return(NA_character_)
+  cols_info <- tryCatch(monitora_correcao_colunas_limpeza_outras_formas(dt, NULL), error = function(e) data.table::data.table())
+  cand <- character(0)
+  if (data.table::is.data.table(cols_info) && nrow(cols_info)) {
+    cand <- cols_info[classe == "campo_atual_forma_vida_outros" & coluna %in% names(dt), unique(coluna)]
+  }
+  if (!length(cand) && "amostragem/registro/forma_vida_outros" %in% names(dt)) cand <- "amostragem/registro/forma_vida_outros"
+  cand <- cand[!is.na(cand) & nzchar(cand) & !monitora_correcao_coluna_protegida(cand)]
+  if (!length(cand)) return(NA_character_)
+  cand[1L]
+}
+
 monitora_correcao_coluna_principal_segura <- function(dt, col, categoria = NA_character_) {
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) return(FALSE)
   mapa <- monitora_correcao_mapa_colunas_canonicas(dt)
@@ -8874,7 +8896,8 @@ monitora_correcao_calcular_tipo_forma_vida_esperado <- function(dt, linhas = NUL
   parent_cols <- c(
     nativa = tryCatch(monitora_correcao_coluna_forma_vida(dt, "nativa"), error = function(e) NA_character_),
     exotica = tryCatch(monitora_correcao_coluna_forma_vida(dt, "exotica"), error = function(e) NA_character_),
-    seca_morta = tryCatch(monitora_correcao_coluna_forma_vida(dt, "seca_morta"), error = function(e) NA_character_)
+    seca_morta = tryCatch(monitora_correcao_coluna_forma_vida(dt, "seca_morta"), error = function(e) NA_character_),
+    outra_forma_vida = tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(dt, "outra_forma_vida"), error = function(e) NA_character_)
   )
   parent_cols <- parent_cols[!is.na(parent_cols) & nzchar(parent_cols) & parent_cols %in% names(dt)]
   material_col <- if (exists("monitora_publicacao_c_resolver_coluna_materiais_botanicos", mode = "function")) {
@@ -8885,7 +8908,12 @@ monitora_correcao_calcular_tipo_forma_vida_esperado <- function(dt, linhas = NUL
   esperado <- rep(NA_character_, length(linhas))
   solo_tokens <- c("solo_nu", "solo_exposto", "solo", "rocha", "rochas")
   ausentes_tokens <- c("", "na", "nan", "null", "---")
-  categorias_controladas <- c("nativa", "exotica", "seca_morta")
+  ### outra_forma_vida entra em categorias_controladas para que o token
+  ### superior seja sempre recalculado a partir do estado atual de
+  ### forma_vida_outros (via parent_cols), em vez de apenas ser preservado
+  ### quando já presente no valor anterior (o que impediria virar solo_nu
+  ### quando forma_vida_outros ficasse vazio).
+  categorias_controladas <- c("nativa", "exotica", "seca_morta", "outra_forma_vida")
   preenchidas <- if (length(parent_cols)) lapply(parent_cols, function(cc) !monitora_correcao_vazio_vec(dt[[cc]][linhas])) else list()
 
   for (ii in seq_along(linhas)) {
@@ -9451,8 +9479,8 @@ monitora_correcao_reforcar_movimentos_forma_vida <- function(dt, corr, chaves = 
     linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
     if (length(linhas) == 0L) next
     token <- as.character(linha_mov$token_pai[1])
-    col_origem <- monitora_correcao_coluna_forma_vida(dt, linha_mov$categoria_origem[1])
-    col_destino <- monitora_correcao_coluna_forma_vida(dt, linha_mov$categoria_destino[1])
+    col_origem <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, linha_mov$categoria_origem[1])
+    col_destino <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, linha_mov$categoria_destino[1])
 
     if (!is.na(col_origem) && col_origem %in% names(dt)) {
       antes <- as.character(dt[[col_origem]][linhas])
@@ -13407,7 +13435,7 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
   }
   origem <- if ("categoria_origem" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$categoria_origem[1L]))) else NA_character_
   destino <- if ("categoria_destino" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$categoria_destino[1L]))) else NA_character_
-  cats <- c("nativa", "exotica", "seca_morta")
+  cats <- MONITORA_CORRECAO_CATEGORIAS_FORMA_VIDA_OPERACIONAL
   if (monitora_correcao_vazio(origem) || monitora_correcao_vazio(destino) || !origem %in% cats || !destino %in% cats) {
     return(falhar("falha_lote_categoria", "origem/destino ausentes ou inválidos"))
   }
@@ -13418,8 +13446,8 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
   mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
   mv_lote_desconhecida_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
 
-  col_origem <- tryCatch(monitora_correcao_coluna_forma_vida(dt, origem), error = function(e) NA_character_)
-  col_destino <- tryCatch(monitora_correcao_coluna_forma_vida(dt, destino), error = function(e) NA_character_)
+  col_origem <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(dt, origem), error = function(e) NA_character_)
+  col_destino <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(dt, destino), error = function(e) NA_character_)
   if (is.na(col_origem) || !(col_origem %in% names(dt))) return(falhar("falha_coluna_origem", paste0("coluna de origem não localizada para ", origem)))
   if (is.na(col_destino) || !(col_destino %in% names(dt))) return(falhar("falha_coluna_destino", paste0("coluna de destino não localizada para ", destino)))
   if (monitora_correcao_coluna_protegida(col_origem) || monitora_correcao_coluna_protegida(col_destino)) return(falhar("bloqueada_coluna_protegida", "origem ou destino é coluna protegida"))
@@ -13558,6 +13586,30 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
     return(falhar("falha_habito_indevido", paste0("hábito informado para forma que não exige hábito: ", forma_destino)))
   }
 
+  ### Item 14/15: quando o destino do movimento em lote é outra_forma_vida
+  ### (sem coluna de espécie/nome popular ou hábito equivalente na lista
+  ### forma_vida_outros), os dependentes ligados às formas de origem migradas
+  ### não têm para onde migrar. Eles são limpos (nunca preservados de forma
+  ### incoerente com a nova categoria), e a auditoria abaixo registra
+  ### explicitamente o valor anterior, evitando perda silenciosa.
+  if (identical(destino, "outra_forma_vida")) {
+    deps_origem_cols_lote <- unique(unlist(lapply(names(presenca), function(fo) {
+      unlist(lapply(tokens_de_forma(fo), function(tok) monitora_correcao_colunas_dependentes_por_token(dt, origem, tok, dicionario)), use.names = FALSE)
+    }), use.names = FALSE))
+    deps_origem_cols_lote <- unique(deps_origem_cols_lote[!is.na(deps_origem_cols_lote) & deps_origem_cols_lote %in% names(dt) & !monitora_correcao_coluna_protegida(deps_origem_cols_lote)])
+    deps_origem_cols_lote <- setdiff(deps_origem_cols_lote, c(col_origem, col_destino))
+    for (dep_col in deps_origem_cols_lote) {
+      antes_dep_lote <- as.character(dt[[dep_col]][linhas_alvo])
+      limpar_lote <- !monitora_correcao_vazio_vec(antes_dep_lote)
+      if (!any(limpar_lote, na.rm = TRUE)) next
+      depois_dep_lote <- antes_dep_lote
+      depois_dep_lote[limpar_lote] <- NA_character_
+      data.table::set(dt, i = linhas_alvo[limpar_lote], j = dep_col, value = depois_dep_lote[limpar_lote])
+      audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Movimento em lote: campo dependente (espécie/nome popular ou hábito) da origem removido sem equivalente seguro em 'outras plantas terrestres, líquens e/ou fungos'; valor anterior preservado apenas na auditoria", dep_col, linhas_alvo[limpar_lote], antes_dep_lote[limpar_lote], depois_dep_lote[limpar_lote])), fill = TRUE, use.names = TRUE)
+      afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas_alvo[limpar_lote], atributo = dep_col)), fill = TRUE, use.names = TRUE)
+    }
+  }
+
   if (any(monitora_correcao_limpar_texto(formas_origem) %in% c("desconhecida", "desconhecido"))) {
     res_desc_dep <- monitora_correcao_sanitizar_dependentes_desconhecida(
       dt, linhas = linhas_alvo, categorias = c("nativa", "exotica", "seca_morta"), id_correcao = id_cor,
@@ -13680,8 +13732,9 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
   if (monitora_correcao_vazio(forma_destino)) forma_destino <- token_pai
   if (monitora_correcao_vazio(token_pai)) token_pai <- forma_destino
   if (monitora_correcao_vazio(origem) || monitora_correcao_vazio(destino) || monitora_correcao_vazio(forma_destino)) return(falhar("falha_movimento_atomico_incompleto", "categoria de origem/destino ou forma de vida não informada"))
-  col_origem <- tryCatch(monitora_correcao_coluna_forma_vida(dt, origem), error = function(e) NA_character_)
-  col_destino <- tryCatch(monitora_correcao_coluna_forma_vida(dt, destino), error = function(e) NA_character_)
+  if (!(origem %in% MONITORA_CORRECAO_CATEGORIAS_FORMA_VIDA_OPERACIONAL) || !(destino %in% MONITORA_CORRECAO_CATEGORIAS_FORMA_VIDA_OPERACIONAL)) return(falhar("falha_categoria_invalida", "categoria de origem/destino fora do catálogo operacional (nativa, exotica, seca_morta, outra_forma_vida)"))
+  col_origem <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(dt, origem), error = function(e) NA_character_)
+  col_destino <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(dt, destino), error = function(e) NA_character_)
   if (is.na(col_origem) || !(col_origem %in% names(dt))) return(falhar("falha_coluna_origem", paste0("coluna de origem não localizada para ", origem)))
   if (is.na(col_destino) || !(col_destino %in% names(dt))) return(falhar("falha_coluna_destino", paste0("coluna de destino não localizada para ", destino)))
   if (monitora_correcao_coluna_protegida(col_origem) || monitora_correcao_coluna_protegida(col_destino)) return(falhar("bloqueada_coluna_protegida", "origem ou destino é coluna protegida"))
@@ -13768,10 +13821,19 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
     audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Movimento atômico: forma garantida na categoria de destino", col_destino, linhas[mudou_destino], antes_destino[mudou_destino], depois_destino[mudou_destino])), fill = TRUE, use.names = TRUE)
     linhas_afetadas <- unique(c(linhas_afetadas, linhas[mudou_destino])); afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = linhas[mudou_destino], atributo = col_destino)), fill = TRUE, use.names = TRUE)
   }
+  ### Item 14: quando o destino é outra_forma_vida (sem coluna de espécie/nome
+  ### popular ou hábito equivalente), o valor do dependente de origem não migra
+  ### para lugar nenhum; ele é limpo, mas a auditoria abaixo registra o valor
+  ### anterior explicitamente, evitando perda silenciosa.
+  msg_dep <- if (identical(destino, "outra_forma_vida")) {
+    "Movimento atômico: campo dependente (espécie/nome popular ou hábito) da origem removido sem equivalente seguro em 'outras plantas terrestres, líquens e/ou fungos'; valor anterior preservado apenas na auditoria"
+  } else {
+    "Movimento atômico: campo inferior/dependente da origem limpo"
+  }
   for (dep_col in names(atualizacoes_deps)) {
     zz <- atualizacoes_deps[[dep_col]]
     data.table::set(dt, i = zz$idx, j = dep_col, value = zz$depois)
-    audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", "Movimento atômico: campo inferior/dependente da origem limpo", dep_col, zz$idx, zz$antes, zz$depois)), fill = TRUE, use.names = TRUE)
+    audit <- data.table::rbindlist(list(audit, registrar("aplicada_atomica", msg_dep, dep_col, zz$idx, zz$antes, zz$depois)), fill = TRUE, use.names = TRUE)
     linhas_afetadas <- unique(c(linhas_afetadas, zz$idx)); afetacoes <- data.table::rbindlist(list(afetacoes, data.table::data.table(linha_indice = zz$idx, atributo = dep_col)), fill = TRUE, use.names = TRUE)
   }
   if (!is.null(atualizacao_habito)) {
@@ -19728,6 +19790,48 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   formas_mv_tokens_historicos <- formas_mv_choices_info$tokens_historicos
   formas_mv_token_para_representativo <- formas_mv_choices_info$token_para_representativo
 
+  ### Categorias elegíveis para o movimento assistido (item A/C): nativa,
+  ### exotica e seca_morta compartilham o mesmo vocabulário de formas
+  ### (formas_mv_choices); outra_forma_vida (forma_vida_outros) tem
+  ### vocabulário próprio e incompatível (musgos, hepaticas, antoceros,
+  ### liquens, fungos), por isso não pode ser um token do mesmo dropdown
+  ### mv_forma. Ver monitora_painel_forma_choices_por_categoria().
+  MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO <- c(MONITORA_TRIAGEM_CATEGORIAS_FORMA, "outra_forma_vida")
+
+  monitora_painel_montar_choices_formas_outros_mv <- function() {
+    toks_validos <- monitora_registros_validados_forma_outros_tokens_atuais()
+    op <- if (!is.null(meta_xls) && !is.null(meta_xls$opcoes)) data.table::as.data.table(meta_xls$opcoes) else data.table::data.table()
+    if (nrow(op) && all(c("list_name", "name", "label") %in% names(op))) {
+      op[, arquivo_xlsform_chr := if ("arquivo_xlsform" %in% names(op)) as.character(arquivo_xlsform) else ""]
+      cand <- op[list_name == "forma_vida_outros"]
+      if (nrow(cand)) {
+        cand_atual <- cand[grepl("21FEV25|2025", arquivo_xlsform_chr, ignore.case = TRUE)]
+        if (nrow(cand_atual)) cand <- cand_atual
+        cand[, token_norm := monitora_relatorio_exoticas_normalizar_token(name)]
+        cand <- cand[token_norm %in% toks_validos]
+        if (nrow(cand)) {
+          cand <- unique(cand[, .(name = token_norm, label = as.character(label))], by = "name")
+          cand[, rotulo := ifelse(!is.na(label) & nzchar(label), paste0(name, " — ", label), name)]
+          vals <- as.character(cand$name)
+          labs <- as.character(cand$rotulo)
+          faltantes <- setdiff(toks_validos, vals)
+          if (length(faltantes)) { vals <- c(vals, faltantes); labs <- c(labs, faltantes) }
+          o <- order(vals)
+          return(stats::setNames(vals[o], labs[o]))
+        }
+      }
+    }
+    stats::setNames(toks_validos, toks_validos)
+  }
+  formas_mv_outros_choices <- monitora_painel_montar_choices_formas_outros_mv()
+
+  monitora_painel_forma_choices_por_categoria <- function(categoria) {
+    categoria <- tolower(trimws(as.character(categoria)[1L]))
+    if (identical(categoria, "outra_forma_vida")) return(formas_mv_outros_choices)
+    if (categoria %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA) return(formas_mv_choices)
+    stats::setNames(character(0), character(0))
+  }
+
   monitora_painel_forma_representativa_mv <- function(forma) {
     forma <- monitora_relatorio_exoticas_normalizar_token(monitora_painel_valor(forma))
     if (!nzchar(forma)) return("")
@@ -19753,6 +19857,46 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       choices <- c(choices, stats::setNames(token_rep, token_rep))
     }
     choices
+  }
+
+  ### Item F: helpers de escopo para o movimento assistido. Recebem os dados já
+  ### filtrados (dados_movimento_escopo(), calculada no server a partir dos
+  ### reativos leves já existentes) para listar categorias/tokens de ORIGEM
+  ### realmente presentes no escopo — sem recalcular auditorias completas.
+  monitora_painel_categorias_disponiveis_escopo <- function(x) {
+    if (is.null(x) || !nrow(x)) return(character(0))
+    out <- character(0)
+    for (cat in MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO) {
+      col <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(x, cat), error = function(e) NA_character_)
+      if (!is.na(col) && col %in% names(x) && any(!monitora_correcao_vazio_vec(x[[col]]), na.rm = TRUE)) out <- c(out, cat)
+    }
+    out
+  }
+
+  monitora_painel_formas_origem_disponiveis <- function(categoria, x) {
+    categoria <- tolower(trimws(as.character(categoria)[1L]))
+    if (!nzchar(categoria) || is.null(x) || !nrow(x)) return(character(0))
+    col <- tryCatch(monitora_correcao_coluna_lista_forma_vida_operacional(x, categoria), error = function(e) NA_character_)
+    if (is.na(col) || !(col %in% names(x))) return(character(0))
+    vals <- unique(unlist(lapply(as.character(x[[col]]), monitora_correcao_tokenizar), use.names = FALSE))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    if (!length(vals)) return(character(0))
+    if (identical(categoria, "outra_forma_vida")) {
+      return(intersect(monitora_registros_validados_forma_outros_tokens_atuais(), monitora_relatorio_exoticas_normalizar_token(vals)))
+    }
+    vals_rep <- unique(vapply(vals, monitora_painel_forma_representativa_mv, character(1)))
+    intersect(unname(formas_mv_choices), vals_rep)
+  }
+
+  monitora_painel_choices_origem_com_labels <- function(categoria, x) {
+    vals <- monitora_painel_formas_origem_disponiveis(categoria, x)
+    if (!length(vals)) return(stats::setNames(character(0), character(0)))
+    contrato <- monitora_painel_forma_choices_por_categoria(categoria)
+    labs <- vapply(vals, function(v) {
+      idx <- match(v, unname(contrato))
+      if (is.na(idx)) v else names(contrato)[idx]
+    }, character(1))
+    stats::setNames(vals, labs)
   }
 
   monitora_painel_valor_celula <- function(x, col, i) {
@@ -20823,32 +20967,34 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::helpText("Exclusão de COLETAS: em escopo 'Coleta individual', remove todos os registros da COLETA selecionada acima; em escopo 'Coletas do lote', remove todos os registros das COLETAS listadas no lote. A operação é sempre atômica EXCCOL, inclusive para uma única COLETA, e exige confirmação de abrangência e justificativa."),
         shiny::hr(),
         shiny::h4("Movimento assistido de forma de vida"),
-        shiny::selectInput("mv_forma", "Forma de vida", choices = formas_mv_choices, selected = if ("arbusto_acima" %in% unname(formas_mv_choices)) "arbusto_acima" else unname(formas_mv_choices)[1]),
-        shiny::selectInput("mv_origem", "Origem", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),
-        shiny::selectInput("mv_destino", "Destino", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),
+        shiny::helpText("Origem e destino incluem nativa, exótica, seca ou morta e outras plantas terrestres, líquens e/ou fungos. A forma de origem lista os tokens presentes no escopo filtrado (UC/EA/ANO/CICLO/CAMPANHA/UA/COLETA/escopo/lote); a forma de destino lista os tokens válidos pelo contrato XLSForm 2025 para a categoria escolhida."),
+        shiny::selectInput("mv_origem", "Origem", choices = c("(selecione a categoria de origem)" = "", stats::setNames(MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO, c("Nativa", "Exótica", "Seca ou morta", "Outras plantas terrestres, líquens e/ou fungos"))), selected = ""),
+        shiny::selectizeInput("mv_forma_origem", "Forma de vida de origem", choices = character(0), selected = character(0), multiple = FALSE, options = list(placeholder = "Selecione a origem para listar as formas presentes no escopo filtrado")),
+        shiny::selectInput("mv_destino", "Destino", choices = c("(selecione a categoria de destino)" = "", stats::setNames(MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO, c("Nativa", "Exótica", "Seca ou morta", "Outras plantas terrestres, líquens e/ou fungos"))), selected = ""),
+        shiny::selectizeInput("mv_forma_destino", "Forma de vida de destino", choices = character(0), selected = character(0), multiple = FALSE, options = list(placeholder = "Selecione o destino para listar as formas válidas do contrato")),
         shiny::selectInput("mv_habito", "Hábito, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = ""),
         shiny::actionButton("add_mv", "Adicionar movimento de forma de vida"),
         shiny::hr(),
         shiny::h4("Movimento em lote de formas de vida"),
-        shiny::helpText("Usa exatamente as COLETAS listadas em 'COLETAS do lote'. Gera 1 operação atômica MVLOTE para mover todas ou algumas formas da origem para o destino. Ocorrências com dependentes ambíguos são mantidas sem migração e registradas em relatório; as demais ocorrências migráveis seguem em 1 operação atômica."),
-        shiny::selectInput("mv_lote_origem", "Origem do lote", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),
+        shiny::helpText("Usa exatamente as COLETAS listadas em 'COLETAS do lote'. Gera 1 operação atômica MVLOTE para mover todas ou algumas formas da origem para o destino. Ocorrências com dependentes ambíguos são mantidas sem migração e registradas em relatório; as demais ocorrências migráveis seguem em 1 operação atômica. Origem e destino incluem outras plantas terrestres, líquens e/ou fungos."),
+        shiny::selectInput("mv_lote_origem", "Origem do lote", choices = c("(selecione a categoria de origem)" = "", stats::setNames(MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO, c("Nativa", "Exótica", "Seca ou morta", "Outras plantas terrestres, líquens e/ou fungos"))), selected = ""),
         shiny::selectizeInput(
           "mv_lote_formas",
           "Forma(s) de vida de origem",
-          choices = c("Todas as formas encontradas na origem" = "__todas__", "desconhecida" = "desconhecida", formas_mv_choices),
-          selected = "__todas__",
+          choices = character(0),
+          selected = character(0),
           multiple = TRUE,
-          options = list(placeholder = "Todas ou formas selecionadas", plugins = list("remove_button"))
+          options = list(placeholder = "Selecione a origem para listar formas/opção 'todas' presentes no escopo filtrado", plugins = list("remove_button"))
         ),
         shiny::selectInput("mv_lote_habito_padrao", "Hábito padrão da origem, se aplicável", choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = ""),
-        shiny::selectInput("mv_lote_destino", "Destino do lote", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),
+        shiny::selectInput("mv_lote_destino", "Destino do lote", choices = c("(selecione a categoria de destino)" = "", stats::setNames(MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO, c("Nativa", "Exótica", "Seca ou morta", "Outras plantas terrestres, líquens e/ou fungos"))), selected = ""),
         shiny::selectizeInput(
           "mv_lote_forma_destino",
           "Forma(s) de vida de destino",
-          choices = formas_mv_choices,
-          selected = if ("samambaia" %in% unname(formas_mv_choices)) "samambaia" else unname(formas_mv_choices)[1],
+          choices = character(0),
+          selected = character(0),
           multiple = FALSE,
-          options = list(placeholder = "Forma válida do XLSForm para o destino")
+          options = list(placeholder = "Selecione o destino para listar as formas válidas do contrato")
         ),
         shiny::selectInput("mv_lote_habito_destino", "Hábito padrão do destino, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = ""),
         shiny::actionButton("add_mv_lote", "Adicionar movimento em lote de formas de vida", class = "btn-warning"),
@@ -21166,7 +21312,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       try(shiny::updateSelectInput(session, "acao", selected = "update"), silent = TRUE)
       try(shiny::updateNumericInput(session, "n_esperado", value = 101), silent = TRUE)
       try(shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE), silent = TRUE)
-      try(monitora_painel_atualizar_habito_select("mv_habito", input$mv_forma), silent = TRUE)
+      ### Item 9/10: movimento assistido nunca deve reabrir com valor
+      ### pré-preenchido; origem, destino, forma de origem/destino e hábito
+      ### voltam a ficar vazios após uma correção ser adicionada/limpa.
+      try(shiny::updateSelectInput(session, "mv_origem", selected = ""), silent = TRUE)
+      try(shiny::updateSelectInput(session, "mv_destino", selected = ""), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "mv_forma_origem", choices = character(0), selected = character(0), server = TRUE), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "mv_forma_destino", choices = character(0), selected = character(0), server = TRUE), silent = TRUE)
+      try(monitora_painel_atualizar_habito_select("mv_habito", ""), silent = TRUE)
       try(monitora_painel_atualizar_habito_select("triagem_habito", input$triagem_forma_valida), silent = TRUE)
       rv$ponto_alvo <- ""
     }
@@ -22101,6 +22254,75 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       vals_validos <- coletas_filtradas_lote()
       monitora_painel_coletas_lote_validas(input$coletas_lote, vals_validos)
     })
+
+    ### Item F: escopo leve do movimento assistido. Reage a filtros superiores,
+    ### COLETA, escopo (coleta individual x coletas do lote) e coletas_lote,
+    ### reaproveitando os reativos já existentes (dados_pre_coleta/
+    ### dados_filtrados/coletas_lote_selecionadas) sem recalcular auditorias.
+    dados_movimento_escopo <- shiny::reactive({
+      if (isTRUE(monitora_painel_usar_lote_coletas())) {
+        x <- dados_pre_coleta()
+        coletas_sel <- coletas_lote_selecionadas()
+        if (!length(coletas_sel) || !monitora_painel_coluna_ok(chaves$coleta, x)) return(x[0])
+        return(x[as.character(get(chaves$coleta)) %in% coletas_sel])
+      }
+      dados_filtrados()
+    })
+
+    categorias_origem_disponiveis <- shiny::reactive({
+      monitora_painel_categorias_disponiveis_escopo(dados_movimento_escopo())
+    })
+
+    formas_origem_disponiveis_mv <- shiny::reactive({
+      monitora_painel_choices_origem_com_labels(monitora_painel_valor(input$mv_origem), dados_movimento_escopo())
+    })
+
+    formas_destino_contrato_mv <- shiny::reactive({
+      monitora_painel_forma_choices_por_categoria(monitora_painel_valor(input$mv_destino))
+    })
+
+    formas_lote_origem_disponiveis_mv <- shiny::reactive({
+      choices_origem <- monitora_painel_choices_origem_com_labels(monitora_painel_valor(input$mv_lote_origem), dados_movimento_escopo())
+      if (!length(choices_origem)) return(choices_origem)
+      c(stats::setNames("__todas__", "Todas as formas encontradas na origem"), choices_origem)
+    })
+
+    formas_lote_destino_contrato_mv <- shiny::reactive({
+      monitora_painel_forma_choices_por_categoria(monitora_painel_valor(input$mv_lote_destino))
+    })
+
+    ### Reage a: origem/destino escolhidos e ao escopo (que já engloba filtros
+    ### superiores, COLETA, escopo_coletas e coletas_lote via dados_movimento_escopo()).
+    ### Preserva a seleção atual quando ainda válida no novo conjunto de
+    ### escolhas (evita apagar uma seleção deliberada do usuário — item 11 —
+    ### só porque o escopo foi recalculado).
+    shiny::observeEvent(formas_origem_disponiveis_mv(), {
+      vals <- formas_origem_disponiveis_mv()
+      atual <- monitora_painel_valor(shiny::isolate(input$mv_forma_origem))
+      selected <- if (nzchar(atual) && atual %in% unname(vals)) atual else character(0)
+      shiny::updateSelectizeInput(session, "mv_forma_origem", choices = vals, selected = selected, server = TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(formas_destino_contrato_mv(), {
+      vals <- formas_destino_contrato_mv()
+      atual <- monitora_painel_valor(shiny::isolate(input$mv_forma_destino))
+      selected <- if (nzchar(atual) && atual %in% unname(vals)) atual else character(0)
+      shiny::updateSelectizeInput(session, "mv_forma_destino", choices = vals, selected = selected, server = TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(formas_lote_origem_disponiveis_mv(), {
+      vals <- formas_lote_origem_disponiveis_mv()
+      atual <- unique(as.character(shiny::isolate(input$mv_lote_formas)))
+      selected <- intersect(atual, unname(vals))
+      shiny::updateSelectizeInput(session, "mv_lote_formas", choices = vals, selected = selected, server = TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(formas_lote_destino_contrato_mv(), {
+      vals <- formas_lote_destino_contrato_mv()
+      atual <- monitora_painel_valor(shiny::isolate(input$mv_lote_forma_destino))
+      selected <- if (nzchar(atual) && atual %in% unname(vals)) atual else character(0)
+      shiny::updateSelectizeInput(session, "mv_lote_forma_destino", choices = vals, selected = selected, server = TRUE)
+    }, ignoreInit = TRUE)
 
     monitora_painel_coletas_exclusao_selecionadas <- function() {
       ### A exclusão de COLETAS deve aceitar tanto a COLETA individual
@@ -23672,9 +23894,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rv$movimento_alvo <- data.table::copy(r)
       if (nzchar(coleta_sel)) shiny::updateSelectizeInput(session, "coleta", selected = coleta_sel, server = TRUE)
       shiny::updateSelectInput(session, "ponto", selected = ponto_sel)
-      shiny::updateSelectInput(session, "mv_forma", choices = monitora_painel_mv_choices_com_token(forma_sel), selected = monitora_painel_forma_representativa_mv(forma_sel))
+      ### Ação deliberada do usuário (botão "usar linha selecionada"): pode
+      ### preencher os campos do movimento assistido (item 11).
+      forma_rep_sel <- monitora_painel_forma_representativa_mv(forma_sel)
       shiny::updateSelectInput(session, "mv_origem", selected = "exotica")
       shiny::updateSelectInput(session, "mv_destino", selected = "nativa")
+      shiny::updateSelectizeInput(session, "mv_forma_origem", choices = monitora_painel_mv_choices_com_token(forma_sel), selected = forma_rep_sel, server = TRUE)
+      shiny::updateSelectizeInput(session, "mv_forma_destino", choices = monitora_painel_mv_choices_com_token(forma_sel), selected = forma_rep_sel, server = TRUE)
       shiny::updateRadioButtons(session, "escopo", selected = "ponto")
       shiny::updateNumericInput(session, "n_esperado", value = 1)
       shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
@@ -23697,8 +23923,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       monitora_painel_atualizar_habito_select("triagem_habito", input$triagem_forma_valida)
     }, ignoreInit = FALSE)
 
-    shiny::observeEvent(input$mv_forma, {
-      monitora_painel_atualizar_habito_select("mv_habito", input$mv_forma)
+    shiny::observeEvent(input$mv_forma_destino, {
+      monitora_painel_atualizar_habito_select("mv_habito", input$mv_forma_destino)
     }, ignoreInit = FALSE)
 
     shiny::observeEvent(input$mv_lote_forma_destino, {
@@ -24490,8 +24716,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE)
         return(NULL)
       }
-      if (!origem_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA || !destino_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA) {
-        monitora_painel_notificar("Escolha origem e destino válidos entre nativa, exotica e seca_morta.", type = "error", duration = 8)
+      if (!nzchar(origem_val) || !nzchar(destino_val) || !origem_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO || !destino_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO) {
+        monitora_painel_notificar("Escolha origem e destino válidos entre nativa, exotica, seca_morta e outra_forma_vida (outras plantas terrestres, líquens e/ou fungos).", type = "error", duration = 8)
         return(NULL)
       }
       if (!nzchar(forma_destino_lote_val)) {
@@ -24535,8 +24761,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         }
         linhas_globais <- unique(as.integer(linhas_desc_cat))
       }
-      col_origem <- monitora_painel_coluna_forma_categoria(origem_val, dt)
-      col_destino <- monitora_painel_coluna_forma_categoria(destino_val, dt)
+      col_origem <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, origem_val)
+      col_destino <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, destino_val)
       if (is.na(col_origem) || is.na(col_destino)) {
         monitora_painel_notificar("Não foi possível localizar com segurança as listas principais de origem/destino.", type = "error", duration = 10)
         return(NULL)
@@ -24691,12 +24917,24 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       alvo <- if (!is.null(rv$movimento_alvo) && data.table::is.data.table(rv$movimento_alvo) && nrow(rv$movimento_alvo) > 0L) rv$movimento_alvo[1] else data.table::data.table()
       mv_origem_val <- monitora_painel_valor(input$mv_origem)
       mv_destino_val <- monitora_painel_valor(input$mv_destino)
-      mv_forma_val <- monitora_painel_valor(input$mv_forma)
+      if (!nzchar(mv_origem_val) || !nzchar(mv_destino_val) || !(mv_origem_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO) || !(mv_destino_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA_MOVIMENTO)) {
+        monitora_painel_notificar("Selecione a categoria de origem e de destino antes de adicionar o movimento.", type = "error")
+        return(NULL)
+      }
+      mv_forma_origem_val <- monitora_painel_valor(input$mv_forma_origem)
+      mv_forma_destino_val <- monitora_painel_valor(input$mv_forma_destino)
       alvo_forma <- if (nrow(alvo) > 0L) monitora_painel_valor(alvo$forma_vida_exotica) else ""
       usar_alvo_triado <- nrow(alvo) > 0L && identical(mv_origem_val, "exotica") && identical(mv_destino_val, "nativa") && nzchar(alvo_forma)
-      if (isTRUE(usar_alvo_triado)) mv_forma_val <- alvo_forma
-      mv_forma_val_original <- mv_forma_val
-      mv_forma_val <- monitora_painel_canonizar_forma_habito(mv_forma_val)
+      if (isTRUE(usar_alvo_triado)) {
+        mv_forma_origem_val <- alvo_forma
+        mv_forma_destino_val <- alvo_forma
+      }
+      mv_forma_origem_val_original <- mv_forma_origem_val
+      ### Item C: forma_origem alimenta token_pai/token_removido/valor_original_esperado;
+      ### forma_destino alimenta valor_novo/forma_valida_escolhida (compatibilidade interna).
+      mv_forma_origem_val <- monitora_painel_canonizar_forma_habito(mv_forma_origem_val)
+      mv_forma_destino_val <- monitora_painel_canonizar_forma_habito(mv_forma_destino_val)
+      mv_forma_val <- mv_forma_destino_val
 
       x <- dados_filtrados()
       if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
@@ -24754,11 +24992,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_notificar(paste0("O movimento atingirá ", length(linhas), " linha(s), mas o esperado informado é ", n_exp, ". Revise a abrangência e marque a confirmação para continuar."), type = "error", duration = 10)
         return(NULL)
       }
-      if (!nzchar(mv_forma_val)) {
-        monitora_painel_notificar("Informe a forma de vida a mover.", type = "error")
+      if (!nzchar(mv_forma_origem_val) || !nzchar(mv_forma_destino_val)) {
+        monitora_painel_notificar("Informe a forma de vida de origem e de destino.", type = "error")
         return(NULL)
       }
-      forma_condicional <- monitora_painel_forma_exige_habito(mv_forma_val)
+      forma_condicional <- monitora_painel_forma_exige_habito(mv_forma_destino_val)
       if (!isTRUE(forma_condicional) && nzchar(monitora_painel_valor(input$mv_habito))) {
         monitora_painel_notificar("Hábito só pode ser informado para cactácea, erva bromelioide, orquídea ou samambaia. O movimento foi bloqueado.", type = "error", duration = 10)
         return(NULL)
@@ -24767,8 +25005,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_notificar("Esta forma de vida exige informar o hábito: terrestre, epifita ou rupicola.", type = "error")
         return(NULL)
       }
-      col_origem <- monitora_correcao_coluna_forma_vida(dt, mv_origem_val)
-      col_destino <- monitora_correcao_coluna_forma_vida(dt, mv_destino_val)
+      col_origem <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, mv_origem_val)
+      col_destino <- monitora_correcao_coluna_lista_forma_vida_operacional(dt, mv_destino_val)
       if (is.na(col_origem) || is.na(col_destino)) {
         monitora_painel_notificar("Não foi possível localizar as colunas de forma de vida de origem/destino.", type = "error")
         return(NULL)
@@ -24777,13 +25015,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       uuid_arg <- ifelse(nzchar(uuid_val), uuid_val, NA_character_)
       ponto_arg <- ifelse(nzchar(ponto_val), ponto_val, NA_character_)
       valor_original_remove <- ifelse(nzchar(valor_original_origem), valor_original_origem, NA_character_)
+      ### Item C: token_removido é sempre derivado da forma de ORIGEM, nunca da
+      ### forma de destino (vocabulários incompatíveis quando destino é
+      ### outra_forma_vida).
       tokens_origem_remover <- unique(c(
-        monitora_painel_forma_tokens_historicos_mv(mv_forma_val),
-        monitora_painel_forma_tokens_historicos_mv(mv_forma_val_original),
-        monitora_relatorio_exoticas_normalizar_token(mv_forma_val_original),
-        mv_forma_val
+        monitora_painel_forma_tokens_historicos_mv(mv_forma_origem_val),
+        monitora_painel_forma_tokens_historicos_mv(mv_forma_origem_val_original),
+        monitora_relatorio_exoticas_normalizar_token(mv_forma_origem_val_original),
+        mv_forma_origem_val
       ))
-      if (!length(tokens_origem_remover)) tokens_origem_remover <- mv_forma_val
+      if (!length(tokens_origem_remover)) tokens_origem_remover <- mv_forma_origem_val
       tokens_origem_remover <- unique(setdiff(tokens_origem_remover, MONITORA_TRIAGEM_TOKENS_OUTRAS))
       dep_destino <- NA_character_
       if (isTRUE(forma_condicional)) {
@@ -24798,7 +25039,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = "__mover_forma_vida__",
         acao = "mover_forma_vida", valor_original = valor_original_remove, valor_novo = mv_forma_val,
         n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo,
-        token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val,
+        token_pai = mv_forma_origem_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val,
         token_removido = monitora_correcao_colapsar_lista_serializada(tokens_origem_remover),
         campo_dependente_preenchido = ifelse(!is.na(dep_destino), dep_destino, NA_character_),
         habito_escolhido = ifelse(nzchar(monitora_painel_valor(input$mv_habito)), monitora_painel_valor(input$mv_habito), NA_character_)
