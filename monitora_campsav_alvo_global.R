@@ -14770,6 +14770,25 @@ monitora_correcao_localizar_linhas_movimento_lote <- function(dt, linha_lote, ch
   mv_desc_norm <- tryCatch(monitora_correcao_limpar_texto(mv_desc_vals), error = function(e) tolower(trimws(mv_desc_vals)))
   mv_desc_semantica <- any(mv_desc_norm %in% c("forma_vida_desconhecida_categoria_base", "forma_vida_desconhecida", "desconhecida", "desconhecido"), na.rm = TRUE)
 
+  ### v2.6.2: MVLOTE de forma de vida com escopo diagnóstico (linhas de
+  ### ocorrência da forma de origem, não a COLETA inteira) deve priorizar
+  ### linhas_alvo_serializadas. Resolver pela COLETA aqui compararia
+  ### n_linhas_alvo (todas as linhas das COLETAs) contra n_linhas_esperado
+  ### (só as linhas diagnósticas da forma de origem), disparando falsamente a
+  ### trava "n_linhas_alvo diferente de n_linhas_esperado" para lotes válidos.
+  escopo_aplicacao_val <- if ("escopo_aplicacao" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$escopo_aplicacao[1L]))) else NA_character_
+  escopo_diag_val <- if ("escopo_diagnostico_mvlote" %in% names(linha_lote)) tolower(trimws(as.character(linha_lote$escopo_diagnostico_mvlote[1L]))) else NA_character_
+  n_esperado_val <- if ("n_linhas_esperado" %in% names(linha_lote)) suppressWarnings(as.integer(linha_lote$n_linhas_esperado[1L])) else NA_integer_
+  escopo_diagnostico <- isTRUE(!is.na(escopo_aplicacao_val) && identical(escopo_aplicacao_val, "linhas_diagnosticas_ocorrencia")) ||
+    isTRUE(!is.na(escopo_diag_val) && grepl("linha_diagnostica", escopo_diag_val, fixed = TRUE)) ||
+    isTRUE(!is.na(n_esperado_val) && n_esperado_val > 0L)
+
+  if (isTRUE(escopo_diagnostico) && !isTRUE(mv_desc_semantica)) {
+    linhas_serial_diag <- suppressWarnings(as.integer(monitora_replay_v263_parse_colunas(linha_lote, c("linhas_alvo_serializadas", "linha_indice", "linhas_alvo"))))
+    linhas_serial_diag <- unique(linhas_serial_diag[!is.na(linhas_serial_diag) & linhas_serial_diag >= 1L & linhas_serial_diag <= nrow(dt)])
+    if (length(linhas_serial_diag)) return(linhas_serial_diag)
+  }
+
   coletas <- monitora_replay_v263_parse_colunas(linha_lote, c("coleta", "COLETA", "coletas", "coletas_alvo"))
   if (length(coletas) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt)) {
     idx <- which(trimws(as.character(dt[[chaves$coleta]])) %chin% coletas)
@@ -19446,6 +19465,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     !is.na(forma) && nzchar(forma) && forma %in% MONITORA_TRIAGEM_FORMAS_CONDICIONAIS
   }
 
+  ### Hábito da origem no movimento em lote só pode ser informado quando TODAS
+  ### as formas de origem selecionadas exigem hábito (bromelioide/cactacea/
+  ### orquidea/samambaia). Uma seleção vazia ou mista (ex.: erva_graminoide +
+  ### samambaia, ou a opção "todas as formas") não permite hábito de origem.
+  monitora_painel_formas_exigem_habito_todas <- function(formas) {
+    formas <- unique(vapply(as.character(formas), monitora_painel_canonizar_forma_habito, character(1)))
+    formas <- formas[!is.na(formas) & nzchar(formas)]
+    if (!length(formas)) return(FALSE)
+    all(vapply(formas, monitora_painel_forma_exige_habito, logical(1)))
+  }
+
   monitora_painel_split_barra <- function(x) {
     x <- as.character(x)
     if (!length(x) || is.na(x[1]) || !nzchar(trimws(x[1]))) return(character(0))
@@ -19835,6 +19865,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   monitora_painel_forma_representativa_mv <- function(forma) {
     forma <- monitora_relatorio_exoticas_normalizar_token(monitora_painel_valor(forma))
     if (!nzchar(forma)) return("")
+    ### v2.6.2: token de origem pode não existir em formas_mv_token_para_representativo
+    ### (vetor nomeado). Usar [[forma]] direto em nome ausente derruba a sessão
+    ### Shiny com "subscript out of bounds"; um token desconhecido deve ser
+    ### preservado como o valor observado, não crashar o painel.
+    if (!(forma %in% names(formas_mv_token_para_representativo))) return(forma)
     z <- formas_mv_token_para_representativo[[forma]]
     if (is.null(z) || !length(z) || is.na(z)) return(forma)
     as.character(z)[1L]
@@ -19843,7 +19878,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   monitora_painel_forma_tokens_historicos_mv <- function(forma) {
     forma <- monitora_painel_forma_representativa_mv(forma)
     if (!nzchar(forma)) return(character(0))
-    z <- formas_mv_tokens_historicos[[forma]]
+    z <- if (forma %in% names(formas_mv_tokens_historicos)) formas_mv_tokens_historicos[[forma]] else NULL
     if (is.null(z) || !length(z)) z <- forma
     z <- unique(monitora_relatorio_exoticas_normalizar_token(z))
     z[!is.na(z) & nzchar(z)]
@@ -21283,6 +21318,27 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_atualizar_habito_select <- function(input_id, forma, selected = "") {
       forma <- monitora_painel_canonizar_forma_habito(forma)
       if (monitora_painel_forma_exige_habito(forma)) {
+        selected <- monitora_painel_valor(selected)
+        if (!selected %in% unname(MONITORA_TRIAGEM_HABITO_CHOICES)) selected <- ""
+        shiny::updateSelectInput(session, input_id, choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = selected)
+      } else {
+        shiny::updateSelectInput(session, input_id, choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = "")
+      }
+      invisible(NULL)
+    }
+
+    ### Hábito de origem no movimento em lote (mv_lote_habito_padrao) depende de
+    ### TODAS as formas selecionadas em mv_lote_formas exigirem hábito; a opção
+    ### "__todas__" (todas as formas encontradas na origem) e seleção vazia ou
+    ### mista nunca habilitam o hábito de origem (nao se aplica).
+    monitora_painel_atualizar_habito_select_origem_lote <- function(input_id, formas, selected = "") {
+      formas <- as.character(formas)
+      formas <- formas[!is.na(formas) & nzchar(trimws(formas))]
+      if (!length(formas) || "__todas__" %in% formas) {
+        shiny::updateSelectInput(session, input_id, choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = "")
+        return(invisible(NULL))
+      }
+      if (monitora_painel_formas_exigem_habito_todas(formas)) {
         selected <- monitora_painel_valor(selected)
         if (!selected %in% unname(MONITORA_TRIAGEM_HABITO_CHOICES)) selected <- ""
         shiny::updateSelectInput(session, input_id, choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = selected)
@@ -23931,6 +23987,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       monitora_painel_atualizar_habito_select("mv_lote_habito_destino", input$mv_lote_forma_destino)
     }, ignoreInit = FALSE)
 
+    shiny::observeEvent(input$mv_lote_formas, {
+      monitora_painel_atualizar_habito_select_origem_lote("mv_lote_habito_padrao", input$mv_lote_formas)
+    }, ignoreInit = FALSE)
+
     shiny::observeEvent(input$substituir_desconhecida_selecionada, {
       if (!monitora_painel_iniciar_botao("substituir_desconhecida_selecionada", "substituir desconhecida por forma válida")) return(NULL)
       on.exit(monitora_painel_liberar_botao("substituir_desconhecida_selecionada"), add = TRUE)
@@ -24744,6 +24804,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       habito_padrao <- monitora_painel_valor(input$mv_lote_habito_padrao)
       if (nzchar(habito_padrao) && !(habito_padrao %in% c("terrestre", "epifita", "rupicola"))) {
         monitora_painel_notificar("Hábito padrão inválido. Use terrestre, epifita ou rupicola.", type = "error", duration = 8)
+        return(NULL)
+      }
+      ### Hábito de origem só se aplica quando TODAS as formas de origem
+      ### selecionadas exigem hábito (bromelioide/cactacea/orquidea/samambaia).
+      ### "__todas__" e seleção vazia/mista nunca permitem hábito de origem
+      ### informado (bug: era possível informar hábito para erva_graminoide).
+      formas_habito_origem <- if (identical(formas_sel, "__todas__")) character(0) else formas_sel
+      if (nzchar(habito_padrao) && !monitora_painel_formas_exigem_habito_todas(formas_habito_origem)) {
+        monitora_painel_notificar("Hábito da origem só se aplica a samambaia, orquídea, cacto/cactácea e bromelioide. Remova o hábito ou divida a operação.", type = "error", duration = 10)
         return(NULL)
       }
       linhas_globais <- which(as.character(dt[[chaves$coleta]]) %chin% as.character(coletas_mv))

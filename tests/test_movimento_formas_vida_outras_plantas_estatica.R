@@ -229,4 +229,146 @@ exigir_fixo(
 )
 exigir_fixo(texto, 'roles <- c("atributo_dependente_habito", "especie_nome_popular")', "Resolucao de dependentes da origem (usada para limpeza item 14/15) deve continuar cobrindo habito e especie/nome popular.")
 
+# -----------------------------------------------------------------------
+# 11. MVLOTE de formas de vida: monitora_correcao_localizar_linhas_movimento_lote
+#     deve priorizar linhas_alvo_serializadas para o escopo diagnostico (linha
+#     de ocorrencia da forma de origem), sem cair para a COLETA inteira quando
+#     ha linhas serializadas validas; a trava n_linhas_alvo != n_linhas_esperado
+#     deve continuar existindo.
+# -----------------------------------------------------------------------
+idx_localizador <- grep("^monitora_correcao_localizar_linhas_movimento_lote\\s*<-\\s*function", linhas, perl = TRUE)
+if (length(idx_localizador) < 2L) {
+  falhar("Esperava duas definicoes de monitora_correcao_localizar_linhas_movimento_lote() no arquivo (versao legada + versao ativa v2.6.2); encontrou ", length(idx_localizador), ".")
+}
+localizador_ativo <- paste(trecho_entre(
+  linhas[idx_localizador[2L]:length(linhas)],
+  "^monitora_correcao_localizar_linhas_movimento_lote\\s*<-\\s*function",
+  "^monitora_correcao_aplicar_movimento_forma_vida_lote_atomico__v262"
+), collapse = "\n")
+if (!nzchar(localizador_ativo)) falhar("Nao foi possivel isolar o corpo da versao ativa de monitora_correcao_localizar_linhas_movimento_lote().")
+
+exigir_fixo(
+  localizador_ativo,
+  'escopo_diagnostico <- isTRUE(!is.na(escopo_aplicacao_val) && identical(escopo_aplicacao_val, "linhas_diagnosticas_ocorrencia")) ||',
+  "monitora_correcao_localizar_linhas_movimento_lote() deve reconhecer escopo_aplicacao == 'linhas_diagnosticas_ocorrencia' como escopo diagnostico do MVLOTE."
+)
+exigir_fixo(
+  localizador_ativo,
+  'isTRUE(!is.na(escopo_diag_val) && grepl("linha_diagnostica", escopo_diag_val, fixed = TRUE)) ||',
+  "monitora_correcao_localizar_linhas_movimento_lote() deve reconhecer escopo_diagnostico_mvlote contendo 'linha_diagnostica' como escopo diagnostico do MVLOTE."
+)
+exigir_fixo(
+  localizador_ativo,
+  'isTRUE(!is.na(n_esperado_val) && n_esperado_val > 0L)',
+  "monitora_correcao_localizar_linhas_movimento_lote() deve reconhecer n_linhas_esperado > 0 como sinal de escopo diagnostico do MVLOTE."
+)
+
+# A prioridade de retorno das linhas serializadas deve aparecer ANTES da
+# resolucao por COLETA inteira no corpo da funcao (ordem textual = ordem de
+# execucao/retorno antecipado em R).
+pos_prioridade_serial <- regexpr("if (isTRUE(escopo_diagnostico)", localizador_ativo, fixed = TRUE)
+pos_coleta_inteira <- regexpr('coletas <- monitora_replay_v263_parse_colunas(linha_lote, c("coleta", "COLETA", "coletas", "coletas_alvo"))', localizador_ativo, fixed = TRUE)
+if (pos_prioridade_serial < 0L || pos_coleta_inteira < 0L) {
+  falhar("Nao foi possivel localizar os blocos de prioridade (linhas serializadas) e de resolucao por COLETA inteira em monitora_correcao_localizar_linhas_movimento_lote().")
+}
+if (!(pos_prioridade_serial < pos_coleta_inteira)) {
+  falhar("monitora_correcao_localizar_linhas_movimento_lote() nao prioriza linhas_alvo_serializadas antes da COLETA inteira para o escopo diagnostico do MVLOTE.")
+}
+exigir_fixo(
+  localizador_ativo,
+  "if (length(linhas_serial_diag)) return(linhas_serial_diag)",
+  "monitora_correcao_localizar_linhas_movimento_lote() nao retorna as linhas diagnosticas serializadas quando presentes e validas (nao deve cair para a COLETA inteira nesse caso)."
+)
+
+exigir_fixo(
+  aplicador_lote,
+  'n_linhas_alvo=", length(linhas), " diferente de n_linhas_esperado=", n_esperado, "; o MVLOTE deve usar as linhas diagnósticas serializadas, não a COLETA inteira',
+  "Trava n_linhas_alvo != n_linhas_esperado do MVLOTE (mensagem explicando que deve usar linhas diagnosticas serializadas, nao a COLETA inteira) nao pode ser removida."
+)
+
+# -----------------------------------------------------------------------
+# 12. Helpers de choices de origem do movimento assistido (mv_lote_origem /
+#     mv_origem) nao podem crashar a sessao Shiny com "subscript out of
+#     bounds" quando o token de origem nao existe no mapa de representativos.
+#     Token desconhecido deve ser preservado como o valor observado.
+# -----------------------------------------------------------------------
+painel_linhas <- strsplit(painel, "\n", fixed = TRUE)[[1]]
+
+forma_representativa_bloco <- paste(trecho_entre(painel_linhas, "monitora_painel_forma_representativa_mv <- function\\(forma\\)", "^\\s*\\}\\s*$"), collapse = "\n")
+if (!nzchar(forma_representativa_bloco)) falhar("monitora_painel_forma_representativa_mv() nao encontrada no painel.")
+exigir_fixo(
+  forma_representativa_bloco,
+  "if (!(forma %in% names(formas_mv_token_para_representativo))) return(forma)",
+  "monitora_painel_forma_representativa_mv() deve checar se 'forma' existe em names(formas_mv_token_para_representativo) antes de usar [[forma]] (vetor nomeado; nome ausente derruba a sessao com 'subscript out of bounds')."
+)
+
+forma_tokens_historicos_bloco <- paste(trecho_entre(painel_linhas, "monitora_painel_forma_tokens_historicos_mv <- function\\(forma\\)", "^\\s*\\}\\s*$"), collapse = "\n")
+if (!nzchar(forma_tokens_historicos_bloco)) falhar("monitora_painel_forma_tokens_historicos_mv() nao encontrada no painel.")
+exigir_regex(
+  forma_tokens_historicos_bloco,
+  'forma\\s*%in%\\s*names\\(formas_mv_tokens_historicos\\)',
+  "monitora_painel_forma_tokens_historicos_mv() deve checar se 'forma' existe em names(formas_mv_tokens_historicos) antes de usar [[forma]], preservando a forma normalizada quando o token for desconhecido."
+)
+
+# -----------------------------------------------------------------------
+# 13. Habito de origem no movimento em lote (mv_lote_habito_padrao) so pode
+#     ser informado quando TODAS as formas de origem selecionadas exigem
+#     habito (bromelioide/cactacea/orquidea/samambaia). Bug corrigido: era
+#     possivel montar operacao com origem = erva_graminoide e habito =
+#     rupicola (erva_graminoide nao exige habito no contrato XLSForm 2025).
+# -----------------------------------------------------------------------
+exigir_fixo(
+  painel,
+  "monitora_painel_formas_exigem_habito_todas <- function(formas)",
+  "monitora_painel_formas_exigem_habito_todas() nao encontrada (deve decidir, para um vetor de formas de origem, se TODAS exigem habito)."
+)
+exigir_fixo(
+  painel,
+  "monitora_painel_atualizar_habito_select_origem_lote <- function(input_id, formas, selected = \"\")",
+  "monitora_painel_atualizar_habito_select_origem_lote() nao encontrada (deve atualizar o select de habito de origem do lote conforme as formas selecionadas)."
+)
+exigir_fixo(
+  painel,
+  '"__todas__" %in% formas',
+  "monitora_painel_atualizar_habito_select_origem_lote() deve tratar a opcao '__todas__' como habito de origem nao aplicavel (mistura de formas)."
+)
+exigir_fixo(
+  painel,
+  'observeEvent(input$mv_lote_formas, {\n      monitora_painel_atualizar_habito_select_origem_lote("mv_lote_habito_padrao", input$mv_lote_formas)',
+  "Observer input$mv_lote_formas deve atualizar/limpar mv_lote_habito_padrao via monitora_painel_atualizar_habito_select_origem_lote() quando a selecao de formas de origem mudar."
+)
+
+exigir_fixo(
+  add_mv_lote_bloco,
+  "formas_habito_origem <- if (identical(formas_sel, \"__todas__\")) character(0) else formas_sel",
+  "Observer input$add_mv_lote deve isolar as formas de origem selecionadas (tratando '__todas__' como vazio) antes de validar o habito de origem."
+)
+exigir_fixo(
+  add_mv_lote_bloco,
+  "if (nzchar(habito_padrao) && !monitora_painel_formas_exigem_habito_todas(formas_habito_origem)) {",
+  "Observer input$add_mv_lote deve bloquear habito_padrao informado quando nem todas as formas de origem selecionadas exigem habito."
+)
+exigir_fixo(
+  add_mv_lote_bloco,
+  "Hábito da origem só se aplica a samambaia, orquídea, cacto/cactácea e bromelioide. Remova o hábito ou divida a operação.",
+  "Mensagem de bloqueio do habito de origem indevido deve citar que so se aplica a samambaia/orquidea/cacto-cactacea/bromelioide e orientar remover o habito ou dividir a operacao."
+)
+
+# Regressao: habito de destino continua exigido para samambaia/orquidea/
+# cactacea/bromelioide e continua bloqueado para formas que nao exigem
+# (incluindo musgos/hepaticas/antoceros/liquens/fungos via outra_forma_vida).
+exigir_fixo(
+  add_mv_lote_bloco,
+  "if (monitora_painel_forma_exige_habito(forma_destino_lote_val) && !nzchar(habito_destino_lote_val)) {",
+  "Observer input$add_mv_lote deve continuar exigindo habito de destino quando a forma de destino exige habito (samambaia/orquidea/cactacea/bromelioide)."
+)
+exigir_fixo(
+  add_mv_lote_bloco,
+  "if (!monitora_painel_forma_exige_habito(forma_destino_lote_val) && nzchar(habito_destino_lote_val)) {",
+  "Observer input$add_mv_lote deve continuar bloqueando habito de destino informado quando a forma de destino (incluindo musgos/hepaticas/antoceros/liquens/fungos) nao exige habito."
+)
+if (grepl('MONITORA_TRIAGEM_FORMAS_CONDICIONAIS.*"(musgos|hepaticas|antoceros|liquens|fungos)"', painel, perl = TRUE)) {
+  falhar("Nenhum token de forma_vida_outros (musgos/hepaticas/antoceros/liquens/fungos) pode exigir habito de destino.")
+}
+
 cat("MOVIMENTO_FORMAS_VIDA_OUTRAS_PLANTAS_ESTATICA_OK\n")
