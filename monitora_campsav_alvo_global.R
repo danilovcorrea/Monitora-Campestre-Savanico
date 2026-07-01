@@ -502,23 +502,31 @@ MONITORA_ABRIR_PAINEL_CORRECOES <- identical(MONITORA_OPCAO_ABRIR_PAINEL_CORRECO
 
 ### Verificação e carregamento dos pacotes necessários:
 
-if (!require("rstudioapi"))
-  install.packages("rstudioapi")
-library("rstudioapi")
-if (!require("dplyr"))
-  install.packages("dplyr")
-library("dplyr")
-if (!require("data.table"))
-  install.packages("data.table")
-library("data.table")
+monitora_pkg_disponivel <- function(pkg) {
+  requireNamespace(pkg, quietly = TRUE)
+}
+
+monitora_pkg_obrigatorio <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop("Pacote obrigatorio ausente: ", pkg, ". Instale antes de executar.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+monitora_pkg_carregar_se <- function(pkg, condicao = TRUE) {
+  if (!isTRUE(condicao)) return(FALSE)
+  if (!requireNamespace(pkg, quietly = TRUE)) return(FALSE)
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+  TRUE
+}
+
+monitora_pkg_obrigatorio("data.table")
+suppressPackageStartupMessages(library("data.table"))
 
 ### Pacote do backend moderno de barra de progresso -------------------------
-### Segue a mesma lógica dos demais pacotes: checa, instala se ausente e carrega.
+### Detecta sem anexar ao search path; os usos abaixo chamam cli::funcao.
 ### O backend padrão permanece cli; MONITORA_PROGRESSO_BACKEND ainda pode ser
 ### sobrescrito por variável de ambiente com "cli", "auto" ou "txt".
-if (!require("cli"))
-  install.packages("cli")
-library("cli")
 MONITORA_CLI_DISPONIVEL <- requireNamespace("cli", quietly = TRUE)
 MONITORA_PROGRESSO_BACKEND <- tolower(trimws(Sys.getenv(
   "MONITORA_PROGRESSO_BACKEND",
@@ -582,54 +590,27 @@ monitora_fwrite <- function(x, file = "", ...) {
   }
   do.call(utils::getFromNamespace("fwrite", "data.table"), c(list(x = x, file = file), args))
 }
-if (!require("purrr"))
-  install.packages("purrr")
-library("purrr")
-if (!require("stringr"))
-  install.packages("stringr")
-library("stringr")
-if (!require("tidyverse"))
-  install.packages("tidyverse")
-library("tidyverse")
-if (!require("ggplot2"))
-  install.packages("ggplot2")
-library("ggplot2")
-if (!require("ggrepel"))
-  install.packages("ggrepel")
-library("ggrepel")
-if (!require("readxl"))
-  install.packages("readxl")
-library("readxl")
-if (!require("openxlsx"))
-  install.packages("openxlsx")
-library("openxlsx")
+monitora_pkg_obrigatorio("stringr")
+suppressPackageStartupMessages(library("stringr"))
+
+### Dependência leve para operadores %>% ainda usados em blocos legados.
+### Não reabilita tidyverse/dplyr globalmente; mantém o ganho estrutural e evita
+### quebra operacional enquanto a remoção completa dos pipes fica para refatoração.
+monitora_pkg_obrigatorio("magrittr")
+suppressPackageStartupMessages(library("magrittr"))
+
+monitora_pkg_carregar_se("ggplot2", isTRUE(MONITORA_GERAR_OBJETOS_GRAFICOS))
+monitora_pkg_carregar_se("ggrepel", isTRUE(MONITORA_GERAR_OBJETOS_GRAFICOS))
 
 ### Pacotes dos produtos documentais de validação ----------------------------
 ### Usados para gerar o manual do usuário e o relatório consolidado em Rmd,
-### HTML, PDF e JSON. Seguem o mesmo padrão operacional dos demais pacotes:
-### checar, instalar se ausente e carregar antes do uso. A instalação é feita
-### somente quando algum produto documental está habilitado.
+### HTML, PDF e JSON. Detecta namespaces somente quando algum produto documental
+### está habilitado; as chamadas usam pkg::funcao no ponto de uso.
 if (isTRUE(MONITORA_GERAR_MANUAL_USUARIO) ||
     isTRUE(MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO)) {
-  if (!require("rmarkdown"))
-    install.packages("rmarkdown")
-  library("rmarkdown")
-  if (!require("knitr"))
-    install.packages("knitr")
-  library("knitr")
-  if (!require("kableExtra"))
-    install.packages("kableExtra")
-  library("kableExtra")
-  if (!require("jsonlite"))
-    install.packages("jsonlite")
-  library("jsonlite")
-  if (!require("digest"))
-    install.packages("digest")
-  library("digest")
+  invisible(vapply(c("rmarkdown", "knitr", "kableExtra", "jsonlite", "digest"), requireNamespace, logical(1), quietly = TRUE))
   if ("pdf" %in% MONITORA_FORMATOS_RELATORIO_VALIDACAO) {
-    if (!require("pagedown"))
-      install.packages("pagedown")
-    library("pagedown")
+    requireNamespace("pagedown", quietly = TRUE)
   }
 }
 
@@ -1630,12 +1611,8 @@ monitora_relatorio_validacao_consolidado_tentar <- function(registros_corrig, co
 
 
 if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) {
-  if (!require("shiny"))
-    install.packages("shiny")
-  library("shiny")
-  if (!require("DT"))
-    install.packages("DT")
-  library("DT")
+  monitora_pkg_obrigatorio("shiny")
+  monitora_pkg_obrigatorio("DT")
 }
 ### Leaflet é dependência opcional do mapa da aba de validação espacial.
 ### O diagnóstico espacial, as correções atômicas e os relatórios pré/pós-painel
@@ -1653,9 +1630,8 @@ if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES) &&
     !isTRUE(MONITORA_LEAFLET_DISPONIVEL)) {
   message("Pacote opcional 'leaflet' não encontrado: mapa interativo da aba espacial desativado. Relatórios, tabela e correções espaciais seguem disponíveis.")
 }
-if (!require("sf"))
-  install.packages("sf")
-library("sf")
+MONITORA_SF_DISPONIVEL <- isTRUE(MONITORA_VALIDAR_ESPACIAL_COLETAS) &&
+  requireNamespace("sf", quietly = TRUE)
 
 
 ### Definição robusta do diretório de trabalho como o diretório onde está o script
@@ -16732,7 +16708,12 @@ if (!exists("MONITORA_OPCAO_ESPACIAL_TRATAR_AUSENTE_PRE_POS_COMO_EXCLUIDA", inhe
 if (!exists("MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO", inherits = FALSE)) {
   MONITORA_OPCAO_ESPACIAL_GRAVAR_AUDITORIA_COMPLETA_SESSAO <- "S"
 }
+monitora_init_perf_msg <- function(etapa) {
+  try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [init_perf] ", etapa), silent = TRUE)
+  invisible(TRUE)
+}
 try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [validacao_espacial] Script carregado: versão 2.6.1."), silent = TRUE)
+monitora_init_perf_msg("apos_script_carregado")
 
 monitora_esp_cfg_bool <- function(x, default = FALSE) {
   if (is.null(x) || length(x) == 0L || is.na(x[1]) || !nzchar(trimws(as.character(x[1])))) {
@@ -18299,9 +18280,11 @@ monitora_espacial_lote_amplo_diagnostico <- function(ops, confirmar = FALSE, jus
 }
 
 ### Fim do módulo incorporado de validação espacial de COLETAS ---------------
+monitora_init_perf_msg("fim_helpers_espaciais")
 
 
 ### v2.6.1 --------------------------------------------------
+monitora_init_perf_msg("inicio_helpers_publicacao_pre_painel")
 ### Funções auxiliares para materialização pré-painel, schema editável completo
 ### e auditoria das condicionantes automáticas. Mantém atualização por referência
 ### via data.table::set() e evita varreduras globais no Shiny.
@@ -18568,6 +18551,7 @@ monitora_registros_importados_garantir_pre_painel <- function(dt, contexto = "pr
 
 
 ### Auditoria/quarentena pré-painel de completude de 101 pontos ---------------
+monitora_init_perf_msg("inicio_helpers_auditoria_completude_pre_painel")
 ### COLETAS incompletas não são corrigíveis no painel: o bolsista não pode
 ### criar pontos amostrais ausentes com todos os atributos. A rotina abaixo roda
 ### antes do painel, gera relatórios específicos e remove essas COLETAS do
@@ -19021,7 +19005,9 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
   invisible(list(diretorio = base_dir, indice = indice, resumo = resumo_all, registros = todos, validacao = validacao))
 }
 
+monitora_init_perf_msg("inicio_definicao_painel_shiny")
 monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITORA_ARQUIVO_CORRECOES_CAMPOS) {
+  monitora_init_perf_msg("execucao_painel_shiny_inicio")
   monitora_correcao_carregar_dependencias_painel()
   dt <- data.table::as.data.table(dt)
   dt <- monitora_correcao_preparar_schema_edicao_painel(dt, meta_xls, contexto = "pre_painel_shiny")
@@ -20651,6 +20637,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     x[, ..cols_exibir]
   }
 
+  monitora_painel_cfg_bool <- function(nome, default = TRUE) {
+    val <- Sys.getenv(nome, unset = if (isTRUE(default)) "S" else "N")
+    val <- toupper(trimws(as.character(val)[1L]))
+    if (val %in% c("S", "SIM", "TRUE", "T", "1", "YES", "Y")) return(TRUE)
+    if (val %in% c("N", "NAO", "NÃO", "FALSE", "F", "0", "NO")) return(FALSE)
+    isTRUE(default)
+  }
+  MONITORA_PAINEL_INICIAL_LEVE <- monitora_painel_cfg_bool("MONITORA_PAINEL_INICIAL_LEVE", TRUE)
+
   ui <- shiny::fluidPage(
     shiny::tags$head(
       shiny::tags$style(shiny::HTML("
@@ -20897,6 +20892,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_dt_output("tabela"),
         shiny::h4("Correções pendentes nesta sessão"),
         shiny::uiOutput("status_correcoes"),
+        shiny::actionButton("atualizar_pendencias", "Atualizar pendências", class = "btn-default"),
         shiny::uiOutput("preview_pendencias_sessao"),
         shiny::uiOutput("ui_pendencias_tecnicas_contrato"),
         shiny::h4("Pendências que impedem registros_validados"),
@@ -20985,6 +20981,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::h4("Mapa das transecções espaciais pré-painel"),
           shiny::uiOutput("esp_mapa_ui"),
           shiny::h4("Pendências espaciais pré-painel"),
+          shiny::actionButton("esp_carregar_pendencias", "Carregar pendências espaciais", class = "btn-default"),
           DT::DTOutput("esp_tabela_pendencias"),
           shiny::h4("Correções espaciais pendentes nesta sessão"),
           shiny::uiOutput("esp_status_correcoes"),
@@ -20999,6 +20996,79 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
   server <- function(input, output, session) {
     dicionario_painel <- if (!is.null(meta_xls) && !is.null(meta_xls$campos)) meta_xls$campos else NULL
+    painel_inicial_leve <- isTRUE(get0("MONITORA_PAINEL_INICIAL_LEVE", ifnotfound = TRUE, inherits = TRUE))
+    pendencias_detalhadas_carregadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+    esp_mapa_carregado <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+    esp_pendencias_carregadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+
+    monitora_painel_ui_perf_msg <- function(etapa) {
+      try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [painel_ui_perf] ", etapa), silent = TRUE)
+      invisible(TRUE)
+    }
+
+    monitora_painel_resumo_impeditivas_pre_cache_montar <- function() {
+      tipos_101 <- monitora_painel_tipos_auditoria_101()
+      tipos_enc <- monitora_painel_tipos_encostam_derivado()
+      tipos <- c(
+        "uas_duplicadas_mesmo_ano",
+        "ponto_sem_interceptacao",
+        "nativa_sem_forma_vida",
+        "exotica_sem_forma_vida",
+        "seca_morta_sem_forma_vida",
+        "outra_forma_vida",
+        "forma_vida_desconhecida",
+        tipos_101$tipo,
+        tipos_enc$tipo
+      )
+      rotulos <- c(
+        "UAs duplicadas no mesmo ano",
+        "Ponto amostral sem interceptação",
+        "Nativa sem forma de vida",
+        "Exótica sem forma de vida",
+        "Seca ou morta sem forma de vida",
+        "Outra forma de vida",
+        "Forma de vida desconhecida",
+        tipos_101$ocorrencia,
+        tipos_enc$ocorrencia
+      )
+      data.table::rbindlist(lapply(seq_along(tipos), function(i) {
+        z <- tryCatch(coletas_triagem_por_tipo[[tipos[i]]], error = function(e) character(0))
+        z <- unique(as.character(z))
+        z <- z[!is.na(z) & nzchar(z)]
+        data.table::data.table(
+          tipo = tipos[i],
+          ocorrencia = rotulos[i],
+          n_linhas = NA_integer_,
+          n_coletas = length(z),
+          n_corrigiveis_painel = NA_integer_,
+          n_nao_corrigiveis_painel = NA_integer_
+        )
+      }), fill = TRUE, use.names = TRUE)
+    }
+
+    resumo_impeditivas_pre_cache <- tryCatch(
+      monitora_painel_resumo_impeditivas_pre_cache_montar(),
+      error = function(e) data.table::data.table(
+        tipo = character(), ocorrencia = character(), n_linhas = integer(),
+        n_coletas = integer(), n_corrigiveis_painel = integer(), n_nao_corrigiveis_painel = integer()
+      )
+    )
+    monitora_painel_ui_perf_msg("resumo_impeditivas_pre_cache_pronto")
+
+    shiny::observeEvent(input$atualizar_pendencias, {
+      monitora_painel_ui_perf_msg("atualizar_pendencias_solicitado")
+      pendencias_detalhadas_carregadas(TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$esp_carregar_mapa, {
+      monitora_painel_ui_perf_msg("mapa_carregar_solicitado")
+      esp_mapa_carregado(TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$esp_carregar_pendencias, {
+      monitora_painel_ui_perf_msg("pendencias_espaciais_solicitadas")
+      esp_pendencias_carregadas(TRUE)
+    }, ignoreInit = TRUE)
 
     monitora_painel_atualizar_habito_select <- function(input_id, forma, selected = "") {
       forma <- monitora_painel_canonizar_forma_habito(forma)
@@ -22412,10 +22482,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$preview_lote_multicoletas <- DT::renderDT({
-      resumo <- preview_lote_multicoletas_dt()
       if (!isTRUE(monitora_painel_usar_lote_coletas())) {
+        monitora_painel_ui_perf_msg("render_placeholder_preview_lote_multicoletas")
         return(DT::datatable(data.table::data.table(mensagem = "Selecione escopo 'Coletas do lote' para exibir a prévia."), rownames = FALSE))
       }
+      resumo <- preview_lote_multicoletas_dt()
       if (!nrow(resumo)) {
         return(DT::datatable(data.table::data.table(mensagem = "Sem COLETAS selecionadas para lote ou atributo inválido."), rownames = FALSE))
       }
@@ -22453,7 +22524,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     output$tabela_exoticas <- DT::renderDT({
       ex <- triagem_formas_vida_coleta()
-      if (nrow(ex) == 0L) return(DT::datatable(data.table::data.table(mensagem = "Sem registros com forma de vida exótica, desconhecida ou outras formas de vida nos registros selecionados."), rownames = FALSE))
+      if (nrow(ex) == 0L) {
+        monitora_painel_ui_perf_msg("render_placeholder_tabela_exoticas")
+        return(DT::datatable(data.table::data.table(mensagem = "Sem registros com forma de vida exótica, desconhecida ou outras formas de vida nos registros selecionados."), rownames = FALSE))
+      }
       ex_vis <- monitora_painel_ocultar_uuid_registro_visual(ex)
       DT::datatable(
         ex_vis,
@@ -22464,6 +22538,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, server = TRUE)
 
     output$tabela <- DT::renderDT({
+      if (isTRUE(painel_inicial_leve) && !nzchar(monitora_painel_valor(input$coleta))) {
+        monitora_painel_ui_perf_msg("render_placeholder_tabela")
+        return(DT::datatable(data.table::data.table(mensagem = "Selecione uma COLETA para exibir a prévia central."), rownames = FALSE))
+      }
       x <- dados_filtrados()
       cols <- unique(na.omit(c(chaves$coleta, chaves$uc, chaves$ea, chaves$ano, chaves$ciclo, chaves$campanha, chaves$ua, chaves$ponto_amostral, chaves$ponto_metro, chaves$uuid_registro, input$atributo)))
       cols <- cols[cols %in% names(x)]
@@ -22482,6 +22560,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$pendencias_impeditivas_detalhadas <- DT::renderDT({
+      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
+        monitora_painel_ui_perf_msg("render_placeholder_pendencias_impeditivas_detalhadas")
+        return(DT::datatable(data.table::data.table(mensagem = "Clique em Atualizar pendências para detalhar."), rownames = FALSE))
+      }
       det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
       tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
       if (nrow(det) && "tipo_pendencia" %in% names(det)) det <- det[!(tipo_pendencia %in% tipos_tecnicos)]
@@ -22492,6 +22574,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, server = TRUE)
 
     output$ui_pendencias_tecnicas_contrato <- shiny::renderUI({
+      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
+        monitora_painel_ui_perf_msg("render_placeholder_ui_pendencias_tecnicas_contrato")
+        return(shiny::div(class = "alert alert-info", "Clique em Atualizar pendências para detalhar pendências técnicas de contrato/schema."))
+      }
       det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
       tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
       if (!nrow(det) || !("tipo_pendencia" %in% names(det))) return(NULL)
@@ -22524,6 +22610,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$preview_pendencias_sessao <- shiny::renderUI({
+      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
+        monitora_painel_ui_perf_msg("render_placeholder_preview_pendencias_sessao")
+        return(shiny::tagList(
+          shiny::div(class = "alert alert-info", "Resumo leve de abertura. Clique em Atualizar pendências para detalhar."),
+          monitora_painel_tabela_impeditivas_ui(monitora_painel_resumo_impeditivas_pre(), "Pendências na abertura do painel")
+        ))
+      }
       resumo_pre <- tryCatch(monitora_painel_resumo_impeditivas_pre(), error = function(e) data.table::data.table())
       resumo_pos <- tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) data.table::data.table())
       if (!nrow(resumo_pos)) return(NULL)
@@ -22569,6 +22662,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     output$correcoes <- DT::renderDT({
       correcoes_vis <- monitora_painel_resumir_operacoes_semanticas(rv$correcoes)
+      if (!nrow(correcoes_vis)) {
+        monitora_painel_ui_perf_msg("render_placeholder_correcoes")
+      }
       if (nrow(correcoes_vis)) {
         rv$correcoes_vis_ids <- as.character(correcoes_vis$.id_operacao_semantica)
       } else {
@@ -23049,6 +23145,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "Mapa interativo desativado: pacote opcional leaflet não está instalado. A tabela de pendências e as correções espaciais permanecem disponíveis. Instale leaflet apenas se desejar visualizar o mapa."
         ))
       }
+      if (isTRUE(painel_inicial_leve) && !isTRUE(esp_mapa_carregado())) {
+        return(shiny::div(
+          class = "alert alert-info",
+          "Mapa espacial não carregado na abertura para preservar responsividade.",
+          shiny::br(),
+          shiny::actionButton("esp_carregar_mapa", "Carregar mapa espacial", class = "btn-default")
+        ))
+      }
       shiny::tagList(
         shiny::helpText("Mapa filtrado pela seleção do painel à esquerda e pelos filtros espaciais. Para preservar performance, a renderização interativa é atualizada com atraso curto e limita a visualização às primeiras 300 COLETAS filtradas."),
         leaflet::leafletOutput("esp_mapa", height = "520px")
@@ -23057,6 +23161,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     if (requireNamespace("leaflet", quietly = TRUE)) {
       output$esp_mapa <- leaflet::renderLeaflet({
+        if (isTRUE(painel_inicial_leve)) shiny::req(isTRUE(esp_mapa_carregado()))
         v <- esp_validacao_mapa()
         m <- leaflet::leaflet(options = leaflet::leafletOptions(preferCanvas = TRUE))
         m <- leaflet::addTiles(m)
@@ -23184,7 +23289,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     output$esp_tabela_pendencias <- DT::renderDT({
       if (!isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
+        monitora_painel_ui_perf_msg("render_placeholder_esp_tabela_pendencias")
         return(DT::datatable(data.table::data.table(mensagem = "Validação espacial desativada."), rownames = FALSE))
+      }
+      if (isTRUE(painel_inicial_leve) && !isTRUE(esp_pendencias_carregadas())) {
+        monitora_painel_ui_perf_msg("render_placeholder_esp_tabela_pendencias")
+        return(DT::datatable(data.table::data.table(mensagem = "Clique em Carregar pendências espaciais para detalhar."), rownames = FALSE))
       }
       v <- esp_validacao_filtrada()
       if (!nrow(v)) return(DT::datatable(data.table::data.table(mensagem = "Sem pendências espaciais nos filtros atuais."), rownames = FALSE))
@@ -23283,6 +23393,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     output$esp_correcoes <- DT::renderDT({
       resumo <- esp_correcoes_resumo()
       if (!nrow(resumo)) {
+        monitora_painel_ui_perf_msg("render_placeholder_esp_correcoes")
         rv$correcoes_espaciais_vis_ids <- character(0)
         return(DT::datatable(data.table::data.table(mensagem = "Sem correções espaciais pendentes."), rownames = FALSE))
       }
@@ -24620,47 +24731,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     monitora_painel_resumo_impeditivas_pre <- function() {
-      resumo_estado <- tryCatch(monitora_painel_resumo_impeditivas_dados(dt), error = function(e) NULL)
-      if (!is.null(resumo_estado) && data.table::is.data.table(resumo_estado) && nrow(resumo_estado)) return(resumo_estado[])
-      tipos <- c(
-        "uas_duplicadas_mesmo_ano",
-        "ponto_sem_interceptacao",
-        "nativa_sem_forma_vida",
-        "exotica_sem_forma_vida",
-        "seca_morta_sem_forma_vida",
-        "outra_forma_vida",
-        "forma_vida_desconhecida",
-        monitora_painel_tipos_auditoria_101()$tipo,
-        monitora_painel_tipos_encostam_derivado()$tipo
-      )
-      rotulos <- c(
-        "UAs duplicadas no mesmo ano",
-        "Ponto amostral sem interceptação",
-        "Nativa sem forma de vida",
-        "Exótica sem forma de vida",
-        "Seca ou morta sem forma de vida",
-        "Outra forma de vida",
-        "Forma de vida desconhecida",
-        monitora_painel_tipos_auditoria_101()$ocorrencia,
-        monitora_painel_tipos_encostam_derivado()$ocorrencia
-      )
-      tryCatch({
-        data.table::rbindlist(lapply(seq_along(tipos), function(i) {
-          z <- coletas_triagem_por_tipo[[tipos[i]]]
-          z <- unique(as.character(z))
-          z <- z[!is.na(z) & nzchar(z)]
-          data.table::data.table(
-            tipo = tipos[i],
-            ocorrencia = rotulos[i],
-            n_linhas = NA_integer_,
-            n_coletas = length(z),
-            n_corrigiveis_painel = NA_integer_,
-            n_nao_corrigiveis_painel = NA_integer_
-          )
-        }), fill = TRUE, use.names = TRUE)
-      }, error = function(e) {
-        data.table::data.table(tipo = character(), ocorrencia = character(), n_coletas = integer())
-      })
+      data.table::copy(resumo_impeditivas_pre_cache)
     }
 
     monitora_painel_tem_impeditivas_pre <- function() {
@@ -25217,8 +25288,22 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     monitora_painel_mostrar_modal_impeditivas <- function(acao = c("salvar", "cancelar")) {
       acao <- match.arg(acao)
+      monitora_painel_ui_perf_msg("modal_impeditivas_inicio")
       resumo_pre <- monitora_painel_resumo_impeditivas_pre()
-      resumo_preview <- tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) resumo_pre)
+      n_ops_modal <- tryCatch(monitora_painel_n_operacoes_semanticas(rv$correcoes), error = function(e) 0L)
+      n_ops_esp_modal <- tryCatch(nrow(rv$correcoes_espaciais), error = function(e) 0L)
+      msg_estimativa <- "Estimativa detalhada não recalculada para preservar responsividade. Use Atualizar pendências para detalhar."
+      if (is.finite(n_ops_modal + n_ops_esp_modal) && (n_ops_modal + n_ops_esp_modal) > 0L) {
+        msg_estimativa <- paste0(
+          msg_estimativa,
+          " Há ", n_ops_modal + n_ops_esp_modal,
+          " operação(ões) pendente(s) nesta sessão; a estimativa detalhada é sob demanda."
+        )
+      }
+      tabela_preview <- shiny::tagList(
+        shiny::h5("Estimativa após operações pendentes nesta sessão"),
+        shiny::div(class = "alert alert-info", msg_estimativa)
+      )
       rotulo_checkpoint <- if (identical(acao, "salvar")) {
         "Salvar checkpoint com pendências"
       } else {
@@ -25240,7 +25325,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           ),
           monitora_painel_tabela_impeditivas_ui(resumo_pre, "Pendências na abertura do painel"),
           shiny::hr(),
-          monitora_painel_tabela_impeditivas_ui(resumo_preview, "Estimativa após operações pendentes nesta sessão"),
+          tabela_preview,
           shiny::p("Escolha como deseja encerrar o painel agora:"),
           shiny::tags$ul(
             shiny::tags$li(shiny::strong("Voltar ao painel"), ": continuar revisando/corrigindo as ocorrências."),
@@ -25256,12 +25341,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         easyClose = FALSE,
         size = "l"
       ))
+      monitora_painel_ui_perf_msg("modal_impeditivas_exibido")
       invisible(TRUE)
     }
 
     monitora_painel_salvar_e_fechar <- function(confirmado_pendencias = FALSE) {
       resumo_imp_pre <- monitora_painel_resumo_impeditivas_pre()
-      resumo_imp_preview <- tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) resumo_imp_pre)
+      resumo_imp_preview <- if (isTRUE(painel_inicial_leve) && !isTRUE(confirmado_pendencias)) {
+        resumo_imp_pre
+      } else {
+        tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) resumo_imp_pre)
+      }
       if (!isTRUE(confirmado_pendencias) && isTRUE(any(resumo_imp_preview$n_coletas > 0L, na.rm = TRUE) || ("n_linhas" %in% names(resumo_imp_preview) && any(resumo_imp_preview$n_linhas > 0L, na.rm = TRUE)))) {
         monitora_painel_mostrar_modal_impeditivas("salvar")
         return(invisible(NULL))
@@ -25354,6 +25444,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       res <- monitora_correcao_template()
       attr(res, "painel_cancelar_sem_materializar") <- TRUE
       attr(res, "motivo_cancelamento") <- motivo
+      monitora_painel_ui_perf_msg("cancelar_sem_materializar_stopApp")
       shiny::stopApp(res)
     }
 
@@ -25382,8 +25473,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     shiny::observeEvent(input$confirmar_encerrar_sem_materializar, {
-      if (!monitora_painel_iniciar_botao("confirmar_encerrar_sem_materializar", "encerrar execução sem materializar registros_corrig")) return(NULL)
-      on.exit(monitora_painel_liberar_botao("confirmar_encerrar_sem_materializar"), add = TRUE)
       monitora_painel_encerrar_sem_materializar("usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes")
     })
 
@@ -25444,6 +25533,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
 
 ### Cache seguro do painel ----------------------------------------------------
+monitora_init_perf_msg("fim_helpers_painel_correcoes")
 monitora_cache_painel_dirs_busca <- function(criar = FALSE) {
   out_dir <- get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE)
   d_conf <- get0("MONITORA_CACHE_PAINEL_DIR", ifnotfound = NA_character_, inherits = TRUE)
@@ -25498,6 +25588,7 @@ MONITORA_EXTRACT_BASE_DIR <- MONITORA_EXTRACT_DIR
 MONITORA_EXTRACT_DIR <- file.path(MONITORA_EXTRACT_BASE_DIR, paste0("exec_", MONITORA_EXEC_ID))
 dir.create(MONITORA_EXTRACT_DIR, showWarnings = FALSE, recursive = TRUE)
 monitora_log_registrar_evento("configuracao_execucao", "INFO", NA_character_, paste0("modo_execucao=", MONITORA_MODO_EXECUCAO, "; perfil=", MONITORA_PERFIL_EXECUCAO, "; batch_csv=", MONITORA_BATCH_SIZE_CSV, "; dt_threads=", MONITORA_DT_THREADS, "; gc_modo=", MONITORA_GC_MODO, "; gc_auto_min_mem_mb=", MONITORA_GC_AUTO_MIN_MEM_MB, "; auditoria_coord_completa=", MONITORA_AUDITORIA_COORDENADAS_COMPLETA, "; exportar_graficos=", MONITORA_EXPORTAR_GRAFICOS, "; gerar_objetos_graficos=", MONITORA_GERAR_OBJETOS_GRAFICOS, "; exportar_png_modo=", MONITORA_EXPORTAR_PNG_MODO, "; exportar_kml=", MONITORA_EXPORTAR_KML), "configuracoes adaptativas de performance/RAM e controlador dinamico")
+monitora_init_perf_msg("fim_configuracao_execucao_cache")
 
 monitora_recurso_memoria_rss_mb <- function() {
   status_file <- "/proc/self/status"
@@ -25611,9 +25702,11 @@ MONITORA_RECURSO_HARDWARE <- cbind(
 monitora_fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")))
 monitora_fwrite(MONITORA_RECURSO_HARDWARE, file.path(MONITORA_OUTPUT_DIR, "hardware_memoria_ultima_execucao.csv"))
 monitora_log_registrar_evento("hardware_memoria", "INFO", file.path(MONITORA_LOG_DIR, paste0("hardware_memoria_", MONITORA_EXEC_ID, ".csv")), paste0("MemAvailable_MB=", MONITORA_RECURSO_HARDWARE$mem_available_mb, "; SwapTotal_MB=", MONITORA_RECURSO_HARDWARE$swap_total_mb, "; energia_fonte=", MONITORA_RECURSO_HARDWARE$energia_fonte, "; plano_energia=", MONITORA_RECURSO_HARDWARE$energia_plano), "usar para diagnosticar RAM, tomada/bateria e plano de energia")
+monitora_init_perf_msg("fim_helpers_cache_relatorios_hardware")
 
 
 ### Controlador dinâmico de recursos
+monitora_init_perf_msg("inicio_controlador_recursos_progresso")
 ### Objetivo: usar o máximo de CPU, processamento paralelo e lotes grandes quando há RAM disponível,
 ### mas preservar uma reserva para sistema, Firefox/RStudio e evitar falta de memória. Quando a RAM
 ### volta a ficar disponível, o controlador sobe novamente o nível de paralelismo.
@@ -25814,6 +25907,7 @@ monitora_recurso_gravar_controle <- function() {
 
 # Primeira decisão dinâmica após ler o hardware real.
 monitora_recurso_controlar("inicio_controlador_recursos", force_log = TRUE)
+monitora_init_perf_msg("fim_primeira_decisao_controlador_recursos")
 
 ### Barra de progresso e atualização de execução
 ### A barra preserva a lógica textual/ponderada atual, mas permite backend visual
@@ -25875,6 +25969,7 @@ MONITORA_PROGRESSO_CLI_AVISO_AUSENTE_EMITIDO <- FALSE
 MONITORA_PROGRESSO_ULTIMA_ETAPA <- NA_character_
 MONITORA_PROGRESSO_ULTIMO_STATUS <- NA_character_
 MONITORA_PROGRESSO_LOOPS <- new.env(parent = emptyenv())
+monitora_init_perf_msg("fim_configuracao_progresso")
 MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG <- monitora_cfg_env_num("MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG", 0.35)
 if (is.na(MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG) || MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG < 0.05) {
   MONITORA_PROGRESSO_RENDER_MIN_INTERVALO_SEG <- 0.35
@@ -25894,7 +25989,7 @@ MONITORA_PROGRESSO_ULTIMO_FLUSH_TS <- Sys.time() - 3600
 
 if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_spin} {cli::pb_bar} {pb_percent} ",
+    "{cli::pb_bar} {pb_percent} ",
     "[{pb_current}/{pb_total}] ETA:{pb_eta} dec:{pb_elapsed} | {pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
@@ -25903,7 +25998,7 @@ if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
   )
 } else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_spin} {pb_name} {cli::pb_bar} {pb_percent} ",
+    "{pb_name} {cli::pb_bar} {pb_percent} ",
     "[{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
@@ -25912,7 +26007,7 @@ if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
   )
 } else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "tres_linhas")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_spin} {pb_percent} [{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}\n",
+    "{pb_percent} [{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}\n",
     "{cli::pb_bar}\n",
     "decorrido:{pb_elapsed}"
   )
@@ -25923,7 +26018,7 @@ if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
   )
 } else {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_spin} {pb_percent} [{pb_current}/{pb_total}] ",
+    "{pb_percent} [{pb_current}/{pb_total}] ",
     "ETA:{pb_eta} | {pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
@@ -26397,6 +26492,7 @@ monitora_progresso_finalizar <- function() {
 }
 
 ### Instrumentação de performance
+monitora_init_perf_msg("inicio_instrumentacao_perf")
 ### Registra a duração incremental e acumulada das principais etapas do script.
 ### O objetivo é identificar gargalos, especialmente em normalização, consolidação de colunas,
 ### deduplicação semântica, análises e exportações.
@@ -26519,7 +26615,9 @@ monitora_perf_gravar_relatorio <- function() {
   monitora_fwrite(MONITORA_PERF_EXECUCAO, file.path(MONITORA_OUTPUT_DIR, "performance_execucao_ultima_execucao.csv"))
   invisible(TRUE)
 }
+monitora_init_perf_msg("fim_instrumentacao_perf")
 
+monitora_init_perf_msg("inicio_helpers_importacao_registros")
 
 monitora_registros_importados_reordenar <- function(dt) {
   dt <- monitora_dt_referenciar(dt)
@@ -26818,6 +26916,7 @@ monitora_registros_importados_saneado_exportar <- function(dt,
 
 ### v2.6.1 -------------------------------------------------------------
 ### Auditoria/correção de pipes residuais e organização de output.
+monitora_init_perf_msg("inicio_helpers_organizacao_output")
 if (!exists("MONITORA_OPCAO_ORGANIZAR_OUTPUT_SUBPASTAS", inherits = FALSE)) MONITORA_OPCAO_ORGANIZAR_OUTPUT_SUBPASTAS <- "S"
 if (!exists("MONITORA_OPCAO_MANTER_COPIAS_COMPAT_RAIZ", inherits = FALSE)) MONITORA_OPCAO_MANTER_COPIAS_COMPAT_RAIZ <- "S"
 
@@ -27357,6 +27456,7 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
 
 
 ### Helpers de relatório necessários antes do modo cache.
+monitora_init_perf_msg("inicio_helpers_relatorios_cache")
 ### Em modo abrir_painel_cache, o painel é aberto antes do bloco pesado de
 ### processamento; portanto estes helpers precisam existir antes do desvio de cache.
 monitora_relatorio_exoticas_normalizar_texto <- function(x) {
@@ -27857,6 +27957,7 @@ monitora_relatorio_formas_vida_detectar_colunas_todas <- function(dt) {
     !grepl("especie|species|foto|imagem|image|uuid|id$", z)
   unique(c(cols_chave, nms[padrao]))
 }
+monitora_init_perf_msg("fim_helpers_relatorios_diagnosticos_cache")
 
 monitora_relatorio_colapsar_campos_com_tokens <- function(dt, cols, tokens) {
   n <- nrow(dt)
@@ -27879,6 +27980,7 @@ monitora_relatorio_colapsar_campos_com_tokens <- function(dt, cols, tokens) {
   }
   list(campos = campos, valores = valores, tokens = tokens_out)
 }
+monitora_init_perf_msg("fim_helpers_relatorios_tokens_cache")
 
 
 monitora_cache_arquivo_sessao <- function(prefixo, ext = ".csv") {
@@ -28128,22 +28230,42 @@ if (identical(MONITORA_MODO_EXECUCAO, "painel_incremental_registros_corrig")) {
   )
 }
 
-if (!(MONITORA_MODO_EXECUCAO %in% c("abrir_painel_cache", "painel_incremental_registros_corrig"))) {
+monitora_execucao_encerrar_ramo_cache_incremental <- function(modo = MONITORA_MODO_EXECUCAO) {
+  modo <- as.character(modo)[1L]
+  msg <- paste0("Execução parcial concluída de forma controlada no modo ", modo, ".")
+  monitora_init_perf_msg("encerramento_controlado_ramo_cache_incremental")
+  if (exists("monitora_progresso_finalizar", mode = "function", inherits = TRUE)) {
+    tryCatch(monitora_progresso_finalizar(), error = function(e) NULL)
+  }
+  if (exists("monitora_perf_gravar_relatorio", mode = "function", inherits = TRUE)) {
+    tryCatch(monitora_perf_gravar_relatorio(), error = function(e) NULL)
+  }
+  if (interactive()) {
+    stop(msg, call. = FALSE)
+  }
+  message(msg)
+  quit(save = "no", status = 0L, runLast = FALSE)
+}
 
+if (MONITORA_MODO_EXECUCAO %in% c("abrir_painel_cache", "painel_incremental_registros_corrig")) {
+  monitora_execucao_encerrar_ramo_cache_incremental(MONITORA_MODO_EXECUCAO)
+}
+
+monitora_init_perf_msg("inicio_ramo_normal_helpers_importacao")
 monitora_txt_normalizar_vazio <- function(x) {
   x <- as.character(x)
-  x <- stringr::str_squish(x)
+  x <- trimws(gsub("\\s+", " ", x, perl = TRUE))
   x[x %in% c("", "NA", "Na", "na", "N/A", "n/a", "NULL", "null", "NaN", "nan")] <- NA_character_
   x
 }
 
 monitora_txt_nome_coluna_base <- function(x) {
   x <- as.character(x)
-  x <- stringr::str_replace_all(x, '\\"{4}', '\\"\\"')
-  x <- stringr::str_squish(x)
+  x <- gsub('\\"{4}', '\\"\\"', x, perl = TRUE)
+  x <- trimws(gsub("\\s+", " ", x, perl = TRUE))
   # Remove sufixos introduzidos por leitores de CSV/XLSX para nomes repetidos, como uc...5.
   # Não remove sufixos .2, pois no formulário eles podem distinguir perguntas diferentes.
-  x <- stringr::str_replace(x, "\\.\\.\\.[0-9]+$", "")
+  x <- sub("\\.\\.\\.[0-9]+$", "", x, perl = TRUE)
   x
 }
 
@@ -28160,6 +28282,7 @@ monitora_vetor_coalesce <- function(...) {
   }
   out
 }
+monitora_init_perf_msg("fim_helpers_texto_importacao")
 
 monitora_dt_consolidar_colunas_duplicadas <- function(dt) {
   # Consolidação adaptativa de colunas duplicadas.
@@ -28399,6 +28522,7 @@ monitora_dt_consolidar_colunas_duplicadas <- function(dt) {
   attr(dt, "audit_duplicate_columns") <- audit
   dt
 }
+monitora_init_perf_msg("fim_helper_consolidar_colunas_duplicadas")
 
 
 monitora_dt_remover_colunas_tecnicas_legadas <- function(dt, momento = "importacao") {
@@ -28420,6 +28544,7 @@ monitora_dt_remover_colunas_tecnicas_legadas <- function(dt, momento = "importac
   }
   dt
 }
+monitora_init_perf_msg("fim_helper_limpeza_colunas_legadas")
 
 
 monitora_txt_remover_acentos <- function(x) {
@@ -28431,8 +28556,8 @@ monitora_txt_remover_acentos <- function(x) {
 monitora_txt_canonicalizar_coluna <- function(x) {
   y <- monitora_txt_nome_coluna_base(x)
   y <- tolower(monitora_txt_remover_acentos(y))
-  y <- stringr::str_replace_all(y, "[[:space:]]+", " ")
-  y <- stringr::str_squish(y)
+  y <- gsub("[[:space:]]+", " ", y, perl = TRUE)
+  y <- trimws(gsub("\\s+", " ", y, perl = TRUE))
   y
 }
 
@@ -28503,12 +28628,14 @@ monitora_dt_consolidar_aliases_colunas <- function(dt) {
   }
   dt
 }
+monitora_init_perf_msg("fim_helpers_aliases_normalizacao_importacao")
 
 
 # Deduplicação semântica compatível com exportação em lote.
 # Não usa UUID de coleta como UUID de registro amostral.
 
 ### Detecção formal do tipo de entrada por nome de arquivo e cabeçalho.
+monitora_init_perf_msg("inicio_helpers_deteccao_tipo_entrada")
 ### O objetivo é distinguir: exportação individual do SISMONITORA, exportação em lote
 ### de exportação em lote e arquivos pós-tratamento registros_corrig*.csv usados como entrada.
 monitora_io_detectar_tipo_csv <- function(path) {
@@ -29361,6 +29488,7 @@ monitora_registros_validados_sanitizar_pre_exportacao <- function(registros_corr
 ### v2.6.1 -------------------------
 
 ### Exportação opcional: registros_validados.csv ---------------------------
+monitora_init_perf_msg("inicio_helpers_registros_validados_schema")
 ### As funções do contrato SISMONITORA são sempre carregadas para permitir
 ### ordenação técnica de registros_corrig.csv e auditorias de schema. A exportação
 ### de registros_validados.csv continua opcional e só ocorre quando
@@ -31640,6 +31768,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
 
 ### v2.6.1 -------------------------------------------------------------
 ### Permite preservar o trabalho do bolsista como checkpoint quando ainda houver
+monitora_init_perf_msg("inicio_helpers_pendencias_checkpoint")
 ### pendências impeditivas. Essas pendências bloqueiam registros_validados.csv e
 ### produtos finais, mas não impedem a gravação marcada de registros_corrig.csv.
 if (!exists("MONITORA_PERMITIR_REGISTROS_CORRIG_CHECKPOINT_PENDENTE", inherits = FALSE)) MONITORA_PERMITIR_REGISTROS_CORRIG_CHECKPOINT_PENDENTE <- TRUE
@@ -32199,6 +32328,7 @@ monitora_publicacao_ac_sanitizar_cadastro_nao_bloqueante <- function(dt,
 
 ### v2.6.1 -------------------------------------------------------------
 ### Fechamento contratual centrado em registros_corrig.
+monitora_init_perf_msg("inicio_helpers_fechamento_registros_corrig")
 ### A organização dos 129 atributos do template SISMONITORA/XLSForm 2025
 ### acontece no próprio registros_corrig. registros_validados.csv, quando
 ### liberado, passa a ser apenas seleção e reordenação desses atributos.
@@ -32654,6 +32784,7 @@ monitora_publicacao_v262_exportar_registros_validados_selecao <- function(regist
 
 ### v2.6.1 ----------------------------
 ### Fechamento único pós-painel/pre-materialização. Esta função torna
+monitora_init_perf_msg("inicio_helpers_fechamento_unico_pre_materializacao")
 ### registros_corrig.csv o produto mestre: sanitiza, fecha invariantes, audita
 ### contrato XLSForm21 nos atributos que alimentam registros_validados.csv e só
 ### então libera a gravação do CSV corrigido. registros_validados.csv passa a
@@ -33829,6 +33960,7 @@ monitora_io_mapear_origem_arquivo <- function(paths, source_dirs = MONITORA_IO_D
 
 ### v2.6.1 ----------------------------------
 ### Modos registros_corrig_* e painel_incremental_* retomam de um produto
+monitora_init_perf_msg("inicio_helpers_retomada_registros_corrig")
 ### corrigido já produzido pelo script. Essa entrada não reconstrói
 ### registros_importados.csv e não mistura correções antigas com a sessão atual.
 if (!exists("monitora_auditoria_anos_invalidos", mode = "function", inherits = TRUE)) {
@@ -33961,13 +34093,17 @@ if (isTRUE(MONITORA_MODO_USA_REGISTROS_CORRIG_ENTRADA)) {
 } else {
 
 ### Origem dos dados: arquivos de entrada são aceitos
+monitora_init_perf_msg("inicio_busca_listagem_input")
 ### exclusivamente em input/. Arquivos ZIP/CSV/XLSX/XLS na raiz do diretório do
 ### script bloqueiam a execução para forçar conferência operacional explícita do
 ### conteúdo de input/ antes de cada rodada.
 MONITORA_IO_DIRETORIOS_FONTE <- MONITORA_INPUT_DIR
+monitora_init_perf_msg("antes_list_files_input")
 monitora_input_conteudo <- if (dir.exists(MONITORA_INPUT_DIR)) {
   list.files(MONITORA_INPUT_DIR, recursive = TRUE, all.files = FALSE, no.. = TRUE)
 } else character()
+monitora_init_perf_msg("apos_list_files_input")
+monitora_init_perf_msg("antes_list_files_raiz")
 monitora_root_input_like <- list.files(
   MONITORA_BASE_DIR,
   pattern = "\\.(zip|csv|xlsx|xls)$",
@@ -33975,6 +34111,7 @@ monitora_root_input_like <- list.files(
   full.names = TRUE,
   ignore.case = TRUE
 )
+monitora_init_perf_msg("apos_list_files_raiz")
 if (length(monitora_root_input_like) > 0L) {
   aud_root <- data.table::data.table(
     arquivo = normalizePath(monitora_root_input_like, winslash = "/", mustWork = FALSE),
@@ -34000,6 +34137,7 @@ if (length(monitora_input_conteudo) == 0L) {
   )
 }
 monitora_log_registrar_evento("configuracao", "INFO", MONITORA_IO_DIRETORIOS_FONTE, "diretorio de origem selecionado", "input/ obrigatório")
+monitora_init_perf_msg("antes_checkpoint_configuracao_inicial")
 monitora_perf_registrar_checkpoint("configuracao_inicial", paste0("origem obrigatória: ", MONITORA_IO_DIRETORIOS_FONTE))
 
 ### Extração recursiva de ZIPs, incluindo ZIPs internos dentro de ZIPs.
@@ -34013,7 +34151,10 @@ xlsx_files <- xlsx_files[!grepl("/(output|log)/", normalizePath(xlsx_files, wins
 for (xlsx_file in xlsx_files) {
   csv_file <- sub("\\.xlsx$", ".csv", xlsx_file, ignore.case = TRUE)
   if (!file.exists(csv_file)) {
-    data <- read_excel(xlsx_file)
+    if (!requireNamespace("readxl", quietly = TRUE)) {
+      stop("Arquivo XLSX encontrado, mas pacote readxl nao esta instalado: ", xlsx_file, call. = FALSE)
+    }
+    data <- readxl::read_excel(xlsx_file)
     data.table::fwrite(data.table::as.data.table(monitora_sanitizar_ausencias_produto(data)), file = csv_file, na = "NA")
     monitora_log_registrar_evento("conversao_xlsx", "INFO", xlsx_file, paste0("convertido para ", csv_file), "OK")
   } else {
@@ -48240,5 +48381,3 @@ monitora_recurso_gc("limpeza_final_ambiente")
 monitora_progresso_finalizar()
 
 } ### Fim do bloco protegido por MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE
-
-}
