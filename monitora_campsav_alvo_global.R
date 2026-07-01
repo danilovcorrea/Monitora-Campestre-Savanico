@@ -18136,7 +18136,7 @@ monitora_espacial_painel_ui <- function() {
         shiny::selectizeInput("esp_filtro_status", "Status espacial", choices = NULL, multiple = TRUE),
         shiny::selectizeInput("esp_filtro_ua", "UA", choices = NULL, multiple = TRUE),
         shiny::selectizeInput("esp_filtro_ano", "ANO", choices = NULL, multiple = TRUE),
-        shiny::checkboxInput("esp_somente_pendencias", "Somente pendências/alertas", value = TRUE),
+        shiny::checkboxInput("esp_somente_pendencias", "Somente pendências/alertas", value = FALSE),
         shiny::hr(),
         shiny::h4("Operação atômica"),
         shiny::selectInput("esp_tipo_operacao", "Tipo", choices = c(
@@ -20314,6 +20314,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     monitora_painel_tipos_encostam_derivado()$tipo
   )
   coletas_triagem_por_tipo <- c(coletas_triagem_por_tipo, tipos_encostam_derivado_iniciais)
+  coletas_encostam_derivado_iniciais <- monitora_painel_coletas_encostam_derivado(dt)
+  for (nm_enc in names(coletas_encostam_derivado_iniciais)) {
+    coletas_triagem_por_tipo[[nm_enc]] <- coletas_encostam_derivado_iniciais[[nm_enc]]
+  }
   coletas_triagem_por_tipo <- lapply(coletas_triagem_por_tipo, function(z) {
     z <- unique(as.character(z))
     sort(z[!is.na(z) & nzchar(z)])
@@ -20358,10 +20362,33 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     vals_base <- unique(as.character(vals_base))
     vals_base <- vals_base[!is.na(vals_base) & nzchar(vals_base)]
     if (is.null(coletas_por_tipo_base) || !is.list(coletas_por_tipo_base)) coletas_por_tipo_base <- coletas_triagem_por_tipo
+    resumo_checkbox <- NULL
+    if (exists("monitora_painel_resumo_impeditivas_dados", inherits = FALSE) && nrow(dt) && monitora_painel_coluna_ok(chaves$coleta, dt)) {
+      dt_checkbox <- dt[as.character(get(chaves$coleta)) %in% vals_base]
+      resumo_checkbox <- tryCatch(monitora_painel_resumo_impeditivas_dados(dt_checkbox), error = function(e) NULL)
+    }
     n_tipo <- function(nm) {
+      if (data.table::is.data.table(resumo_checkbox) && "tipo" %in% names(resumo_checkbox) && "n_coletas" %in% names(resumo_checkbox)) {
+        z_res <- resumo_checkbox[tipo == nm, n_coletas]
+        if (length(z_res) && is.finite(z_res[1L])) return(as.integer(z_res[1L]))
+      }
       z <- coletas_por_tipo_base[[nm]]
       if (is.null(z) || !length(vals_base)) return(0L)
       length(intersect(vals_base, unique(as.character(z))))
+    }
+    linhas_tipo <- function(nm) {
+      if (data.table::is.data.table(resumo_checkbox) && "tipo" %in% names(resumo_checkbox) && "n_linhas" %in% names(resumo_checkbox)) {
+        z_res <- resumo_checkbox[tipo == nm, n_linhas]
+        if (length(z_res) && is.finite(z_res[1L])) return(as.integer(z_res[1L]))
+      }
+      if (!nrow(dt) || !monitora_painel_coluna_ok(chaves$coleta, dt)) return(0L)
+      z <- coletas_por_tipo_base[[nm]]
+      z <- intersect(vals_base, unique(as.character(z)))
+      if (!length(z)) return(0L)
+      as.integer(sum(as.character(dt[[chaves$coleta]]) %in% z, na.rm = TRUE))
+    }
+    rotulo_tipo <- function(nm, rotulo) {
+      paste0(rotulo, " (", linhas_tipo(nm), " linhas; ", n_tipo(nm), " coletas)")
     }
     list(
       impeditivas = stats::setNames(
@@ -20371,17 +20398,23 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "nativa_sem_forma_vida",
           "exotica_sem_forma_vida",
           "seca_morta_sem_forma_vida",
+          "encostam_desatualizado",
+          "encostam_solo_nu_conflitante",
+          "encostam_token_sem_inferior",
           "outra_forma_vida",
           "forma_vida_desconhecida"
         ),
         c(
-          paste0("UAs duplicadas no mesmo ano (", n_tipo("uas_duplicadas_mesmo_ano"), " coletas para triagem)"),
-          paste0("Ponto amostral sem interceptação (", n_tipo("ponto_sem_interceptacao"), " coletas com ocorrência)"),
-          paste0("Nativa sem forma de vida (", n_tipo("nativa_sem_forma_vida"), " coletas com ocorrência)"),
-          paste0("Exótica sem forma de vida (", n_tipo("exotica_sem_forma_vida"), " coletas com ocorrência)"),
-          paste0("Seca ou morta sem forma de vida (", n_tipo("seca_morta_sem_forma_vida"), " coletas com ocorrência)"),
-          paste0("Outra forma de vida (", n_tipo("outra_forma_vida"), " coletas com ocorrência)"),
-          paste0("Forma de vida desconhecida (", n_tipo("forma_vida_desconhecida"), " coletas com ocorrência)")
+          rotulo_tipo("uas_duplicadas_mesmo_ano", "UAs duplicadas no mesmo ano"),
+          rotulo_tipo("ponto_sem_interceptacao", "Ponto amostral sem interceptação"),
+          rotulo_tipo("nativa_sem_forma_vida", "Nativa sem forma de vida"),
+          rotulo_tipo("exotica_sem_forma_vida", "Exótica sem forma de vida"),
+          rotulo_tipo("seca_morta_sem_forma_vida", "Seca ou morta sem forma de vida"),
+          rotulo_tipo("encostam_desatualizado", "Encostam desatualizado"),
+          rotulo_tipo("encostam_solo_nu_conflitante", "Encostam: solo nu conflitante"),
+          rotulo_tipo("encostam_token_sem_inferior", "Encostam: token sem inferior correspondente"),
+          rotulo_tipo("outra_forma_vida", "Outra forma de vida"),
+          rotulo_tipo("forma_vida_desconhecida", "Forma de vida desconhecida")
         )
       ),
       outras = stats::setNames(
@@ -20390,8 +20423,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "forma_vida_exotica_com_especie"
         ),
         c(
-          paste0("Revisão: forma de vida exótica sem espécie (", n_tipo("forma_vida_exotica_sem_especie"), " coletas com ocorrência)"),
-          paste0("Revisão: forma de vida exótica com espécie (", n_tipo("forma_vida_exotica_com_especie"), " coletas com ocorrência)")
+          rotulo_tipo("forma_vida_exotica_sem_especie", "Revisão: forma de vida exótica sem espécie"),
+          rotulo_tipo("forma_vida_exotica_com_especie", "Revisão: forma de vida exótica com espécie")
         )
       )
     )
@@ -20865,6 +20898,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::h4("Correções pendentes nesta sessão"),
         shiny::uiOutput("status_correcoes"),
         shiny::uiOutput("preview_pendencias_sessao"),
+        shiny::uiOutput("ui_pendencias_tecnicas_contrato"),
         shiny::h4("Pendências que impedem registros_validados"),
         shiny::helpText("Detalhe operacional das pendências impeditivas avaliadas pela mesma auditoria que bloqueia registros_corrig aprovado e registros_validados.csv."),
         monitora_painel_dt_output("pendencias_impeditivas_detalhadas"),
@@ -20882,7 +20916,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             shiny::column(4, shiny::selectizeInput("esp_filtro_ua", "UA", choices = escolhas_esp_ua, selected = character(0), multiple = TRUE, options = list(plugins = list("remove_button")))),
             shiny::column(4, shiny::selectizeInput("esp_filtro_ano", "ANO", choices = escolhas_esp_ano, selected = character(0), multiple = TRUE, options = list(plugins = list("remove_button"))))
           ),
-          shiny::checkboxInput("esp_somente_pendencias", "Mostrar somente pendências/alertas espaciais", value = TRUE),
+          shiny::checkboxInput("esp_somente_pendencias", "Mostrar somente pendências/alertas espaciais", value = FALSE),
           shiny::hr(),
           shiny::h4("Correção espacial guiada: origem → destino → operação"),
           shiny::helpText("Selecione uma pendência na tabela, confira a origem das coordenadas, escolha o destino da correção e revise a prévia antes de adicionar a operação. Ao selecionar uma COLETA, as coordenadas atuais são pré-preenchidas para facilitar edição manual."),
@@ -22449,11 +22483,45 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     output$pendencias_impeditivas_detalhadas <- DT::renderDT({
       det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
+      tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
+      if (nrow(det) && "tipo_pendencia" %in% names(det)) det <- det[!(tipo_pendencia %in% tipos_tecnicos)]
       if (!nrow(det)) {
-        return(DT::datatable(data.table::data.table(mensagem = "Sem pendências impeditivas detectadas nesta avaliação."), rownames = FALSE))
+        return(DT::datatable(data.table::data.table(mensagem = "Sem pendências impeditivas operacionais detectadas nesta avaliação."), rownames = FALSE))
       }
       DT::datatable(det, options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
+
+    output$ui_pendencias_tecnicas_contrato <- shiny::renderUI({
+      det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
+      tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
+      if (!nrow(det) || !("tipo_pendencia" %in% names(det))) return(NULL)
+      tec <- det[tipo_pendencia %in% tipos_tecnicos]
+      if (!nrow(tec)) return(NULL)
+      if (!("n_linhas" %in% names(tec))) tec[, n_linhas := NA_integer_]
+      if (!("n_coletas" %in% names(tec))) tec[, n_coletas := NA_integer_]
+      shiny::tagList(
+        shiny::h4("Pendência técnica de contrato/schema"),
+        shiny::div(
+          class = "alert alert-danger",
+          shiny::strong("Não corrigível pela bolsista no painel. "),
+          "Envie ao suporte técnico print do painel, log da execução e auditorias de atributos/contrato/schema."
+        ),
+        shiny::tags$table(class = "table table-condensed table-striped",
+          shiny::tags$thead(shiny::tags$tr(
+            shiny::tags$th("Pendência técnica"),
+            shiny::tags$th("Linhas"),
+            shiny::tags$th("Coletas"),
+            shiny::tags$th("Ação")
+          )),
+          shiny::tags$tbody(lapply(seq_len(nrow(tec)), function(i) shiny::tags$tr(
+            shiny::tags$td(as.character(tec$rotulo_pendencia[i])),
+            shiny::tags$td(ifelse(is.finite(tec$n_linhas[i]), as.character(tec$n_linhas[i]), "não aplicável")),
+            shiny::tags$td(ifelse(is.finite(tec$n_coletas[i]), as.character(tec$n_coletas[i]), "não aplicável")),
+            shiny::tags$td(as.character(tec$acao_sugerida[i]))
+          )))
+        )
+      )
+    })
 
     output$preview_pendencias_sessao <- shiny::renderUI({
       resumo_pre <- tryCatch(monitora_painel_resumo_impeditivas_pre(), error = function(e) data.table::data.table())
@@ -23032,7 +23100,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         v <- v[inicio_plotavel | fim_plotavel]
         if (!nrow(v)) return(m)
         data.table::setorder(v, pendencia_espacial, status_espacial, UC, EA, UA, ANO, COLETA)
-        if (nrow(v) > 300L) v <- v[seq_len(300L)]
+        n_plotavel_mapa <- nrow(v)
+        if (n_plotavel_mapa > 300L) {
+          m <- leaflet::addControl(
+            m,
+            html = paste0("Mapa espacial limitado às primeiras 300 de ", n_plotavel_mapa, " COLETA(s) plotáveis pelos filtros atuais."),
+            position = "bottomright"
+          )
+          v <- v[seq_len(300L)]
+        }
         status_chr <- if ("status_espacial" %in% names(v)) as.character(v$status_espacial) else rep("sem_status", nrow(v))
         pend_chr <- if ("pendencia_espacial" %in% names(v)) as.character(v$pendencia_espacial) else rep(NA_character_, nrow(v))
         popup <- paste0(
@@ -23320,7 +23396,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       for (id in c("esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte", "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino")) {
         try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
       }
-      try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = TRUE), silent = TRUE)
+      try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = FALSE), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_fonte", selected = character(0)), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_destino", selected = character(0)), silent = TRUE)
       try(shiny::updateCheckboxGroupInput(session, "filtros_triagem_coleta_impeditivas", selected = character(0)), silent = TRUE)
@@ -23334,7 +23410,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_fonte", selected = character(0)), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_destino", selected = character(0)), silent = TRUE)
-      try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = TRUE), silent = TRUE)
+      try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = FALSE), silent = TRUE)
       monitora_painel_notificar("Filtros espaciais limpos.", type = "message", duration = 6)
     }, ignoreInit = TRUE)
 
@@ -25055,7 +25131,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       aud[, corrigivel_no_painel := as.logical(corrigivel_no_painel)]
       aud[tipo_pendencia %in% c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida"), `:=`(
         corrigivel_no_painel = FALSE,
-        acao_sugerida = "Pendência técnica de contrato/schema: atributo contratual não resolvido no registros_corrig. Não corrigível no painel. Envie ao suporte técnico com a COLETA, o print do painel e os relatórios de auditoria de atributos."
+        acao_sugerida = "Escalar para desenvolvedor: corrigir contrato/schema/materialização. Pendência técnica de contrato/schema: atributo contratual não resolvido no registros_corrig. Não corrigível no painel. Envie ao suporte técnico com a COLETA, o print do painel e os relatórios de auditoria de atributos."
       )]
       aud[tipo_pendencia == "atributo_101_alias_conflitante" & (!atributo_materializavel | atributo_tecnico), `:=`(
         corrigivel_no_painel = FALSE,
