@@ -26385,43 +26385,51 @@ MONITORA_PROGRESSO_ULTIMO_STATUS_RENDERIZADO <- NA_character_
 MONITORA_PROGRESSO_ULTIMO_RENDER_TS <- Sys.time() - 3600
 MONITORA_PROGRESSO_ULTIMO_FLUSH_TS <- Sys.time() - 3600
 
+### Hotfix v2.6.2: o script nunca chama library(cli)/require(cli) (só usa
+### chamadas qualificadas cli::...), então o pacote cli não fica anexado ao
+### search path. Nesse cenário, as variáveis especiais de glue dos formatos de
+### progresso (pb_percent, pb_current, pb_total, pb_eta, pb_status,
+### pb_elapsed, pb_name) e os helpers de estilo (col_green, symbol) só existem
+### no namespace do cli, não no ambiente avaliado pelo `{}` do formato
+### "custom" — por isso "object 'pb_percent' not found" (e o mesmo ocorreria
+### para qualquer um dos outros tokens). Todas precisam do prefixo `cli::`.
 if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra_completa")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{cli::pb_bar} {pb_percent} ",
-    "[{pb_current}/{pb_total}] ETA:{pb_eta} dec:{pb_elapsed} | {pb_status}"
+    "{cli::pb_bar} {cli::pb_percent} ",
+    "[{cli::pb_current}/{cli::pb_total}] ETA:{cli::pb_eta} dec:{cli::pb_elapsed} | {cli::pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
-    "{col_green(symbol$tick)} {cli::pb_bar} 100% ",
-    "[{pb_current}/{pb_total}] em {pb_elapsed} | execução concluída"
+    "{cli::col_green(cli::symbol$tick)} {cli::pb_bar} 100% ",
+    "[{cli::pb_current}/{cli::pb_total}] em {cli::pb_elapsed} | execução concluída"
   )
 } else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "barra")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_name} {cli::pb_bar} {pb_percent} ",
-    "[{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}"
+    "{cli::pb_name} {cli::pb_bar} {cli::pb_percent} ",
+    "[{cli::pb_current}/{cli::pb_total}] ETA:{cli::pb_eta} | {cli::pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
-    "{col_green(symbol$tick)} {pb_name} concluída: {pb_percent} ",
-    "[{pb_current}/{pb_total}] em {pb_elapsed}."
+    "{cli::col_green(cli::symbol$tick)} {cli::pb_name} concluída: {cli::pb_percent} ",
+    "[{cli::pb_current}/{cli::pb_total}] em {cli::pb_elapsed}."
   )
 } else if (identical(MONITORA_PROGRESSO_CLI_LAYOUT, "tres_linhas")) {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_percent} [{pb_current}/{pb_total}] ETA:{pb_eta} | {pb_status}\n",
+    "{cli::pb_percent} [{cli::pb_current}/{cli::pb_total}] ETA:{cli::pb_eta} | {cli::pb_status}\n",
     "{cli::pb_bar}\n",
-    "decorrido:{pb_elapsed}"
+    "decorrido:{cli::pb_elapsed}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
-    "{col_green(symbol$tick)} 100% [{pb_current}/{pb_total}] em {pb_elapsed} | execução concluída\n",
+    "{cli::col_green(cli::symbol$tick)} 100% [{cli::pb_current}/{cli::pb_total}] em {cli::pb_elapsed} | execução concluída\n",
     "{cli::pb_bar}\n",
-    "decorrido:{pb_elapsed}"
+    "decorrido:{cli::pb_elapsed}"
   )
 } else {
   MONITORA_PROGRESSO_CLI_FORMAT <- paste0(
-    "{pb_percent} [{pb_current}/{pb_total}] ",
-    "ETA:{pb_eta} | {pb_status}"
+    "{cli::pb_percent} [{cli::pb_current}/{cli::pb_total}] ",
+    "ETA:{cli::pb_eta} | {cli::pb_status}"
   )
   MONITORA_PROGRESSO_CLI_FORMAT_DONE <- paste0(
-    "{col_green(symbol$tick)} 100% [{pb_current}/{pb_total}] ",
-    "em {pb_elapsed} | execução concluída"
+    "{cli::col_green(cli::symbol$tick)} 100% [{cli::pb_current}/{cli::pb_total}] ",
+    "em {cli::pb_elapsed} | execução concluída"
   )
 }
 
@@ -26620,13 +26628,13 @@ monitora_progresso_iniciar_cli <- function() {
       .envir = .GlobalEnv
     ),
     error = function(e) {
+      ### Hotfix v2.6.2: barra de progresso nunca pode abortar o script. Uma
+      ### falha ao iniciar a barra cli (formato, ambiente glue, versão do
+      ### pacote, etc.) só gera aviso curto e cai para utils::txtProgressBar().
       MONITORA_PROGRESSO_CLI_FALHOU <<- TRUE
       msg <- paste0("Falha ao iniciar barra cli. Motivo: ", conditionMessage(e))
-      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
-        message(msg, " Usando utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'.")
-        return(NULL)
-      }
-      stop(msg, call. = FALSE)
+      message(msg, " Usando utils::txtProgressBar().")
+      NULL
     }
   )
   if (is.null(pb)) return(monitora_progresso_iniciar_txt())
@@ -26635,14 +26643,12 @@ monitora_progresso_iniciar_cli <- function() {
   tryCatch(
     cli::cli_progress_update(id = MONITORA_PROGRESSO_PB, set = MONITORA_PROGRESSO_VALOR, status = "início", force = TRUE, .envir = .GlobalEnv),
     error = function(e) {
+      ### Hotfix v2.6.2: idem, para a atualização inicial da barra cli.
       MONITORA_PROGRESSO_CLI_FALHOU <<- TRUE
       msg <- paste0("Falha ao atualizar barra cli. Motivo: ", conditionMessage(e))
-      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
-        message(msg, " Usando utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'.")
-        MONITORA_PROGRESSO_PB <<- NULL
-        return(monitora_progresso_iniciar_txt())
-      }
-      stop(msg, call. = FALSE)
+      message(msg, " Usando utils::txtProgressBar().")
+      MONITORA_PROGRESSO_PB <<- NULL
+      monitora_progresso_iniciar_txt()
     }
   )
   invisible(TRUE)
@@ -26726,17 +26732,17 @@ monitora_progresso_atualizar_backend <- function(status = NA_character_, force =
       structure(FALSE, monitora_cli_erro = conditionMessage(e))
     })
     if (!isTRUE(ok)) {
+      ### Hotfix v2.6.2: barra de progresso nunca pode abortar o script. Uma
+      ### falha ao atualizar a barra cli em qualquer momento da execução só
+      ### gera aviso curto e alterna definitivamente para
+      ### utils::txtProgressBar(); a execução continua normalmente.
       motivo <- attr(ok, "monitora_cli_erro")
       if (is.null(motivo) || is.na(motivo)) motivo <- "erro não informado"
       tryCatch(cli::cli_progress_done(id = MONITORA_PROGRESSO_PB, result = "failed", .envir = .GlobalEnv), error = function(e) NULL)
-      if (identical(MONITORA_PROGRESSO_CLI_FALLBACK_TXT, "S")) {
-        message("Falha durante atualização da barra cli; alternando para utils::txtProgressBar() porque MONITORA_PROGRESSO_CLI_FALLBACK_TXT='S'. Motivo: ", motivo)
-        MONITORA_PROGRESSO_PB <<- NULL
-        monitora_progresso_iniciar_txt()
-        utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
-      } else {
-        stop("Falha durante atualização da barra cli. Motivo: ", motivo, call. = FALSE)
-      }
+      message("Falha durante atualização da barra cli; alternando para utils::txtProgressBar(). Motivo: ", motivo)
+      MONITORA_PROGRESSO_PB <<- NULL
+      monitora_progresso_iniciar_txt()
+      utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
     }
   } else {
     utils::setTxtProgressBar(MONITORA_PROGRESSO_PB, MONITORA_PROGRESSO_VALOR)
