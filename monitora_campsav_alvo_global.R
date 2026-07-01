@@ -20762,6 +20762,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         ),
         shiny::helpText("Nenhum critério marcado = listar todas as coletas disponíveis nos filtros gerais. Critérios marcados = listar coletas com pelo menos uma das ocorrências selecionadas."),
         shiny::helpText("Enquanto houver ocorrência impeditiva, registros_corrig.csv poderá ser salvo apenas como checkpoint de trabalho marcado com pendências; registros_validados.csv não será criado até o saneamento assistido dessas ocorrências."),
+        shiny::actionButton("carregar_opcoes_filtros", "Carregar filtros/opções", class = "btn-default btn-block", width = "100%"),
+        shiny::helpText("Na abertura, as contagens acima usam apenas o cache rápido pré-painel (auditorias 101/Encostam ainda não recalculadas). Clique em 'Carregar filtros/opções' para recalcular as contagens completas; a busca e seleção manual de COLETA já funcionam normalmente antes disso."),
         shiny::actionButton("limpar_filtros", "Limpar filtros", class = "btn-default btn-block", width = "100%"),
         shiny::helpText("Limpa UC, EA, ano, ciclo, campanha, UA e critérios diagnósticos. Mantém a COLETA selecionada, o lote de COLETAS e as correções pendentes."),
         shiny::selectizeInput(
@@ -20894,9 +20896,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::uiOutput("status_correcoes"),
         shiny::actionButton("atualizar_pendencias", "Atualizar pendências", class = "btn-default"),
         shiny::uiOutput("preview_pendencias_sessao"),
+        shiny::actionButton("carregar_preview_pos_operacao", "Calcular prévia pós-operação com delta (recalcula auditoria completa; pode demorar)", class = "btn-default"),
+        shiny::uiOutput("preview_pendencias_pos_operacao"),
         shiny::uiOutput("ui_pendencias_tecnicas_contrato"),
         shiny::h4("Pendências que impedem registros_validados"),
         shiny::helpText("Detalhe operacional das pendências impeditivas avaliadas pela mesma auditoria que bloqueia registros_corrig aprovado e registros_validados.csv."),
+        shiny::helpText("O detalhe linha-a-linha não é calculado automaticamente. Escolha um tipo (opcional; vazio = todos) e clique em 'Carregar detalhes' — o cálculo usa o escopo dos filtros atuais do painel (UC/EA/ANO/CICLO/CAMPANHA/UA) e é limitado a 1000 linhas. Para auditoria completa fora do escopo filtrado, use os CSVs pré-painel gerados antes da abertura do painel."),
+        shiny::uiOutput("ui_pendencias_tipo_selector"),
+        shiny::actionButton("carregar_detalhes_pendencia", "Carregar detalhes da pendência selecionada", class = "btn-default"),
         monitora_painel_dt_output("pendencias_impeditivas_detalhadas"),
         shiny::actionButton("excluir_correcoes_pendentes", "Excluir correção(ões) pendente(s) selecionada(s)", class = "btn-danger"),
         monitora_painel_dt_output("correcoes")
@@ -20995,14 +21002,27 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   )
 
   server <- function(input, output, session) {
+    monitora_painel_boot_perf_msg <- function(etapa) {
+      try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%OS3"), " [painel_boot_perf] ", etapa), silent = TRUE)
+      invisible(TRUE)
+    }
+    monitora_painel_boot_perf_msg("server_inicio")
+    session$onFlushed(function() monitora_painel_boot_perf_msg("first_flush"), once = TRUE)
+
     dicionario_painel <- if (!is.null(meta_xls) && !is.null(meta_xls$campos)) meta_xls$campos else NULL
     painel_inicial_leve <- isTRUE(get0("MONITORA_PAINEL_INICIAL_LEVE", ifnotfound = TRUE, inherits = TRUE))
-    pendencias_detalhadas_carregadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
     esp_mapa_carregado <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
     esp_pendencias_carregadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+    opcoes_filtros_carregadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+    monitora_painel_boot_perf_msg("reactiveValues_criados")
 
     monitora_painel_ui_perf_msg <- function(etapa) {
       try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [painel_ui_perf] ", etapa), silent = TRUE)
+      invisible(TRUE)
+    }
+
+    monitora_painel_pend_perf_msg <- function(etapa) {
+      try(message(format(Sys.time(), "%Y-%m-%d %H:%M:%OS3"), " [painel_pend_perf] ", etapa), silent = TRUE)
       invisible(TRUE)
     }
 
@@ -21055,9 +21075,53 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     )
     monitora_painel_ui_perf_msg("resumo_impeditivas_pre_cache_pronto")
 
+    pendencias_resumo_cache <- shiny::reactiveVal(data.table::copy(resumo_impeditivas_pre_cache))
+    pendencias_detalhes_cache <- shiny::reactiveVal(data.table::data.table())
+    pendencias_detalhes_carregados <- shiny::reactiveVal(FALSE)
+    pendencias_atualizadas <- shiny::reactiveVal(!isTRUE(painel_inicial_leve))
+    pendencias_pos_operacao_carregada <- shiny::reactiveVal(FALSE)
+    MONITORA_PAINEL_LIMITE_DETALHES_PENDENCIA <- 1000L
+
+    shiny::observeEvent(input$carregar_opcoes_filtros, {
+      monitora_painel_boot_perf_msg("opcoes_filtros_carregar_inicio")
+      monitora_painel_ui_perf_msg("opcoes_filtros_carregar_solicitado")
+      opcoes_filtros_carregadas(TRUE)
+      monitora_painel_boot_perf_msg("opcoes_filtros_carregar_fim")
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$atualizar_pendencias, {
+      monitora_painel_pend_perf_msg("atualizar_inicio")
       monitora_painel_ui_perf_msg("atualizar_pendencias_solicitado")
-      pendencias_detalhadas_carregadas(TRUE)
+      ### Atualizar pendências deve ser instantâneo: usa apenas o cache leve
+      ### pré-painel (mesma fonte do resumo de abertura), sem recalcular
+      ### auditorias 101/Encostam completas nem reaplicar operações pendentes.
+      pendencias_resumo_cache(data.table::copy(resumo_impeditivas_pre_cache))
+      pendencias_atualizadas(TRUE)
+      monitora_painel_pend_perf_msg("atualizar_fim")
+    }, ignoreInit = TRUE)
+
+    ### Prévia pós-operação com delta (linhas/coletas antes vs. depois das
+    ### correções pendentes) continua disponível, mas apenas sob demanda:
+    ### recalcula auditoria 101/Encostam completa e por isso não roda mais
+    ### automaticamente junto de "Atualizar pendências".
+    shiny::observeEvent(input$carregar_preview_pos_operacao, {
+      pendencias_pos_operacao_carregada(TRUE)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$carregar_detalhes_pendencia, {
+      monitora_painel_pend_perf_msg("detalhes_inicio")
+      x_escopo <- tryCatch(dados_pre_coleta(), error = function(e) dt)
+      det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_dados(x_escopo), error = function(e) data.table::data.table())
+      tipo_sel <- monitora_painel_valor(input$pendencia_tipo_detalhar)
+      if (nzchar(tipo_sel) && nrow(det) && "tipo_pendencia" %in% names(det)) {
+        det <- det[tipo_pendencia == tipo_sel]
+      }
+      if (nrow(det) > MONITORA_PAINEL_LIMITE_DETALHES_PENDENCIA) {
+        det <- det[seq_len(MONITORA_PAINEL_LIMITE_DETALHES_PENDENCIA)]
+      }
+      pendencias_detalhes_cache(det)
+      pendencias_detalhes_carregados(TRUE)
+      monitora_painel_pend_perf_msg("detalhes_fim")
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$esp_carregar_mapa, {
@@ -22014,15 +22078,20 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
     choices_triagem_coleta_filtradas <- shiny::reactive({
+      if (isTRUE(painel_inicial_leve) && !isTRUE(opcoes_filtros_carregadas())) return(choices_triagem_coleta)
+      monitora_painel_boot_perf_msg("choices_triagem_inicio")
       x <- dados_pre_coleta()
       vals_base <- monitora_painel_valores_coluna(x, chaves$coleta)
       coletas_ref <- tryCatch(monitora_painel_coletas_triagem_por_tipo_reativas(), error = function(e) coletas_triagem_por_tipo)
-      monitora_painel_choices_triagem_coleta(vals_base, coletas_por_tipo_base = coletas_ref)
+      out <- monitora_painel_choices_triagem_coleta(vals_base, coletas_por_tipo_base = coletas_ref)
+      monitora_painel_boot_perf_msg("choices_triagem_fim")
+      out
     })
 
     coletas_filtradas_lote <- shiny::reactive({
       x <- dados_pre_coleta()
       vals_base <- monitora_painel_valores_coluna(x, chaves$coleta)
+      if (isTRUE(painel_inicial_leve) && !isTRUE(opcoes_filtros_carregadas())) return(sort(vals_base))
       coletas_ref <- tryCatch(monitora_painel_coletas_triagem_por_tipo_reativas(), error = function(e) coletas_triagem_por_tipo)
       monitora_painel_filtrar_coletas_por_criterios(vals_base, filtros_triagem_coleta_selecionados(), coletas_por_tipo_base = coletas_ref)
     })
@@ -22559,26 +22628,35 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
     })
 
+    output$ui_pendencias_tipo_selector <- shiny::renderUI({
+      resumo <- pendencias_resumo_cache()
+      resumo <- resumo[(is.finite(n_coletas) & n_coletas > 0L) | (is.finite(n_linhas) & n_linhas > 0L)]
+      choices <- c("(todos os tipos)" = "")
+      if (nrow(resumo)) choices <- c(choices, stats::setNames(resumo$tipo, resumo$ocorrencia))
+      shiny::selectInput("pendencia_tipo_detalhar", "Tipo de pendência para detalhar", choices = choices, selected = "")
+    })
+
     output$pendencias_impeditivas_detalhadas <- DT::renderDT({
-      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
+      if (!isTRUE(pendencias_detalhes_carregados())) {
+        monitora_painel_pend_perf_msg("render_detalhes_placeholder")
         monitora_painel_ui_perf_msg("render_placeholder_pendencias_impeditivas_detalhadas")
-        return(DT::datatable(data.table::data.table(mensagem = "Clique em Atualizar pendências para detalhar."), rownames = FALSE))
+        return(DT::datatable(data.table::data.table(mensagem = "Detalhes linha-a-linha não carregados. Selecione o tipo (opcional) e clique em 'Carregar detalhes da pendência selecionada'."), rownames = FALSE))
       }
-      det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
+      det <- pendencias_detalhes_cache()
       tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
       if (nrow(det) && "tipo_pendencia" %in% names(det)) det <- det[!(tipo_pendencia %in% tipos_tecnicos)]
       if (!nrow(det)) {
-        return(DT::datatable(data.table::data.table(mensagem = "Sem pendências impeditivas operacionais detectadas nesta avaliação."), rownames = FALSE))
+        return(DT::datatable(data.table::data.table(mensagem = "Sem pendências impeditivas operacionais detectadas no escopo carregado."), rownames = FALSE))
       }
       DT::datatable(det, options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
     output$ui_pendencias_tecnicas_contrato <- shiny::renderUI({
-      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
+      if (!isTRUE(pendencias_detalhes_carregados())) {
         monitora_painel_ui_perf_msg("render_placeholder_ui_pendencias_tecnicas_contrato")
-        return(shiny::div(class = "alert alert-info", "Clique em Atualizar pendências para detalhar pendências técnicas de contrato/schema."))
+        return(shiny::div(class = "alert alert-info", "Pendências técnicas de contrato/schema: detalhes não carregados. Clique em 'Carregar detalhes da pendência selecionada' para avaliar."))
       }
-      det <- tryCatch(monitora_painel_pendencias_impeditivas_detalhadas_preview(), error = function(e) data.table::data.table())
+      det <- pendencias_detalhes_cache()
       tipos_tecnicos <- c("atributo_101_nao_resolvido", "encostam_coluna_nao_resolvida")
       if (!nrow(det) || !("tipo_pendencia" %in% names(det))) return(NULL)
       tec <- det[tipo_pendencia %in% tipos_tecnicos]
@@ -22610,12 +22688,22 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     })
 
     output$preview_pendencias_sessao <- shiny::renderUI({
-      if (isTRUE(painel_inicial_leve) && !isTRUE(pendencias_detalhadas_carregadas())) {
-        monitora_painel_ui_perf_msg("render_placeholder_preview_pendencias_sessao")
-        return(shiny::tagList(
-          shiny::div(class = "alert alert-info", "Resumo leve de abertura. Clique em Atualizar pendências para detalhar."),
-          monitora_painel_tabela_impeditivas_ui(monitora_painel_resumo_impeditivas_pre(), "Pendências na abertura do painel")
-        ))
+      monitora_painel_pend_perf_msg("render_resumo_cache")
+      resumo <- pendencias_resumo_cache()
+      titulo <- if (isTRUE(pendencias_atualizadas())) {
+        "Pendências (resumo cacheado; clique em Atualizar pendências para renovar)"
+      } else {
+        "Pendências na abertura do painel"
+      }
+      shiny::tagList(
+        shiny::helpText("Resumo leve baseado no cache pré-painel: não recalcula auditorias completas nem reaplica operações pendentes. Para detalhe linha-a-linha, use 'Carregar detalhes da pendência selecionada' abaixo."),
+        monitora_painel_tabela_impeditivas_ui(resumo, titulo)
+      )
+    })
+
+    output$preview_pendencias_pos_operacao <- shiny::renderUI({
+      if (!isTRUE(pendencias_pos_operacao_carregada())) {
+        return(shiny::div(class = "alert alert-info", "Prévia pós-operação com delta de linhas/coletas não calculada. Clique acima para recalcular a auditoria completa considerando as correções pendentes desta sessão (pode demorar)."))
       }
       resumo_pre <- tryCatch(monitora_painel_resumo_impeditivas_pre(), error = function(e) data.table::data.table())
       resumo_pos <- tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) data.table::data.table())
@@ -23162,9 +23250,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     if (requireNamespace("leaflet", quietly = TRUE)) {
       output$esp_mapa <- leaflet::renderLeaflet({
         if (isTRUE(painel_inicial_leve)) shiny::req(isTRUE(esp_mapa_carregado()))
+        monitora_painel_boot_perf_msg("mapa_base_inicio")
         v <- esp_validacao_mapa()
         m <- leaflet::leaflet(options = leaflet::leafletOptions(preferCanvas = TRUE))
         m <- leaflet::addTiles(m)
+        monitora_painel_boot_perf_msg("mapa_base_fim")
         if (!nrow(v)) {
           m <- leaflet::addControl(m, html = "Sem dados de validação espacial disponíveis para este painel.", position = "topright")
           return(m)
@@ -23228,6 +23318,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "<br>Comprimento transecto (m): ", if ("comprimento_transecto_m" %in% names(v)) round(as.numeric(v$comprimento_transecto_m), 2) else ""
         )
         labels <- paste0(if ("UA" %in% names(v)) as.character(v$UA) else "UA", " | ", if ("ANO" %in% names(v)) as.character(v$ANO) else "ANO")
+        monitora_painel_boot_perf_msg("mapa_pontos_inicio")
         idx_inicio <- which(v$inicio_plotavel)
         idx_fim <- which(v$fim_plotavel)
         if (length(idx_inicio)) {
@@ -23283,6 +23374,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           lng2 = max(lng_bounds, na.rm = TRUE),
           lat2 = max(lat_bounds, na.rm = TRUE)
         )
+        monitora_painel_boot_perf_msg("mapa_pontos_fim")
         m
       })
     }
@@ -24036,6 +24128,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
     monitora_painel_coletas_triagem_por_tipo_reativas <- shiny::reactive({
+      if (isTRUE(painel_inicial_leve) && !isTRUE(opcoes_filtros_carregadas())) return(coletas_triagem_por_tipo)
       xprev <- tryCatch(monitora_painel_preview_dados_pos_operacoes(), error = function(e) dt)
       monitora_painel_coletas_triagem_dados(xprev)
     })
@@ -25245,11 +25338,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       data.table::setorder(out, escopo, tipo_pendencia, atributo)
       out[, ..cols_out]
     }
-
-    monitora_painel_pendencias_impeditivas_detalhadas_preview <- shiny::reactive({
-      xprev <- tryCatch(monitora_painel_preview_dados_pos_operacoes(), error = function(e) dt)
-      monitora_painel_pendencias_impeditivas_detalhadas_dados(xprev)
-    })
 
     monitora_painel_tabela_impeditivas_ui <- function(resumo = NULL, titulo = NULL) {
       if (is.null(resumo)) resumo <- monitora_painel_resumo_impeditivas_pre()
