@@ -31601,6 +31601,127 @@ monitora_registros_importados_saneado_exportar <- function(dt,
   })
 }
 
+### v2.6.0 - Hotfix 02 --------------------------------------------------------
+### Validação/sanitização row-level mínima e centralizada do campo superior
+### Encostam/tipo_forma_vida e seus campos filhos diretos, contratualmente
+### exigida pelo XLSForm 21FEV25 (ver diagnostics/xlsform_2025_contract_audit/
+### AUDITORIA_CONTRATO_XLSFORM_2025.md, itens 2, 5, 6 e 15). Não substitui nem
+### refatora o motor monitora_validados_*; cobre apenas as regras mínimas que
+### hoje não protegem registros_corrig.csv. Chamada uma única vez, dentro do
+### funil central de materialização de registros_corrig.csv (a seguir), ou
+### seja, sempre após correções automáticas e painel e sempre antes da
+### gravação final do produto ("ao final das modificações").
+monitora_validar_encostam_rowlevel_minimo <- function(dt,
+                                                        contexto = "encostam_rowlevel_minimo",
+                                                        output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                        log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                        exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
+                                                        gravar = TRUE) {
+  dt <- monitora_dt_referenciar(dt)
+  tipo_col <- "amostragem/registro/tipo_forma_vida"
+  serr_col <- "amostragem/registro/forma_serrapilheira"
+  outros_col <- "amostragem/registro/forma_vida_outros"
+  if (!(tipo_col %in% names(dt))) return(invisible(dt))
+  n <- nrow(dt)
+  tipo <- as.character(dt[[tipo_col]])
+  serr <- if (serr_col %in% names(dt)) as.character(dt[[serr_col]]) else rep(NA_character_, n)
+  outros <- if (outros_col %in% names(dt)) as.character(dt[[outros_col]]) else rep(NA_character_, n)
+
+  chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
+  col_chr <- function(nm) {
+    cc <- chaves[[nm]]
+    if (is.null(cc) || is.na(cc) || !(cc %in% names(dt))) return(rep(NA_character_, n))
+    as.character(dt[[cc]])
+  }
+  coleta <- col_chr("coleta"); uc <- col_chr("uc"); ea <- col_chr("ea"); ua <- col_chr("ua")
+  ciclo <- col_chr("ciclo"); campanha <- col_chr("campanha"); ano <- col_chr("ano")
+
+  achados <- vector("list", 6L); k <- 0L
+  add_achado <- function(regra, idx, mensagem, tipo_antes = NA_character_, tipo_depois = NA_character_) {
+    idx <- idx[!is.na(idx) & idx >= 1L & idx <= n]
+    if (!length(idx)) return(invisible(NULL))
+    k <<- k + 1L
+    achados[[k]] <<- data.table::data.table(
+      contexto = contexto, regra = regra, linha_indice = idx,
+      COLETA = coleta[idx], UC = uc[idx], EA = ea[idx], UA = ua[idx],
+      CICLO = ciclo[idx], CAMPANHA = campanha[idx], ANO = ano[idx],
+      tipo_forma_vida_antes = if (length(tipo_antes) == 1L) rep(tipo_antes, length(idx)) else tipo_antes[idx],
+      tipo_forma_vida_depois = if (length(tipo_depois) == 1L) rep(tipo_depois, length(idx)) else tipo_depois[idx],
+      mensagem = mensagem
+    )
+  }
+
+  tipo_antes_original <- tipo
+
+  ### Regra B — solo_nu é exclusivo (constraint XLSForm 21FEV25:
+  ### count-selected(.)=1 quando solo_nu selecionado). Remove somente solo_nu,
+  ### nunca os demais tokens. Pré-filtro vetorizado por espaço evita percorrer
+  ### em loop as milhares de linhas legitimamente solo_nu-somente.
+  tem_solo <- monitora_relatorio_exoticas_tem_token(tipo, "solo_nu")
+  vazio_antes <- monitora_correcao_vazio_vec(tipo)
+  idx_candidatos_excl <- which(tem_solo & !vazio_antes & grepl("\\s", tipo, perl = TRUE))
+  for (i in idx_candidatos_excl) {
+    toks <- monitora_correcao_tokenizar(tipo[i])
+    if (length(toks) > 1L && "solo_nu" %in% toks) {
+      novo <- monitora_correcao_colapsar_tokens(setdiff(toks, "solo_nu"))
+      if (!identical(novo, tipo[i])) {
+        add_achado("solo_nu_exclusivo_removido", i, "solo_nu coexistia com outro(s) token(s); solo_nu removido, demais tokens preservados.", tipo[i], novo)
+        tipo[i] <- novo
+      }
+    }
+  }
+
+  ### Regra A — Encostam não pode ficar vazio ao final. solo_nu só é
+  ### introduzido agora, no ponto final de materialização, nunca antes.
+  idx_vazio <- which(monitora_correcao_vazio_vec(tipo))
+  if (length(idx_vazio)) {
+    add_achado("solo_nu_introduzido_encostam_vazio", idx_vazio, "Encostam/tipo_forma_vida estava vazio ao final das correções; solo_nu introduzido automaticamente.", tipo_antes_original[idx_vazio], "solo_nu")
+    tipo[idx_vazio] <- "solo_nu"
+  }
+
+  ### Regra C — outra_forma_vida exige forma_vida_outros preenchido (apenas relatar; não inventar valor).
+  tem_outra <- monitora_relatorio_exoticas_tem_token(tipo, "outra_forma_vida")
+  add_achado("outra_forma_vida_sem_forma_vida_outros", which(tem_outra & monitora_correcao_vazio_vec(outros)),
+             "tipo_forma_vida contém outra_forma_vida, mas forma_vida_outros está vazio; corrigir manualmente ou via painel.")
+
+  ### Regra D — forma_vida_outros preenchido exige token pai (apenas relatar;
+  ### não existe, nesta função, um padrão já comprovado e seguro para inserir
+  ### outra_forma_vida automaticamente sem risco de efeito colateral).
+  add_achado("forma_vida_outros_sem_token_pai", which(!monitora_correcao_vazio_vec(outros) & !tem_outra),
+             "forma_vida_outros preenchido, mas tipo_forma_vida não contém outra_forma_vida; corrigir manualmente ou via painel (não corrigido automaticamente neste hotfix).")
+
+  ### Regra E — serrapilheira exige forma_serrapilheira preenchido (apenas relatar; não inventar valor).
+  tem_serr <- monitora_relatorio_exoticas_tem_token(tipo, "serrapilheira")
+  add_achado("serrapilheira_sem_forma_serrapilheira", which(tem_serr & monitora_correcao_vazio_vec(serr)),
+             "tipo_forma_vida contém serrapilheira, mas forma_serrapilheira está vazio; corrigir manualmente ou via painel.")
+
+  ### Regra F — forma_serrapilheira preenchido exige token pai (apenas relatar, mesmo motivo da Regra D).
+  add_achado("forma_serrapilheira_sem_token_pai", which(!monitora_correcao_vazio_vec(serr) & !tem_serr),
+             "forma_serrapilheira preenchido, mas tipo_forma_vida não contém serrapilheira; corrigir manualmente ou via painel (não corrigido automaticamente neste hotfix).")
+
+  if (!identical(tipo, tipo_antes_original)) data.table::set(dt, j = tipo_col, value = tipo)
+
+  achados_dt <- if (k) data.table::rbindlist(achados[seq_len(k)], fill = TRUE, use.names = TRUE) else data.table::data.table()
+  if (isTRUE(gravar) && nrow(achados_dt)) {
+    try({
+      dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+      dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+      data.table::fwrite(achados_dt, file.path(output_dir, "auditoria_encostam_rowlevel_minimo.csv"), na = "")
+      data.table::fwrite(achados_dt, file.path(log_dir, paste0("auditoria_encostam_rowlevel_minimo_", exec_id, ".csv")), na = "")
+    }, silent = TRUE)
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      try(monitora_log_registrar_evento(
+        "encostam_rowlevel_minimo", "AVISO",
+        file.path(output_dir, "auditoria_encostam_rowlevel_minimo.csv"),
+        paste0(nrow(achados_dt), " ocorrência(s) de validação/sanitização row-level mínima de Encostam (hotfix 02) em ", contexto, "."),
+        "ver auditoria_encostam_rowlevel_minimo.csv"
+      ), silent = TRUE)
+    }
+  }
+  invisible(dt)
+}
+### FIM v2.6.0 - Hotfix 02 -----------------------------------------------------
+
 monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_corrig,
                                                                 caminho_saida,
                                                                 contexto = "materializacao_registros_corrig",
@@ -31626,6 +31747,19 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
     data.table::set(dt, j = "monitora_pendencia_impeditiva_tipo", value = "")
     data.table::set(dt, j = "monitora_pendencia_impeditiva_msg", value = "")
   }
+
+  ### v2.6.0 - Hotfix 02: validação/sanitização row-level mínima de Encostam,
+  ### sempre após pendências impeditivas serem recalculadas e sempre antes de
+  ### preparar/gravar o produto final (ver função acima).
+  dt <- tryCatch(
+    monitora_validar_encostam_rowlevel_minimo(
+      dt,
+      contexto = paste0(contexto, "_encostam_rowlevel_minimo"),
+      output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = dirname(caminho_saida), inherits = TRUE),
+      log_dir = get0("MONITORA_LOG_DIR", ifnotfound = dirname(caminho_saida), inherits = TRUE)
+    ),
+    error = function(e) { warning("Falha na validação row-level mínima de Encostam (hotfix 02): ", conditionMessage(e), call. = FALSE); dt }
+  )
 
   pendente_imp <- isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound = FALSE, inherits = TRUE))
   contrato_corrig_ok <- isTRUE(get0("MONITORA_REGISTROS_CORRIG_CONTRATO_VALIDADO_XLSFORM21", ifnotfound = FALSE, inherits = TRUE)) &&
