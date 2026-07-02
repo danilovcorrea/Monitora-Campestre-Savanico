@@ -31660,6 +31660,7 @@ monitora_validar_encostam_rowlevel_minimo <- function(dt,
   tem_solo <- monitora_relatorio_exoticas_tem_token(tipo, "solo_nu")
   vazio_antes <- monitora_correcao_vazio_vec(tipo)
   idx_candidatos_excl <- which(tem_solo & !vazio_antes & grepl("\\s", tipo, perl = TRUE))
+  idx_regra_b_aplicada <- integer(0)
   for (i in idx_candidatos_excl) {
     toks <- monitora_correcao_tokenizar(tipo[i])
     if (length(toks) > 1L && "solo_nu" %in% toks) {
@@ -31667,6 +31668,7 @@ monitora_validar_encostam_rowlevel_minimo <- function(dt,
       if (!identical(novo, tipo[i])) {
         add_achado("solo_nu_exclusivo_removido", i, "solo_nu coexistia com outro(s) token(s); solo_nu removido, demais tokens preservados.", tipo[i], novo)
         tipo[i] <- novo
+        idx_regra_b_aplicada <- c(idx_regra_b_aplicada, i)
       }
     }
   }
@@ -31678,6 +31680,48 @@ monitora_validar_encostam_rowlevel_minimo <- function(dt,
     add_achado("solo_nu_introduzido_encostam_vazio", idx_vazio, "Encostam/tipo_forma_vida estava vazio ao final das correções; solo_nu introduzido automaticamente.", tipo_antes_original[idx_vazio], "solo_nu")
     tipo[idx_vazio] <- "solo_nu"
   }
+
+  ### v2.6.0 - Hotfix 03 -------------------------------------------------------
+  ### monitora_pendencia_impeditiva/_tipo/_msg são gravados por
+  ### monitora_publicacao_ab_auditar_pendencias_impeditivas ANTES desta função,
+  ### no mesmo funil de exportação. Sem esta sincronização, uma linha corrigida
+  ### pelas Regras A/B acima continuaria citando uma pendência já resolvida.
+  ### Remove apenas a tag exata da condição resolvida por cada regra,
+  ### preservando qualquer outra pendência da mesma linha, e nunca toca linhas
+  ### afetadas somente pelas Regras C-F (que permanecem apenas relatadas).
+  monitora_hotfix03_sincronizar_pendencia <- function(idx, tag_remover, msg_remover) {
+    cols_meta <- c("monitora_pendencia_impeditiva", "monitora_pendencia_impeditiva_tipo", "monitora_pendencia_impeditiva_msg")
+    if (!length(idx) || !all(cols_meta %in% names(dt))) return(invisible(NULL))
+    tipo_meta <- as.character(dt[["monitora_pendencia_impeditiva_tipo"]])
+    msg_meta <- as.character(dt[["monitora_pendencia_impeditiva_msg"]])
+    for (i in idx) {
+      tags_i <- strsplit(tipo_meta[i], "\\s*\\|\\s*", perl = TRUE)[[1]]
+      if (!(tag_remover %in% tags_i)) next
+      msgs_i <- strsplit(msg_meta[i], "\\s*\\|\\s*", perl = TRUE)[[1]]
+      tipo_meta[i] <- paste(setdiff(tags_i, tag_remover), collapse = " | ")
+      msg_meta[i] <- paste(msgs_i[!(msgs_i %in% msg_remover)], collapse = " | ")
+    }
+    data.table::set(dt, j = "monitora_pendencia_impeditiva_tipo", value = tipo_meta)
+    data.table::set(dt, j = "monitora_pendencia_impeditiva_msg", value = msg_meta)
+    data.table::set(dt, j = "monitora_pendencia_impeditiva", value = nzchar(tipo_meta))
+    invisible(NULL)
+  }
+  ### Regra A resolvida: remove a tag real hoje produzida por
+  ### monitora_publicacao_ab_auditar_pendencias_impeditivas para Encostam vazio.
+  monitora_hotfix03_sincronizar_pendencia(
+    idx_vazio, "ponto_sem_interceptacao",
+    "Ponto sem categoria de interceptação em Encostam/tipo_forma_vida; corrigir a partir do registro original ou excluir a COLETA."
+  )
+  ### Regra B resolvida: a auditoria atual não produz uma tag própria de
+  ### exclusividade de solo_nu (essa checagem hoje só existe em
+  ### monitora_validados_validar_condicionais_xlsform21); a chamada abaixo é um
+  ### no-op nos dados de hoje e serve apenas para já sincronizar corretamente
+  ### caso essa tag (mesmo nome/mensagem usados naquele motor) passe a ser
+  ### produzida também aqui no futuro, sem exigir nova alteração neste ponto.
+  monitora_hotfix03_sincronizar_pendencia(
+    idx_regra_b_aplicada, "solo_nu_com_outra_categoria", "solo_nu é exclusivo"
+  )
+  ### FIM v2.6.0 - Hotfix 03 ----------------------------------------------------
 
   ### Regra C — outra_forma_vida exige forma_vida_outros preenchido (apenas relatar; não inventar valor).
   tem_outra <- monitora_relatorio_exoticas_tem_token(tipo, "outra_forma_vida")
