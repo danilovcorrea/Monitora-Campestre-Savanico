@@ -32739,8 +32739,128 @@ if ("amostragem/registro/ponto_amostral" %in% colnames(registros_corrig)) {
 if ("amostragem/registro/ponto_metro" %in% colnames(registros_corrig)) {
   monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/ponto_metro", "ponto_metro (amostragem/registro)")
 }
+### v2.6.0 - Hotfix 03.5B ----------------------------------------------------
+### Resolvedor flexível de Encostam entre a coluna canônica
+### (amostragem/registro/tipo_forma_vida) e a coluna rotulada
+### (**Encostam** na vareta: (amostragem/registro)), no lugar da chamada
+### genérica monitora_renomear_ou_consolidar_coluna. A chamada genérica, em
+### caso de as duas colunas existirem com valores diferentes e não vazios,
+### preserva apenas o valor da coluna-alvo e descarta silenciosamente o valor
+### da coluna de origem (apenas um log é gravado). Para Encostam isso pode
+### perder token ecológico real em cenários de schema misto (concatenação de
+### exportações com convenções de cabeçalho diferentes). Ver
+### diagnostics/hotfix_035b_encostam_resolvedor_flexivel/.
+monitora_correcao_resolver_encostam_flexivel <- function(dt,
+                                                          output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                          log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                          exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
+  dt <- monitora_dt_referenciar(dt)
+  col_label <- "**Encostam** na vareta: (amostragem/registro)"
+  col_canon <- "amostragem/registro/tipo_forma_vida"
+  tem_label <- col_label %in% names(dt)
+  tem_canon <- col_canon %in% names(dt)
+
+  ### Regra 1: nenhuma das duas existe -> nada a fazer, não criar coluna.
+  if (!tem_label && !tem_canon) return(invisible(dt))
+  ### Regra 2: só a canônica existe -> renomear (comportamento já existente,
+  ### preservado; nenhuma linha é perdida, é apenas troca de nome).
+  if (tem_canon && !tem_label) {
+    data.table::setnames(dt, col_canon, col_label)
+    return(invisible(dt))
+  }
+  ### Regra 2b: só a rotulada existe -> nada a fazer.
+  if (tem_label && !tem_canon) return(invisible(dt))
+
+  ### Regra 3: ambas existem. Consolidar linha a linha sem perda silenciosa.
+  ### Nesta etapa os valores ainda são rótulos brutos (às vezes com múltiplos
+  ### segmentos separados por vírgula, formato nativo de exportação
+  ### multi-seleção do SISMONITORA); a tokenização real ocorre no bloco
+  ### seguinte. Cada lado é tratado como um "blob" opaco (pode já ser
+  ### multi-seleção internamente, em qualquer separador da fonte); a união de
+  ### dois lados diferentes é feita concatenando os dois blobs com espaço, sem
+  ### tentar reinterpretar o separador interno de cada um. O bloco de
+  ### tokenização seguinte faz correspondência por substring, então cada label
+  ### bruto embutido em qualquer um dos dois lados continua sendo reconhecido
+  ### normalmente. Não usar vírgula como separador aqui: o próprio bloco de
+  ### tokenização já usa "token," -> "token" na limpeza final, o que apagaria
+  ### a vírgula entre dois tokens reais e colaria os dois em uma só palavra.
+  n <- nrow(dt)
+  a <- monitora_txt_normalizar_vazio(as.character(dt[[col_label]]))
+  b <- monitora_txt_normalizar_vazio(as.character(dt[[col_canon]]))
+  resultado <- a
+  usar_b <- is.na(a) & !is.na(b)
+  resultado[usar_b] <- b[usar_b]
+
+  eh_solo_nu <- function(x) {
+    grepl("^solo nu\\s*/\\s*rochas\\s*\\(sem plantas tocando a vareta\\),?$", tolower(trimws(x)), perl = TRUE)
+  }
+  conjunto_livre <- function(x) {
+    toks <- unique(tolower(trimws(strsplit(gsub(",", " ", x, fixed = TRUE), "\\s+")[[1]])))
+    toks[nzchar(toks)]
+  }
+
+  precisa_avaliar <- !is.na(a) & !is.na(b) & a != b
+  idx_avaliar <- which(precisa_avaliar)
+  diag_idx <- integer(0); diag_tipo <- character(0); diag_final <- character(0)
+  for (i in idx_avaliar) {
+    va <- a[i]; vb <- b[i]
+    if (setequal(conjunto_livre(va), conjunto_livre(vb))) {
+      ### Mesmo conjunto de tokens, só reordenado/reformatado: sem conflito,
+      ### sem perda; mantém um dos dois lados (equivalentes).
+      resultado[i] <- va
+      next
+    }
+    a_solo <- eh_solo_nu(va); b_solo <- eh_solo_nu(vb)
+    if (a_solo && !b_solo) {
+      ### Conflito real: um lado é exclusivamente solo_nu e o outro tem
+      ### conteúdo diferente. Remove solo_nu, preserva o outro lado -- mesma
+      ### exclusividade contratual já aplicada pelo Hotfix 02 (Regra B).
+      resultado[i] <- vb
+      tipo <- "conflito_solo_nu_removido"
+    } else if (b_solo && !a_solo) {
+      resultado[i] <- va
+      tipo <- "conflito_solo_nu_removido"
+    } else {
+      ### Complementar: nenhum dos dois lados é solo_nu isolado. Une os dois
+      ### blobs com espaço, sem perder nenhum dos dois lados.
+      resultado[i] <- paste(va, vb)
+      tipo <- "uniao_complementar"
+    }
+    diag_idx <- c(diag_idx, i)
+    diag_tipo <- c(diag_tipo, tipo)
+    diag_final <- c(diag_final, resultado[i])
+  }
+
+  data.table::set(dt, j = col_label, value = resultado)
+  dt[, (col_canon) := NULL]
+
+  if (length(diag_idx)) {
+    diag <- data.table::data.table(
+      linha_indice = diag_idx, tipo_resolucao = diag_tipo,
+      valor_coluna_rotulada = a[diag_idx], valor_coluna_canonica = b[diag_idx],
+      valor_final_unido = diag_final
+    )
+    try({
+      dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+      dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+      data.table::fwrite(diag, file.path(output_dir, "auditoria_encostam_resolvedor_flexivel.csv"), na = "")
+      data.table::fwrite(diag, file.path(log_dir, paste0("auditoria_encostam_resolvedor_flexivel_", exec_id, ".csv")), na = "")
+    }, silent = TRUE)
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      try(monitora_log_registrar_evento(
+        "encostam_resolvedor_flexivel", "AVISO",
+        file.path(output_dir, "auditoria_encostam_resolvedor_flexivel.csv"),
+        paste0(length(diag_idx), " linha(s) com Encostam presente em ambas as colunas (rotulada e canônica) com valores diferentes; ver auditoria_encostam_resolvedor_flexivel.csv"),
+        "resolvedor_flexivel_hotfix_035b"
+      ), silent = TRUE)
+    }
+  }
+  invisible(dt)
+}
+### FIM v2.6.0 - Hotfix 03.5B -------------------------------------------------
+
 if ("amostragem/registro/tipo_forma_vida" %in% colnames(registros_corrig)) {
-  monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/tipo_forma_vida", "**Encostam** na vareta: (amostragem/registro)")
+  monitora_correcao_resolver_encostam_flexivel(registros_corrig)
 }
 if ("amostragem/registro/forma_serrapilheira" %in% colnames(registros_corrig)) {
   monitora_renomear_ou_consolidar_coluna(registros_corrig, "amostragem/registro/forma_serrapilheira", "Materiais botânicos em decomposição no solo observados: (amostragem/registro)")
