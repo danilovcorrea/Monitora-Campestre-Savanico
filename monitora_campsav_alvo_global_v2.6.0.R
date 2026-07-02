@@ -32937,8 +32937,8 @@ registros_corrig$`**Encostam** na vareta: (amostragem/registro)` <-
       "Solo nu / rochas \\(sem plantas tocando a vareta\\)," = "solo_nu",
       "Material botânico em decomposição no solo" = "serrapilheira",
       "Material botânico em decomposição no solo," = "serrapilheira",
-      "Outras plantas terrestres, líquens e/ou fungos" = "solo_nu",
-      "Outras plantas terrestres, líquens e/ou fungos," = "solo_nu"
+      "Outras plantas terrestres, líquens e/ou fungos" = "outra_forma_vida",
+      "Outras plantas terrestres, líquens e/ou fungos," = "outra_forma_vida"
     )
   )
 
