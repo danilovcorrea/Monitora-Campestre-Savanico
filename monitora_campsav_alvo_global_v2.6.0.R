@@ -24694,8 +24694,11 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
                                                       auditoria_pipe = NULL,
                                                       output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
                                                       log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
-                                                      exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
+                                                      exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
+                                                      contexto = NA_character_,
+                                                      bloquear = TRUE) {
   produto_chr <- as.character(produto)[1L]
+  contexto_chr <- as.character(contexto)[1L]
   if (grepl("bruto", tolower(produto_chr))) return(invisible(dados))
   if (!inherits(dados, c("data.frame", "data.table"))) return(invisible(dados))
   dt <- data.table::as.data.table(dados)
@@ -24720,15 +24723,27 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
   ###   elegível): mesmas categorias já usadas por
   ###   monitora_produtos_resolver_pipes_por_ponto para decidir o que
   ###   corrigir; se resíduo de "|" sobrevive aqui, é falha real de resolução
-  ###   posicional em campo estruturado -- bloqueia a exportação.
+  ###   posicional em campo estruturado.
+  ### v2.6.0 - Hotfix 03.5D: quando `bloquear = FALSE` (checkpoint
+  ### pré-tokenização, antes da cadeia padronizacao_* original), resíduo
+  ### estruturado é reportado à parte (auditoria informativa), mas NÃO aborta
+  ### -- essas colunas ainda serão tratadas por etapas posteriores da cadeia
+  ### original antes do produto final. O bloqueio efetivo (stop()) só ocorre
+  ### quando `bloquear = TRUE`, reservado ao checkpoint pós-tokenização
+  ### operacional (produto final de registros_importados.csv/registros_corrig.csv).
   achados <- vector("list", length(cols_char)); k <- 0L
   achados_indet <- vector("list", length(cols_char)); ki <- 0L
+  n_colunas_preservadas <- 0L; n_linhas_preservadas <- 0L
   for (cc in cols_char) {
     classe <- tryCatch(monitora_produtos_classificar_pipe_coluna(cc, produto_chr), error = function(e) NA_character_)
-    if (!is.na(classe) && classe %in% c("pipe_esperado_em_bruto", "pipe_residual_tecnico_tolerado", "pipe_permitido_texto_livre")) next
     x <- as.character(dt[[cc]])
     idx <- which(!is.na(x) & grepl("|", x, fixed = TRUE))
     if (!length(idx)) next
+    if (!is.na(classe) && classe %in% c("pipe_esperado_em_bruto", "pipe_residual_tecnico_tolerado", "pipe_permitido_texto_livre")) {
+      n_colunas_preservadas <- n_colunas_preservadas + 1L
+      n_linhas_preservadas <- n_linhas_preservadas + length(idx)
+      next
+    }
     if (!is.na(classe) && identical(classe, "pipe_indeterminado")) {
       ki <- ki + 1L
       achados_indet[[ki]] <- data.table::data.table(
@@ -24767,11 +24782,64 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     }
   }
 
+  ### v2.6.0 - Hotfix 03.5D: resumo consolidado e auditável desta checagem,
+  ### sempre gravado (bloqueando ou não), com contagens de preservado
+  ### (texto livre/técnico tolerado), resolvido (via
+  ### monitora_produtos_resolver_pipes_por_ponto, quando `auditoria_pipe` é
+  ### informado), indeterminado e estruturado residual (bloqueado ou apenas
+  ### reportado, conforme `bloquear`). Operação em bloco sobre os data.tables
+  ### já calculados acima -- nenhuma nova varredura célula a célula.
+  n_linhas_resolvidas <- 0L
+  if (inherits(auditoria_pipe, "data.frame") && "n_linhas_corrigidas_por_indice_ponto" %in% names(auditoria_pipe)) {
+    n_linhas_resolvidas <- sum(as.integer(auditoria_pipe$n_linhas_corrigidas_por_indice_ponto), na.rm = TRUE)
+  }
+  n_linhas_indeterminadas <- if (ki) data.table::uniqueN(data.table::rbindlist(achados_indet[seq_len(ki)], fill = TRUE)$linha_indice) else 0L
+  n_linhas_estruturado_residual <- if (k) data.table::uniqueN(data.table::rbindlist(achados[seq_len(k)], fill = TRUE)$linha_indice) else 0L
+  resumo_pipe <- data.table::data.table(
+    exec_id = as.character(exec_id), produto = produto_chr, contexto = contexto_chr, bloqueio_ativo = isTRUE(bloquear),
+    n_colunas_preservadas = n_colunas_preservadas, n_linhas_pipe_preservadas = n_linhas_preservadas,
+    n_linhas_pipe_resolvidas_por_indice_ponto = n_linhas_resolvidas,
+    n_colunas_indeterminadas = ki, n_linhas_pipe_indeterminadas = n_linhas_indeterminadas,
+    n_colunas_estruturado_residual = k, n_linhas_pipe_estruturado_residual = n_linhas_estruturado_residual,
+    abortou_exportacao = isTRUE(bloquear) && k > 0L,
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  )
+  try({
+    data.table::fwrite(resumo_pipe, file.path(output_dir, "03_auditorias", "importacao", paste0("auditoria_pipe_residual_resumo_", sufixo, ".csv")), na = "")
+    data.table::fwrite(resumo_pipe, file.path(log_dir, paste0("auditoria_pipe_residual_resumo_", sufixo, "_", exec_id, ".csv")), na = "")
+  }, silent = TRUE)
+
   if (!k) return(invisible(dados))
   achados_dt <- data.table::rbindlist(achados[seq_len(k)], fill = TRUE, use.names = TRUE)
 
   n_linhas <- data.table::uniqueN(achados_dt$linha_indice)
   colunas_afetadas <- unique(achados_dt$coluna)
+
+  ### v2.6.0 - Hotfix 03.5D: `bloquear = FALSE` é reservado ao checkpoint
+  ### pré-tokenização (antes da cadeia padronizacao_* original). Resíduo
+  ### estruturado aqui não é necessariamente erro final -- as colunas
+  ### elegíveis (ex.: as 5 colunas de forma de vida do FNCS) ainda serão
+  ### tratadas por padronizacao_categorias_e_material_botanico,
+  ### padronizacao_formas_vida_condicionais_basicas,
+  ### padronizacao_formas_vida_outras, padronizacao_especies_nativas e
+  ### padronizacao_especies_exoticas_e_campos_condicionais antes do produto
+  ### final. Reporta para auditoria, mas não aborta a execução.
+  if (!isTRUE(bloquear)) {
+    arq_info <- file.path(output_dir, "03_auditorias", "importacao", paste0("auditoria_pipe_pretokenizacao_", sufixo, ".csv"))
+    try({
+      data.table::fwrite(achados_dt, arq_info, na = "")
+      data.table::fwrite(achados_dt, file.path(log_dir, paste0("auditoria_pipe_pretokenizacao_", sufixo, "_", exec_id, ".csv")), na = "")
+    }, silent = TRUE)
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      try(monitora_log_registrar_evento(
+        "pipe_pretokenizacao_nao_bloqueado", "AVISO", arq_info,
+        paste0(produto_chr, " (contexto ", contexto_chr, "): ", n_linhas, " linha(s) com residuo de '|' em ", length(colunas_afetadas), " coluna(s) estruturada(s) (", paste(colunas_afetadas, collapse = ", "), ") no checkpoint pre-tokenizacao -- nao bloqueado, sera reavaliado apos a tokenizacao operacional (padronizacao_*)."),
+        "ver relatorio auditoria_pipe_pretokenizacao"
+      ), silent = TRUE)
+    }
+    return(invisible(dados))
+  }
+
   arq_saida <- file.path(output_dir, "03_auditorias", "importacao", paste0("bloqueio_pipe_residual_", sufixo, ".csv"))
   try({
     data.table::fwrite(achados_dt, arq_saida, na = "")
@@ -24792,7 +24860,7 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     call. = FALSE
   )
 }
-### FIM v2.6.0 - Hotfix 03.5C-B ------------------------------------------------
+### FIM v2.6.0 - Hotfix 03.5C-B / 03.5D -----------------------------------
 
 monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
                                                exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
@@ -31795,7 +31863,8 @@ monitora_registros_importados_saneado_exportar <- function(dt,
                                                            output_dir = MONITORA_OUTPUT_DIR,
                                                            log_dir = MONITORA_LOG_DIR,
                                                            exec_id = MONITORA_EXEC_ID,
-                                                           contexto = "pos_consolidacao_aliases_importacao") {
+                                                           contexto = "pos_consolidacao_aliases_importacao",
+                                                           bloquear_pipe_residual = TRUE) {
   tryCatch({
     dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
     dir.create(file.path(output_dir, "01_produtos_dados"), showWarnings = FALSE, recursive = TRUE)
@@ -31809,11 +31878,20 @@ monitora_registros_importados_saneado_exportar <- function(dt,
     }
     ### v2.6.0 - Hotfix 03.5C-B: registros_importados.csv não pode sair com
     ### resíduo de "|" não resolvido pela normalização acima.
+    ### v2.6.0 - Hotfix 03.5D: `bloquear_pipe_residual` permite que este
+    ### mesmo exportador seja usado tanto no checkpoint pré-tokenização
+    ### (produto comparável do bolsista, logo após consolidacao_aliases_importacao,
+    ### `bloquear_pipe_residual = FALSE` -- reporta, não aborta, pois as 5
+    ### colunas de forma de vida do FNCS e afins ainda serão tratadas pela
+    ### cadeia padronizacao_* original) quanto no checkpoint pós-tokenização
+    ### operacional (produto final, `bloquear_pipe_residual = TRUE`, default
+    ### -- aborta se sobrar resíduo estruturado real).
     if (exists("monitora_bloquear_pipe_residual_produto", mode = "function")) {
       monitora_bloquear_pipe_residual_produto(
         out, produto = "registros_importados.csv",
         auditoria_pipe = attr(out, "monitora_auditoria_pipes"),
-        output_dir = output_dir, log_dir = log_dir, exec_id = exec_id
+        output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+        contexto = contexto, bloquear = bloquear_pipe_residual
       )
     }
     caminho <- monitora_produtos_escrever_csv_canonico(out, "registros_importados.csv", output_dir = output_dir, row.names = FALSE, na = "")
@@ -32804,13 +32882,22 @@ monitora_perf_registrar_checkpoint("consolidacao_aliases_importacao", "coalesce 
 
 ### publicação: materializa o produto de comparação do bolsista depois da consolidação
 ### inicial de nomes/aliases, preservando o bruto em registros_importados_bruto.csv.
+### v2.6.0 - Hotfix 03.5D: este é o checkpoint PRÉ-tokenização (antes de
+### padronizacao_categorias_e_material_botanico, padronizacao_formas_vida_*,
+### padronizacao_especies_*, mais adiante). Colunas estruturadas elegíveis
+### (ex.: as 5 colunas de forma de vida do FNCS) ainda serão tratadas por
+### essa cadeia; resíduo de "|" aqui é reportado (auditoria informativa),
+### mas não aborta a execução -- bloqueio efetivo só no checkpoint pós-
+### tokenização operacional (registros_importados_operacional_tokenizado,
+### mais abaixo), com bloquear_pipe_residual = TRUE (default).
 if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = FALSE, inherits = TRUE))) {
   ok_registros_importados_saneado <- monitora_registros_importados_saneado_exportar(
     registros,
     output_dir = MONITORA_OUTPUT_DIR,
     log_dir = MONITORA_LOG_DIR,
     exec_id = MONITORA_EXEC_ID,
-    contexto = "pos_consolidacao_aliases_importacao_pre_registros_corrig"
+    contexto = "pos_consolidacao_aliases_importacao_pre_registros_corrig",
+    bloquear_pipe_residual = FALSE
   )
   if (!isTRUE(ok_registros_importados_saneado)) {
     stop(
@@ -36927,6 +37014,13 @@ if (isTRUE(MONITORA_QUARENTENAR_COLETAS_INCOMPLETAS_PRE_PAINEL) &&
 ### Produto operacional de importação: sobrescreve registros_importados.csv após
 ### a extração/normalização de tokens por ponto, mas antes de qualquer operação
 ### assistida do painel. O bruto técnico permanece em registros_importados_bruto.csv.
+### v2.6.0 - Hotfix 03.5D: checkpoint PÓS-tokenização operacional (depois de
+### toda a cadeia padronizacao_categorias_e_material_botanico,
+### padronizacao_formas_vida_condicionais_basicas, padronizacao_formas_vida_outras,
+### padronizacao_especies_nativas e padronizacao_especies_exoticas_e_campos_condicionais,
+### acima). Ponto correto para o bloqueio efetivo de pipe estruturado
+### residual: se sobrar aqui, é erro real. bloquear_pipe_residual = TRUE
+### (default) mantido explícito para auditabilidade.
 if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = FALSE, inherits = TRUE)) &&
     exists("monitora_registros_importados_saneado_exportar", mode = "function")) {
   ok_registros_importados_tokenizado <- monitora_registros_importados_saneado_exportar(
@@ -36934,7 +37028,8 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
     output_dir = MONITORA_OUTPUT_DIR,
     log_dir = MONITORA_LOG_DIR,
     exec_id = MONITORA_EXEC_ID,
-    contexto = "pre_painel_pos_extracao_tokens_operacionais"
+    contexto = "pre_painel_pos_extracao_tokens_operacionais",
+    bloquear_pipe_residual = TRUE
   )
   if (!isTRUE(ok_registros_importados_tokenizado)) {
     stop("Falha ao materializar registros_importados.csv operacional após extração de tokens por ponto.", call. = FALSE)
