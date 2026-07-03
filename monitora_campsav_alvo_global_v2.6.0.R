@@ -31843,6 +31843,336 @@ monitora_produtos_classificar_pipe_coluna <- function(coluna, produto = "") {
   "pipe_indeterminado"
 }
 
+### v2.6.2 - 03.5I -------------------------------------------------------------
+### Fonte única embutida de contrato (Requisitos 03.5I, ver
+### diagnostics/requisitos_035i_fonte_unica_contrato/). Consolida numa única
+### leitura as fontes de contrato hoje espalhadas pelo script: dump XLSForm
+### embutido/cacheado (monitora_correcao_xlsforms_embutidos_cache_publicacao_ae,
+### campos/opcoes/dependencias), schema hardcoded de 129 atributos
+### (monitora_validados_schema_embutido), regras de relevance padrão
+### (monitora_correcao_dependencias_padrao, via
+### monitora_correcao_unificar_dependencias), aliases de pipe
+### (monitora_pipe_aliases_campos_conhecidos), aliases de registros_validados
+### (monitora_validados_aliases) e uma cópia de referência do alias_map de
+### monitora_dt_consolidar_aliases_colunas (L26349 -- não reaproveitada por
+### chamada direta porque aquela função opera sobre um dt real, não sobre o
+### contrato). Também registra explicitamente ea<->estacao_amostral e
+### ua<->unidade_amostral (Auditoria 03.5H3), com o mesmo conteúdo já correto
+### em monitora_esp_colunas_chave() -- só como alias documentado aqui, SEM
+### conectar a monitora_correcao_colunas_chave() nem a nenhum outro
+### consumidor.
+###
+### Só leitura/consolidação: todas as tabelas de entrada são copiadas com
+### data.table::copy() antes de qualquer mutação, então nada aqui altera as
+### fontes originais (inclusive o cache global de
+### monitora_correcao_xlsforms_embutidos_cache_publicacao_ae). Esta função não
+### é chamada por nenhum consumidor operacional (importação, correção, pipe,
+### painel, validados) e não cria dependência de arquivo externo -- tudo já
+### está embutido no próprio script. A bromélia nativa condicional/esparsa
+### (Hotfix 03.5G/03.5G2) não recebe tratamento especial aqui: cai
+### naturalmente em cardinalidade "estruturado_condicional_esparso" pela
+### presença de `relevant`, sem nenhum alias novo de pipe -- ver Requisitos
+### 03.5I, seção 4.
+monitora_contrato_unico_labels_sem_html <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("<[^>]+>", "", x, perl = TRUE)
+  x <- gsub("&quot;", "", x, fixed = TRUE)
+  x <- gsub("\\s+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+monitora_contrato_unico_cardinalidade_operacional <- function(tipo_base, relevant, ambiguo = FALSE) {
+  n <- max(length(tipo_base), length(relevant), length(ambiguo))
+  tipo_base <- tolower(trimws(as.character(rep_len(tipo_base, n))))
+  relevant <- as.character(rep_len(relevant, n))
+  ambiguo <- as.logical(rep_len(ambiguo, n))
+  ambiguo[is.na(ambiguo)] <- FALSE
+  tem_relevant <- !is.na(relevant) & nzchar(trimws(relevant))
+  tecnico <- tipo_base %in% c(
+    "image", "geopoint", "hidden", "start", "deviceid", "phonenumber", "note",
+    "begin_group", "end_group", "begin", "end", "calculate", "uuid"
+  )
+  out <- rep(NA_character_, n)
+  out[tecnico] <- "tecnico_midia"
+  out[is.na(out) & tipo_base == "text"] <- "texto_livre"
+  out[is.na(out) & tipo_base == "select_multiple"] <- "select_multiple"
+  eh_select_one <- is.na(out) & tipo_base == "select_one"
+  out[eh_select_one & tem_relevant] <- "estruturado_condicional_esparso"
+  out[eh_select_one & !tem_relevant] <- "estruturado_completo_por_ponto"
+  out[is.na(out)] <- "ambiguo_indeterminado"
+  out[ambiguo] <- "ambiguo_indeterminado"
+  out
+}
+
+monitora_contrato_unico_embutido <- function() {
+  meta <- tryCatch(monitora_correcao_xlsforms_embutidos_cache_publicacao_ae(), error = function(e) NULL)
+  if (is.null(meta) || is.null(meta$campos) || !is.data.frame(meta$campos) || !nrow(meta$campos)) {
+    meta <- if (exists("monitora_correcao_xlsforms_embutidos", mode = "function")) {
+      monitora_correcao_xlsforms_embutidos()
+    } else {
+      list(campos = data.table::data.table(), opcoes = data.table::data.table(),
+           dependencias = data.table::data.table(), arquivos = data.table::data.table())
+    }
+  }
+  campos <- data.table::copy(data.table::as.data.table(meta$campos))
+  opcoes <- data.table::copy(if (!is.null(meta$opcoes)) data.table::as.data.table(meta$opcoes) else data.table::data.table())
+  dependencias_xls <- data.table::copy(if (!is.null(meta$dependencias)) data.table::as.data.table(meta$dependencias) else data.table::data.table())
+
+  for (cc in c("arquivo_xlsform", "name", "caminho_registro", "type", "tipo_base", "list_name", "label", "relevant", "required",
+               "caminho_norm_publicacao_ae", "name_norm_publicacao_ae", "label_norm_publicacao_ae", "arquivo_21fev25_publicacao_ae")) {
+    if (!(cc %in% names(campos))) campos[, (cc) := NA_character_]
+  }
+  campos[, caminho_registro := as.character(caminho_registro)]
+  campos[, name := as.character(name)]
+  campos[, caminho_norm_publicacao_ae := as.character(caminho_norm_publicacao_ae)]
+  campos[, name_norm_publicacao_ae := as.character(name_norm_publicacao_ae)]
+  campos[is.na(caminho_norm_publicacao_ae), caminho_norm_publicacao_ae := ""]
+  campos[is.na(name_norm_publicacao_ae), name_norm_publicacao_ae := ""]
+
+  dependencias <- if (exists("monitora_correcao_unificar_dependencias", mode = "function")) {
+    tryCatch(monitora_correcao_unificar_dependencias(dependencias_xls), error = function(e) dependencias_xls)
+  } else {
+    dependencias_xls
+  }
+
+  ### Ambiguidade entre versões embutidas (mesma regra usada por
+  ### monitora_pipe_decidir_natureza_candidatos): mesmo caminho com tipo_base
+  ### de natureza diferente (texto vs. estruturado) em alguma outra versão.
+  amb <- campos[nzchar(caminho_norm_publicacao_ae), .(
+    eh_texto = "text" %in% tolower(tipo_base),
+    eh_estruturado = any(tolower(tipo_base) %in% c("select_one", "select_multiple"))
+  ), by = caminho_norm_publicacao_ae]
+  amb[, ambiguo_entre_versoes := eh_texto & eh_estruturado]
+
+  hist <- campos[arquivo_21fev25_publicacao_ae != TRUE & nzchar(caminho_norm_publicacao_ae) & nzchar(label),
+                 .(labels_historicos_com_html = paste(unique(label), collapse = " | ")),
+                 by = caminho_norm_publicacao_ae]
+
+  campos25 <- campos[arquivo_21fev25_publicacao_ae == TRUE & nzchar(caminho_registro)]
+  campos25 <- unique(campos25, by = "caminho_norm_publicacao_ae")
+  campos25 <- merge(campos25, amb[, .(caminho_norm_publicacao_ae, ambiguo_entre_versoes)], by = "caminho_norm_publicacao_ae", all.x = TRUE)
+  campos25[is.na(ambiguo_entre_versoes), ambiguo_entre_versoes := FALSE]
+  campos25 <- merge(campos25, hist, by = "caminho_norm_publicacao_ae", all.x = TRUE)
+  campos25[, labels_historicos_com_html := data.table::fifelse(is.na(labels_historicos_com_html), "", labels_historicos_com_html)]
+  campos25[, labels_historicos_sem_html := monitora_contrato_unico_labels_sem_html(labels_historicos_com_html)]
+  campos25[, label_2025_sem_html := monitora_contrato_unico_labels_sem_html(label)]
+
+  ### Schema hardcoded de 129 atributos (registros_validados) -- junção por
+  ### caminho completo primeiro (estratégia mais forte, 91/113 casos na
+  ### Auditoria 03.5H2), name curto como reforço só para quem ainda não bateu.
+  schema129 <- tryCatch(monitora_validados_schema_embutido(), error = function(e) data.table::data.table())
+  schema129 <- data.table::copy(data.table::as.data.table(schema129))
+  if (nrow(schema129)) {
+    schema129[, atributo_norm := monitora_correcao_normalizar_nome_coluna(atributo)]
+    schema129[, atributo_curto_norm := monitora_correcao_normalizar_nome_coluna(sub("^.*/", "", atributo))]
+  }
+
+  campos25[, `:=`(posicao_schema129 = NA_integer_, nivel_schema129 = NA_character_,
+                   formato_schema129 = NA_character_, origem_schema129 = NA_character_)]
+  if (nrow(schema129)) {
+    m1 <- match(campos25$caminho_norm_publicacao_ae, schema129$atributo_norm)
+    ok1 <- !is.na(m1)
+    if (any(ok1)) {
+      campos25[ok1, `:=`(posicao_schema129 = schema129$posicao[m1[ok1]],
+                          nivel_schema129 = schema129$nivel[m1[ok1]],
+                          formato_schema129 = schema129$formato[m1[ok1]],
+                          origem_schema129 = "caminho_completo")]
+    }
+    faltam <- is.na(campos25$origem_schema129)
+    if (any(faltam)) {
+      m2 <- match(campos25$name_norm_publicacao_ae[faltam], schema129$atributo_curto_norm)
+      ok2 <- !is.na(m2)
+      if (any(ok2)) {
+        idx <- which(faltam)[ok2]
+        campos25[idx, `:=`(posicao_schema129 = schema129$posicao[m2[ok2]],
+                            nivel_schema129 = schema129$nivel[m2[ok2]],
+                            formato_schema129 = schema129$formato[m2[ok2]],
+                            origem_schema129 = "name_curto")]
+      }
+    }
+  }
+
+  campos25[, cardinalidade_operacional := monitora_contrato_unico_cardinalidade_operacional(tipo_base, relevant, ambiguo_entre_versoes)]
+
+  ### Campo pai: prioriza parent_name já resolvido em dependencias (inclui a
+  ### regra padrão de 4 formas condicionais); cai para o path sem o último
+  ### segmento quando não há dependência explícita.
+  campos25[, campo_pai := NA_character_]
+  if (nrow(dependencias) && all(c("dependent_name", "parent_name") %in% names(dependencias))) {
+    mapa_pai <- unique(dependencias[nzchar(as.character(dependent_name)), .(dependent_name = as.character(dependent_name), parent_name = as.character(parent_name))])
+    mapa_pai <- mapa_pai[!duplicated(dependent_name)]
+    m3 <- match(campos25$name, mapa_pai$dependent_name)
+    ok3 <- !is.na(m3)
+    if (any(ok3)) campos25[ok3, campo_pai := mapa_pai$parent_name[m3[ok3]]]
+  }
+  campos25[is.na(campo_pai) & grepl("/", caminho_registro), campo_pai := sub("/[^/]+$", "", caminho_registro)]
+
+  campos25[, status_confianca := "media_sem_schema129"]
+  campos25[origem_schema129 == "caminho_completo", status_confianca := "alta"]
+  campos25[origem_schema129 == "name_curto", status_confianca := "media"]
+  campos25[ambiguo_entre_versoes == TRUE, status_confianca := "baixa_ambiguo"]
+
+  campos25[, origem_regra := data.table::fifelse(
+    is.na(origem_schema129),
+    "xlsform_embutido_21FEV25",
+    paste0("xlsform_embutido_21FEV25+schema_129_", origem_schema129)
+  )]
+
+  ### Aliases explícitos: pipe, validados (histórico+adicionais), cópia de
+  ### referência da consolidação de colunas, e o par ea/ua (03.5H3).
+  alias_pipe <- tryCatch(monitora_pipe_aliases_campos_conhecidos(), error = function(e) data.table::data.table())
+  alias_validados <- tryCatch(monitora_validados_aliases(), error = function(e) list())
+  alias_consolidacao_colunas_ref <- list(
+    "COLETA" = c("coleta", "id_coleta", "id coleta", "codigo coleta", "código coleta", "amostragem/coleta"),
+    "UC" = c("uc", "unidade de conservacao", "unidade de conservação"),
+    "UA" = c("ua", "unidade amostral", "amostragem/unidade_amostral"),
+    "CICLO" = c("ciclo", "ano ciclo", "ano_ciclo"),
+    "CAMPANHA" = c("campanha"),
+    "PROTOCOLO" = c("protocolo", "formulario", "formulário"),
+    "UUID" = c("uuid", "registro uuid", "registro_uuid"),
+    "coleta_uuid" = c("coleta uuid", "coleta_uuid", "uuid_coleta", "amostragem/uuid"),
+    "Data (data_hora)" = c("data (data_hora)", "data_hora/data", "amostragem/registro/data", "data"),
+    "Horário (data_hora)" = c("horario (data_hora)", "horário (data_hora)", "data_hora/hora", "amostragem/registro/hora", "hora"),
+    "Coordenada inicial da amostragem (amostragem)" = c("coordenada inicial da amostragem (amostragem)", "amostragem/ponto_inicio_transecto", "ponto inicio transecto", "ponto_inicio_transecto"),
+    "Coordenada final da amostragem (amostragem)" = c("coordenada final da amostragem (amostragem)", "amostragem/ponto_fim_transecto", "ponto fim transecto", "ponto_fim_transecto"),
+    "ponto_amostral (amostragem/registro)" = c("ponto_amostral (amostragem/registro)", "amostragem/registro/ponto_amostral", "ponto_amostral"),
+    "ponto_metro (amostragem/registro)" = c("ponto_metro (amostragem/registro)", "amostragem/registro/ponto_metro", "ponto_metro"),
+    "uuid (amostragem/registro)" = c("uuid (amostragem/registro)", "amostragem/registro/uuid")
+  )
+
+  aliases_lista <- list()
+  add_alias_row <- function(caminho, alias, origem) {
+    if (is.na(caminho) || !nzchar(caminho) || is.na(alias) || !nzchar(as.character(alias))) return(invisible(NULL))
+    aliases_lista[[length(aliases_lista) + 1L]] <<- data.table::data.table(
+      caminho_registro = caminho, alias = as.character(alias), origem_alias = origem
+    )
+  }
+  primeiro_caminho_por_norm <- function(alvo_norm) {
+    hit <- campos25[caminho_norm_publicacao_ae == alvo_norm | name_norm_publicacao_ae == alvo_norm]
+    if (nrow(hit)) hit$caminho_registro[1] else NA_character_
+  }
+
+  if (nrow(alias_pipe)) {
+    for (i in seq_len(nrow(alias_pipe))) {
+      alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(alias_pipe$nome_canonico[i]))
+      if (!is.na(alvo)) add_alias_row(alvo, alias_pipe$alias_coluna[i], "pipe_aliases_campos_conhecidos")
+    }
+  }
+  if (length(alias_validados)) {
+    for (chave in names(alias_validados)) {
+      alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(chave))
+      if (!is.na(alvo)) {
+        for (al in alias_validados[[chave]]) add_alias_row(alvo, al, "validados_aliases")
+      }
+    }
+  }
+  for (chave in names(alias_consolidacao_colunas_ref)) {
+    alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(chave))
+    if (!is.na(alvo)) {
+      for (al in alias_consolidacao_colunas_ref[[chave]]) add_alias_row(alvo, al, "dt_consolidar_aliases_colunas_ref")
+    }
+  }
+
+  ### Requisito obrigatório 03.5H3: ea<->estacao_amostral, ua<->unidade_amostral,
+  ### com o mesmo conteúdo já correto em monitora_esp_colunas_chave()
+  ### (L15191-15192) -- registrado aqui só como alias explícito, NÃO
+  ### conectado a monitora_correcao_colunas_chave() nem a nenhum outro
+  ### consumidor.
+  alvo_ea <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna("estacao_amostral"))
+  if (!is.na(alvo_ea)) {
+    add_alias_row(alvo_ea, "ea", "requisito_035h3")
+    add_alias_row(alvo_ea, "EA", "requisito_035h3")
+  }
+  alvo_ua <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna("unidade_amostral"))
+  if (!is.na(alvo_ua)) {
+    add_alias_row(alvo_ua, "ua", "requisito_035h3")
+    add_alias_row(alvo_ua, "UA", "requisito_035h3")
+  }
+
+  aliases <- if (length(aliases_lista)) {
+    unique(data.table::rbindlist(aliases_lista))
+  } else {
+    data.table::data.table(caminho_registro = character(), alias = character(), origem_alias = character())
+  }
+
+  atributos <- campos25[, .(
+    atributo_canonico_2025 = caminho_registro,
+    caminho_registro,
+    name_curto = name,
+    label_2025_com_html = label,
+    label_2025_sem_html,
+    labels_historicos_com_html,
+    labels_historicos_sem_html,
+    type_xlsform = type,
+    tipo_base,
+    list_name,
+    required,
+    relevant,
+    campo_pai,
+    nivel_schema129,
+    formato_schema129,
+    posicao_schema129,
+    cardinalidade_operacional,
+    ambiguo_entre_versoes,
+    status_confianca,
+    origem_regra
+  )]
+
+  ### Atributos de metadado de pipeline do schema de 129 sem correspondência
+  ### em nenhuma versão embutida do XLSForm (Auditoria 03.5H2, seção 5):
+  ### existem em registros_validados.csv mas nunca foram pergunta de
+  ### formulário -- classificados como fora_do_contrato. Usa a posição já
+  ### efetivamente atribuída em campos25 (não só a existência do nome em
+  ### algum lugar do dump) para não perder posições como 129 ("uuid" de
+  ### coleta), cujo único campo XLSForm com esse `name` curto
+  ### ("amostragem/registro/uuid") já foi reivindicado pela posição 126.
+  if (nrow(schema129)) {
+    sem_correspondencia <- !(schema129$posicao %in% campos25$posicao_schema129)
+    metadado_pipeline <- schema129[sem_correspondencia]
+    if (nrow(metadado_pipeline)) {
+      extra <- metadado_pipeline[, .(
+        atributo_canonico_2025 = atributo,
+        caminho_registro = NA_character_,
+        name_curto = atributo,
+        label_2025_com_html = NA_character_,
+        label_2025_sem_html = NA_character_,
+        labels_historicos_com_html = "",
+        labels_historicos_sem_html = "",
+        type_xlsform = NA_character_,
+        tipo_base = NA_character_,
+        list_name = NA_character_,
+        required = NA_character_,
+        relevant = NA_character_,
+        campo_pai = NA_character_,
+        nivel_schema129 = nivel,
+        formato_schema129 = formato,
+        posicao_schema129 = posicao,
+        cardinalidade_operacional = "fora_do_contrato",
+        ambiguo_entre_versoes = FALSE,
+        status_confianca = "alta",
+        origem_regra = "schema_129_metadado_pipeline"
+      )]
+      atributos <- data.table::rbindlist(list(atributos, extra), use.names = TRUE, fill = TRUE)
+    }
+  }
+  data.table::setorder(atributos, posicao_schema129, na.last = TRUE)
+
+  list(
+    atributos = atributos[],
+    aliases = aliases[],
+    choices = opcoes[],
+    dependencias = dependencias[],
+    meta = data.table::data.table(
+      versao_canonica_2025 = "21FEV25",
+      n_atributos = nrow(atributos),
+      n_aliases = nrow(aliases),
+      gerado_em = as.character(Sys.time()),
+      origem = "monitora_contrato_unico_embutido (03.5I, requisito diagnostics/requisitos_035i_fonte_unica_contrato)"
+    )
+  )
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
