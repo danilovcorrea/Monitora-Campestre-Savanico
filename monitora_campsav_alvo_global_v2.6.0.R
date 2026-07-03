@@ -24679,6 +24679,121 @@ monitora_produtos_resolver_pipes_por_ponto <- function(dt,
   d
 }
 
+### v2.6.0 - Hotfix 03.5C-B ---------------------------------------------------
+### monitora_produtos_resolver_pipes_por_ponto resolve resíduos de "|" por
+### índice de ponto amostral/COLETA, mas não garante 100% de resolução: quando
+### o número de tokens não bate com o índice do ponto (descompasso estrutural
+### no dado de origem), a célula permanece com "|" (ver
+### diagnostics/auditoria_035c_vazamento_importados/
+### AUDITORIA_035C_A2_RECLASSIFICACAO_PIPE_IMPORTADOS.md). Esta função verifica,
+### logo após a normalização, se algum resíduo de "|" sobreviveu e, se sim,
+### bloqueia a exportação do produto. Nunca bloqueia o produto bruto, que tem
+### permissão explícita de preservar "|" (é a leitura mais fiel do input).
+monitora_bloquear_pipe_residual_produto <- function(dados,
+                                                      produto,
+                                                      auditoria_pipe = NULL,
+                                                      output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                      log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                      exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
+  produto_chr <- as.character(produto)[1L]
+  if (grepl("bruto", tolower(produto_chr))) return(invisible(dados))
+  if (!inherits(dados, c("data.frame", "data.table"))) return(invisible(dados))
+  dt <- data.table::as.data.table(dados)
+  n <- nrow(dt)
+  if (!n || !ncol(dt)) return(invisible(dados))
+
+  cols_char <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
+  if (!length(cols_char)) return(invisible(dados))
+
+  ### Três grupos, conforme a classificação (que já consulta o contrato
+  ### XLSForm embutido para diferenciar texto livre de campo estruturado):
+  ### - pipe_esperado_em_bruto / pipe_residual_tecnico_tolerado /
+  ###   pipe_permitido_texto_livre: nunca bloqueiam, nunca são reportados como
+  ###   problema (texto livre pode legitimamente conter "|" -- é escolha de
+  ###   digitação do observador, não artefato de importação).
+  ### - pipe_indeterminado: coluna não reconhecida no contrato XLSForm
+  ###   embutido (não é texto livre nem estruturada confirmada); reportado à
+  ###   parte para revisão humana, mas NÃO bloqueia -- bloquear
+  ###   indiscriminadamente colunas desconhecidas repetiria o mesmo erro que
+  ###   motivou este ajuste (campos de texto livre não cobertos por nome).
+  ### - pipe_residual_operacional / pipe_residual_revisar (== estruturado
+  ###   elegível): mesmas categorias já usadas por
+  ###   monitora_produtos_resolver_pipes_por_ponto para decidir o que
+  ###   corrigir; se resíduo de "|" sobrevive aqui, é falha real de resolução
+  ###   posicional em campo estruturado -- bloqueia a exportação.
+  achados <- vector("list", length(cols_char)); k <- 0L
+  achados_indet <- vector("list", length(cols_char)); ki <- 0L
+  for (cc in cols_char) {
+    classe <- tryCatch(monitora_produtos_classificar_pipe_coluna(cc, produto_chr), error = function(e) NA_character_)
+    if (!is.na(classe) && classe %in% c("pipe_esperado_em_bruto", "pipe_residual_tecnico_tolerado", "pipe_permitido_texto_livre")) next
+    x <- as.character(dt[[cc]])
+    idx <- which(!is.na(x) & grepl("|", x, fixed = TRUE))
+    if (!length(idx)) next
+    if (!is.na(classe) && identical(classe, "pipe_indeterminado")) {
+      ki <- ki + 1L
+      achados_indet[[ki]] <- data.table::data.table(
+        produto = produto_chr, coluna = cc, linha_indice = idx,
+        valor_residual = x[idx], classificacao = classe,
+        orientacao = "Coluna nao reconhecida no contrato XLSForm embutido como texto livre nem como campo estruturado; residuo de '|' preservado sem bloqueio. Revisar manualmente se a coluna e' um campo novo/legado nao mapeado."
+      )
+      next
+    }
+    k <- k + 1L
+    achados[[k]] <- data.table::data.table(
+      produto = produto_chr, coluna = cc, linha_indice = idx,
+      valor_residual = x[idx], classificacao = classe,
+      orientacao = "Residuo de '|' nao resolvido por indice de ponto amostral/COLETA em campo estruturado; revisar o(s) arquivo(s) de origem desta(s) linha(s) (provavel descompasso entre numero de pontos e numero de tokens) ou tratar manualmente antes de reexportar."
+    )
+  }
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  sufixo <- gsub("[^A-Za-z0-9]+", "_", produto_chr)
+
+  if (ki) {
+    achados_indet_dt <- data.table::rbindlist(achados_indet[seq_len(ki)], fill = TRUE, use.names = TRUE)
+    arq_indet <- file.path(output_dir, "03_auditorias", "importacao", paste0("pipe_indeterminado_", sufixo, ".csv"))
+    try({
+      data.table::fwrite(achados_indet_dt, arq_indet, na = "")
+      data.table::fwrite(achados_indet_dt, file.path(log_dir, paste0("pipe_indeterminado_", sufixo, "_", exec_id, ".csv")), na = "")
+    }, silent = TRUE)
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      try(monitora_log_registrar_evento(
+        "pipe_indeterminado", "AVISO", arq_indet,
+        paste0(produto_chr, ": ", data.table::uniqueN(achados_indet_dt$linha_indice), " linha(s) com '|' em coluna(s) nao classificada(s) pelo contrato XLSForm: ", paste(unique(achados_indet_dt$coluna), collapse = ", "), " -- nao bloqueado, apenas reportado"),
+        "ver relatorio pipe_indeterminado"
+      ), silent = TRUE)
+    }
+  }
+
+  if (!k) return(invisible(dados))
+  achados_dt <- data.table::rbindlist(achados[seq_len(k)], fill = TRUE, use.names = TRUE)
+
+  n_linhas <- data.table::uniqueN(achados_dt$linha_indice)
+  colunas_afetadas <- unique(achados_dt$coluna)
+  arq_saida <- file.path(output_dir, "03_auditorias", "importacao", paste0("bloqueio_pipe_residual_", sufixo, ".csv"))
+  try({
+    data.table::fwrite(achados_dt, arq_saida, na = "")
+    data.table::fwrite(achados_dt, file.path(log_dir, paste0("bloqueio_pipe_residual_", sufixo, "_", exec_id, ".csv")), na = "")
+  }, silent = TRUE)
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    try(monitora_log_registrar_evento(
+      "bloqueio_pipe_residual", "ERRO", arq_saida,
+      paste0(produto_chr, " bloqueado: ", n_linhas, " linha(s) com residuo de '|' em ", length(colunas_afetadas), " coluna(s) estruturada(s): ", paste(colunas_afetadas, collapse = ", ")),
+      "ver relatorio de bloqueio de pipe residual"
+    ), silent = TRUE)
+  }
+  stop(
+    "Exportacao de ", produto_chr, " bloqueada: ", n_linhas, " linha(s) com residuo de '|' nao resolvido em ",
+    length(colunas_afetadas), " coluna(s) estruturada(s) (", paste(colunas_afetadas, collapse = ", "), "). ",
+    "Relatorio detalhado em: ", arq_saida, ". ",
+    "Revise o(s) arquivo(s) de entrada (provavel descompasso entre numero de pontos amostrais e numero de tokens separados por '|') ou trate manualmente antes de reexportar.",
+    call. = FALSE
+  )
+}
+### FIM v2.6.0 - Hotfix 03.5C-B ------------------------------------------------
+
 monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
                                                exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
                                                contexto = "organizacao_output") {
@@ -31500,14 +31615,55 @@ monitora_produtos_escrever_bruto_canonico <- function(dt,
 ### obedecem necessariamente ao índice 1:101 da repetição. Elas não são campos
 ### estruturantes para estatística ou contrato XLSForm final e, por isso, passam
 ### a ser auditadas como resíduo técnico tolerado, não como pipe operacional.
+### v2.6.0 - Hotfix 03.5C-B (ajuste de escopo 2) ------------------------------
+### Determina, a partir do contrato XLSForm embutido (não por heurística de
+### nome), se uma coluna corresponde a um campo de texto livre/descritivo
+### (tipo_base == "text") ou a um campo estruturado (select_multiple/
+### select_one). Em campos de texto livre, "|" é uma escolha de digitação do
+### observador (ex.: "Declividade leve | rochas amontoadas"), não um artefato
+### de achatamento de múltiplos pontos numa única célula -- nunca deve ser
+### submetido à resolução posicional por ponto/COLETA nem bloqueado.
+### monitora_correcao_xlsforms_embutidos_cache_publicacao_ae() é memoizada e
+### não depende de estado de execução (registros/registros_corrig); pode ser
+### chamada a qualquer momento do pipeline, inclusive antes do painel.
+monitora_pipe_coluna_classificar_natureza <- function(coluna) {
+  meta <- tryCatch(monitora_correcao_xlsforms_embutidos_cache_publicacao_ae(), error = function(e) NULL)
+  if (is.null(meta) || is.null(meta$campos) || !is.data.frame(meta$campos) || !nrow(meta$campos)) return("pipe_indeterminado")
+  campos <- data.table::as.data.table(meta$campos)
+  cols_norm <- c("name_norm_publicacao_ae", "caminho_norm_publicacao_ae", "label_norm_publicacao_ae")
+  if (!all(cols_norm %in% names(campos))) return("pipe_indeterminado")
+  alvo <- tryCatch(monitora_correcao_normalizar_nome_coluna(coluna), error = function(e) NA_character_)
+  if (is.na(alvo) || !nzchar(alvo)) return("pipe_indeterminado")
+  ### Fallback pelo último segmento do path (ex.: "impact_manejo_uso/tipos_
+  ### impacto_manejo_uso_outro" -> "tipos_impacto_manejo_uso_outro"): o grupo
+  ### pai registrado no dump embutido pode divergir do path real do template
+  ### para o mesmo campo folha; o nome curto é o identificador mais estável.
+  segmento_final <- sub(".*/", "", as.character(coluna)[1L])
+  alvo_curto <- tryCatch(monitora_correcao_normalizar_nome_coluna(segmento_final), error = function(e) NA_character_)
+  cand <- campos[
+    name_norm_publicacao_ae == alvo | caminho_norm_publicacao_ae == alvo | label_norm_publicacao_ae == alvo |
+      (!is.na(alvo_curto) & nzchar(alvo_curto) & name_norm_publicacao_ae == alvo_curto)
+  ]
+  if (!nrow(cand)) return("pipe_indeterminado")
+  tipos <- unique(tolower(trimws(as.character(cand$tipo_base))))
+  tipos <- tipos[!is.na(tipos) & nzchar(tipos)]
+  if (!length(tipos)) return("pipe_indeterminado")
+  if (all(tipos == "text")) return("pipe_permitido_texto_livre")
+  if (any(tipos %in% c("select_multiple", "select_one"))) return("pipe_residual_estruturado_elegivel")
+  "pipe_indeterminado"
+}
+
 monitora_produtos_classificar_pipe_coluna <- function(coluna, produto = "") {
   cc <- tolower(as.character(coluna))
   prod <- tolower(as.character(produto)[1L])
   if (grepl("bruto", prod)) return("pipe_esperado_em_bruto")
   if (grepl("foto|imagem|image|media|arquivo_midias|anexo", cc)) return("pipe_residual_tecnico_tolerado")
   if (grepl("^(monitora_|arquivo_|origem_|hash_|md5|tipo_entrada|\\.id$)", cc)) return("pipe_residual_tecnico_tolerado")
+  natureza <- tryCatch(monitora_pipe_coluna_classificar_natureza(coluna), error = function(e) "pipe_indeterminado")
+  if (identical(natureza, "pipe_permitido_texto_livre")) return("pipe_permitido_texto_livre")
   if (grepl("ponto|encostam|forma.*vida|especie|uuid|habito|observacao", cc)) return("pipe_residual_operacional")
-  "pipe_residual_revisar"
+  if (identical(natureza, "pipe_residual_estruturado_elegivel")) return("pipe_residual_revisar")
+  "pipe_indeterminado"
 }
 
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
@@ -31571,6 +31727,15 @@ monitora_registros_importados_saneado_exportar <- function(dt,
       out <- monitora_produtos_resolver_pipes_por_ponto(
         out, produto = "registros_importados.csv", output_dir = output_dir, log_dir = log_dir,
         exec_id = exec_id, contexto = paste0(contexto, "_pipes_operacionais"), corrigir = TRUE
+      )
+    }
+    ### v2.6.0 - Hotfix 03.5C-B: registros_importados.csv não pode sair com
+    ### resíduo de "|" não resolvido pela normalização acima.
+    if (exists("monitora_bloquear_pipe_residual_produto", mode = "function")) {
+      monitora_bloquear_pipe_residual_produto(
+        out, produto = "registros_importados.csv",
+        auditoria_pipe = attr(out, "monitora_auditoria_pipes"),
+        output_dir = output_dir, log_dir = log_dir, exec_id = exec_id
       )
     }
     caminho <- monitora_produtos_escrever_csv_canonico(out, "registros_importados.csv", output_dir = output_dir, row.names = FALSE, na = "")
@@ -31853,6 +32018,17 @@ monitora_publicacao_aa_exportar_registros_corrig_aprovado <- function(registros_
       log_dir = get0("MONITORA_LOG_DIR", ifnotfound = dirname(caminho_saida), inherits = TRUE),
       exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
       contexto = paste0(contexto, "_pipes_operacionais"), corrigir = TRUE
+    )
+  }
+  ### v2.6.0 - Hotfix 03.5C-B: registros_corrig.csv não pode sair com resíduo
+  ### de "|" não resolvido pela normalização acima.
+  if (exists("monitora_bloquear_pipe_residual_produto", mode = "function")) {
+    monitora_bloquear_pipe_residual_produto(
+      dt_export, produto = "registros_corrig.csv",
+      auditoria_pipe = attr(dt_export, "monitora_auditoria_pipes"),
+      output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = dirname(caminho_saida), inherits = TRUE),
+      log_dir = get0("MONITORA_LOG_DIR", ifnotfound = dirname(caminho_saida), inherits = TRUE),
+      exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
     )
   }
 
