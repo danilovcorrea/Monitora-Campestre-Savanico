@@ -6917,6 +6917,79 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
 
     res <- monitora_persist_reclassificar_estado_contratual(res, dt, chaves, contexto_estado = contexto)
 
+    ### v2.6.2 - Hotfix 03.5L-C ------------------------------------------------
+    ### Falsa trava observada na run PNB pós-03.5L-B: TRIOUT_ATOM (limpeza de
+    ### outras formas) tinha 5 checagens de persistência marcadas
+    ### `falha_valor_nao_persistiu` (divergência no campo superior recalculado,
+    ### ex. "Formas de vida de plantas nativas:"), mesmo com a PRÓPRIA operação
+    ### já auditada como bem-sucedida (residuos_antes=6, residuos_depois=0,
+    ### pendencias_manuais=0 -- ver a linha sentinela `atributo =
+    ### "__limpar_outras_formas_vida__"` que
+    ### monitora_correcao_aplicar_limpeza_outras_formas_atomica() grava no
+    ### próprio `audit`). O reclassificador global abaixo
+    ### (monitora_persist_reclassificar_por_efeito_diagnostico_final) só
+    ### confirma o efeito quando a triagem diagnóstica final do objeto INTEIRO
+    ### não tem nenhuma ocorrência impeditiva -- critério correto para famílias
+    ### que dependem de recálculo cruzado (PENDFV/MVLOTE/...), mas
+    ### desnecessariamente amplo para TRIOUT: 12 linhas impeditivas
+    ### remanescentes de OUTRAS categorias (nativa/seca-morta/exótica sem forma
+    ### de vida, não relacionadas à limpeza de outras formas) bloqueavam a
+    ### reclassificação de uma operação que, no seu próprio escopo, já havia
+    ### zerado o resíduo. Esta camada roda ANTES do reclassificador global e
+    ### resolve só pelo efeito da PRÓPRIA operação TRIOUT -- nunca por ausência
+    ### global de pendências. Não altera nenhuma outra família
+    ### (PENDFV/MVLOTE/TRIDESC/MOVFV/RECALC_SUPERIORES_XLSFORM/
+    ### SYNC_ENCOSTAM_FINAL), não altera a auditoria de exclusão de COLETAS
+    ### (`ok_exclusao_persistiu`, caminho totalmente separado) e não toca
+    ### pipes/relevance/cardinalidade. Se a sentinela da própria operação não
+    ### existir ou indicar resíduo/pendência manual real, a falha permanece --
+    ### cai no reclassificador global (linha abaixo) como segunda tentativa e,
+    ### se também não resolver, continua bloqueando normalmente.
+    monitora_persist_reclassificar_triout_por_efeito_proprio <- function(res, audit, contexto_estado = "pos_aplicacao_objeto") {
+      if (!nrow(res)) return(res)
+      if (!("status_persistencia" %in% names(res))) return(res)
+      idx_falha <- which(as.character(res$status_persistencia) %in% c(
+        "falha_valor_nao_persistiu",
+        "falha_linha_nao_localizada"
+      ))
+      if (!length(idx_falha)) return(res)
+
+      ids <- as.character(res$id_correcao)
+      ids[is.na(ids)] <- ""
+      idx_triout <- idx_falha[grepl("^TRIOUT", ids[idx_falha])]
+      if (!length(idx_triout)) return(res)
+
+      audit <- tryCatch(data.table::as.data.table(audit), error = function(e) data.table::data.table())
+      if (!nrow(audit) || !all(c("id_correcao", "atributo", "status") %in% names(audit))) return(res)
+      sentinela <- audit[as.character(atributo) == "__limpar_outras_formas_vida__"]
+      if (!nrow(sentinela)) return(res)
+
+      ids_triout_falha <- unique(ids[idx_triout])
+      for (id_alvo in ids_triout_falha) {
+        linha_sentinela <- sentinela[as.character(id_correcao) == id_alvo]
+        if (!nrow(linha_sentinela)) next
+        ### Exige que TODAS as linhas sentinela da própria operação confirmem
+        ### resíduo zerado e sem pendência manual -- nunca reclassifica por
+        ### maioria/parcialidade.
+        ok_proprio <- all(as.character(linha_sentinela$status) == "auditoria_ok")
+        if (!isTRUE(ok_proprio)) next
+        idx_desta_id <- idx_triout[ids[idx_triout] == id_alvo]
+        msg_sentinela <- as.character(linha_sentinela$mensagem[1L])
+        if (is.na(msg_sentinela) || !nzchar(msg_sentinela)) msg_sentinela <- "residuos_depois=0; pendencias_manuais=0."
+        data.table::set(res, i = idx_desta_id, j = "status_persistencia", value = "ok_persistiu_por_efeito_especifico_outras_formas")
+        data.table::set(res, i = idx_desta_id, j = "mensagem", value = paste0(
+          "Limpeza de outras formas persistiu por efeito específico; pendências impeditivas globais remanescentes não relacionadas permanecem para checkpoint de registros_corrig. Auditoria própria da operação: ",
+          msg_sentinela
+        ))
+        if (!("modo_comparacao" %in% names(res))) data.table::set(res, j = "modo_comparacao", value = NA_character_)
+        data.table::set(res, i = idx_desta_id, j = "modo_comparacao", value = "efeito_especifico_operacao_triout")
+      }
+      res
+    }
+
+    res <- monitora_persist_reclassificar_triout_por_efeito_proprio(res, audit, contexto_estado = contexto)
+    ### FIM Hotfix 03.5L-C ------------------------------------------------------
+
     ### v2.6.0: auditoria de persistência por efeito diagnóstico final --------
     ### A partir da run6, preview/modal e aplicação já convergem para o estado sem
     ### ocorrências impeditivas. A trava de persistência, porém, ainda comparava
