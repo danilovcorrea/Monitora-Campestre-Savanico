@@ -32173,6 +32173,288 @@ monitora_contrato_unico_embutido <- function() {
   )
 }
 
+### v2.6.2 - 03.5J -------------------------------------------------------------
+### Índices/caches derivados da fonte única embutida de contrato (03.5I). O
+### contrato único (monitora_contrato_unico_embutido()) continua sendo a
+### única fonte de verdade -- tudo aqui é projeção/agrupamento em memória do
+### mesmo dado, sem introduzir nenhuma regra, alias ou tipo novo que não
+### esteja já no contrato. Nenhuma destas funções é chamada por nenhum
+### consumidor operacional (importação, painel, pipe, registros_corrig,
+### registros_validados, estatísticas, gráficos) -- ver
+### diagnostics/dev_035j_indices_contrato_unico/.
+monitora_contrato_unico_normalizar_texto_seguro <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  if (exists("monitora_correcao_normalizar_nome_coluna", mode = "function")) {
+    return(monitora_correcao_normalizar_nome_coluna(x))
+  }
+  trimws(tolower(x))
+}
+
+### Validação estrutural apenas (nomes de índices/perfis presentes, template
+### de 129 sem lacuna/duplicata, categorias de cardinalidade conhecidas,
+### aliases ea/ua presentes) -- nunca lê dado real, nunca executa o pipeline.
+monitora_contrato_unico_validar_estrutura_indices <- function(indices, perfis = NULL) {
+  nomes_indices_esperados <- c(
+    "por_atributo_canonico", "por_caminho_registro", "por_name_curto",
+    "por_label_normalizado", "por_alias_normalizado", "por_list_name",
+    "por_choice_name", "por_relevance_campo_pai", "por_cardinalidade_operacional",
+    "por_estagio_aplicavel", "por_severidade", "por_origem_regra",
+    "template_sismonitora_129", "atributos_tecnicos_pipeline",
+    "atributos_ambiguos_indeterminados", "campos_condicionais_esparsos"
+  )
+  faltando <- setdiff(nomes_indices_esperados, names(indices))
+  if (length(faltando)) {
+    stop("monitora_contrato_unico_indices: indices ausentes: ", paste(faltando, collapse = ", "), call. = FALSE)
+  }
+
+  tpl <- indices$template_sismonitora_129
+  if (!data.table::is.data.table(tpl) || nrow(tpl) != 129L) {
+    stop("monitora_contrato_unico_indices: template_sismonitora_129 deveria ter 129 linhas, tem ",
+         if (data.table::is.data.table(tpl)) nrow(tpl) else "objeto invalido", call. = FALSE)
+  }
+  posicoes <- sort(as.integer(tpl$posicao_schema129))
+  if (!identical(posicoes, seq_len(129L))) {
+    stop("monitora_contrato_unico_indices: template_sismonitora_129 nao cobre 1:129 sem lacuna/duplicata", call. = FALSE)
+  }
+
+  categorias_validas <- c(
+    "texto_livre", "select_multiple", "estruturado_completo_por_ponto",
+    "estruturado_condicional_esparso", "tecnico_midia", "fora_do_contrato",
+    "ambiguo_indeterminado"
+  )
+  cats_presentes <- unique(as.character(indices$por_cardinalidade_operacional$cardinalidade_operacional))
+  cats_invalidas <- setdiff(cats_presentes, categorias_validas)
+  if (length(cats_invalidas)) {
+    stop("monitora_contrato_unico_indices: categorias de cardinalidade desconhecidas: ",
+         paste(cats_invalidas, collapse = ", "), call. = FALSE)
+  }
+
+  alias_norm <- indices$por_alias_normalizado
+  tem_ea <- nrow(alias_norm[tolower(alias) == "ea" & grepl("estacao_amostral", caminho_registro, fixed = TRUE)]) > 0L
+  tem_ua <- nrow(alias_norm[tolower(alias) == "ua" & grepl("unidade_amostral", caminho_registro, fixed = TRUE)]) > 0L
+  if (!tem_ea) stop("monitora_contrato_unico_indices: alias 'ea' -> estacao_amostral ausente (requisito 03.5H3)", call. = FALSE)
+  if (!tem_ua) stop("monitora_contrato_unico_indices: alias 'ua' -> unidade_amostral ausente (requisito 03.5H3)", call. = FALSE)
+
+  if (!is.null(perfis)) {
+    nomes_perfis_esperados <- c(
+      "perfil_importacao", "perfil_pre_painel", "perfil_painel_edicao",
+      "perfil_pos_painel_corrig", "perfil_export_registros_validados",
+      "perfil_estatisticas_graficos"
+    )
+    faltando_perfis <- setdiff(nomes_perfis_esperados, names(perfis))
+    if (length(faltando_perfis)) {
+      stop("monitora_contrato_unico_indices: perfis ausentes: ", paste(faltando_perfis, collapse = ", "), call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
+  if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+
+  atributos <- data.table::copy(data.table::as.data.table(contrato$atributos))
+  aliases <- data.table::copy(data.table::as.data.table(contrato$aliases))
+  choices <- data.table::copy(data.table::as.data.table(contrato$choices))
+  dependencias <- data.table::copy(data.table::as.data.table(contrato$dependencias))
+
+  ### Severidade e estágio aplicável são anotações de orquestração
+  ### DERIVADAS só de colunas já existentes no contrato (cardinalidade,
+  ### confiança, ambiguidade) -- não introduzem nenhum fato novo sobre o
+  ### atributo, só reagrupam o que já está no contrato para consumo por
+  ### etapa. As tabelas abaixo são a única fonte dessas duas anotações;
+  ### nada aqui compete com o contrato único.
+  atributos[, severidade := "baixa"]
+  atributos[cardinalidade_operacional %in% c("estruturado_condicional_esparso") | status_confianca %in% c("media", "media_sem_schema129"), severidade := "media"]
+  atributos[ambiguo_entre_versoes == TRUE | status_confianca == "baixa_ambiguo" | cardinalidade_operacional == "ambiguo_indeterminado", severidade := "alta"]
+
+  mapa_estagios_por_cardinalidade <- data.table::data.table(
+    cardinalidade_operacional = c(
+      "texto_livre", "select_multiple", "estruturado_completo_por_ponto",
+      "estruturado_condicional_esparso", "tecnico_midia", "fora_do_contrato",
+      "ambiguo_indeterminado"
+    ),
+    estagios = list(
+      c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
+      c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
+      c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
+      c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig"),
+      c("importacao", "pos_painel_corrig"),
+      c("pre_painel", "painel_edicao", "export_registros_validados"),
+      c("pre_painel")
+    )
+  )
+  juncao_estagios <- merge(atributos, mapa_estagios_por_cardinalidade, by = "cardinalidade_operacional", all.x = TRUE)
+  por_estagio_aplicavel <- juncao_estagios[
+    !vapply(estagios, is.null, logical(1)),
+    .(estagio = estagios[[1]]),
+    by = .(atributo_canonico_2025, caminho_registro, cardinalidade_operacional)
+  ]
+  data.table::setkeyv(por_estagio_aplicavel, "estagio")
+
+  ### --- índices mínimos (03.5J, seção "Índices mínimos") ---------------------
+  por_atributo_canonico <- data.table::copy(atributos)
+  data.table::setkeyv(por_atributo_canonico, "atributo_canonico_2025")
+
+  por_caminho_registro <- data.table::copy(atributos[!is.na(caminho_registro)])
+  data.table::setkeyv(por_caminho_registro, "caminho_registro")
+
+  por_name_curto <- data.table::copy(atributos[!is.na(name_curto) & nzchar(name_curto)])
+  data.table::setkeyv(por_name_curto, "name_curto")
+
+  por_label_normalizado <- data.table::copy(atributos)
+  por_label_normalizado[, label_normalizado := monitora_contrato_unico_normalizar_texto_seguro(label_2025_sem_html)]
+  por_label_normalizado <- por_label_normalizado[nzchar(label_normalizado)]
+  data.table::setkeyv(por_label_normalizado, "label_normalizado")
+
+  por_alias_normalizado <- data.table::copy(aliases)
+  por_alias_normalizado[, alias_normalizado := monitora_contrato_unico_normalizar_texto_seguro(alias)]
+  data.table::setkeyv(por_alias_normalizado, "alias_normalizado")
+
+  por_list_name <- data.table::copy(atributos[!is.na(list_name) & nzchar(list_name)])
+  data.table::setkeyv(por_list_name, "list_name")
+
+  por_choice_name <- data.table::copy(choices)
+  if (all(c("list_name", "name") %in% names(por_choice_name))) {
+    data.table::setkeyv(por_choice_name, c("list_name", "name"))
+  }
+
+  por_relevance_campo_pai <- data.table::copy(atributos[!is.na(campo_pai) & nzchar(campo_pai)])
+  data.table::setkeyv(por_relevance_campo_pai, "campo_pai")
+
+  por_cardinalidade_operacional <- data.table::copy(atributos)
+  data.table::setkeyv(por_cardinalidade_operacional, "cardinalidade_operacional")
+
+  por_severidade <- data.table::copy(atributos)
+  data.table::setkeyv(por_severidade, "severidade")
+
+  por_origem_regra <- data.table::copy(atributos)
+  data.table::setkeyv(por_origem_regra, "origem_regra")
+
+  template_sismonitora_129 <- data.table::copy(atributos[!is.na(posicao_schema129)])
+  data.table::setorder(template_sismonitora_129, posicao_schema129)
+
+  atributos_tecnicos_pipeline <- data.table::copy(atributos[cardinalidade_operacional %in% c("tecnico_midia", "fora_do_contrato")])
+
+  atributos_ambiguos_indeterminados <- data.table::copy(atributos[cardinalidade_operacional == "ambiguo_indeterminado" | ambiguo_entre_versoes == TRUE])
+
+  ### A bromélia nativa condicional/esparsa (e demais formas condicionais)
+  ### fica listada aqui só como INVENTÁRIO -- nenhuma resolução por ponto
+  ### absoluto é feita nesta ou em nenhuma outra função de 03.5J (ver Hotfix
+  ### 03.5G/03.5G2, causa-raiz da regressão que este índice existe para
+  ### tornar visível, não para "corrigir" silenciosamente).
+  campos_condicionais_esparsos <- data.table::copy(atributos[cardinalidade_operacional == "estruturado_condicional_esparso"])
+
+  indices <- list(
+    por_atributo_canonico = por_atributo_canonico[],
+    por_caminho_registro = por_caminho_registro[],
+    por_name_curto = por_name_curto[],
+    por_label_normalizado = por_label_normalizado[],
+    por_alias_normalizado = por_alias_normalizado[],
+    por_list_name = por_list_name[],
+    por_choice_name = por_choice_name[],
+    por_relevance_campo_pai = por_relevance_campo_pai[],
+    por_cardinalidade_operacional = por_cardinalidade_operacional[],
+    por_estagio_aplicavel = por_estagio_aplicavel[],
+    por_severidade = por_severidade[],
+    por_origem_regra = por_origem_regra[],
+    template_sismonitora_129 = template_sismonitora_129[],
+    atributos_tecnicos_pipeline = atributos_tecnicos_pipeline[],
+    atributos_ambiguos_indeterminados = atributos_ambiguos_indeterminados[],
+    campos_condicionais_esparsos = campos_condicionais_esparsos[]
+  )
+
+  ### --- perfis derivados (03.5J, seção "Perfis derivados mínimos") ----------
+  aliases_por_caminho <- aliases[, .(aliases_conhecidos = list(unique(alias))), by = caminho_registro]
+  perfil_importacao <- merge(
+    atributos[!is.na(caminho_registro), .(
+      atributo_canonico_2025, caminho_registro, name_curto,
+      label_2025_com_html, label_2025_sem_html,
+      labels_historicos_com_html, labels_historicos_sem_html,
+      cardinalidade_operacional
+    )],
+    aliases_por_caminho, by = "caminho_registro", all.x = TRUE
+  )
+  perfil_importacao[, aliases_conhecidos := lapply(aliases_conhecidos, function(a) {
+    if (is.null(a) || (length(a) == 1L && is.na(a[1]))) character(0) else a
+  })]
+
+  atributos_pre_painel <- por_estagio_aplicavel[estagio == "pre_painel", unique(atributo_canonico_2025)]
+  perfil_pre_painel <- atributos[atributo_canonico_2025 %in% atributos_pre_painel, .(
+    atributo_canonico_2025, caminho_registro, cardinalidade_operacional,
+    status_confianca, severidade, campo_pai, relevant
+  )]
+  perfil_pre_painel[, bloqueia_registros_validados := cardinalidade_operacional == "ambiguo_indeterminado" | status_confianca == "baixa_ambiguo"]
+
+  choices_por_list_name <- choices[, .(choices_disponiveis = list(unique(name))), by = list_name]
+  perfil_painel_edicao <- atributos[!(cardinalidade_operacional %in% c("ambiguo_indeterminado", "tecnico_midia")), .(
+    atributo_canonico_2025, caminho_registro, name_curto, label_2025_sem_html,
+    list_name, tipo_base, cardinalidade_operacional, relevant, campo_pai
+  )]
+  perfil_painel_edicao <- merge(perfil_painel_edicao, choices_por_list_name, by = "list_name", all.x = TRUE)
+
+  perfil_pos_painel_corrig <- atributos[cardinalidade_operacional != "ambiguo_indeterminado", .(
+    atributo_canonico_2025, caminho_registro, tipo_base, cardinalidade_operacional,
+    relevant, campo_pai, status_confianca
+  )]
+
+  projecao_129 <- template_sismonitora_129[, .(
+    posicao_schema129, atributo_canonico_2025, caminho_registro,
+    nivel_schema129, formato_schema129, cardinalidade_operacional, status_confianca
+  )]
+  assertivas_baratas_validados <- data.table::data.table(
+    checagem = c(
+      "n_posicoes_esperado", "n_posicoes_observado", "n_gaps_posicoes",
+      "n_duplicatas_posicoes", "n_condicional_esparso_no_template"
+    ),
+    valor = c(
+      "129",
+      as.character(nrow(projecao_129)),
+      as.character(length(setdiff(seq_len(129L), projecao_129$posicao_schema129))),
+      as.character(sum(duplicated(projecao_129$posicao_schema129))),
+      as.character(sum(projecao_129$cardinalidade_operacional == "estruturado_condicional_esparso", na.rm = TRUE))
+    )
+  )
+  ### Só assertivas estruturais baratas sobre o próprio contrato -- nenhuma
+  ### leitura de registros_validados.csv real, nenhuma revalidação linha a
+  ### linha.
+  perfil_export_registros_validados <- list(
+    projecao = projecao_129[],
+    assertivas = assertivas_baratas_validados[]
+  )
+
+  perfil_estatisticas_graficos <- atributos[
+    cardinalidade_operacional %in% c("texto_livre", "select_multiple", "estruturado_completo_por_ponto") &
+      status_confianca %in% c("alta", "media"),
+    .(atributo_canonico_2025, caminho_registro, tipo_base, list_name, cardinalidade_operacional, status_confianca)
+  ]
+
+  perfis <- list(
+    perfil_importacao = perfil_importacao[],
+    perfil_pre_painel = perfil_pre_painel[],
+    perfil_painel_edicao = perfil_painel_edicao[],
+    perfil_pos_painel_corrig = perfil_pos_painel_corrig[],
+    perfil_export_registros_validados = perfil_export_registros_validados,
+    perfil_estatisticas_graficos = perfil_estatisticas_graficos[]
+  )
+
+  if (isTRUE(validar)) {
+    monitora_contrato_unico_validar_estrutura_indices(indices, perfis)
+  }
+
+  list(
+    indices = indices,
+    perfis = perfis,
+    meta = data.table::data.table(
+      gerado_em = as.character(Sys.time()),
+      n_indices = length(indices),
+      n_perfis = length(perfis),
+      validado = isTRUE(validar),
+      origem = "monitora_contrato_unico_indices (03.5J, deriva de monitora_contrato_unico_embutido, sem conectar ao pipeline)"
+    )
+  )
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
