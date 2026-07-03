@@ -33581,18 +33581,94 @@ registros_corrig$`**Encostam** na vareta: (amostragem/registro)` <-
     )
   )
 
-registros_corrig$`**Encostam** na vareta: (amostragem/registro)` <-
-  registros_corrig$`**Encostam** na vareta: (amostragem/registro)` %>%
-  str_replace_all(
-    .,
-    c(
-      "nativa," = "nativa",
-      "exotica," = "exotica",
-      "seca_morta," = "seca_morta",
-      "serrapilheira," = "serrapilheira",
-      "solo_nu," = "solo_nu"
-    )
+### v2.6.0 - Hotfix 03.5E -----------------------------------------------------
+### O bloco de rótulo->token acima (Hotfix 01) corrige o mapeamento de
+### "Outras plantas terrestres, líquens e/ou fungos" para outra_forma_vida,
+### mas a vírgula que separava essa seleção das demais no export bruto
+### select_multiple do SISMONITORA (não a vírgula interna do rótulo, já
+### consumida pelo padrão acima) sobra depois da substituição. A limpeza que
+### existia aqui tratava esse resíduo para nativa/exotica/seca_morta/
+### serrapilheira/solo_nu, mas nunca foi atualizada para outra_forma_vida,
+### deixando "outra_forma_vida," residual (observado em execução real com
+### FNCS: 248 linhas). Substituída por uma normalização explícita de tokens:
+### Encostam é select_multiple (conjunto de tokens), não texto livre; vírgula,
+### ponto-e-vírgula ou espaços múltiplos residuais entre tokens viram sempre
+### um único espaço (nunca removidos sem substituição, para nunca colar dois
+### tokens adjacentes, ex. "nativa,exotica" -> "nativa exotica", nunca
+### "nativaexotica"); tokens são deduplicados; a regra de solo_nu isolado
+### (Hotfix 02, Regra B: se coexistir com qualquer outro token, remove-se
+### apenas solo_nu) é preservada aqui para não reintroduzir o mesmo tipo de
+### resíduo — nunca introduz solo_nu (isso continua exclusivo do fallback já
+### existente em monitora_validar_encostam_rowlevel_minimo, Regra A). Esta
+### função não altera nenhuma outra coluna; texto livre nunca passa por ela.
+MONITORA_ENCOSTAM_TOKENS_CANONICOS <- c("solo_nu", "serrapilheira", "nativa", "exotica", "seca_morta", "outra_forma_vida")
+
+monitora_correcao_normalizar_tokens_encostam <- function(x) {
+  x <- as.character(x)
+  vazio <- monitora_correcao_vazio_vec(x)
+  ### Pré-filtro vetorizado (mesmo padrão da Regra B do Hotfix 02): só as
+  ### linhas com separador residual ou risco de solo_nu coexistente passam
+  ### pelo tokenizador linha a linha; a maioria das linhas já chega limpa
+  ### (token único, ou já sem separador residual) e não é tocada.
+  tem_separador_residual <- grepl("[,;]|\\s{2,}", x, perl = TRUE)
+  tem_solo_nu_coexistente <- grepl("solo_nu", x, fixed = TRUE) & grepl("\\S+\\s+\\S+", trimws(x), perl = TRUE)
+  candidato <- !vazio & (tem_separador_residual | tem_solo_nu_coexistente)
+
+  out <- x
+  idx <- which(candidato)
+  for (i in idx) {
+    v <- gsub("[,;]+|\\s+", " ", x[i], perl = TRUE)
+    toks <- monitora_correcao_tokenizar(v)
+    if (!length(toks)) { out[i] <- NA_character_; next }
+    if ("solo_nu" %in% toks && length(toks) > 1L) toks <- setdiff(toks, "solo_nu")
+    out[i] <- monitora_correcao_colapsar_tokens(toks)
+  }
+  out[vazio] <- NA_character_
+  out
+}
+
+.monitora_encostam_col_035e <- "**Encostam** na vareta: (amostragem/registro)"
+.monitora_encostam_antes_035e <- registros_corrig[[.monitora_encostam_col_035e]]
+.monitora_encostam_depois_035e <- monitora_correcao_normalizar_tokens_encostam(.monitora_encostam_antes_035e)
+### Atualização por referência (data.table::set), sem varredura da base
+### inteira -- apenas a coluna Encostam, e apenas as linhas candidatas dentro
+### da função acima.
+set(registros_corrig, j = .monitora_encostam_col_035e, value = .monitora_encostam_depois_035e)
+
+### Auditoria leve: contagens vetorizadas a partir dos vetores antes/depois já
+### calculados acima, sem nenhuma varredura adicional.
+try({
+  .canon_alt_035e <- paste(MONITORA_ENCOSTAM_TOKENS_CANONICOS, collapse = "|")
+  .padrao_valido_035e <- paste0("^(", .canon_alt_035e, ")(\\s(", .canon_alt_035e, "))*$")
+  .vazio_depois_035e <- monitora_correcao_vazio_vec(.monitora_encostam_depois_035e)
+  .solo_nu_coexiste_035e <- function(v) grepl("solo_nu", v, fixed = TRUE) & grepl("\\S+\\s+\\S+", trimws(v), perl = TRUE)
+  aud_encostam_035e <- data.table::data.table(
+    exec_id = as.character(get0("MONITORA_EXEC_ID", ifnotfound = NA_character_, inherits = TRUE)),
+    contexto = "padronizacao_categorias_encostam_normalizacao_tokens",
+    n_linhas_encostam_com_virgula_antes = sum(grepl(",", .monitora_encostam_antes_035e, fixed = TRUE), na.rm = TRUE),
+    n_linhas_encostam_com_virgula_depois = sum(grepl(",", .monitora_encostam_depois_035e, fixed = TRUE), na.rm = TRUE),
+    n_linhas_outra_forma_vida_virgula_antes = sum(grepl("outra_forma_vida,", .monitora_encostam_antes_035e, fixed = TRUE), na.rm = TRUE),
+    n_linhas_outra_forma_vida_virgula_depois = sum(grepl("outra_forma_vida,", .monitora_encostam_depois_035e, fixed = TRUE), na.rm = TRUE),
+    n_linhas_token_colado_suspeito = sum(!.vazio_depois_035e & !grepl(.padrao_valido_035e, .monitora_encostam_depois_035e, perl = TRUE), na.rm = TRUE),
+    n_linhas_solo_nu_coexistente_antes = sum(.solo_nu_coexiste_035e(.monitora_encostam_antes_035e), na.rm = TRUE),
+    n_linhas_solo_nu_coexistente_depois = sum(.solo_nu_coexiste_035e(.monitora_encostam_depois_035e), na.rm = TRUE),
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
+  dir.create(file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  monitora_fwrite(aud_encostam_035e, file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao", "auditoria_encostam_normalizacao_tokens.csv"))
+  monitora_fwrite(aud_encostam_035e, file.path(MONITORA_LOG_DIR, paste0("auditoria_encostam_normalizacao_tokens_", MONITORA_EXEC_ID, ".csv")))
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    monitora_log_registrar_evento(
+      "encostam_normalizacao_tokens", "INFO",
+      file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao", "auditoria_encostam_normalizacao_tokens.csv"),
+      paste0("Encostam normalizado (Hotfix 03.5E): ", aud_encostam_035e$n_linhas_encostam_com_virgula_antes, " linha(s) com vírgula antes, ",
+             aud_encostam_035e$n_linhas_encostam_com_virgula_depois, " depois; ", aud_encostam_035e$n_linhas_token_colado_suspeito, " token(s) colado(s) suspeito(s)."),
+      "ver auditoria_encostam_normalizacao_tokens.csv"
+    )
+  }
+}, silent = TRUE)
+rm(.monitora_encostam_col_035e, .monitora_encostam_antes_035e, .monitora_encostam_depois_035e)
+### FIM v2.6.0 - Hotfix 03.5E --------------------------------------------------
 
 ## Materiais botânicos em decomposição no solo.
 ## Este campo detalha a categoria geral "serrapilheira" de tipo_forma_vida.
