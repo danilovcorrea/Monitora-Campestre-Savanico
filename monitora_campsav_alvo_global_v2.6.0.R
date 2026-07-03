@@ -31626,30 +31626,102 @@ monitora_produtos_escrever_bruto_canonico <- function(dt,
 ### monitora_correcao_xlsforms_embutidos_cache_publicacao_ae() é memoizada e
 ### não depende de estado de execução (registros/registros_corrig); pode ser
 ### chamada a qualquer momento do pipeline, inclusive antes do painel.
+### v2.6.0 - Hotfix 03.5C-C ---------------------------------------------------
+### Tabela pequena, explícita e auditável de aliases de coluna -> nome curto
+### canônico do contrato XLSForm embutido (campo `name`). Usada apenas quando
+### path/nome curto/label exatos não resolvem sozinhos, e apenas para casos já
+### confirmados por inspeção do dump embutido (não é heurística de nome).
+### Caso confirmado: o path real do template usa o grupo `impact_manejo_uso/`,
+### mas o dump XLSForm embutido registra o path desse campo folha como
+### `amostragem/registro/...` -- o `name` curto ("tipos_impacto_manejo_uso_outro")
+### é idêntico e não ambíguo (tipo_base = "text" nas 4 versões de XLSForm
+### embutidas, sem nenhuma ocorrência conflitante de select_one/select_multiple).
+monitora_pipe_aliases_campos_conhecidos <- function() {
+  data.table::data.table(
+    alias_coluna = c(
+      "impact_manejo_uso/tipos_impacto_manejo_uso_outro",
+      "tipos_impacto_manejo_uso_outro"
+    ),
+    nome_canonico = c(
+      "tipos_impacto_manejo_uso_outro",
+      "tipos_impacto_manejo_uso_outro"
+    ),
+    motivo = c(
+      "Path real do template usa o grupo impact_manejo_uso/; dump XLSForm embutido registra amostragem/registro/ para este campo folha; tipo_base=text confirmado sem ambiguidade nas 4 versões embutidas.",
+      "Mesma causa, cobrindo a variante já reduzida ao nome curto isolado."
+    )
+  )
+}
+
+### Decide a natureza de um conjunto de candidatos já filtrados por uma
+### estratégia de correspondência. Retorna "pipe_permitido_texto_livre" ou
+### "pipe_residual_estruturado_elegivel" apenas quando os tipos encontrados
+### não se contradizem; "ambiguo" quando o mesmo path/nome/label resolve para
+### tipo_base de texto E estruturado em versões diferentes do XLSForm
+### embutido (caso real confirmado, ex.: forma_vida_nativa_cactacea); NA
+### quando não há candidato ou nenhum tipo_base reconhecido.
+monitora_pipe_decidir_natureza_candidatos <- function(cand) {
+  if (is.null(cand) || !nrow(cand)) return(NA_character_)
+  tipos <- unique(tolower(trimws(as.character(cand$tipo_base))))
+  tipos <- tipos[!is.na(tipos) & nzchar(tipos)]
+  if (!length(tipos)) return(NA_character_)
+  eh_texto <- "text" %in% tipos
+  eh_estruturado <- any(tipos %in% c("select_multiple", "select_one"))
+  if (eh_texto && eh_estruturado) return("ambiguo")
+  if (eh_texto) return("pipe_permitido_texto_livre")
+  if (eh_estruturado) return("pipe_residual_estruturado_elegivel")
+  NA_character_
+}
+
+### Resolve a natureza de uma coluna por até 4 estratégias exatas, em ordem de
+### especificidade (nunca fuzzy/amplo): (1) path canônico completo; (2) alias
+### explícito auditado; (3) nome curto exato (último segmento do path); (4)
+### label exato. Cada estratégia é checada por ambiguidade isoladamente -- se
+### os candidatos daquela estratégia contradizem entre si (texto E
+### estruturado), o resultado é reportado como indeterminado imediatamente,
+### sem tentar outra estratégia "para forçar" uma decisão.
 monitora_pipe_coluna_classificar_natureza <- function(coluna) {
   meta <- tryCatch(monitora_correcao_xlsforms_embutidos_cache_publicacao_ae(), error = function(e) NULL)
   if (is.null(meta) || is.null(meta$campos) || !is.data.frame(meta$campos) || !nrow(meta$campos)) return("pipe_indeterminado")
   campos <- data.table::as.data.table(meta$campos)
   cols_norm <- c("name_norm_publicacao_ae", "caminho_norm_publicacao_ae", "label_norm_publicacao_ae")
   if (!all(cols_norm %in% names(campos))) return("pipe_indeterminado")
-  alvo <- tryCatch(monitora_correcao_normalizar_nome_coluna(coluna), error = function(e) NA_character_)
+
+  coluna_chr <- as.character(coluna)[1L]
+  alvo <- tryCatch(monitora_correcao_normalizar_nome_coluna(coluna_chr), error = function(e) NA_character_)
   if (is.na(alvo) || !nzchar(alvo)) return("pipe_indeterminado")
-  ### Fallback pelo último segmento do path (ex.: "impact_manejo_uso/tipos_
-  ### impacto_manejo_uso_outro" -> "tipos_impacto_manejo_uso_outro"): o grupo
-  ### pai registrado no dump embutido pode divergir do path real do template
-  ### para o mesmo campo folha; o nome curto é o identificador mais estável.
-  segmento_final <- sub(".*/", "", as.character(coluna)[1L])
+  segmento_final <- sub(".*/", "", coluna_chr)
   alvo_curto <- tryCatch(monitora_correcao_normalizar_nome_coluna(segmento_final), error = function(e) NA_character_)
-  cand <- campos[
-    name_norm_publicacao_ae == alvo | caminho_norm_publicacao_ae == alvo | label_norm_publicacao_ae == alvo |
-      (!is.na(alvo_curto) & nzchar(alvo_curto) & name_norm_publicacao_ae == alvo_curto)
-  ]
-  if (!nrow(cand)) return("pipe_indeterminado")
-  tipos <- unique(tolower(trimws(as.character(cand$tipo_base))))
-  tipos <- tipos[!is.na(tipos) & nzchar(tipos)]
-  if (!length(tipos)) return("pipe_indeterminado")
-  if (all(tipos == "text")) return("pipe_permitido_texto_livre")
-  if (any(tipos %in% c("select_multiple", "select_one"))) return("pipe_residual_estruturado_elegivel")
+  if (is.na(alvo_curto)) alvo_curto <- ""
+
+  ### 1) Path canônico completo.
+  res <- monitora_pipe_decidir_natureza_candidatos(campos[caminho_norm_publicacao_ae == alvo])
+  if (identical(res, "ambiguo")) return("pipe_ambiguo")
+  if (!is.na(res)) return(res)
+
+  ### 2) Alias explícito auditado (tabela pequena, documentada acima).
+  aliases <- monitora_pipe_aliases_campos_conhecidos()
+  alias_norm <- monitora_correcao_normalizar_nome_coluna(aliases$alias_coluna)
+  alias_hit <- aliases[alias_norm == alvo | (nzchar(alvo_curto) & alias_norm == alvo_curto)]
+  if (nrow(alias_hit)) {
+    nome_canon <- monitora_correcao_normalizar_nome_coluna(alias_hit$nome_canonico[1L])
+    res <- monitora_pipe_decidir_natureza_candidatos(campos[name_norm_publicacao_ae == nome_canon])
+    if (identical(res, "ambiguo")) return("pipe_ambiguo")
+    if (!is.na(res)) return(res)
+  }
+
+  ### 3) Nome curto exato (último segmento do path).
+  if (nzchar(alvo_curto)) {
+    res <- monitora_pipe_decidir_natureza_candidatos(campos[name_norm_publicacao_ae == alvo_curto])
+    if (identical(res, "ambiguo")) return("pipe_ambiguo")
+    if (!is.na(res)) return(res)
+  }
+
+  ### 4) Label exato.
+  res <- monitora_pipe_decidir_natureza_candidatos(campos[label_norm_publicacao_ae == alvo])
+  if (identical(res, "ambiguo")) return("pipe_ambiguo")
+  if (!is.na(res)) return(res)
+
   "pipe_indeterminado"
 }
 
@@ -31661,6 +31733,12 @@ monitora_produtos_classificar_pipe_coluna <- function(coluna, produto = "") {
   if (grepl("^(monitora_|arquivo_|origem_|hash_|md5|tipo_entrada|\\.id$)", cc)) return("pipe_residual_tecnico_tolerado")
   natureza <- tryCatch(monitora_pipe_coluna_classificar_natureza(coluna), error = function(e) "pipe_indeterminado")
   if (identical(natureza, "pipe_permitido_texto_livre")) return("pipe_permitido_texto_livre")
+  ### v2.6.0 - Hotfix 03.5C-C: ambiguidade confirmada pelo contrato (mesmo
+  ### path/nome/label resolve para texto E estruturado em versões diferentes
+  ### do XLSForm embutido) tem prioridade sobre o padrão de nome legado
+  ### abaixo -- nunca deixar o regex "forçar" uma classificação estruturada
+  ### sobre um campo que o próprio contrato não consegue decidir sozinho.
+  if (identical(natureza, "pipe_ambiguo")) return("pipe_indeterminado")
   if (grepl("ponto|encostam|forma.*vida|especie|uuid|habito|observacao", cc)) return("pipe_residual_operacional")
   if (identical(natureza, "pipe_residual_estruturado_elegivel")) return("pipe_residual_revisar")
   "pipe_indeterminado"
