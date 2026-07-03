@@ -1,0 +1,15 @@
+metrica,valor
+total_colunas_observadas,129
+match_exato_path,114
+match_exato_name,0
+match_exato_label,0
+match_por_alias,0
+match_por_normalizacao,0
+ambiguas,0
+sem_match,0
+fora_do_contrato,15
+total_atributos_canonicos_distintos_mapeados,129
+cobertura_template_129_no_dataset,129/129
+campos_condicionais_esparsos_observados,10
+campos_ambiguos_indeterminados_observados,4
+aliases_ea_ua_confirmados,2

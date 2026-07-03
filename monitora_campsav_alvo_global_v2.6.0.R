@@ -31969,7 +31969,8 @@ monitora_contrato_unico_embutido <- function() {
   }
 
   campos25[, `:=`(posicao_schema129 = NA_integer_, nivel_schema129 = NA_character_,
-                   formato_schema129 = NA_character_, origem_schema129 = NA_character_)]
+                   formato_schema129 = NA_character_, origem_schema129 = NA_character_,
+                   atributo_schema129 = NA_character_)]
   if (nrow(schema129)) {
     m1 <- match(campos25$caminho_norm_publicacao_ae, schema129$atributo_norm)
     ok1 <- !is.na(m1)
@@ -31977,7 +31978,8 @@ monitora_contrato_unico_embutido <- function() {
       campos25[ok1, `:=`(posicao_schema129 = schema129$posicao[m1[ok1]],
                           nivel_schema129 = schema129$nivel[m1[ok1]],
                           formato_schema129 = schema129$formato[m1[ok1]],
-                          origem_schema129 = "caminho_completo")]
+                          origem_schema129 = "caminho_completo",
+                          atributo_schema129 = schema129$atributo[m1[ok1]])]
     }
     faltam <- is.na(campos25$origem_schema129)
     if (any(faltam)) {
@@ -31988,7 +31990,33 @@ monitora_contrato_unico_embutido <- function() {
         campos25[idx, `:=`(posicao_schema129 = schema129$posicao[m2[ok2]],
                             nivel_schema129 = schema129$nivel[m2[ok2]],
                             formato_schema129 = schema129$formato[m2[ok2]],
-                            origem_schema129 = "name_curto")]
+                            origem_schema129 = "name_curto",
+                            atributo_schema129 = schema129$atributo[m2[ok2]])]
+      }
+    }
+
+    ### Caso especial ea/ua (Requisito 03.5H3): as posições 'ea'/'ua' do
+    ### schema de 129 não têm campo XLSForm com esse `name` curto -- o campo
+    ### real é estacao_amostral/unidade_amostral (mesmo alias já correto em
+    ### monitora_esp_colunas_chave(), consolidado como alias explícito mais
+    ### abaixo). Em vez de deixar essas 2 posições caírem no fallback de
+    ### "metadado de pipeline" (o que criaria um atributo canônico artificial
+    ### chamado literalmente "ea"/"ua", nunca consultado pelo alias), a
+    ### posição do schema é anexada diretamente no atributo XLSForm real,
+    ### preservando a cobertura de 1:129 sem duplicar nem inventar atributo.
+    for (par_ea_ua in list(c("ea", "estacao_amostral"), c("ua", "unidade_amostral"))) {
+      pos_schema_ea_ua <- schema129[tolower(trimws(atributo)) == par_ea_ua[1]]
+      if (nrow(pos_schema_ea_ua) == 1L) {
+        alvo_idx_ea_ua <- which(campos25$name_norm_publicacao_ae == monitora_correcao_normalizar_nome_coluna(par_ea_ua[2]) & is.na(campos25$origem_schema129))
+        if (length(alvo_idx_ea_ua) == 1L) {
+          campos25[alvo_idx_ea_ua, `:=`(
+            posicao_schema129 = pos_schema_ea_ua$posicao[1],
+            nivel_schema129 = pos_schema_ea_ua$nivel[1],
+            formato_schema129 = pos_schema_ea_ua$formato[1],
+            origem_schema129 = "alias_035h3",
+            atributo_schema129 = pos_schema_ea_ua$atributo[1]
+          )]
+        }
       }
     }
   }
@@ -32011,6 +32039,7 @@ monitora_contrato_unico_embutido <- function() {
   campos25[, status_confianca := "media_sem_schema129"]
   campos25[origem_schema129 == "caminho_completo", status_confianca := "alta"]
   campos25[origem_schema129 == "name_curto", status_confianca := "media"]
+  campos25[origem_schema129 == "alias_035h3", status_confianca := "alta"]
   campos25[ambiguo_entre_versoes == TRUE, status_confianca := "baixa_ambiguo"]
 
   campos25[, origem_regra := data.table::fifelse(
@@ -32113,6 +32142,7 @@ monitora_contrato_unico_embutido <- function() {
     nivel_schema129,
     formato_schema129,
     posicao_schema129,
+    atributo_schema129,
     cardinalidade_operacional,
     ambiguo_entre_versoes,
     status_confianca,
@@ -32148,6 +32178,7 @@ monitora_contrato_unico_embutido <- function() {
         nivel_schema129 = nivel,
         formato_schema129 = formato,
         posicao_schema129 = posicao,
+        atributo_schema129 = atributo,
         cardinalidade_operacional = "fora_do_contrato",
         ambiguo_entre_versoes = FALSE,
         status_confianca = "alta",
@@ -32453,6 +32484,229 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
       origem = "monitora_contrato_unico_indices (03.5J, deriva de monitora_contrato_unico_embutido, sem conectar ao pipeline)"
     )
   )
+}
+
+### v2.6.2 - 03.5K -------------------------------------------------------------
+### Diagnóstico observado→canônico (03.5K), usando só o contrato único (03.5I)
+### e seus índices (03.5J). Recebe apenas NOMES de coluna (não precisa ler
+### dado real inteiro), resolve cada nome por 5 estratégias exatas em ordem
+### de especificidade (path > name curto > label > alias explícito >
+### normalizado), sem fuzzy (ver justificativa no corpo de
+### monitora_contrato_unico_diagnosticar_observado_canonico) e sem forçar
+### decisão quando ambíguo ou sem match. Não é chamada por nenhum
+### consumidor operacional -- ver diagnostics/dev_035k_mapa_observado_canonico/.
+monitora_contrato_unico_construir_candidatos_texto <- function(atributos) {
+  base <- function(col, campo_origem) {
+    if (!(col %in% names(atributos))) return(data.table::data.table())
+    vals <- as.character(atributos[[col]])
+    ok <- !is.na(vals) & nzchar(vals)
+    if (!any(ok)) return(data.table::data.table())
+    data.table::data.table(
+      atributo_canonico_2025 = atributos$atributo_canonico_2025[ok],
+      caminho_registro = atributos$caminho_registro[ok],
+      candidato = vals[ok],
+      campo_origem = campo_origem
+    )
+  }
+  partes <- list(
+    base("caminho_registro", "caminho_registro"),
+    ### `atributo_schema129` é o path usado pelo template SISMonitora (schema
+    ### de 129) para o mesmo atributo, quando difere do caminho_registro cru
+    ### do XLSForm (ex.: "coletor/nome" vs. "amostragem/registro/coletor/nome")
+    ### -- confirmado necessário ao testar contra um dataset real 21FEV25
+    ### (03.5K), cujo cabeçalho usa essa convenção de export. Tratado como
+    ### mesma força de "caminho_registro" (tier 1), não uma estratégia nova.
+    base("atributo_schema129", "caminho_registro"),
+    base("name_curto", "name_curto"),
+    base("label_2025_com_html", "label_2025_com_html"),
+    base("label_2025_sem_html", "label_2025_sem_html")
+  )
+  explodir_historico <- function(col, campo_origem) {
+    if (!(col %in% names(atributos))) return(data.table::data.table())
+    sub <- atributos[!is.na(get(col)) & nzchar(get(col)), .(atributo_canonico_2025, caminho_registro, txt = get(col))]
+    if (!nrow(sub)) return(data.table::data.table())
+    out <- sub[, .(candidato = unlist(strsplit(txt, " | ", fixed = TRUE))), by = .(atributo_canonico_2025, caminho_registro)]
+    out <- out[nzchar(trimws(candidato))]
+    out[, campo_origem := campo_origem]
+    out[]
+  }
+  partes[[length(partes) + 1L]] <- explodir_historico("labels_historicos_com_html", "label_historico_com_html")
+  partes[[length(partes) + 1L]] <- explodir_historico("labels_historicos_sem_html", "label_historico_sem_html")
+  data.table::rbindlist(partes, use.names = TRUE, fill = TRUE)
+}
+
+monitora_contrato_unico_diagnosticar_observado_canonico <- function(colunas_observadas, contrato = NULL, indices = NULL, contexto = "diagnostico_035k") {
+  if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+  ### `indices` aqui é a sublista plana (por_atributo_canonico, por_alias_normalizado
+  ### etc.), não o retorno completo de monitora_contrato_unico_indices()
+  ### (que também traz $perfis/$meta) -- por isso o "$indices" abaixo.
+  if (is.null(indices)) indices <- monitora_contrato_unico_indices(contrato)$indices
+
+  atributos <- data.table::copy(data.table::as.data.table(indices$por_atributo_canonico))
+
+  colunas_observadas <- as.character(colunas_observadas)
+  colunas_observadas <- colunas_observadas[!is.na(colunas_observadas) & nzchar(colunas_observadas)]
+  obs_dt <- data.table::data.table(
+    coluna_observada = colunas_observadas,
+    coluna_observada_normalizada = monitora_contrato_unico_normalizar_texto_seguro(colunas_observadas)
+  )
+  obs_dt <- unique(obs_dt, by = "coluna_observada")
+
+  candidatos_texto <- monitora_contrato_unico_construir_candidatos_texto(atributos)
+
+  ### Estratégia 6 (fuzzy) deliberadamente NÃO usada aqui: o único helper de
+  ### fuzzy/score já existente no script
+  ### (monitora_correcao_candidatos_coluna_xlsform) resolve na direção
+  ### oposta (campo canônico conhecido -> melhor coluna de um dt real já
+  ### carregado) e depende de dt/arquivo_xlsform/categoria, não de uma lista
+  ### de nomes; adaptá-lo aqui exigiria ler dado real ou reimplementar uma
+  ### segunda lógica de score, o que violaria "não duplicar regra fora do
+  ### contrato único" e "não depender de ler dados inteiros quando só nomes
+  ### bastarem". Colunas sem match nas 5 estratégias exatas ficam
+  ### `sem_match`, nunca forçadas.
+
+  tier <- function(campo_origens, metodo, prioridade) {
+    cand <- candidatos_texto[campo_origem %in% campo_origens, .(atributo_canonico_2025, caminho_registro, coluna_observada = candidato)]
+    if (!nrow(cand)) return(data.table::data.table())
+    out <- merge(obs_dt[, .(coluna_observada)], unique(cand), by = "coluna_observada")
+    if (!nrow(out)) return(data.table::data.table())
+    out[, `:=`(metodo_match = metodo, prioridade_match = prioridade)]
+    out[]
+  }
+
+  tier1 <- tier("caminho_registro", "caminho_registro", 1L)
+  tier2 <- tier("name_curto", "name_curto", 2L)
+  tier3 <- tier(c("label_2025_com_html", "label_2025_sem_html", "label_historico_com_html", "label_historico_sem_html"), "label", 3L)
+
+  alias_idx <- data.table::copy(data.table::as.data.table(indices$por_alias_normalizado))
+  tier4 <- if (nrow(alias_idx)) {
+    cand4 <- unique(alias_idx[, .(coluna_observada = alias, atributo_canonico_2025 = caminho_registro, caminho_registro)])
+    out4 <- merge(obs_dt[, .(coluna_observada)], cand4, by = "coluna_observada")
+    if (nrow(out4)) out4[, `:=`(metodo_match = "alias_explicito", prioridade_match = 4L)]
+    out4
+  } else {
+    data.table::data.table()
+  }
+
+  candidatos_norm <- data.table::copy(candidatos_texto)
+  if (nrow(candidatos_norm)) candidatos_norm[, candidato_normalizado := monitora_contrato_unico_normalizar_texto_seguro(candidato)]
+  alias_norm <- if (nrow(alias_idx)) {
+    unique(alias_idx[, .(atributo_canonico_2025 = caminho_registro, caminho_registro, candidato_normalizado = alias_normalizado)])
+  } else {
+    data.table::data.table()
+  }
+  candidatos_norm_full <- data.table::rbindlist(list(
+    if (nrow(candidatos_norm)) candidatos_norm[, .(atributo_canonico_2025, caminho_registro, candidato_normalizado)] else data.table::data.table(),
+    alias_norm
+  ), use.names = TRUE, fill = TRUE)
+  if (nrow(candidatos_norm_full)) candidatos_norm_full <- candidatos_norm_full[nzchar(candidato_normalizado)]
+  tier5 <- if (nrow(candidatos_norm_full)) {
+    cand5 <- unique(candidatos_norm_full[, .(coluna_observada_normalizada = candidato_normalizado, atributo_canonico_2025, caminho_registro)])
+    out5 <- merge(obs_dt[, .(coluna_observada, coluna_observada_normalizada)], cand5, by = "coluna_observada_normalizada")
+    if (nrow(out5)) out5[, `:=`(metodo_match = "normalizado", prioridade_match = 5L)]
+    out5
+  } else {
+    data.table::data.table()
+  }
+
+  todos <- data.table::rbindlist(list(tier1, tier2, tier3, tier4, tier5), use.names = TRUE, fill = TRUE)
+
+  if (!nrow(todos)) {
+    mapa <- data.table::copy(obs_dt)
+    mapa[, `:=`(
+      n_candidatos = 0L, metodo_match = NA_character_, prioridade_match = NA_integer_,
+      atributo_canonico_sugerido = NA_character_, caminho_registro_sugerido = NA_character_,
+      candidatos_resumo = ""
+    )]
+  } else {
+    candidatos_unicos <- unique(todos[, .(coluna_observada, prioridade_match, metodo_match, atributo_canonico_2025, caminho_registro)])
+    melhor_prioridade <- candidatos_unicos[, .(prioridade_match = min(prioridade_match)), by = coluna_observada]
+    no_melhor_tier <- merge(candidatos_unicos, melhor_prioridade, by = c("coluna_observada", "prioridade_match"))
+    resumo_match <- no_melhor_tier[, {
+      n <- data.table::uniqueN(atributo_canonico_2025)
+      .(
+        n_candidatos = n,
+        metodo_match = metodo_match[1],
+        atributo_canonico_sugerido = if (n == 1L) atributo_canonico_2025[1] else NA_character_,
+        caminho_registro_sugerido = if (n == 1L) caminho_registro[1] else NA_character_,
+        candidatos_resumo = paste(sort(unique(atributo_canonico_2025)), collapse = " | ")
+      )
+    }, by = .(coluna_observada, prioridade_match)]
+    mapa <- merge(obs_dt, resumo_match, by = "coluna_observada", all.x = TRUE)
+    mapa[is.na(n_candidatos), `:=`(n_candidatos = 0L, candidatos_resumo = "")]
+  }
+
+  mapa[, status_match := data.table::fcase(
+    n_candidatos == 0L, "sem_match",
+    n_candidatos > 1L, "multiplo_ambiguo",
+    prioridade_match == 1L, "exato_path",
+    prioridade_match == 2L, "exato_name",
+    prioridade_match == 3L, "exato_label",
+    prioridade_match == 4L, "alias",
+    prioridade_match == 5L, "normalizado",
+    default = "sem_match"
+  )]
+
+  ### Score é uma projeção determinística e barata da prioridade do método
+  ### (path=100 > name=90 > label=80 > alias=70 > normalizado=60) -- NÃO é
+  ### uma métrica de similaridade fuzzy; ambíguo/sem_match ficam sem score.
+  mapa[, score_match := data.table::fcase(
+    status_match %in% c("sem_match", "multiplo_ambiguo"), NA_integer_,
+    default = 110L - as.integer(prioridade_match) * 10L
+  )]
+
+  meta_atributo <- unique(atributos[, .(
+    atributo_canonico_2025, name_curto, cardinalidade_operacional,
+    origem_regra, status_confianca
+  )])
+  mapa <- merge(mapa, meta_atributo, by.x = "atributo_canonico_sugerido", by.y = "atributo_canonico_2025", all.x = TRUE)
+  data.table::setnames(mapa, "name_curto", "name_curto_sugerido")
+
+  estagios_por_atributo <- if (nrow(indices$por_estagio_aplicavel)) {
+    data.table::as.data.table(indices$por_estagio_aplicavel)[, .(estagio_aplicavel = paste(sort(unique(estagio)), collapse = "|")), by = atributo_canonico_2025]
+  } else {
+    data.table::data.table(atributo_canonico_2025 = character(), estagio_aplicavel = character())
+  }
+  mapa <- merge(mapa, estagios_por_atributo, by.x = "atributo_canonico_sugerido", by.y = "atributo_canonico_2025", all.x = TRUE)
+
+  ### "fora_do_contrato" é reportado como status_match distinto (mesmo tendo
+  ### resolvido por path/name/label/alias/normalizado) porque é informação
+  ### mais relevante para quem consome o diagnóstico: o atributo é
+  ### metadado de pipeline (schema-129), nunca foi pergunta de XLSForm.
+  mapa[!is.na(cardinalidade_operacional) & cardinalidade_operacional == "fora_do_contrato" &
+         status_match %in% c("exato_path", "exato_name", "exato_label", "alias", "normalizado"),
+       status_match := "fora_do_contrato"]
+
+  mapa[, bloqueia_migracao_automatica :=
+         status_match %in% c("multiplo_ambiguo", "sem_match") |
+         (!is.na(cardinalidade_operacional) & cardinalidade_operacional %in% c("ambiguo_indeterminado", "estruturado_condicional_esparso"))]
+  mapa[is.na(bloqueia_migracao_automatica), bloqueia_migracao_automatica := TRUE]
+
+  mapa[, observacao_diagnostica := data.table::fcase(
+    status_match == "sem_match",
+    "Nenhum candidato nas 5 estrategias exatas (path/name/label/alias/normalizado); nao migrar automaticamente.",
+    status_match == "multiplo_ambiguo",
+    paste0("Multiplos atributos candidatos no mesmo nivel de prioridade (", candidatos_resumo, "); requer decisao humana, nao forcado."),
+    status_match == "fora_do_contrato",
+    "Atributo de metadado de pipeline (schema-129); nao corresponde a campo de formulario XLSForm.",
+    !is.na(cardinalidade_operacional) & cardinalidade_operacional == "estruturado_condicional_esparso",
+    "Campo condicional/esparso (relevance nao trivial); NAO resolvido por ponto absoluto -- requer 03.5M.",
+    !is.na(cardinalidade_operacional) & cardinalidade_operacional == "ambiguo_indeterminado",
+    "Tipo ambiguo entre versoes do XLSForm embutido; requer revisao manual antes de qualquer migracao.",
+    default = "Match resolvido sem pendencia conhecida nesta etapa."
+  )]
+
+  mapa[, contexto := as.character(contexto)[1]]
+
+  data.table::setcolorder(mapa, intersect(c(
+    "coluna_observada", "coluna_observada_normalizada", "atributo_canonico_sugerido",
+    "caminho_registro_sugerido", "name_curto_sugerido", "metodo_match", "prioridade_match",
+    "score_match", "status_match", "n_candidatos", "candidatos_resumo",
+    "cardinalidade_operacional", "origem_regra", "status_confianca", "estagio_aplicavel",
+    "observacao_diagnostica", "bloqueia_migracao_automatica", "contexto"
+  ), names(mapa)))
+  data.table::setorder(mapa, coluna_observada)
+  mapa[]
 }
 
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
