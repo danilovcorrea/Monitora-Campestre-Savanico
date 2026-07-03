@@ -31704,19 +31704,50 @@ monitora_produtos_escrever_bruto_canonico <- function(dt,
 ### `amostragem/registro/...` -- o `name` curto ("tipos_impacto_manejo_uso_outro")
 ### é idêntico e não ambíguo (tipo_base = "text" nas 4 versões de XLSForm
 ### embutidas, sem nenhuma ocorrência conflitante de select_one/select_multiple).
+### v2.6.0 - Hotfix 03.5G -----------------------------------------------------
+### Duas entradas adicionadas após a Auditoria 03.5F
+### (diagnostics/auditoria_035f_pipe_indeterminado/), que confirmou, por
+### inspeção do dump XLSForm embutido, que estes dois rótulos completos
+### (sem "/", portanto comparados diretamente contra o rótulo/nome da coluna
+### do produto, não contra um path) resolvem sem ambiguidade de tipo_base nas
+### 4 versões de XLSForm embutidas. A associação rótulo->campo canônico
+### reaproveita a mesma decisão já tomada e em uso pelo subsistema
+### monitora_validados_aliases_adicionais() (linhas ~27504/27518) para
+### registros_validados.csv -- não é uma decisão nova, apenas estendida ao
+### resolvedor de pipe. Uma terceira coluna identificada na mesma auditoria
+### ("Selecione se a bromélia observada é: (amostragem/registro)__dup2") tem
+### confiança apenas média (mapeamento por inferência posicional, não
+### confirmado com dado real) e foi deliberadamente NÃO incluída aqui --
+### permanece pipe_indeterminado até verificação (ver relatório do Hotfix
+### 03.5G, seção 4).
+### v2.6.0 - Hotfix 03.5G2 (reversão parcial) ----------------------------------
+### A entrada de "A bromélia observada é: (amostragem/registro)" ->
+### forma_vida_nativa_bromelioide, adicionada pelo Hotfix 03.5G, foi REMOVIDA.
+### O tipo_base=select_one estava correto quanto ao contrato XLSForm, mas o
+### resolvedor posicional (índice absoluto de ponto) não trata campos
+### condicionais/esparsos: em COLETA 11168 a bromelioide aparece só nos pontos
+### 90/91 e o valor "terrestre|terrestre" foi mal aplicado aos pontos 1/2,
+### deixando resíduo estruturado bloqueante em 275 linhas (ver
+### diagnostics/hotfix_035g2_restringe_aliases_pipe/). A coluna volta a
+### pipe_indeterminado até que exista um resolvedor condicional/esparso por
+### relevância (fora de escopo deste hotfix). A entrada de liana nativa
+### (tipo_base=text, não posicional) é segura e permanece.
 monitora_pipe_aliases_campos_conhecidos <- function() {
   data.table::data.table(
     alias_coluna = c(
       "impact_manejo_uso/tipos_impacto_manejo_uso_outro",
-      "tipos_impacto_manejo_uso_outro"
+      "tipos_impacto_manejo_uso_outro",
+      "Espécie ou nome popular (Liana nativa) (amostragem/registro)"
     ),
     nome_canonico = c(
       "tipos_impacto_manejo_uso_outro",
-      "tipos_impacto_manejo_uso_outro"
+      "tipos_impacto_manejo_uso_outro",
+      "forma_vida_nativa_lianas"
     ),
     motivo = c(
       "Path real do template usa o grupo impact_manejo_uso/; dump XLSForm embutido registra amostragem/registro/ para este campo folha; tipo_base=text confirmado sem ambiguidade nas 4 versões embutidas.",
-      "Mesma causa, cobrindo a variante já reduzida ao nome curto isolado."
+      "Mesma causa, cobrindo a variante já reduzida ao nome curto isolado.",
+      "Dump embutido (versão 21FEV25) traz o rótulo sem o sufixo de grupo '(amostragem/registro)' presente no cabeçalho real do produto; tipo_base=text confirmado sem ambiguidade nas 4 versões embutidas; mesma associação já usada por monitora_validados_aliases_adicionais()."
     )
   )
 }
