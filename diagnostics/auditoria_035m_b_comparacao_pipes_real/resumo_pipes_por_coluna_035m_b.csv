@@ -1,0 +1,182 @@
+coluna,cardinalidade_operacional,estrategia_pipe_contrato,classificacao_legado,tem_pipe,n_linhas_com_pipe,divergencia_legado_vs_contrato,risco,acao_recomendada
+COLETA,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+DATA DO REGISTRO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+DATA DO RECEBIMENTO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+ULTIMA EDICAO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+PROTOCOLO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+UC,estruturado_completo_por_ponto,resolver_por_ponto_absoluto_permitido,pipe_residual_revisar,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_manter_resolucao_por_ponto
+CICLO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+CAMPANHA,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+EA,estruturado_completo_por_ponto,resolver_por_ponto_absoluto_permitido,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_manter_resolucao_por_ponto
+UA,estruturado_completo_por_ponto,resolver_por_ponto_absoluto_permitido,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_manter_resolucao_por_ponto
+USUARIO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+VALIDADO,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+VALIDADO POR,,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+data_validacao,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+obs_validacao,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+planilha_upload,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+coleta_uuid,fora_do_contrato,diagnosticar_fora_do_contrato,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+controle_versao,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+n_form_ref,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+Data (data_hora),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Horário (data_hora),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+coletor/cpf,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+coletor/nome,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Qual a formação vegetacional onde está situado o transecto?,estruturado_completo_por_ponto,resolver_por_ponto_absoluto_permitido,pipe_residual_revisar,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_manter_resolucao_por_ponto
+"Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)",,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Qual(is)? (impact_manejo_uso),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Outros tipos de manejo ou uso: (impact_manejo_uso),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+"Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)",,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+"Descreva observações gerais do transecto, caso necessário:",texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Coordenada inicial da amostragem (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Foto do ponto inicial do transecto (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Número da plaqueta (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+amostragem/num_placa_formatado,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/foto_plaqueta,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/especie,estruturado_completo_por_ponto,resolver_por_ponto_absoluto_permitido,pipe_residual_operacional,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_manter_resolucao_por_ponto
+ponto_amostral (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+ponto_metro (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+**Encostam** na vareta: (amostragem/registro),select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+amostragem/registro/forma_serrapilheira,select_multiple,tratar_como_conjunto_tokens,pipe_residual_revisar,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+amostragem/registro/forma_vida_outros,select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+"Formas de vida de plantas <span style=""""""""color:red"""""""">nativas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+A erva bromelioide observada é: (amostragem/registro),estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Espécie ou nome popular (Erva bromelioide) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+A cactácea observada é: (amostragem/registro),ambiguo_indeterminado,diagnosticar_ambiguo_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Espécie ou nome popular (Cactácea) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+A orquídea observada é: (amostragem/registro),estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Espécie ou nome popular (Orquídea) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Samambaia) (amostragem/registro),,diagnosticar_ambiguo_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+amostragem/registro/forma_vida_nativa_samambaia_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Erva graminoide) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Erva não graminoide) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Bambu) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Lianas) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Palmeira) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Velósia) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Foto da forma de vida desconhecida de planta nativa: (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_nativa_desconhecida02,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_nativa_desconhecida03,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+"Formas de vida de plantas <span style=""""""""color:red"""""""">exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+A erva bromelioide observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+A cactácea observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+A orquídea observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+amostragem/registro/forma_vida_exotica_samambaia,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+"**Espécies** de <span style=""""""""color:red""""""""> graminóides exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de erva graminoide exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> ervas não graminóides exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de erva não graminoide exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> arbustos exóticos</span> tocando a vareta a uma altura inferior a 50cm: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> arbustos exóticos</span> tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> árvores exóticas</span> com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> árvores exóticas</span> com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> bambus exóticos:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de bambu exótico: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> lianas exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+amostragem/registro/exotica_lianas_outra_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/especies_exotica_ervas_de_passarinho,select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+amostragem/registro/exotica_ervas_de_passarinho_outra_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> palmeiras exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de palmeira exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/especies_exotica_bromelioide,select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+amostragem/registro/exotica_bromelioide_outra_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> cactáceas exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de cactácea exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> orquídeas exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de orquídea exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> samambaias exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie de samambaia exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> outros exóticas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+Outra espécie exótica: (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Foto da forma de vida desconhecida de planta exótica: (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_exotica_desconhecida02,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_exotica_desconhecida03,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+"Formas de vida de plantas <span style=""""""""color:red"""""""">secas ou mortas:</span> (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+A erva bromelioide observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+amostragem/registro/forma_vida_seca_morta_bromelioide_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+A cactácea observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+amostragem/registro/forma_vida_seca_morta_cactacea_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+A orquídea observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+amostragem/registro/forma_vida_seca_morta_orquidea_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_samambaia,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+amostragem/registro/forma_vida_seca_morta_samambaia_sp,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_graminoide,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_arbusto_abaixo,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_arbusto_acima,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_mortaarvore_abaixo,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_arvore_acima,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_bambu,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_lianas,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_palmeira,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+amostragem/registro/forma_vida_seca_morta_canela_de_ema,texto_livre,preservar_texto_livre,pipe_permitido_texto_livre,FALSE,0,FALSE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Foto da forma de vida desconhecida de planta seca ou morta: (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_seca_morta_desconhecida02,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+amostragem/registro/foto_forma_vida_seca_morta_desconhecida03,tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_tecnico_tolerado,FALSE,0,FALSE,baixo_ou_sem_pipe,revisar_manualmente
+"Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro)",texto_livre,preservar_texto_livre,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+uuid (amostragem/registro),tecnico_midia,nao_inferir_sem_regra_explicita,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_manualmente
+Coordenada final da amostragem (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Foto do ponto final do transecto (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+UUID,,diagnosticar_ambiguo_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+DATA_MONITORA_PARSEADA,,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+ANO,,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+amostragem/especies,,diagnosticar_sem_match_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Outra forma de vida de planta nativa: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Foto de outra forma de vida de planta nativa: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+amostragem/registro/especies_exotica_erva,,diagnosticar_sem_match_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Outra forma de vida de planta exótica: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Foto de outra forma de vida de planta exótica: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Outra forma de vida de planta seca e/ou morta: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Foto de outra forma de vida de planta seca ou morta: (amostragem/registro),,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Módulo (amostragem),,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Materiais botânicos em decomposição no solo observados: (amostragem/registro),select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+COLETORES,,diagnosticar_sem_match_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+Selecione se a bromélia observada é: (amostragem/registro),estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+A bromélia observada é: (amostragem/registro),estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Selecione se a orquidea observada é: (amostragem/registro),estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Selecione se a bromélia observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+A bromélia observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Selecione se a orquidea observada é: (amostragem/registro).1,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Selecione se a bromélia observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+A bromélia observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Selecione se a orquidea observada é: (amostragem/registro).2,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+Espécie ou nome popular (Graminoide) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"Espécie ou nome popular (Arbusto abaixo de 0,5m de altura) (amostragem/registro)",texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"Espécie ou nome popular (Arbusto acima de 0,5m de altura) (amostragem/registro)",texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Árvore abaixo de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+Espécie ou nome popular (Árvore acima de 5cm de diâmetro a 30 cm do solo (D30)) (amostragem/registro),texto_livre,preservar_texto_livre,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,seguro_preservar_como_esta
+"**Espécies** de <span style=""""""""color:red""""""""> arbustos exóticos</span> abaixo de 0,5m de altura: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+"**Espécies** de <span style=""""""""color:red""""""""> arbustos exóticos</span> acima de 0,5m de altura: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+"**Espécies** de <span style=""""""""color:red""""""""> árvores exóticas</span> abaixo de 5cm diâmetro: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+"**Espécies** de <span style=""""""""color:red""""""""> árvores exóticas</span> acima de 5cm diâmetro: (amostragem/registro)",select_multiple,tratar_como_conjunto_tokens,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,revisar_antes_de_migrar_tratar_como_conjunto
+forma_vida_nativa_bromelioide,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_nativa_cactacea,ambiguo_indeterminado,diagnosticar_ambiguo_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+forma_vida_nativa_orquidea,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_nativa_samambaia,ambiguo_indeterminado,diagnosticar_ambiguo_nao_forcar,pipe_indeterminado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+forma_vida_exotica_bromelioide,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_exotica_cactacea,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_exotica_orquidea,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_exotica_samambaia,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_seca_morta_bromelioide,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_seca_morta_cactacea,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_seca_morta_orquidea,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+forma_vida_seca_morta_samambaia,estruturado_condicional_esparso,resolver_por_elegibilidade_relevance_necessaria,pipe_residual_operacional,FALSE,0,TRUE,baixo_ou_sem_pipe,aguardar_contexto_relevance_antes_de_migrar
+MONITORA_ARQUIVO_ORIGEM_EXECUCAO,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+MONITORA_CAMINHO_ARQUIVO_ENTRADA,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+MONITORA_ARQUIVO_ENTRADA,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+.id,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+MONITORA_TIPO_ENTRADA,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+monitora_status_registros_corrig,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+monitora_pendencia_impeditiva,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+monitora_pendencia_impeditiva_tipo,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar
+monitora_pendencia_impeditiva_msg,,diagnosticar_sem_match_nao_forcar,pipe_residual_tecnico_tolerado,FALSE,0,TRUE,baixo_ou_sem_pipe,diagnosticar_nao_migrar

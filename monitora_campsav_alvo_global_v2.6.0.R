@@ -33189,6 +33189,125 @@ monitora_pipe_contrato_resolver_tokens_isolado <- function(valor, coluna, contex
   base
 }
 
+### v2.6.2 - 03.5M-B -----------------------------------------------------------
+### Diagnóstico/comparação legado vs. contrato único sobre um dataset já
+### materializado (03.5M-B). Puramente aditivo, isolado, sem chamada
+### operacional -- não substitui monitora_produtos_resolver_pipes_por_ponto
+### nem monitora_bloquear_pipe_residual_produto, não altera nenhum produto.
+### `incluir_valores=FALSE` (padrão) garante que nenhum valor de célula real
+### chega ao retorno -- só nomes de coluna, contagens agregadas e
+### classificações. Quando `incluir_valores=TRUE`, adiciona só estatísticas
+### agregadas adicionais (comprimento médio, nº médio de tokens) sobre os
+### valores com pipe -- nunca o texto da célula em si.
+monitora_pipe_contrato_diagnosticar_dataset <- function(registros, max_colunas = Inf, incluir_valores = FALSE,
+                                                          contrato = NULL, indices = NULL, produto = "registros_corrig.csv") {
+  if (!inherits(registros, c("data.frame", "data.table"))) return(data.table::data.table())
+  if (is.null(indices)) {
+    if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+    indices <- monitora_contrato_unico_indices(contrato)$indices
+  }
+  nms <- names(registros)
+  if (is.finite(max_colunas) && max_colunas < length(nms)) nms <- nms[seq_len(max_colunas)]
+  n_linhas_total <- nrow(registros)
+
+  linhas_diag <- vector("list", length(nms))
+  for (i in seq_along(nms)) {
+    cc <- nms[i]
+    vals <- registros[[cc]]
+    vals_chr <- if (is.character(vals)) vals else if (is.factor(vals)) as.character(vals) else NA_character_
+    tem_pipe_logico <- if (length(vals_chr) == n_linhas_total) (!is.na(vals_chr) & grepl("|", vals_chr, fixed = TRUE)) else rep(FALSE, n_linhas_total)
+    n_pipe <- sum(tem_pipe_logico, na.rm = TRUE)
+
+    class_legado <- tryCatch(monitora_produtos_classificar_pipe_coluna(cc, produto = produto), error = function(e) NA_character_)
+    class_contrato_row <- tryCatch(monitora_pipe_contrato_classificar_coluna(cc, contrato = contrato, indices = indices)[1L], error = function(e) NULL)
+
+    cardinalidade <- if (!is.null(class_contrato_row)) class_contrato_row$cardinalidade_operacional else NA_character_
+    estrategia <- if (!is.null(class_contrato_row)) class_contrato_row$estrategia_pipe else NA_character_
+    status_match <- if (!is.null(class_contrato_row)) class_contrato_row$status_match else NA_character_
+    atributo_canon <- if (!is.null(class_contrato_row)) class_contrato_row$atributo_canonico_sugerido else NA_character_
+
+    ### Mapa aproximado para comparar a decisão do classificador legado
+    ### (categorias pipe_*) com a estratégia recomendada pelo contrato --
+    ### só para diagnóstico de divergência, nunca aplicado a dado real.
+    decisao_legado_normalizada <- data.table::fcase(
+      identical(class_legado, "pipe_permitido_texto_livre"), "preservar_texto_livre",
+      class_legado %in% c("pipe_residual_operacional", "pipe_residual_revisar"), "resolver_por_ponto_absoluto_permitido",
+      identical(class_legado, "pipe_residual_tecnico_tolerado"), "nao_inferir_sem_regra_explicita",
+      identical(class_legado, "pipe_esperado_em_bruto"), "nao_aplicavel_produto_bruto",
+      identical(class_legado, "pipe_indeterminado"), "diagnosticar_indeterminado_nao_forcar",
+      default = NA_character_
+    )
+    divergencia <- !is.na(decisao_legado_normalizada) & !is.na(estrategia) & !identical(decisao_legado_normalizada, estrategia)
+
+    linha <- data.table::data.table(
+      coluna = cc,
+      n_linhas_total = n_linhas_total,
+      n_linhas_com_pipe = as.integer(n_pipe),
+      tem_pipe = n_pipe > 0L,
+      classificacao_legado = class_legado,
+      decisao_legado_normalizada = decisao_legado_normalizada,
+      atributo_canonico_contrato = atributo_canon,
+      cardinalidade_operacional = cardinalidade,
+      estrategia_pipe_contrato = estrategia,
+      status_match_contrato = status_match,
+      divergencia_legado_vs_contrato = isTRUE(divergencia),
+      deve_preservar_pipe = identical(estrategia, "preservar_texto_livre"),
+      deve_tratar_select_multiple = identical(estrategia, "tratar_como_conjunto_tokens"),
+      exige_relevance_elegibilidade = identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria"),
+      eh_ambiguo_ou_fora_contrato = isTRUE(estrategia %in% c(
+        "diagnosticar_ambiguo_nao_forcar", "diagnosticar_fora_do_contrato",
+        "diagnosticar_sem_match_nao_forcar", "diagnosticar_indeterminado_nao_forcar"
+      ))
+    )
+    if (isTRUE(incluir_valores) && n_pipe > 0L) {
+      ### Só estatísticas agregadas (comprimento/contagem de tokens) sobre os
+      ### valores com pipe -- nunca o conteúdo da célula.
+      v_com_pipe <- vals_chr[tem_pipe_logico]
+      linha[, `:=`(
+        comprimento_medio_valor_com_pipe = round(mean(nchar(v_com_pipe), na.rm = TRUE), 1),
+        n_tokens_medio_valor_com_pipe = round(mean(lengths(strsplit(v_com_pipe, "|", fixed = TRUE)), na.rm = TRUE), 1)
+      )]
+    }
+    linhas_diag[[i]] <- linha
+  }
+  data.table::rbindlist(linhas_diag, use.names = TRUE, fill = TRUE)[]
+}
+
+### Agrega o diagnóstico por coluna (03.5M-B) em visões seguras de resumo --
+### mesmas restrições de segurança (nunca valor de célula real).
+monitora_pipe_contrato_resumir_diagnostico_dataset <- function(diagnostico) {
+  if (is.null(diagnostico) || !data.table::is.data.table(diagnostico) || !nrow(diagnostico)) return(list())
+  d <- data.table::copy(diagnostico)
+  d[, risco := data.table::fcase(
+    exige_relevance_elegibilidade & tem_pipe, "alto_exige_relevance",
+    deve_tratar_select_multiple & tem_pipe & classificacao_legado %in% c("pipe_residual_operacional", "pipe_residual_revisar"), "medio_select_multiple_tratado_como_posicional_pelo_legado",
+    divergencia_legado_vs_contrato & tem_pipe, "medio_divergencia_legado_contrato",
+    eh_ambiguo_ou_fora_contrato & tem_pipe, "baixo_diagnostico_apenas",
+    default = "baixo_ou_sem_pipe"
+  )]
+  d[, acao_recomendada := data.table::fcase(
+    eh_ambiguo_ou_fora_contrato, "diagnosticar_nao_migrar",
+    exige_relevance_elegibilidade, "aguardar_contexto_relevance_antes_de_migrar",
+    deve_tratar_select_multiple, "revisar_antes_de_migrar_tratar_como_conjunto",
+    deve_preservar_pipe, "seguro_preservar_como_esta",
+    estrategia_pipe_contrato == "resolver_por_ponto_absoluto_permitido", "seguro_manter_resolucao_por_ponto",
+    default = "revisar_manualmente"
+  )]
+  list(
+    por_cardinalidade = d[, .(
+      n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE),
+      n_linhas_com_pipe_total = sum(n_linhas_com_pipe, na.rm = TRUE),
+      n_divergencias = sum(divergencia_legado_vs_contrato, na.rm = TRUE)
+    ), by = .(cardinalidade_operacional)][],
+    por_decisao_contrato = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(estrategia_pipe_contrato)][],
+    por_decisao_legado = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(classificacao_legado)][],
+    por_divergencia = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(divergencia_legado_vs_contrato)][],
+    por_risco = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(risco)][],
+    por_acao_recomendada = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(acao_recomendada)][],
+    detalhado_com_acao = d[]
+  )
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
