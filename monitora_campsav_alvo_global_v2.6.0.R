@@ -204,6 +204,19 @@ MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 ### diagnostics/dev_035l_b_diagnostico_registros_importados/.
 MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- "N"
 
+### v2.6.2 - 03.5M-C -----------------------------------------------------------
+### Relatório/alerta opcional de pipes por contrato único (03.5M-A/B) sobre
+### registros_corrig.csv. Padrão desligado: "N", zero efeito colateral, zero
+### custo. Quando "S", só GERA RELATÓRIO à parte (mapa de colunas com pipe por
+### cardinalidade + recomendação operacional) -- nunca resolve, bloqueia ou
+### altera nenhum produto real; não substitui
+### monitora_produtos_resolver_pipes_por_ponto nem
+### monitora_bloquear_pipe_residual_produto. Ver
+### diagnostics/auditoria_035m_a_pipes_relevance_cardinalidade/,
+### diagnostics/auditoria_035m_b_comparacao_pipes_real/ e
+### diagnostics/dev_035m_c_relatorio_pipes_contrato/.
+MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- "N"
+
 ### Módulo opcional de validação espacial de COLETAS -------------------------
 ### O padrão é desligado. Altere para "S" para gerar validação espacial e habilitar
 ### a aba espacial do painel. Também pode ser definido por variável de ambiente.
@@ -373,6 +386,14 @@ MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- Sys.getenv(
 MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- toupper(trimws(as.character(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS)[1]))
 if (!(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS %in% c("S", "N"))) {
   MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- "N"
+}
+MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- Sys.getenv(
+  "MONITORA_DIAGNOSTICO_PIPES_CONTRATO",
+  unset = as.character(MONITORA_DIAGNOSTICO_PIPES_CONTRATO)[1]
+)
+MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- toupper(trimws(as.character(MONITORA_DIAGNOSTICO_PIPES_CONTRATO)[1]))
+if (!(MONITORA_DIAGNOSTICO_PIPES_CONTRATO %in% c("S", "N"))) {
+  MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- "N"
 }
 
 
@@ -33308,6 +33329,119 @@ monitora_pipe_contrato_resumir_diagnostico_dataset <- function(diagnostico) {
   )
 }
 
+### v2.6.2 - 03.5M-C -----------------------------------------------------------
+### Relatório/alerta opt-in de pipes por contrato único sobre um dataset já em
+### memória (registros_corrig, tipicamente). Controlado por
+### MONITORA_DIAGNOSTICO_PIPES_CONTRATO (default "N"): com a flag desligada,
+### retorna invisible(NULL) na primeira linha -- zero leitura extra, zero
+### escrita, zero custo. Com a flag ligada, só GERA RELATÓRIO à parte
+### (mapa por coluna + resumo agregado + texto curto com recomendação
+### operacional) em output/diagnosticos_pipes_contrato/ -- nunca resolve,
+### bloqueia, reordena ou sanitiza `registros`. Não substitui
+### monitora_produtos_resolver_pipes_por_ponto nem
+### monitora_bloquear_pipe_residual_produto. Qualquer erro interno vira
+### warning, nunca interrompe quem chamou.
+monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeline",
+                                                     output_dir = MONITORA_OUTPUT_DIR,
+                                                     log_dir = MONITORA_LOG_DIR,
+                                                     exec_id = MONITORA_EXEC_ID) {
+  flag_ativa <- identical(
+    toupper(trimws(as.character(get0("MONITORA_DIAGNOSTICO_PIPES_CONTRATO", ifnotfound = "N", inherits = TRUE))[1L])),
+    "S"
+  )
+  if (!isTRUE(flag_ativa)) return(invisible(NULL))
+  if (!inherits(registros, c("data.frame", "data.table"))) return(invisible(NULL))
+  if (!exists("monitora_pipe_contrato_diagnosticar_dataset", mode = "function") ||
+      !exists("monitora_pipe_contrato_resumir_diagnostico_dataset", mode = "function")) {
+    return(invisible(NULL))
+  }
+
+  resultado <- tryCatch({
+    diagnostico <- monitora_pipe_contrato_diagnosticar_dataset(registros, incluir_valores = FALSE, produto = "registros_corrig.csv")
+    resumo <- monitora_pipe_contrato_resumir_diagnostico_dataset(diagnostico)
+    list(diagnostico = diagnostico, resumo = resumo)
+  }, error = function(e) {
+    warning("Relatório opt-in de pipes por contrato falhou e foi ignorado (nenhum produto real afetado): ",
+            conditionMessage(e), call. = FALSE)
+    NULL
+  })
+  if (is.null(resultado) || is.null(resultado$diagnostico) || !data.table::is.data.table(resultado$diagnostico) || !nrow(resultado$diagnostico)) {
+    return(invisible(resultado))
+  }
+
+  tryCatch({
+    dir_diag <- file.path(output_dir, "diagnosticos_pipes_contrato")
+    dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+    sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
+    exec_id_chr <- as.character(exec_id)[1L]
+
+    diag <- resultado$diagnostico
+    caminho_diag <- file.path(dir_diag, paste0("diagnostico_pipes_contrato_", sufixo, "_", exec_id_chr, ".csv"))
+    data.table::fwrite(diag, caminho_diag, na = "")
+
+    resumo_detalhado <- resultado$resumo$detalhado_com_acao
+    caminho_resumo <- file.path(dir_diag, paste0("resumo_pipes_contrato_", sufixo, "_", exec_id_chr, ".csv"))
+    if (!is.null(resumo_detalhado) && data.table::is.data.table(resumo_detalhado) && nrow(resumo_detalhado)) {
+      data.table::fwrite(
+        resumo_detalhado[, .(coluna, cardinalidade_operacional, estrategia_pipe_contrato, classificacao_legado,
+                              tem_pipe, n_linhas_com_pipe, divergencia_legado_vs_contrato, risco, acao_recomendada)],
+        caminho_resumo, na = ""
+      )
+    }
+
+    ### Alerta seguro: só contagens agregadas + recomendação, nunca dado real.
+    n_total_colunas <- nrow(diag)
+    n_colunas_com_pipe <- sum(diag$tem_pipe, na.rm = TRUE)
+    n_pipe_texto_livre <- sum(diag$tem_pipe & diag$cardinalidade_operacional == "texto_livre", na.rm = TRUE)
+    n_pipe_select_multiple <- sum(diag$tem_pipe & diag$cardinalidade_operacional == "select_multiple", na.rm = TRUE)
+    n_pipe_condicional_esparso <- sum(diag$tem_pipe & diag$cardinalidade_operacional == "estruturado_condicional_esparso", na.rm = TRUE)
+    n_pipe_ambiguo_fora <- sum(diag$tem_pipe & diag$eh_ambiguo_ou_fora_contrato, na.rm = TRUE)
+    exige_relevance <- n_pipe_condicional_esparso > 0L
+
+    recomendacao <- if (n_colunas_com_pipe == 0L) {
+      "sem_acao"
+    } else if (n_pipe_condicional_esparso > 0L || n_pipe_ambiguo_fora > 0L) {
+      "nao_migrar_resolvedor"
+    } else if (n_pipe_texto_livre > 0L || n_pipe_select_multiple > 0L) {
+      "manter_diagnostico"
+    } else {
+      "avaliar_03_5M_D"
+    }
+
+    txt <- c(
+      paste0("Relatório opt-in de pipes por contrato único (03.5M-C) -- contexto: ", as.character(contexto)[1L]),
+      paste0("Gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+      "Este relatório é só diagnóstico -- não altera nenhum produto real, não resolve nem bloqueia nada.",
+      paste0("Total de colunas: ", n_total_colunas),
+      paste0("Colunas com pipe: ", n_colunas_com_pipe),
+      paste0("Colunas com pipe em texto_livre: ", n_pipe_texto_livre),
+      paste0("Colunas com pipe em select_multiple: ", n_pipe_select_multiple),
+      paste0("Colunas com pipe em estruturado_condicional_esparso: ", n_pipe_condicional_esparso),
+      paste0("Colunas com pipe ambíguas/fora do contrato: ", n_pipe_ambiguo_fora),
+      paste0("Há caso que exigiria relevance/elegibilidade: ", if (isTRUE(exige_relevance)) "SIM" else "NÃO"),
+      paste0("Recomendação operacional: ", recomendacao),
+      paste0("Diagnóstico completo: ", basename(caminho_diag)),
+      paste0("Resumo: ", basename(caminho_resumo))
+    )
+    caminho_txt <- file.path(dir_diag, paste0("relatorio_pipes_contrato_", sufixo, "_", exec_id_chr, ".txt"))
+    writeLines(txt, caminho_txt)
+
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento(
+        "relatorio_pipes_contrato_optin", "INFO", caminho_txt,
+        paste0("Relatório opt-in de pipes por contrato gerado para ", as.character(contexto)[1L], "; recomendacao=", recomendacao),
+        "produto diagnóstico opt-in; não altera nenhum produto real"
+      )
+    }
+  }, error = function(e) {
+    warning("Falha ao gravar relatório opt-in de pipes por contrato; nenhum produto real afetado: ",
+            conditionMessage(e), call. = FALSE)
+  })
+
+  invisible(resultado)
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
@@ -38990,6 +39124,18 @@ if (exists("registros_corrig")) {
         abortar = TRUE
       )
     }
+  }
+
+  ### v2.6.2 - 03.5M-C: relatório opt-in de pipes por contrato único (default
+  ### OFF, ver MONITORA_DIAGNOSTICO_PIPES_CONTRATO). registros_corrig já está
+  ### materializado e com persistência confirmada neste ponto. Nunca bloqueia
+  ### o fluxo -- envolvido em try() além da própria função já tratar erro
+  ### internamente.
+  if (exists("monitora_pipe_contrato_relatorio_optin", mode = "function")) {
+    try(monitora_pipe_contrato_relatorio_optin(
+      registros_corrig, contexto = "pos_export_registros_corrig",
+      output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+    ), silent = TRUE)
   }
   if (isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE)) &&
       exists("monitora_registros_validados_exportar", mode = "function")) {
