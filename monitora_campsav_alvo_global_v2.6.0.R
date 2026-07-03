@@ -33004,6 +33004,191 @@ monitora_registros_importados_comparar_ordem_legado_vs_contrato <- function(regi
   invisible(resultado)
 }
 
+### v2.6.2 - 03.5M-A -----------------------------------------------------------
+### Protótipo ISOLADO de resolução de pipe orientada por contrato único
+### (Auditoria 03.5M-A). Nenhuma destas 3 funções é chamada por nenhum
+### consumidor operacional -- não substituem
+### monitora_produtos_resolver_pipes_por_ponto nem
+### monitora_bloquear_pipe_residual_produto, não alteram
+### registros_importados.csv/registros_corrig.csv/painel/registros_validados/
+### estatísticas. Servem só para diagnosticar, coluna a coluna e valor a
+### valor, qual estratégia de resolução de "|" o contrato único recomenda,
+### incluindo o caso que causou o Hotfix 03.5G (bromélia condicional/esparsa
+### resolvida por índice de ponto absoluto quando deveria depender de
+### elegibilidade por relevance) -- aqui esse caso é diagnosticado, nunca
+### resolvido às cegas. Ver diagnostics/auditoria_035m_a_pipes_relevance_cardinalidade/.
+monitora_pipe_contrato_classificar_coluna <- function(coluna, contrato = NULL, indices = NULL) {
+  if (is.null(indices)) {
+    if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+    indices <- monitora_contrato_unico_indices(contrato)$indices
+  }
+  diag <- monitora_contrato_unico_diagnosticar_observado_canonico(
+    as.character(coluna), contrato = contrato, indices = indices,
+    contexto = "pipe_contrato_classificar_coluna"
+  )
+  ### monitora_contrato_unico_diagnosticar_observado_canonico() não expõe
+  ### `relevant`/`campo_pai` (fora do escopo mínimo da 03.5K) -- junta aqui a
+  ### partir do índice já existente, sem duplicar nem recalcular nada.
+  atributos_idx <- data.table::as.data.table(indices$por_atributo_canonico)
+  if (all(c("atributo_canonico_2025", "relevant", "campo_pai") %in% names(atributos_idx))) {
+    meta_relevance <- unique(atributos_idx[, .(atributo_canonico_2025, relevant, campo_pai)])
+    diag <- merge(diag, meta_relevance, by.x = "atributo_canonico_sugerido", by.y = "atributo_canonico_2025", all.x = TRUE)
+  } else {
+    diag[, `:=`(relevant = NA_character_, campo_pai = NA_character_)]
+  }
+  diag[, estrategia_pipe := data.table::fcase(
+    cardinalidade_operacional == "texto_livre", "preservar_texto_livre",
+    cardinalidade_operacional == "select_multiple", "tratar_como_conjunto_tokens",
+    cardinalidade_operacional == "estruturado_completo_por_ponto", "resolver_por_ponto_absoluto_permitido",
+    cardinalidade_operacional == "estruturado_condicional_esparso", "resolver_por_elegibilidade_relevance_necessaria",
+    cardinalidade_operacional == "tecnico_midia", "nao_inferir_sem_regra_explicita",
+    cardinalidade_operacional == "fora_do_contrato", "diagnosticar_fora_do_contrato",
+    cardinalidade_operacional == "ambiguo_indeterminado", "diagnosticar_ambiguo_nao_forcar",
+    status_match == "multiplo_ambiguo", "diagnosticar_ambiguo_nao_forcar",
+    status_match == "sem_match", "diagnosticar_sem_match_nao_forcar",
+    default = "diagnosticar_indeterminado_nao_forcar"
+  )]
+  diag[]
+}
+
+### Reconhece só o padrão `selected(${campo}, 'token')`, opcionalmente
+### combinado por " and " -- o único padrão observado nas expressões
+### `relevant` do dump XLSForm embutido para os campos condicionais/esparsos
+### já auditados (bromélia, cactácea, orquídea, samambaia). Qualquer outro
+### operador (or/not/comparação) faz a função devolver NULL (não avalia às
+### cegas) em vez de arriscar uma interpretação errada.
+monitora_pipe_contrato_avaliar_relevance_simples <- function(relevant_expr, valores_parent) {
+  relevant_expr <- as.character(relevant_expr)[1]
+  if (is.na(relevant_expr) || !nzchar(trimws(relevant_expr))) return(NULL)
+  if (grepl("\\bor\\b|\\bnot\\b|[<>]=?|!=", relevant_expr, ignore.case = TRUE)) return(NULL)
+  partes <- trimws(strsplit(relevant_expr, "\\band\\b")[[1]])
+  padrao <- "^selected\\(\\$\\{([^}]+)\\},\\s*'([^']+)'\\)$"
+  n_ref <- NULL
+  resultado <- NULL
+  for (p in partes) {
+    m <- regmatches(p, regexec(padrao, p))[[1]]
+    if (length(m) != 3L) return(NULL)
+    campo <- m[2]; token <- m[3]
+    vals <- valores_parent[[campo]]
+    if (is.null(vals)) return(NULL)
+    if (is.null(n_ref)) n_ref <- length(vals)
+    if (length(vals) != n_ref) return(NULL)
+    hit <- if (exists("monitora_correcao_token_presente_vec", mode = "function")) {
+      monitora_correcao_token_presente_vec(as.character(vals), token)
+    } else {
+      grepl(paste0("(^|\\s)", token, "(\\s|$)"), as.character(vals))
+    }
+    resultado <- if (is.null(resultado)) hit else (resultado & hit)
+  }
+  resultado
+}
+
+### Resolve (ou diagnostica por que não resolve) UM valor de UMA coluna, dado
+### contexto de linha opcional. Nunca lê/grava produto real -- `valor` e
+### `contexto_linha` são sempre fornecidos pelo chamador (aqui, só os testes
+### sintéticos desta auditoria).
+###
+### contexto_linha esperado (lista), quando aplicável:
+###   $ponto_indice        -- posição do ponto dentro do grupo/COLETA (1-based)
+###   $valores_parent      -- lista nomeada pelo campo curto referenciado em
+###                           `${...}` no relevant, cada elemento um vetor com
+###                           1 valor por ponto do grupo (mesma ordem/tamanho)
+monitora_pipe_contrato_resolver_tokens_isolado <- function(valor, coluna, contexto_linha = NULL, contrato = NULL, indices = NULL) {
+  if (is.null(indices)) {
+    if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+    indices <- monitora_contrato_unico_indices(contrato)$indices
+  }
+  classificacao <- monitora_pipe_contrato_classificar_coluna(coluna, contrato = contrato, indices = indices)[1L]
+  estrategia <- classificacao$estrategia_pipe
+  valor_chr <- as.character(valor)[1L]
+  tem_pipe <- !is.na(valor_chr) && grepl("|", valor_chr, fixed = TRUE)
+
+  base <- list(
+    coluna = as.character(coluna)[1L],
+    atributo_canonico = classificacao$atributo_canonico_sugerido,
+    cardinalidade_operacional = classificacao$cardinalidade_operacional,
+    estrategia_pipe = estrategia,
+    tem_pipe = tem_pipe,
+    valor_original = valor_chr,
+    resultado = NA_character_,
+    status_resolucao = NA_character_,
+    observacao = NA_character_
+  )
+
+  if (!isTRUE(tem_pipe)) {
+    base$status_resolucao <- "sem_pipe_nada_a_fazer"
+    base$resultado <- valor_chr
+    return(base)
+  }
+
+  tokens <- trimws(strsplit(valor_chr, "|", fixed = TRUE)[[1L]])
+
+  if (identical(estrategia, "preservar_texto_livre")) {
+    base$status_resolucao <- "preservado_texto_livre"
+    base$resultado <- valor_chr
+    return(base)
+  }
+
+  if (identical(estrategia, "tratar_como_conjunto_tokens")) {
+    base$status_resolucao <- "conjunto_tokens"
+    base$resultado <- paste(tokens, collapse = " | ")
+    base$observacao <- paste0("select_multiple: ", length(tokens), " token(s) como conjunto, sem mapeamento posicional.")
+    return(base)
+  }
+
+  if (identical(estrategia, "resolver_por_ponto_absoluto_permitido")) {
+    ponto <- if (!is.null(contexto_linha)) contexto_linha$ponto_indice else NULL
+    if (is.null(ponto) || is.na(ponto) || ponto < 1L || ponto > length(tokens)) {
+      base$status_resolucao <- "sem_contexto_ponto_nao_resolvido"
+      base$observacao <- "contexto_linha$ponto_indice ausente/inválido; resolução por ponto absoluto requer o índice do ponto dentro da COLETA."
+      return(base)
+    }
+    base$status_resolucao <- "resolvido_por_ponto_absoluto"
+    base$resultado <- tokens[ponto]
+    return(base)
+  }
+
+  if (identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria")) {
+    relevant_expr <- classificacao$relevant
+    valores_parent <- if (!is.null(contexto_linha)) contexto_linha$valores_parent else NULL
+    ponto <- if (!is.null(contexto_linha)) contexto_linha$ponto_indice else NULL
+    if (is.na(relevant_expr) || !nzchar(as.character(relevant_expr)) || is.null(valores_parent) || is.null(ponto)) {
+      base$status_resolucao <- "depende_de_parent_relevance_contexto_insuficiente"
+      base$observacao <- paste0(
+        "Campo condicional/esparso (relevant='", relevant_expr, "'). NÃO resolvido por ponto absoluto -- ",
+        "requer contexto_linha$valores_parent (valores do campo pai para todos os pontos do grupo) e ",
+        "contexto_linha$ponto_indice para determinar o primeiro ponto elegível."
+      )
+      return(base)
+    }
+    elegibilidade <- monitora_pipe_contrato_avaliar_relevance_simples(relevant_expr, valores_parent)
+    if (is.null(elegibilidade)) {
+      base$status_resolucao <- "relevance_nao_parseavel_contexto_insuficiente"
+      base$observacao <- paste0("Expressão de relevance não reconhecida pelo parser conservador (só 'selected(${campo}, ',valor,') [and ...]'): ", relevant_expr)
+      return(base)
+    }
+    pontos_elegiveis <- which(elegibilidade)
+    if (length(pontos_elegiveis) != length(tokens)) {
+      base$status_resolucao <- "contagem_elegiveis_diverge_tokens_nao_resolvido"
+      base$observacao <- paste0("n_tokens=", length(tokens), " mas n_pontos_elegiveis=", length(pontos_elegiveis), "; divergência estrutural, não resolve às cegas (mesma causa-raiz do Hotfix 03.5G).")
+      return(base)
+    }
+    idx_no_grupo <- match(ponto, pontos_elegiveis)
+    if (is.na(idx_no_grupo)) {
+      base$status_resolucao <- "ponto_nao_elegivel_valor_esperado_vazio"
+      base$resultado <- NA_character_
+      return(base)
+    }
+    base$status_resolucao <- "resolvido_por_elegibilidade_relevance"
+    base$resultado <- tokens[idx_no_grupo]
+    return(base)
+  }
+
+  base$status_resolucao <- "diagnostico_nao_resolvido"
+  base$observacao <- paste0("Estratégia '", estrategia, "' não resolve automaticamente; reportar para revisão humana, nunca forçar.")
+  base
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
