@@ -195,6 +195,15 @@ MONITORA_ORACULO_COLUNAS_IGNORAR <- c("MONITORA_CAMINHO_ARQUIVO_ENTRADA")
 ### coordenadas, fotos, UUIDs, nomes de UC e observações de campo.
 MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
 
+### v2.6.2 - 03.5L-B -----------------------------------------------------------
+### Diagnóstico opcional de contrato único (03.5I/J/K) sobre os nomes de coluna
+### de registros_importados.csv. Padrão desligado: "N", zero efeito colateral,
+### zero custo. Quando "S", só GERA RELATÓRIO à parte (mapa observado→canônico
+### + comparação de ordem) -- nunca reordena, renomeia ou sanitiza o produto
+### real. Ver diagnostics/auditoria_035l_registros_importados/ e
+### diagnostics/dev_035l_b_diagnostico_registros_importados/.
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- "N"
+
 ### Módulo opcional de validação espacial de COLETAS -------------------------
 ### O padrão é desligado. Altere para "S" para gerar validação espacial e habilitar
 ### a aba espacial do painel. Também pode ser definido por variável de ambiente.
@@ -356,6 +365,14 @@ MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- Sys.getenv(
 MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- toupper(trimws(as.character(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS)[1]))
 if (!(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS deve ser 'S' ou 'N'.", call. = FALSE)
+}
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- Sys.getenv(
+  "MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS",
+  unset = as.character(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS)[1]
+)
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- toupper(trimws(as.character(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS)[1]))
+if (!(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS %in% c("S", "N"))) {
+  MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- "N"
 }
 
 
@@ -32709,6 +32726,211 @@ monitora_contrato_unico_diagnosticar_observado_canonico <- function(colunas_obse
   mapa[]
 }
 
+### v2.6.2 - 03.5L-B -----------------------------------------------------------
+### Diagnóstico opcional de contrato único sobre registros_importados.csv
+### (Auditoria 03.5L-A). Puramente aditivo e opt-in via
+### MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS (default "N"):
+### com a flag desligada, as duas funções abaixo retornam
+### invisible(NULL) sem qualquer efeito colateral -- nenhuma leitura extra,
+### nenhuma escrita, nenhum custo. Com a flag ligada, geram só relatório à
+### parte (mapa observado→canônico + comparação de ordem/duplicidade) em
+### output/diagnosticos_contrato_unico_registros_importados/ -- nunca
+### reordenam, renomeiam ou sanitizam o produto real. Não tocam
+### monitora_registros_importados_saneado_preparar,
+### monitora_produtos_resolver_pipes_por_ponto,
+### monitora_bloquear_pipe_residual_produto nem os writers de bruto.
+monitora_registros_importados_diagnostico_contrato_unico <- function(registros_importados,
+                                                                       contexto = "registros_importados",
+                                                                       output_dir = MONITORA_OUTPUT_DIR,
+                                                                       log_dir = MONITORA_LOG_DIR,
+                                                                       exec_id = MONITORA_EXEC_ID) {
+  flag_ativa <- identical(
+    toupper(trimws(as.character(get0("MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS", ifnotfound = "N", inherits = TRUE))[1L])),
+    "S"
+  )
+  if (!isTRUE(flag_ativa)) return(invisible(NULL))
+  if (!inherits(registros_importados, c("data.frame", "data.table"))) return(invisible(NULL))
+  if (!exists("monitora_contrato_unico_diagnosticar_observado_canonico", mode = "function")) return(invisible(NULL))
+
+  ### Só nomes de coluna -- nunca lê/copia valor de célula do objeto.
+  colunas_observadas <- names(registros_importados)
+
+  diagnostico <- tryCatch({
+    contrato <- monitora_contrato_unico_embutido()
+    indices <- monitora_contrato_unico_indices(contrato)$indices
+    monitora_contrato_unico_diagnosticar_observado_canonico(
+      colunas_observadas, contrato = contrato, indices = indices,
+      contexto = paste0("registros_importados_", as.character(contexto)[1L])
+    )
+  }, error = function(e) {
+    warning("Diagnóstico de contrato único (registros_importados) falhou e foi ignorado (produto não afetado): ",
+            conditionMessage(e), call. = FALSE)
+    NULL
+  })
+  if (is.null(diagnostico) || !data.table::is.data.table(diagnostico) || !nrow(diagnostico)) return(invisible(diagnostico))
+
+  tryCatch({
+    dir_diag <- file.path(output_dir, "diagnosticos_contrato_unico_registros_importados")
+    dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+    sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
+    exec_id_chr <- as.character(exec_id)[1L]
+
+    caminho_mapa <- file.path(dir_diag, paste0("mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
+    data.table::fwrite(diagnostico, caminho_mapa, na = "")
+
+    resumo <- data.table::data.table(
+      metrica = c(
+        "total_colunas_observadas", "match_exato_path", "match_exato_name", "match_exato_label",
+        "match_por_alias", "match_por_normalizacao", "ambiguas", "sem_match", "fora_do_contrato",
+        "total_atributos_canonicos_distintos_mapeados", "campos_condicionais_esparsos_observados",
+        "campos_ambiguos_indeterminados_observados", "colunas_bloqueiam_migracao_automatica"
+      ),
+      valor = c(
+        nrow(diagnostico),
+        sum(diagnostico$status_match == "exato_path", na.rm = TRUE),
+        sum(diagnostico$status_match == "exato_name", na.rm = TRUE),
+        sum(diagnostico$status_match == "exato_label", na.rm = TRUE),
+        sum(diagnostico$status_match == "alias", na.rm = TRUE),
+        sum(diagnostico$status_match == "normalizado", na.rm = TRUE),
+        sum(diagnostico$status_match == "multiplo_ambiguo", na.rm = TRUE),
+        sum(diagnostico$status_match == "sem_match", na.rm = TRUE),
+        sum(diagnostico$status_match == "fora_do_contrato", na.rm = TRUE),
+        data.table::uniqueN(diagnostico$atributo_canonico_sugerido[!is.na(diagnostico$atributo_canonico_sugerido)]),
+        sum(diagnostico$cardinalidade_operacional == "estruturado_condicional_esparso", na.rm = TRUE),
+        sum(diagnostico$cardinalidade_operacional == "ambiguo_indeterminado", na.rm = TRUE),
+        sum(diagnostico$bloqueia_migracao_automatica, na.rm = TRUE)
+      )
+    )
+    caminho_resumo <- file.path(dir_diag, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
+    data.table::fwrite(resumo, caminho_resumo, na = "")
+    data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+
+    txt <- c(
+      paste0("Diagnóstico de contrato único (03.5L-B) -- contexto: ", as.character(contexto)[1L]),
+      paste0("Gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+      "Este relatório é só diagnóstico -- não altera registros_importados.csv nem nenhum outro produto.",
+      paste0("Total de colunas observadas: ", nrow(diagnostico)),
+      paste0("Fora do contrato (metadado de pipeline): ", sum(diagnostico$status_match == "fora_do_contrato", na.rm = TRUE)),
+      paste0("Sem match: ", sum(diagnostico$status_match == "sem_match", na.rm = TRUE)),
+      paste0("Ambíguas: ", sum(diagnostico$status_match == "multiplo_ambiguo", na.rm = TRUE)),
+      paste0("Bloqueiam migração automática (não forçadas): ", sum(diagnostico$bloqueia_migracao_automatica, na.rm = TRUE)),
+      paste0("Mapa completo: ", basename(caminho_mapa)),
+      paste0("Resumo: ", basename(caminho_resumo))
+    )
+    writeLines(txt, file.path(dir_diag, paste0("resumo_", sufixo, "_", exec_id_chr, ".txt")))
+
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento(
+        "diagnostico_contrato_unico_registros_importados", "INFO", caminho_mapa,
+        paste0("Diagnóstico de contrato único gerado para ", as.character(contexto)[1L], " (", nrow(diagnostico), " colunas observadas)"),
+        "produto diagnóstico opt-in; não altera registros_importados.csv"
+      )
+    }
+  }, error = function(e) {
+    warning("Falha ao gravar diagnóstico de contrato único (registros_importados); produto não afetado: ",
+            conditionMessage(e), call. = FALSE)
+  })
+
+  invisible(diagnostico)
+}
+
+monitora_registros_importados_comparar_ordem_legado_vs_contrato <- function(registros_importados,
+                                                                              diagnostico,
+                                                                              contrato = NULL,
+                                                                              indices = NULL,
+                                                                              contexto = "registros_importados",
+                                                                              output_dir = MONITORA_OUTPUT_DIR,
+                                                                              log_dir = MONITORA_LOG_DIR,
+                                                                              exec_id = MONITORA_EXEC_ID) {
+  if (!inherits(registros_importados, c("data.frame", "data.table"))) return(invisible(NULL))
+  if (is.null(diagnostico) || !data.table::is.data.table(diagnostico) || !nrow(diagnostico)) return(invisible(NULL))
+
+  resultado <- tryCatch({
+    ordem_legado <- names(registros_importados)
+    d <- data.table::copy(diagnostico)
+    idx <- match(ordem_legado, d$coluna_observada)
+
+    comparacao <- data.table::data.table(
+      posicao_legado = seq_along(ordem_legado),
+      coluna_observada = ordem_legado,
+      atributo_canonico_sugerido = d$atributo_canonico_sugerido[idx],
+      status_match = d$status_match[idx],
+      cardinalidade_operacional = d$cardinalidade_operacional[idx],
+      status_confianca = d$status_confianca[idx],
+      bloqueia_migracao_automatica = d$bloqueia_migracao_automatica[idx]
+    )
+
+    ### Duplicidade: mais de uma coluna observada distinta sugerindo o mesmo
+    ### atributo canônico -- sinal de possível redundância/alias não
+    ### resolvido, nunca decidido automaticamente aqui.
+    contagem_canon <- comparacao[!is.na(atributo_canonico_sugerido), .N, by = atributo_canonico_sugerido]
+    dup_canon <- contagem_canon[N > 1L, atributo_canonico_sugerido]
+    comparacao[, duplicata_atributo_canonico := !is.na(atributo_canonico_sugerido) & atributo_canonico_sugerido %in% dup_canon]
+
+    ### Ordem sugerida: só para relatório, nunca aplicada. Usa a posição do
+    ### template quando o contrato/índices estiverem disponíveis; senão fica
+    ### NA e a ordem sugerida degrada para a ordem legada (sem reordenar).
+    if (is.null(indices)) {
+      indices <- tryCatch({
+        if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+        monitora_contrato_unico_indices(contrato)$indices
+      }, error = function(e) NULL)
+    }
+    comparacao[, posicao_contrato_sugerida := NA_integer_]
+    if (!is.null(indices) && !is.null(indices$template_sismonitora_129) && nrow(indices$template_sismonitora_129)) {
+      tpl <- data.table::as.data.table(indices$template_sismonitora_129)
+      m <- match(comparacao$atributo_canonico_sugerido, tpl$atributo_canonico_2025)
+      ok <- !is.na(m)
+      if (any(ok)) comparacao[ok, posicao_contrato_sugerida := as.integer(tpl$posicao_schema129[m[ok]])]
+    }
+    ordem_sugerida_idx <- order(is.na(comparacao$posicao_contrato_sugerida), comparacao$posicao_contrato_sugerida, comparacao$posicao_legado)
+    comparacao[, ordem_sugerida_rank := match(seq_len(.N), ordem_sugerida_idx)]
+
+    list(
+      comparacao = comparacao[],
+      fora_do_contrato = comparacao[status_match %in% c("sem_match", "fora_do_contrato")][],
+      ambiguas = comparacao[status_match == "multiplo_ambiguo"][],
+      duplicadas = comparacao[duplicata_atributo_canonico == TRUE][],
+      resumo = data.table::data.table(
+        metrica = c("total_colunas", "fora_do_contrato_ou_sem_match", "ambiguas", "colunas_em_duplicata_de_atributo"),
+        valor = c(
+          nrow(comparacao),
+          sum(comparacao$status_match %in% c("sem_match", "fora_do_contrato")),
+          sum(comparacao$status_match == "multiplo_ambiguo"),
+          sum(comparacao$duplicata_atributo_canonico, na.rm = TRUE)
+        )
+      )
+    )
+  }, error = function(e) {
+    warning("Comparação de ordem legado vs. contrato único (registros_importados) falhou e foi ignorada (produto não afetado): ",
+            conditionMessage(e), call. = FALSE)
+    NULL
+  })
+  if (is.null(resultado)) return(invisible(NULL))
+
+  tryCatch({
+    dir_diag <- file.path(output_dir, "diagnosticos_contrato_unico_registros_importados")
+    dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
+    sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
+    exec_id_chr <- as.character(exec_id)[1L]
+    data.table::fwrite(resultado$comparacao, file.path(dir_diag, paste0("comparacao_ordem_legado_vs_contrato_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+    data.table::fwrite(resultado$resumo, file.path(dir_diag, paste0("resumo_comparacao_ordem_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento(
+        "comparacao_ordem_contrato_unico_registros_importados", "INFO", dir_diag,
+        paste0("Comparação de ordem legado vs. contrato único gerada para ", as.character(contexto)[1L]),
+        "produto diagnóstico opt-in; nunca reordena/renomeia o produto real"
+      )
+    }
+  }, error = function(e) {
+    warning("Falha ao gravar comparação de ordem (registros_importados); produto não afetado: ",
+            conditionMessage(e), call. = FALSE)
+  })
+
+  invisible(resultado)
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
@@ -33804,6 +34026,25 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
     )
   }
   monitora_perf_registrar_checkpoint("registros_importados_saneado", "registros_importados.csv saneado/comparável materializado antes de registros_corrig", registros)
+
+  ### v2.6.2 - 03.5L-B: diagnóstico opt-in de contrato único (default OFF,
+  ### ver MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS). Nunca
+  ### bloqueia o fluxo -- envolvido em try() além da própria função já
+  ### tratar erro internamente.
+  if (exists("monitora_registros_importados_diagnostico_contrato_unico", mode = "function")) {
+    try({
+      MONITORA_DIAG_CU_IMPORTADOS_CK1 <- monitora_registros_importados_diagnostico_contrato_unico(
+        registros, contexto = "checkpoint1_pre_tokenizacao",
+        output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+      )
+      if (exists("monitora_registros_importados_comparar_ordem_legado_vs_contrato", mode = "function") && !is.null(MONITORA_DIAG_CU_IMPORTADOS_CK1)) {
+        monitora_registros_importados_comparar_ordem_legado_vs_contrato(
+          registros, MONITORA_DIAG_CU_IMPORTADOS_CK1, contexto = "checkpoint1_pre_tokenizacao",
+          output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+        )
+      }
+    }, silent = TRUE)
+  }
 }
 
 monitora_fwrite(csv_audit, file.path(MONITORA_LOG_DIR, paste0("auditoria_arquivos_csv_", MONITORA_EXEC_ID, ".csv")))
@@ -38008,6 +38249,25 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
     stop("Falha ao materializar registros_importados.csv operacional após extração de tokens por ponto.", call. = FALSE)
   }
   monitora_perf_registrar_checkpoint("registros_importados_operacional_tokenizado", "registros_importados.csv operacional sobrescrito após extração de tokens por ponto", registros_corrig)
+
+  ### v2.6.2 - 03.5L-B: diagnóstico opt-in de contrato único (default OFF,
+  ### ver MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS). Nunca
+  ### bloqueia o fluxo -- envolvido em try() além da própria função já
+  ### tratar erro internamente.
+  if (exists("monitora_registros_importados_diagnostico_contrato_unico", mode = "function")) {
+    try({
+      MONITORA_DIAG_CU_IMPORTADOS_CK2 <- monitora_registros_importados_diagnostico_contrato_unico(
+        registros_corrig, contexto = "checkpoint2_pos_tokenizacao",
+        output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+      )
+      if (exists("monitora_registros_importados_comparar_ordem_legado_vs_contrato", mode = "function") && !is.null(MONITORA_DIAG_CU_IMPORTADOS_CK2)) {
+        monitora_registros_importados_comparar_ordem_legado_vs_contrato(
+          registros_corrig, MONITORA_DIAG_CU_IMPORTADOS_CK2, contexto = "checkpoint2_pos_tokenizacao",
+          output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+        )
+      }
+    }, silent = TRUE)
+  }
 }
 MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pre_correcoes", abortar = FALSE)
 monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pre_correcoes", "triagem pré-correções para múltiplas COLETAS na mesma UC+UA+ANO", registros_corrig)
