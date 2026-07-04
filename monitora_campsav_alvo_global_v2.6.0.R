@@ -33442,6 +33442,44 @@ monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeli
   invisible(resultado)
 }
 
+### v2.6.2 - Hotfix 03.5M-C2 ---------------------------------------------------
+### A run 35mc confirmou que a chamada de monitora_pipe_contrato_relatorio_optin()
+### inserida na 03.5M-C nunca executa em modo `painel_e_parar`: nesse modo o
+### script grava o checkpoint parcial de registros_corrig.csv e já marca
+### MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE <- TRUE *antes* do bloco
+### `if (!isTRUE(MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE)) { ... }` que
+### continha a única chamada existente -- o relatório opt-in é pulado
+### justamente no caminho de teste mais usado (painel_e_parar). Este wrapper
+### permite chamar o relatório opt-in em mais de um ponto de integração
+### (caminho completo E caminho de checkpoint parcial) sem gerar produto
+### duplicado na mesma execução: só a PRIMEIRA chamada bem-sucedida (com a
+### flag ligada) grava algo; chamadas seguintes na mesma execução são
+### ignoradas via a marca global MONITORA_DIAGNOSTICO_PIPES_CONTRATO_GERADO.
+### Com a flag desligada, cada chamada continua um no-op barato (a marca só é
+### setada quando `monitora_pipe_contrato_relatorio_optin()` de fato retorna
+### resultado não-nulo, o que só acontece com a flag "S"). Nunca altera
+### `registros`, nunca bloqueia o fluxo -- qualquer erro vira warning.
+monitora_pipe_contrato_relatorio_optin_seguro <- function(registros, contexto = "pipeline",
+                                                            output_dir = MONITORA_OUTPUT_DIR,
+                                                            log_dir = MONITORA_LOG_DIR,
+                                                            exec_id = MONITORA_EXEC_ID) {
+  if (!exists("monitora_pipe_contrato_relatorio_optin", mode = "function")) return(invisible(NULL))
+  ja_gerado <- isTRUE(get0("MONITORA_DIAGNOSTICO_PIPES_CONTRATO_GERADO", ifnotfound = FALSE, inherits = TRUE))
+  if (isTRUE(ja_gerado)) return(invisible(NULL))
+  resultado <- tryCatch(
+    monitora_pipe_contrato_relatorio_optin(registros, contexto = contexto, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id),
+    error = function(e) {
+      warning("monitora_pipe_contrato_relatorio_optin_seguro: falha ignorada (nenhum produto real afetado): ",
+              conditionMessage(e), call. = FALSE)
+      NULL
+    }
+  )
+  if (!is.null(resultado)) {
+    assign("MONITORA_DIAGNOSTICO_PIPES_CONTRATO_GERADO", TRUE, envir = .GlobalEnv)
+  }
+  invisible(resultado)
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
@@ -39079,6 +39117,24 @@ if (isTRUE(MONITORA_PARAR_APOS_REGISTROS_CORRIG)) {
     produto = "registros_corrig.csv",
     motivo = MONITORA_MODO_EXECUCAO
   )
+
+  ### v2.6.2 - Hotfix 03.5M-C2: relatório opt-in de pipes por contrato único
+  ### (default OFF, ver MONITORA_DIAGNOSTICO_PIPES_CONTRATO) também no
+  ### caminho de checkpoint parcial (painel_e_parar/ate_registros_corrig/
+  ### abrir_painel_cache/painel_incremental_registros_corrig) -- o caminho
+  ### completo abaixo fica inalcançável quando
+  ### MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE já foi marcado TRUE.
+  ### registros_corrig já está em memória e o checkpoint parcial já foi
+  ### gravado neste ponto. Nunca bloqueia o fluxo, nunca altera
+  ### `registros_corrig` -- envolvido em try() além do wrapper seguro já
+  ### tratar erro internamente.
+  if (exists("monitora_pipe_contrato_relatorio_optin_seguro", mode = "function")) {
+    try(monitora_pipe_contrato_relatorio_optin_seguro(
+      registros_corrig, contexto = "checkpoint_parcial_registros_corrig",
+      output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+    ), silent = TRUE)
+  }
+
   MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE <- TRUE
 }
 
@@ -39126,13 +39182,16 @@ if (exists("registros_corrig")) {
     }
   }
 
-  ### v2.6.2 - 03.5M-C: relatório opt-in de pipes por contrato único (default
-  ### OFF, ver MONITORA_DIAGNOSTICO_PIPES_CONTRATO). registros_corrig já está
-  ### materializado e com persistência confirmada neste ponto. Nunca bloqueia
-  ### o fluxo -- envolvido em try() além da própria função já tratar erro
-  ### internamente.
-  if (exists("monitora_pipe_contrato_relatorio_optin", mode = "function")) {
-    try(monitora_pipe_contrato_relatorio_optin(
+  ### v2.6.2 - 03.5M-C/Hotfix 03.5M-C2: relatório opt-in de pipes por contrato
+  ### único (default OFF, ver MONITORA_DIAGNOSTICO_PIPES_CONTRATO).
+  ### registros_corrig já está materializado e com persistência confirmada
+  ### neste ponto. Usa o wrapper seguro (Hotfix 03.5M-C2) para não duplicar
+  ### produto caso o caminho de checkpoint parcial acima já tenha gerado o
+  ### relatório na mesma execução (normalmente mutuamente exclusivos, mas o
+  ### wrapper protege mesmo assim). Nunca bloqueia o fluxo -- envolvido em
+  ### try() além do wrapper já tratar erro internamente.
+  if (exists("monitora_pipe_contrato_relatorio_optin_seguro", mode = "function")) {
+    try(monitora_pipe_contrato_relatorio_optin_seguro(
       registros_corrig, contexto = "pos_export_registros_corrig",
       output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
     ), silent = TRUE)
