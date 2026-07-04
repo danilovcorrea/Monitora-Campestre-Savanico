@@ -719,3 +719,126 @@ Shiny/stub dedicado, um helper somente leitura
 `perfil_painel_edicao` derivado de `monitora_contrato_unico_indices()`,
 default OFF, inicialmente apenas para produzir uma tabela de auditoria da
 interface. Só depois avaliar exposição visual no painel.
+
+## 12. Incremento 03.5R-C executado (2026-07-04, retorno ao Claude)
+
+Executado o próximo incremento recomendado na seção 11, na sua forma mais
+conservadora: helper novo, sem nenhuma conexão ao consumidor operacional do
+painel. Esta etapa marca o retorno ao motor Claude após a janela temporária
+com Codex (03.5Q-C, seção 11).
+
+**Ponto implementado:** novo helper
+`monitora_perfil_painel_edicao_contrato_unico()` (logo após
+`monitora_contrato_unico_indices()`, ~linha 32809). Não existia antes desta
+etapa.
+
+**Status antes:** `monitora_contrato_unico_indices()` já produzia
+internamente `$perfis$perfil_painel_edicao` (atributo, caminho, name_curto,
+label, list_name/choices, tipo_base, cardinalidade_operacional, relevant,
+campo_pai), mas sem `origem_regra`/`severidade`/`status_confianca` nem
+qualquer anotação de bloqueio — e não havia nenhuma função exposta para
+auditar esse perfil isoladamente, fora do retorno completo (`indices` +
+`perfis` + `meta`) da função de índices.
+
+**Status depois:**
+- `monitora_perfil_painel_edicao_contrato_unico(contrato_indices = NULL,
+  ocorrencias_painel = NULL)`: opt-in pela nova flag
+  `MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO` (via
+  `monitora_cfg_env_bool()`, já usado em 03.5P-C, default `FALSE`/desligada
+  — diferente da flag `"S"`-por-padrão de 03.5P-C, pois aqui há custo real
+  de merge/cópia quando ligada, não só um log).
+- Com a flag desligada (padrão), retorna `invisible(NULL)` sem chamar
+  `monitora_contrato_unico_indices()`, sem copiar nada — custo é só a
+  checagem de uma variável de ambiente.
+- Com a flag ligada: copia (`data.table::copy()`) o `perfil_painel_edicao`
+  já existente, enriquece com `origem_regra`/`severidade`/`status_confianca`
+  (join aditivo por `atributo_canonico_2025` contra
+  `$indices$por_atributo_canonico` — nenhum fato novo, mesmas colunas já
+  calculadas em 03.5J) e adiciona `bloqueio_estrutural_contrato_unico`
+  (mesma regra estrutural já usada em `$perfis$perfil_pre_painel` para
+  `bloqueia_registros_validados`: `cardinalidade_operacional ==
+  "ambiguo_indeterminado" | status_confianca == "baixa_ambiguo"` — só
+  anotação de auditoria, não participa de nenhuma decisão de bloqueio real
+  do painel).
+- Parâmetro opcional `ocorrencias_painel`: se um `data.table` com
+  `atributo_canonico_2025` for passado, soma `n_ocorrencias_painel` por
+  atributo (fallback `0L` quando ausente); nunca modifica o objeto recebido
+  por referência (leitura + `merge()`, que sempre retorna objeto novo).
+- Qualquer campo ausente do contrato (`por_atributo_canonico` sem as 4
+  colunas exigidas), `perfil_painel_edicao` vazio, ou erro interno de
+  qualquer natureza degrada para `invisible(NULL)` (via `tryCatch`), nunca
+  propaga erro.
+- **Não é chamada por `monitora_correcao_painel()` nem por nenhum outro
+  consumidor operacional** (confirmado por grep — seção de testes abaixo);
+  produz só uma tabela em memória, sem escrever nenhum arquivo novo, sem
+  alterar schema/cardinalidade de `registros_corrig` ou de qualquer CSV do
+  pipeline. Satisfaz os 6 critérios de aceite listados na seção 11.
+
+**Fontes paralelas:** nenhuma removida nem substituída — o helper é
+estritamente aditivo e não conectado ao fluxo do painel; as fontes
+operacionais próprias do painel (XLSForm embutido, dicionário de
+atributos) continuam sendo o caminho real, inalteradas.
+
+**Testes executados** (proporcionais, sem dados reais, sem Shiny real,
+script descartável em `/tmp/teste_035r_c/teste.R`):
+1. `Rscript -e 'invisible(parse("monitora_campsav_alvo_global_v2.6.0.R"))'`
+   sobre o script completo — sintaxe OK.
+2. Teste sintético isolando uma cópia fiel do helper com stubs de
+   `contrato_indices$perfis$perfil_painel_edicao` e
+   `contrato_indices$indices$por_atributo_canonico` (schema fiel ao
+   produzido por `monitora_contrato_unico_indices()`, evitando depender do
+   contrato embutido real): 7 cenários — (a) flag desligada → `NULL`, input
+   original inalterado; (b) flag ligada → `data.table` com mesma
+   cardinalidade de linhas (3) do perfil original, colunas novas presentes,
+   severidade herdada corretamente, atributo `ambiguo_indeterminado`
+   marcado com `bloqueio_estrutural_contrato_unico = TRUE` e atributo
+   `texto_livre`/confiança alta com `FALSE`; (c) mesmos atributos sem
+   perda/duplicação de linha, input original ainda inalterado após a
+   chamada; (d) `por_atributo_canonico` sem as colunas exigidas → degrada
+   para `NULL` sem erro; (e) `perfil_painel_edicao` vazio → `NULL` sem
+   erro; (f) `contrato_indices` malformado (campo não é `data.table`) →
+   `NULL` sem propagar erro; (g) `ocorrencias_painel` opcional soma
+   contagem corretamente por atributo, usa fallback `0L` quando ausente e
+   não modifica o objeto original. Todos os 7 cenários confirmados na
+   primeira execução.
+3. `git diff --stat` sobre o script: 62 inserções, 0 remoções — mudança
+   puramente aditiva, nenhuma linha pré-existente alterada.
+4. Grep estático dentro do bloco novo (da definição da função até seu
+   `### FIM`): nenhuma referência a
+   `registros_importados.csv`/`registros_importados_bruto.csv`/
+   `registros_corrig.csv`/`registros_validados.csv`, nenhum `fwrite`/
+   `writeLines`/`fread`, nenhuma referência a `output/`/`log/`/
+   `MONITORA_OUTPUT_DIR`/`MONITORA_LOG_DIR` — confirma ausência de
+   dependência normativa em artefatos de disco e ausência de qualquer
+   escrita.
+5. Grep de chamadores: `monitora_perfil_painel_edicao_contrato_unico`
+   aparece só na própria definição no script inteiro — confirma que não é
+   chamada por `monitora_correcao_painel()` nem por nenhum outro ponto do
+   fluxo principal; default OFF é real (a função nunca executa fora de
+   chamada explícita e opt-in).
+
+**Riscos remanescentes:**
+- Sem teste dinâmico end-to-end contra o contrato embutido real nem contra
+  o Shiny real do painel (mitigado por stub fiel ao schema já confirmado
+  de `$perfis$perfil_painel_edicao`/`$indices$por_atributo_canonico`,
+  produzido pela própria `monitora_contrato_unico_indices()` já em uso
+  desde 03.5J).
+- `bloqueio_estrutural_contrato_unico` é anotação nova (não existia em
+  nenhum perfil anterior com este nome); é deliberadamente conservadora
+  (mesma regra já usada para `bloqueia_registros_validados` em
+  `perfil_pre_painel`) mas ainda não foi comparada em produção contra o
+  comportamento observado do painel real.
+- O parâmetro `ocorrencias_painel` é opcional e não é preenchido por
+  nenhum consumidor real ainda — é capacidade preparada para uma futura
+  conexão de auditoria por ocorrência, não uma conexão ativa.
+- Continua sem exposição visual no painel — esse é o próximo passo,
+  deliberadamente fora do escopo desta etapa.
+
+**Próximo ponto determinante recomendado:** com o helper de auditoria
+disponível e testado, o próximo passo natural é (a) um teste Shiny
+mínimo/stub que chame `monitora_perfil_painel_edicao_contrato_unico()` com
+um `contrato_indices` real (não stub) para confirmar compatibilidade de
+schema em ambiente controlado, e só depois (b) avaliar uma exposição visual
+opt-in no painel (ex.: aba de auditoria somente leitura), seguindo os 6
+critérios de aceite da seção 11 — nenhum dos dois foi feito nesta etapa,
+por decisão de manter o incremento isolado e proporcional.
