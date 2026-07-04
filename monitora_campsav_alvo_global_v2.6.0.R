@@ -1123,12 +1123,12 @@ monitora_doc_zip_inventory <- function(zip_files, base_dir = getwd(), max_depth 
 
 monitora_doc_produtos_dados_descricoes <- function(registros_corrig = NULL, output_dir = "output") {
   produtos <- data.table::data.table(
-    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv"),
-    como_e_criado = c("montado a partir dos arquivos lidos, preservando leitura técnica", "saneado após normalização inicial de nomes/aliases", "gerado após harmonização, deduplicação, sanitizações e correções", "projetado a partir de registros_corrig no contrato XLSForm/template"),
-    escopo = c("entrada bruta da execução", "entrada saneada pré-correção", "base corrigida e auditável", "produto final contratual opcional"),
-    pre_requisitos = c("input válido e modo que demande snapshot", "leitura e mapeamento inicial", "schema operacional e correções sem falha crítica", "opção ligada, contrato resolvido e sem bloqueios impeditivos"),
-    finalidade = c("auditar importação", "comparar entrada saneada com saída corrigida", "subsidiar estatísticas, relatórios, painel incremental e validação", "devolutiva/integração compatível com SISMONITORA"),
-    subsidia = c("depuração de input", "painel, relatório consolidado e comparação pré/pós", "estatísticas, gráficos, validação espacial e registros_validados", "auditoria final e integração externa")
+    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv"),
+    como_e_criado = c("montado a partir dos arquivos lidos, preservando leitura técnica", "saneado após normalização inicial de nomes/aliases", "materializado após tokenização operacional e antes do painel, sem substituir registros_importados.csv", "gerado após harmonização, deduplicação, sanitizações e correções", "projetado a partir de registros_corrig no contrato XLSForm/template"),
+    escopo = c("entrada bruta da execução", "entrada saneada pré-correção", "camada operacional pós-tokenização/pré-painel", "base corrigida e auditável", "produto final contratual opcional"),
+    pre_requisitos = c("input válido e modo que demande snapshot", "leitura e mapeamento inicial", "registros_importados.csv materializado e tokenização operacional concluída", "schema operacional e correções sem falha crítica", "opção ligada, contrato resolvido e sem bloqueios impeditivos"),
+    finalidade = c("auditar importação", "comparar entrada saneada com saída corrigida", "auditar a base operacional pré-painel sem semântica híbrida", "subsidiar estatísticas, relatórios, painel incremental e validação", "devolutiva/integração compatível com SISMONITORA"),
+    subsidia = c("depuração de input", "painel, relatório consolidado e comparação pré/pós", "diagnósticos pré-painel e comparação com registros_importados.csv", "estatísticas, gráficos, validação espacial e registros_validados", "auditoria final e integração externa")
   )
   candidatos <- list(
     registros_importados_bruto.csv = c(file.path(output_dir, "registros_importados_bruto.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados_bruto.csv")),
@@ -1363,12 +1363,12 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = "2.6.0", f
   )
 
   produtos <- data.table::data.table(
-    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv"),
-    como_e_criado = c("Criado como snapshot técnico da montagem dos arquivos lidos, preservando leitura bruta/operacional antes das sanitizações principais.", "Criado após normalização inicial de cabeçalhos, aliases e saneamento preliminar da entrada.", "Criado após harmonização, deduplicação, sanitizações automáticas, aplicação das receitas do painel e validações de consistência.", "Criado opcionalmente pela projeção de registros_corrig.csv no contrato do XLSForm/template de destino."),
-    escopo = c("Entrada bruta da execução e montagem técnica.", "Entrada saneada pré-correção final.", "Base corrigida central e auditável.", "Produto contratual final, quando habilitado."),
-    pre_requisitos = c("Input válido e modo que demande snapshot bruto, especialmente painel ou auditoria de importação.", "Leitura inicial concluída e mapeamento mínimo de atributos.", "Schema operacional resolvido, input processável e ausência de falhas críticas impeditivas.", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S, contrato resolvido e registros_corrig sem bloqueios impeditivos."),
-    finalidade = c("Auditar importação, diagnosticar problemas de ZIP, codificação, cabeçalhos e montagem.", "Comparar a entrada saneada com registros_corrig e apoiar o relatório consolidado.", "Subsidiar estatísticas, relatórios específicos, painel incremental, validação espacial e registros_validados.", "Disponibilizar uma base compatível com estrutura, ordem, domínios e formatos esperados pelo contrato de destino."),
-    subsidia = c("Depuração do input e descrição dos arquivos de entrada.", "Painel, comparação pré/pós e rastreabilidade documental.", "Toda a etapa pós-correção: relatórios, estatísticas, mapas, KML, auditorias e contrato final.", "Auditoria final, integração/devolutiva e conferência formal de schema/formato.")
+    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv"),
+    como_e_criado = c("Criado como snapshot técnico da montagem dos arquivos lidos, preservando leitura bruta/operacional antes das sanitizações principais.", "Criado após normalização inicial de cabeçalhos, aliases e saneamento preliminar da entrada.", "Criado após tokenização operacional e antes do painel, com identidade própria e sem substituir registros_importados.csv.", "Criado após harmonização, deduplicação, sanitizações automáticas, aplicação das receitas do painel e validações de consistência.", "Criado opcionalmente pela projeção de registros_corrig.csv no contrato do XLSForm/template de destino."),
+    escopo = c("Entrada bruta da execução e montagem técnica.", "Entrada saneada pré-correção final.", "Camada operacional pós-tokenização/pré-painel.", "Base corrigida central e auditável.", "Produto contratual final, quando habilitado."),
+    pre_requisitos = c("Input válido e modo que demande snapshot bruto, especialmente painel ou auditoria de importação.", "Leitura inicial concluída e mapeamento mínimo de atributos.", "registros_importados.csv materializado e tokenização operacional concluída antes do painel.", "Schema operacional resolvido, input processável e ausência de falhas críticas impeditivas.", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S, contrato resolvido e registros_corrig sem bloqueios impeditivos."),
+    finalidade = c("Auditar importação, diagnosticar problemas de ZIP, codificação, cabeçalhos e montagem.", "Comparar a entrada saneada com registros_corrig e apoiar o relatório consolidado.", "Auditar a base operacional pré-painel e permitir comparação sem semântica híbrida.", "Subsidiar estatísticas, relatórios específicos, painel incremental, validação espacial e registros_validados.", "Disponibilizar uma base compatível com estrutura, ordem, domínios e formatos esperados pelo contrato de destino."),
+    subsidia = c("Depuração do input e descrição dos arquivos de entrada.", "Painel, comparação pré/pós e rastreabilidade documental.", "Diagnósticos pré-painel e comparação com registros_importados.csv.", "Toda a etapa pós-correção: relatórios, estatísticas, mapas, KML, auditorias e contrato final.", "Auditoria final, integração/devolutiva e conferência formal de schema/formato.")
   )
 
   painel <- data.table::data.table(
@@ -1402,8 +1402,8 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = "2.6.0", f
     "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
     "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
     "# Reaplicação de correções anteriores", "", "`correcoes_campos.csv` é o arquivo operacional produzido pelo painel. A partir da v2.6.0, o script também grava uma trilha consolidada em `output/correcoes_campos/correcoes_semanticas_consolidada.csv`, cujo objetivo é preservar a intenção semântica das operações realizadas pelo bolsista: escopo, coleta, atributos, ação, valores, justificativa, responsável, data/hora e tipo de operação.", "", "Para reaplicar correções de uma rodada anterior sobre o input bruto/original, coloque o arquivo em `input/correcoes_semanticas.csv` ou informe seu caminho em `MONITORA_ARQUIVO_CORRECOES_ANTERIORES`, e defina `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. O padrão público é `N`, para impedir alterações acidentais quando um arquivo de controle for deixado em `input/`. O replay ocorre antes dos relatórios pré-painel e antes da abertura do Shiny. Assim, tabelas diagnósticas, contadores e ocorrências do painel já nascem no estado corrigido reaplicado.", "", "O contrato de replay é versionado como `replay_semantico_v1`. Alterações futuras do script devem manter compatibilidade retroativa com esse contrato ou registrar incompatibilidade explícita antes de aplicar operações. Para transições de versão, ative temporariamente a comparação com oráculo; para uso público rotineiro, mantenha `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'N'`.", "", "Após o replay, o script separa o arquivo antigo do arquivo da sessão atual. Novas operações do painel são gravadas em um novo `correcoes_campos_sessao_<exec_id>.csv`, evitando reaplicação dupla. O replay é auditado em `auditoria_reaplicacao_correcoes_anteriores_*.csv`.", "", "Use `registros_corrig.csv` como entrada quando quiser retomar exatamente o estado materializado de uma rodada. Use replay semântico quando quiser reconstruir o processamento a partir do input original e reaplicar a intenção das operações sobre uma versão nova do script.", "",
-    "# Produtos de dados", "", "Os quatro produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
-    "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
+    "# Produtos de dados", "", "Os cinco produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
+    "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_importados_operacional_pre_painel.csv` documenta a camada operacional pós-tokenização/pré-painel e não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
     "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atributo, valor novo e justificativa. Ao salvar, o script aplica as operações, recalcula campos superiores quando necessário, atualiza diagnósticos e materializa os produtos pós-painel.", "", monitora_doc_rmd_table_chunk(arq_painel, "manual-painel", 100L, c("controle", "funcao", "quando_usar", "auditoria_efeito"), 40L), "",
     "# Roteiro operacional do bolsista", "", "A tabela abaixo indica quais arquivos consultar antes de cada operação, como operar no painel e quais produtos verificar depois para confirmar o efeito da correção. Os links são relativos à pasta `docs/`; se o manual for movido, abra-o a partir da pasta da execução para preservar os hiperlinks.", "", monitora_doc_rmd_table_chunk(arq_roteiro, "manual-roteiro-bolsista", 100L, c("situacao", "consultar_antes", "operacao_no_painel", "conferir_depois", "criterio_sucesso"), 36L), "",
     "# Conferência final", "", "Após uma execução com painel, conferir `output/01_produtos_dados/registros_corrig.csv`, relatórios pós-painel em `output/correcoes_campos/relatorios_pos_painel/`, produtos espaciais em `output/04_validacao_espacial/` quando materializados, `output/01_produtos_dados/registros_validados.csv` quando habilitado e o relatório consolidado em `output/relatorios_validacao/`. Produtos locais podem conter dados sensíveis, nomes de arquivos e caminhos de trabalho; não devem ser publicados sem triagem."
@@ -24994,7 +24994,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   arquivos <- list.files(output_dir, full.names = TRUE, recursive = FALSE, all.files = FALSE)
   arquivos <- arquivos[file.info(arquivos)$isdir == FALSE]
   categoria <- function(bn) {
-    if (bn %in% c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")) return("01_produtos_dados")
+    if (bn %in% c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")) return("01_produtos_dados")
     if (grepl("manifesto|performance|memoria|relatorio_execucao|execucao_parcial", bn, ignore.case = TRUE)) return("00_manifesto_execucao")
     if (grepl("pendencias_impeditivas", bn, ignore.case = TRUE)) return("03_auditorias/pendencias_impeditivas")
     if (grepl("completude|quarenten", bn, ignore.case = TRUE)) return("03_auditorias/completude")
@@ -25041,7 +25041,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "Organização do output - Programa Monitora / Campestre Savânico",
     "",
     "A raiz é mantida por compatibilidade com versões anteriores. As subpastas abaixo organizam produtos, auditorias e relatórios para navegação do bolsista/desenvolvedor.",
-    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_corrig, registros_validados e derivados principais.",
+    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_importados_operacional_pre_painel, registros_corrig, registros_validados e derivados principais.",
     "02_painel_correcoes/: relatórios operacionais do painel e ocorrências diagnósticas pré/pós-painel.",
     "03_auditorias/: auditorias técnicas de importação, completude, contrato, pendências e persistência.",
     "04_validacao_espacial/: produtos do módulo espacial quando ativado.",
@@ -31707,6 +31707,7 @@ monitora_produtos_nome_central <- function(produto) {
   bn <- basename(as.character(produto)[1L])
   bn %in% c(
     "registros_importados_bruto.csv", "registros_importados.csv",
+    "registros_importados_operacional_pre_painel.csv",
     "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv"
   )
 }
@@ -31730,7 +31731,7 @@ monitora_produtos_md5_seguro <- function(path) {
 monitora_produtos_auditar_espelhos_canonicos <- function(output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
                                                          exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
                                                          contexto = "auditoria_produtos_canonicos") {
-  produtos <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
+  produtos <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
   aud <- data.table::rbindlist(lapply(produtos, function(produto) {
     canon <- monitora_produtos_path_canonico(produto, output_dir)
     raiz <- monitora_produtos_path_raiz(produto, output_dir)
@@ -33574,7 +33575,16 @@ monitora_registros_importados_saneado_exportar <- function(dt,
                                                            log_dir = MONITORA_LOG_DIR,
                                                            exec_id = MONITORA_EXEC_ID,
                                                            contexto = "pos_consolidacao_aliases_importacao",
-                                                           bloquear_pipe_residual = TRUE) {
+                                                           bloquear_pipe_residual = TRUE,
+                                                           produto_nome = "registros_importados.csv") {
+  ### v2.6.2 - Hotfix 03.5M-D2-H2R-C: `produto_nome` permite que este mesmo
+  ### exportador escreva um produto com identidade própria (nome de arquivo
+  ### diferente), sem duplicar lógica de tokenização/resolução de pipe.
+  ### Chamadas existentes que não informam `produto_nome` continuam
+  ### escrevendo exatamente "registros_importados.csv" (comportamento
+  ### inalterado). Ver diagnostics/auditoria_035m_d2_h2r_cadeia_produtos/ e
+  ### diagnostics/hotfix_035m_d2_h2r_c_desambigua_registros_importados/.
+  produto_nome <- as.character(produto_nome)[1L]
   tryCatch({
     dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
     dir.create(file.path(output_dir, "01_produtos_dados"), showWarnings = FALSE, recursive = TRUE)
@@ -33582,7 +33592,7 @@ monitora_registros_importados_saneado_exportar <- function(dt,
     out <- monitora_registros_importados_saneado_preparar(dt, contexto = contexto)
     if (exists("monitora_produtos_resolver_pipes_por_ponto", mode = "function")) {
       out <- monitora_produtos_resolver_pipes_por_ponto(
-        out, produto = "registros_importados.csv", output_dir = output_dir, log_dir = log_dir,
+        out, produto = produto_nome, output_dir = output_dir, log_dir = log_dir,
         exec_id = exec_id, contexto = paste0(contexto, "_pipes_operacionais"), corrigir = TRUE
       )
     }
@@ -33598,18 +33608,18 @@ monitora_registros_importados_saneado_exportar <- function(dt,
     ### -- aborta se sobrar resíduo estruturado real).
     if (exists("monitora_bloquear_pipe_residual_produto", mode = "function")) {
       monitora_bloquear_pipe_residual_produto(
-        out, produto = "registros_importados.csv",
+        out, produto = produto_nome,
         auditoria_pipe = attr(out, "monitora_auditoria_pipes"),
         output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
         contexto = contexto, bloquear = bloquear_pipe_residual
       )
     }
-    caminho <- monitora_produtos_escrever_csv_canonico(out, "registros_importados.csv", output_dir = output_dir, row.names = FALSE, na = "")
-    caminho_raiz <- monitora_produtos_path_raiz("registros_importados.csv", output_dir)
+    caminho <- monitora_produtos_escrever_csv_canonico(out, produto_nome, output_dir = output_dir, row.names = FALSE, na = "")
+    caminho_raiz <- monitora_produtos_path_raiz(produto_nome, output_dir)
 
     chaves <- monitora_registros_importados_chaves_preferenciais()
     resumo <- data.table::data.table(
-      exec_id = as.character(exec_id), produto = "registros_importados.csv", contexto = as.character(contexto)[1L],
+      exec_id = as.character(exec_id), produto = produto_nome, contexto = as.character(contexto)[1L],
       descricao = "Produto operacional saneado de entrada, com cabeçalhos canônicos/legíveis e repetição de pontos expandida.",
       n_linhas = as.integer(nrow(out)), n_colunas = as.integer(ncol(out)),
       chaves_presentes = paste(intersect(chaves, names(out)), collapse = " | "),
@@ -33623,11 +33633,11 @@ monitora_registros_importados_saneado_exportar <- function(dt,
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_CONTEXTO", as.character(contexto)[1L], envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
-      monitora_log_registrar_evento("registros_importados_saneado_exportado", "INFO", caminho, paste0("registros_importados.csv canônico gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "produto operacional canônico em 01_produtos_dados espelhado na raiz")
+      monitora_log_registrar_evento("registros_importados_saneado_exportado", "INFO", caminho, paste0(produto_nome, " canônico gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "produto operacional canônico em 01_produtos_dados espelhado na raiz")
     }
     invisible(TRUE)
   }, error = function(e) {
-    warning("Falha ao gerar registros_importados.csv saneado: ", conditionMessage(e), call. = FALSE)
+    warning("Falha ao gerar ", produto_nome, " saneado: ", conditionMessage(e), call. = FALSE)
     invisible(FALSE)
   })
 }
@@ -33936,7 +33946,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   ### Produtos centrais: a subpasta 01_produtos_dados é canônica. Se existir
   ### produto canônico, a raiz é sempre sobrescrita; se só existir raiz legada,
   ### ela é importada para o destino canônico. Isso elimina versões divergentes.
-  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
+  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
   for (produto in produtos_centrais) {
     canon <- monitora_produtos_path_canonico(produto, output_dir)
     raiz <- monitora_produtos_path_raiz(produto, output_dir)
@@ -34030,7 +34040,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "",
     "Produtos centrais são gravados canonicamente em 01_produtos_dados/ e espelhados na raiz apenas por compatibilidade.",
     "Raiz esperada após finalização: README_OUTPUT.txt, indice_produtos.csv e produtos centrais de dados.",
-    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_corrig, registros_validados e derivados principais.",
+    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_importados_operacional_pre_painel, registros_corrig, registros_validados e derivados principais.",
     "02_painel_correcoes/: relatórios operacionais do painel e ocorrências diagnósticas pré/pós-painel.",
     "03_auditorias/: auditorias técnicas de importação, completude, contrato, pendências e persistência.",
     "04_validacao_espacial/: produtos do módulo espacial quando ativado.",
@@ -34051,7 +34061,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
 
 monitora_output_classificar_arquivo_raiz <- function(bn) {
   bn <- basename(as.character(bn)[1L])
-  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
+  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
   if (bn %in% produtos_centrais) return("01_produtos_dados")
   if (grepl("manifesto|performance|memoria|relatorio_execucao|execucao_parcial", bn, ignore.case = TRUE)) return("00_manifesto_execucao")
   if (grepl("pendencias_impeditivas", bn, ignore.case = TRUE)) return("03_auditorias/pendencias_impeditivas")
@@ -34084,7 +34094,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
   )
   for (d in dirs) dir.create(file.path(output_dir, d), recursive = TRUE, showWarnings = FALSE)
 
-  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
+  produtos_centrais <- c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv")
   manter_raiz <- c("README_OUTPUT.txt", "indice_produtos.csv", produtos_centrais)
 
   # Produtos centrais: destino canônico é 01_produtos_dados; raiz é espelho de compatibilidade.
@@ -34193,7 +34203,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "",
     "Produtos centrais são gravados canonicamente em 01_produtos_dados/ e espelhados na raiz apenas por compatibilidade.",
     "A raiz é limpa por whitelist ao final/checkpoints: README_OUTPUT.txt, indice_produtos.csv e produtos centrais de dados.",
-    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_corrig, registros_validados e derivados principais.",
+    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_importados_operacional_pre_painel, registros_corrig, registros_validados e derivados principais.",
     "02_painel_correcoes/: relatórios operacionais do painel e ocorrências diagnósticas pré/pós-painel.",
     "03_auditorias/: auditorias técnicas de importação, completude, contrato, pendências, persistência e output.",
     "04_validacao_espacial/: produtos do módulo espacial quando ativado.",
@@ -34228,6 +34238,7 @@ MONITORA_OUTPUT_RAIZ_EXPORTAR_PRODUTOS_COMPAT <- "N"
 monitora_output_produtos_centrais <- function() {
   c(
     "registros_importados_bruto.csv", "registros_importados.csv",
+    "registros_importados_operacional_pre_painel.csv",
     "registros_corrig.csv", "registros_validados.csv", "registros_corrig_stat.csv"
   )
 }
@@ -34491,7 +34502,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "",
     "A raiz do diretório output/ contém apenas README_OUTPUT.txt e indice_produtos.csv.",
     "Produtos de dados são canônicos exclusivamente em 01_produtos_dados/.",
-    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_corrig, registros_corrig_stat, registros_validados quando liberado.",
+    "01_produtos_dados/: registros_importados_bruto, registros_importados, registros_importados_operacional_pre_painel, registros_corrig, registros_corrig_stat, registros_validados quando liberado.",
     "02_painel_correcoes/: relatórios operacionais do painel, ocorrências diagnósticas e relatórios de apoio pré/pós-painel.",
     "03_auditorias/: auditorias técnicas de importação, completude, contrato, pendências, persistência e organização do output.",
     "04_validacao_espacial/: produtos do módulo espacial quando ativado.",
@@ -38839,16 +38850,21 @@ if (isTRUE(MONITORA_QUARENTENAR_COLETAS_INCOMPLETAS_PRE_PAINEL) &&
   }
 }
 
-### Produto operacional de importação: sobrescreve registros_importados.csv após
-### a extração/normalização de tokens por ponto, mas antes de qualquer operação
-### assistida do painel. O bruto técnico permanece em registros_importados_bruto.csv.
-### v2.6.0 - Hotfix 03.5D: checkpoint PÓS-tokenização operacional (depois de
-### toda a cadeia padronizacao_categorias_e_material_botanico,
+### v2.6.2 - Hotfix 03.5M-D2-H2R-C -------------------------------------------
+### `registros_importados.csv` permanece camada canônica de importação
+### (escrita mais acima, logo após consolidação técnica de colunas/aliases,
+### a partir do objeto bruto `registros`) -- este bloco NÃO substitui nem
+### sobrescreve mais esse arquivo. O produto operacional pós-tokenização
+### (depois de toda a cadeia padronizacao_categorias_e_material_botanico,
 ### padronizacao_formas_vida_condicionais_basicas, padronizacao_formas_vida_outras,
 ### padronizacao_especies_nativas e padronizacao_especies_exoticas_e_campos_condicionais,
-### acima). Ponto correto para o bloqueio efetivo de pipe estruturado
-### residual: se sobrar aqui, é erro real. bloquear_pipe_residual = TRUE
-### (default) mantido explícito para auditabilidade.
+### acima) agora recebe identidade própria:
+### registros_importados_operacional_pre_painel.csv. Continua sendo escrito
+### antes de qualquer correção assistida do painel e continua bloqueando pipe
+### residual estruturado real quando bloquear_pipe_residual = TRUE (ponto
+### correto para esse bloqueio efetivo: se sobrar aqui, é erro real). Ver
+### diagnostics/auditoria_035m_d2_h2r_cadeia_produtos/ e
+### diagnostics/hotfix_035m_d2_h2r_c_desambigua_registros_importados/.
 if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = FALSE, inherits = TRUE)) &&
     exists("monitora_registros_importados_saneado_exportar", mode = "function")) {
   ok_registros_importados_tokenizado <- monitora_registros_importados_saneado_exportar(
@@ -38857,12 +38873,13 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
     log_dir = MONITORA_LOG_DIR,
     exec_id = MONITORA_EXEC_ID,
     contexto = "pre_painel_pos_extracao_tokens_operacionais",
-    bloquear_pipe_residual = TRUE
+    bloquear_pipe_residual = TRUE,
+    produto_nome = "registros_importados_operacional_pre_painel.csv"
   )
   if (!isTRUE(ok_registros_importados_tokenizado)) {
-    stop("Falha ao materializar registros_importados.csv operacional após extração de tokens por ponto.", call. = FALSE)
+    stop("Falha ao materializar registros_importados_operacional_pre_painel.csv após extração de tokens por ponto.", call. = FALSE)
   }
-  monitora_perf_registrar_checkpoint("registros_importados_operacional_tokenizado", "registros_importados.csv operacional sobrescrito após extração de tokens por ponto", registros_corrig)
+  monitora_perf_registrar_checkpoint("registros_importados_operacional_tokenizado", "registros_importados_operacional_pre_painel.csv materializado após extração de tokens por ponto (não sobrescreve registros_importados.csv)", registros_corrig)
 
   ### v2.6.2 - 03.5L-B: diagnóstico opt-in de contrato único (default OFF,
   ### ver MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS). Nunca
@@ -47707,6 +47724,7 @@ monitora_auditar_produtos_finais <- function() {
 
   produtos <- list(
     produto_linha("registros_importados.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_importados.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_importados.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "produto saneado/comparável de entrada, antes de correções e deduplicações finais"),
+    produto_linha("registros_importados_operacional_pre_painel.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_importados_operacional_pre_painel.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_importados_operacional_pre_painel.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "camada operacional pós-tokenização/pré-painel; não substitui registros_importados.csv, registros_corrig.csv nem registros_validados.csv"),
     produto_linha("registros_importados_bruto.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_importados_bruto.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_importados_bruto.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "snapshot técnico bruto da leitura/montagem dos arquivos de entrada"),
     produto_linha("registros_corrig.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig.csv"), "arquivo", TRUE, TRUE, 1L, "base corrigida final"),
     produto_linha("registros_validados.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_validados.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_validados.csv"), "arquivo", espera_registros_validados, espera_registros_validados, 1L, "produto opcional no schema SISMONITORA 21FEV25"),

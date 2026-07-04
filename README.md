@@ -54,9 +54,12 @@ O arquivo `correcoes_semanticas.csv` registra intenções de correção, não ap
 
 ## Produtos principais
 
-- `output/registros_corrig.csv`: base corrigida e auditável.
-- `output/registros_corrig_stat.csv`: tabela estatística por COLETA/UC/UA/ano.
-- `output/registros_validados.csv`: produto opcional no contrato de estrutura/formato, quando habilitado.
+- `output/01_produtos_dados/registros_importados_bruto.csv`: snapshot técnico da leitura/montagem da entrada.
+- `output/01_produtos_dados/registros_importados.csv`: camada canônica de importação saneada, antes da transformação operacional pós-tokenização.
+- `output/01_produtos_dados/registros_importados_operacional_pre_painel.csv`: camada operacional pós-tokenização/pré-painel; não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`.
+- `output/01_produtos_dados/registros_corrig.csv`: base corrigida e auditável.
+- `output/01_produtos_dados/registros_corrig_stat.csv`: tabela estatística por COLETA/UC/UA/ano.
+- `output/01_produtos_dados/registros_validados.csv`: produto opcional no contrato de estrutura/formato, quando habilitado.
 - `output/correcoes_campos/`: correções semânticas, auditorias, relatórios pré/pós-painel e diagnósticos.
 - `output/relatorios_validacao/`: relatório consolidado de validação e arquivos de apoio.
 - `output/validacao_espacial/`: produtos de validação espacial, quando habilitada.
