@@ -39609,6 +39609,82 @@ if (isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound =
   }
 }
 
+### v2.6.2 - Incremento 03.5P-C (motor único: estatísticas/gráficos) -------
+### Declara, sem alterar nenhum cálculo, a camada/fonte real que alimenta as
+### estatísticas e gráficos desta execução e o status contratual conhecido
+### dessa fonte. Estatísticas/gráficos sempre partem de `registros_corrig_stat`
+### (construído logo abaixo, a partir do `registros_corrig` já corrigido/
+### deduplicado em memória) -- nunca de `registros_validados.csv`, que é
+### produto opcional, gerado (quando gerado) a partir do mesmo
+### `registros_corrig`, mas por regra própria (schema XLSForm21) que pode
+### bloquear/abortar independentemente da construção das estatísticas (ver
+### comentário de "Construção das tabelas estatísticas" acima e a
+### seção 27/28 do contrato de governança). Reaproveita o helper já testado
+### em 03.5N-C (`monitora_registros_corrig_severidade_contrato_unico()`) para
+### também informar, sem introduzir nenhum fato novo, se as colunas de
+### `registros_corrig` que alimentam as estatísticas têm severidade alta
+### bloqueante do contrato único. Esta função só declara fatos já
+### verdadeiros no fluxo existente -- não lê nem grava
+### registros_importados*.csv/registros_corrig.csv/registros_validados.csv,
+### não participa de nenhuma decisão de bloqueio e é estritamente
+### informativa (log de execução apenas).
+monitora_estatisticas_declarar_status_fonte <- function(registros_corrig) {
+  if (!isTRUE(monitora_cfg_env_bool("MONITORA_DECLARAR_STATUS_FONTE_ESTATISTICAS", TRUE))) return(invisible(NULL))
+
+  solicitado <- isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE))
+  gerado <- isTRUE(get0("MONITORA_REGISTROS_VALIDADOS_GERADO", ifnotfound = FALSE, inherits = TRUE))
+
+  status_validados <- if (gerado) {
+    "registros_validados.csv foi gerado nesta execucao"
+  } else if (solicitado) {
+    "registros_validados.csv foi solicitado mas NAO foi gerado (bloqueado/abortado) nesta execucao; motivo exato nao capturado neste ponto -- ver auditoria_registros_validados_resumo.csv quando disponivel"
+  } else {
+    "registros_validados.csv nao foi solicitado nesta execucao (opcao inativa)"
+  }
+
+  n_alta_sev <- NA_integer_
+  if (exists("monitora_registros_corrig_severidade_contrato_unico", mode = "function")) {
+    sev <- tryCatch(
+      monitora_registros_corrig_severidade_contrato_unico(names(registros_corrig)),
+      error = function(e) data.table::data.table()
+    )
+    if (data.table::is.data.table(sev) && nrow(sev) &&
+        all(c("severidade_contrato_unico", "bloqueia_migracao_automatica_contrato_unico") %in% names(sev))) {
+      n_alta_sev <- sum(
+        sev$severidade_contrato_unico == "alta" &
+          sev$bloqueia_migracao_automatica_contrato_unico %in% TRUE,
+        na.rm = TRUE
+      )
+    }
+  }
+
+  detalhe <- paste0(
+    "estatisticas/graficos desta execucao partem de registros_corrig_stat ",
+    "(derivado de registros_corrig em memoria), nunca de registros_validados.csv; ",
+    status_validados, "; colunas de registros_corrig com severidade alta ",
+    "bloqueante do contrato unico: ",
+    if (is.na(n_alta_sev)) "nao avaliado (flag MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS desligada ou indisponivel)" else n_alta_sev
+  )
+
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    monitora_log_registrar_evento(
+      "declaracao_fonte_estatisticas",
+      if ((solicitado && !gerado) || (!is.na(n_alta_sev) && n_alta_sev > 0)) "AVISO" else "INFO",
+      NA_character_,
+      detalhe,
+      "estritamente informativo; nao altera registros_corrig_stat, graficos ou qualquer decisao de bloqueio"
+    )
+  }
+
+  invisible(list(
+    registros_validados_solicitado = solicitado,
+    registros_validados_gerado = gerado,
+    n_colunas_alta_severidade_contrato_unico = n_alta_sev
+  ))
+}
+try(monitora_estatisticas_declarar_status_fonte(registros_corrig), silent = TRUE)
+### FIM v2.6.2 - 03.5P-C -----------------------------------------------------
+
 ### Construção das tabelas estatísticas
 
 ## Preparação de registros_corrig_stat com data.table e tabelas estreitas.
