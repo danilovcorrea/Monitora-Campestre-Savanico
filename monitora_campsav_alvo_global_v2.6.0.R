@@ -32869,7 +32869,7 @@ monitora_contrato_unico_diagnosticar_observado_canonico <- function(colunas_obse
 
   meta_atributo <- unique(atributos[, .(
     atributo_canonico_2025, name_curto, cardinalidade_operacional,
-    origem_regra, status_confianca
+    origem_regra, status_confianca, severidade
   )])
   mapa <- merge(mapa, meta_atributo, by.x = "atributo_canonico_sugerido", by.y = "atributo_canonico_2025", all.x = TRUE)
   data.table::setnames(mapa, "name_curto", "name_curto_sugerido")
@@ -32914,7 +32914,7 @@ monitora_contrato_unico_diagnosticar_observado_canonico <- function(colunas_obse
     "coluna_observada", "coluna_observada_normalizada", "atributo_canonico_sugerido",
     "caminho_registro_sugerido", "name_curto_sugerido", "metodo_match", "prioridade_match",
     "score_match", "status_match", "n_candidatos", "candidatos_resumo",
-    "cardinalidade_operacional", "origem_regra", "status_confianca", "estagio_aplicavel",
+    "cardinalidade_operacional", "origem_regra", "status_confianca", "severidade", "estagio_aplicavel",
     "observacao_diagnostica", "bloqueia_migracao_automatica", "contexto"
   ), names(mapa)))
   data.table::setorder(mapa, coluna_observada)
@@ -32974,12 +32974,26 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
     caminho_mapa <- file.path(dir_diag, paste0("mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
     data.table::fwrite(diagnostico, caminho_mapa, na = "")
 
+    ### v2.6.2 - 03.5L-C: o diagnóstico permanece opt-in e nunca altera
+    ### registros_importados.csv, mas colunas de severidade "alta" (derivada
+    ### em monitora_contrato_unico_indices(), sem fato novo) que também
+    ### bloqueiam migração automática deixam de ser só relatório silencioso
+    ### -- viram alerta determinante (evento "AVISO" + warning() visível),
+    ### conforme recomendado no plano executivo do motor único (seção 4).
+    tem_severidade <- "severidade" %in% names(diagnostico)
+    n_alta_severidade_bloqueante <- if (tem_severidade) {
+      sum(diagnostico$severidade == "alta" & diagnostico$bloqueia_migracao_automatica, na.rm = TRUE)
+    } else {
+      NA_integer_
+    }
+
     resumo <- data.table::data.table(
       metrica = c(
         "total_colunas_observadas", "match_exato_path", "match_exato_name", "match_exato_label",
         "match_por_alias", "match_por_normalizacao", "ambiguas", "sem_match", "fora_do_contrato",
         "total_atributos_canonicos_distintos_mapeados", "campos_condicionais_esparsos_observados",
-        "campos_ambiguos_indeterminados_observados", "colunas_bloqueiam_migracao_automatica"
+        "campos_ambiguos_indeterminados_observados", "colunas_bloqueiam_migracao_automatica",
+        "colunas_alta_severidade_bloqueantes"
       ),
       valor = c(
         nrow(diagnostico),
@@ -32994,7 +33008,8 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
         data.table::uniqueN(diagnostico$atributo_canonico_sugerido[!is.na(diagnostico$atributo_canonico_sugerido)]),
         sum(diagnostico$cardinalidade_operacional == "estruturado_condicional_esparso", na.rm = TRUE),
         sum(diagnostico$cardinalidade_operacional == "ambiguo_indeterminado", na.rm = TRUE),
-        sum(diagnostico$bloqueia_migracao_automatica, na.rm = TRUE)
+        sum(diagnostico$bloqueia_migracao_automatica, na.rm = TRUE),
+        n_alta_severidade_bloqueante
       )
     )
     caminho_resumo <- file.path(dir_diag, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
@@ -33002,7 +33017,7 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
     data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv")), na = "")
 
     txt <- c(
-      paste0("Diagnóstico de contrato único (03.5L-B) -- contexto: ", as.character(contexto)[1L]),
+      paste0("Diagnóstico de contrato único (03.5L-B/03.5L-C) -- contexto: ", as.character(contexto)[1L]),
       paste0("Gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
       "Este relatório é só diagnóstico -- não altera registros_importados.csv nem nenhum outro produto.",
       paste0("Total de colunas observadas: ", nrow(diagnostico)),
@@ -33010,17 +33025,31 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
       paste0("Sem match: ", sum(diagnostico$status_match == "sem_match", na.rm = TRUE)),
       paste0("Ambíguas: ", sum(diagnostico$status_match == "multiplo_ambiguo", na.rm = TRUE)),
       paste0("Bloqueiam migração automática (não forçadas): ", sum(diagnostico$bloqueia_migracao_automatica, na.rm = TRUE)),
+      paste0("Alta severidade e bloqueantes (alerta determinante): ", n_alta_severidade_bloqueante),
       paste0("Mapa completo: ", basename(caminho_mapa)),
       paste0("Resumo: ", basename(caminho_resumo))
     )
     writeLines(txt, file.path(dir_diag, paste0("resumo_", sufixo, "_", exec_id_chr, ".txt")))
 
     if (exists("monitora_log_registrar_evento", mode = "function")) {
+      alerta_alta_severidade <- isTRUE(tem_severidade) && isTRUE(n_alta_severidade_bloqueante > 0L)
       monitora_log_registrar_evento(
-        "diagnostico_contrato_unico_registros_importados", "INFO", caminho_mapa,
-        paste0("Diagnóstico de contrato único gerado para ", as.character(contexto)[1L], " (", nrow(diagnostico), " colunas observadas)"),
+        "diagnostico_contrato_unico_registros_importados",
+        if (alerta_alta_severidade) "AVISO" else "INFO",
+        caminho_mapa,
+        paste0("Diagnóstico de contrato único gerado para ", as.character(contexto)[1L], " (", nrow(diagnostico), " colunas observadas",
+               if (alerta_alta_severidade) paste0("; ", n_alta_severidade_bloqueante, " de alta severidade bloqueiam migração automática") else "", ")"),
         "produto diagnóstico opt-in; não altera registros_importados.csv"
       )
+      if (alerta_alta_severidade) {
+        warning(
+          n_alta_severidade_bloqueante,
+          " coluna(s) de alta severidade em ", as.character(contexto)[1L],
+          " bloqueiam migração automática pelo contrato único; revisar ", basename(caminho_mapa),
+          " (diagnóstico não altera registros_importados.csv)",
+          call. = FALSE
+        )
+      }
     }
   }, error = function(e) {
     warning("Falha ao gravar diagnóstico de contrato único (registros_importados); produto não afetado: ",
