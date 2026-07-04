@@ -39,12 +39,10 @@ Etapas do plano normativo (seção 27) já cumpridas, com evidência de código:
 
 ## 2. O que ainda não está conectado (fontes paralelas continuam sendo o caminho primário)
 
-Os seguintes itens da seção 27 **não têm evidência de conclusão** nesta
-auditoria — os pontos de importação, pré-validação, painel, pós-validação,
-exportação e estatísticas/gráficos continuam operando por lógica própria
-(regras locais/hard-codes históricos), com o contrato único atuando apenas
-como camada de diagnóstico/comparação em paralelo, não como fonte
-determinante do comportamento:
+No início deste plano, os seguintes itens da seção 27 **não tinham
+evidência de conclusão**. As seções 6 a 11 registram os incrementos
+posteriores executados em 2026-07-04; esta lista deve ser lida como
+baseline inicial da auditoria, não como estado final do arquivo:
 
 - conectar importação (uso determinante, não apenas diagnóstico);
 - conectar pré-validação;
@@ -97,11 +95,11 @@ antes e depois da conexão.
 | Critério | Status |
 |---|---|
 | Perfis derivados da mesma fonte | Parcial — índices existem, mas fluxo primário ainda não depende deles em todos os pontos |
-| Importação sem fontes paralelas | Não — importação ainda não é determinantemente conectada |
-| Pré-validação com diagnósticos suficientes | Parcial — diagnóstico de pipes e comparação legado-vs-contrato já existem |
-| Painel exibindo regras/severidade/origem/bloqueio | Não auditado nesta etapa |
-| Pós-validação determinando aptidão de `registros_corrig.csv` | Não auditado nesta etapa |
-| Exportação com 129 colunas quando apto | Não auditado nesta etapa |
+| Importação sem fontes paralelas | Parcial — 03.5L-C elevou divergências de alta severidade a alerta opt-in; fluxo primário ainda não é substituído pelo contrato |
+| Pré-validação com diagnósticos suficientes | Parcial — 03.5M-C/03.5M-C2 conectaram diagnóstico/relatório opt-in de pipes por contrato único; sem novo bloqueio primário |
+| Painel exibindo regras/severidade/origem/bloqueio | Auditado documentalmente em 03.5Q-C; não conectado ao contrato único nesta etapa por maior blast radius |
+| Pós-validação determinando aptidão de `registros_corrig.csv` | Parcial — 03.5N-C declarou severidade contratual em resumo/alerta; aptidão final segue pelo fluxo existente |
+| Exportação com 129 colunas quando apto | Parcial — 03.5O-C propagou severidade ao resumo de exportação; schema de exportação segue pelo fluxo existente |
 | Índices/caches deriváveis | Sim — `monitora_contrato_unico_indices()` |
 | Produtos com identidade/linhagem próprias | Sim — ver arquitetura real materializada, seção 3 |
 | Testes demonstrando equivalência | Parcial — auditorias documentais existem; sem suíte automatizada dedicada |
@@ -618,3 +616,106 @@ interação humana direta (edição ao vivo de `registros_corrig` no Shiny).
 Recomenda-se, antes de qualquer alteração de código no painel, uma
 auditoria documental dedicada (sem incremento de código na mesma etapa),
 seguindo a mesma decisão da seção 3 deste plano.
+
+## 11. Incremento 03.5Q-C executado (2026-07-04, Codex temporário)
+
+Executada a auditoria documental dedicada recomendada na seção 10, sem
+alteração de código. Esta etapa usou Codex explicitamente e
+temporariamente porque a sessão do Claude atingiu limite e só retornaria
+às 20h America/Sao_Paulo; para as próximas tarefas após o reset, o motor
+recomendado volta a ser Claude, conforme política operacional carregada.
+
+**Ponto auditado:** painel de correções assistidas e aplicação das
+correções no fluxo principal, especialmente:
+- decisão de abertura por `MONITORA_ABRIR_PAINEL_CORRECOES` e modos
+  orientados a painel;
+- materialização prévia de
+  `registros_importados_operacional_pre_painel.csv`, sem sobrescrever
+  `registros_importados.csv`;
+- preparação de dicionários e metadados XLSForm do painel
+  (`MONITORA_META_XLSFORMS_CORRECOES`,
+  `MONITORA_DICIONARIO_ATRIBUTOS_CORRECOES`);
+- geração de relatórios de apoio pré/pós-painel;
+- chamada interativa `monitora_correcao_painel(registros_corrig, ...)`;
+- aplicação posterior de `correcoes_campos` sobre `registros_corrig`;
+- checkpoint parcial/final de `registros_corrig.csv` por
+  `monitora_execucao_gravar_checkpoint_parcial()` e
+  `monitora_publicacao_aa_exportar_registros_corrig_aprovado()`.
+
+**Status antes:** o painel era o único ponto restante sem auditoria
+incremental recente no plano. O contrato integral exige que o painel
+exiba regra, severidade, origem e bloqueio, sem ocultar pendências
+impeditivas nem converter diagnóstico em validação. O script já preserva
+a separação de produtos H2R-C antes do painel e mantém a validação de
+`registros_corrig.csv` depois do painel, mas a interface em si ainda é
+orientada por metadados XLSForm/dicionários próprios e relatórios de
+apoio, não por um `perfil_painel_edicao` derivado exclusivamente do
+contrato único.
+
+**Status depois:** nenhuma conexão funcional nova foi introduzida. A
+conclusão auditável desta etapa é que **não é seguro alterar código do
+painel no mesmo incremento**, porque o painel tem o maior blast radius do
+motor único: interação humana direta, cache/reabertura incremental,
+replay de correções, validação espacial opcional, relatórios pré/pós e
+aplicação atômica posterior das operações. Um alerta opt-in ou mudança de
+UI mal posicionada poderia alterar fluxo de curadoria ou interpretação de
+pendências sem teste end-to-end do Shiny.
+
+**Fontes paralelas identificadas no painel:** metadados XLSForm
+embutidos, dicionário de atributos, dependências condicionais e
+relatórios de apoio continuam sendo fontes operacionais próprias do
+painel. Elas não devem ser removidas nem substituídas até que um
+`perfil_painel_edicao` derivado de `monitora_contrato_unico_indices()`
+demonstre equivalência de exibição, severidade, bloqueio e escopo de
+edição.
+
+**Critérios de aceite para uma futura conexão de código do painel:**
+1. Flag opt-in default OFF para qualquer declaração de contrato único na
+   interface.
+2. Nenhuma alteração em schema, linhas, cardinalidade ou conteúdo de
+   `registros_corrig` quando a flag estiver OFF.
+3. Nenhuma releitura normativa de `output/` ou `log/`; o painel deve usar
+   somente objetos em memória e perfis derivados do contrato embutido.
+4. Nenhuma reconstrução de `registros_importados.csv` ou
+   `registros_importados_bruto.csv` a partir de `registros_corrig.csv` ou
+   `registros_validados.csv`.
+5. Severidade, origem, status de bloqueio e tipo de correção exibidos
+   como anotação de contexto, sem bloquear novas operações até haver teste
+   end-to-end específico.
+6. Teste sintético isolado para o helper de perfil do painel e teste
+   Shiny mínimo/stub verificando que a abertura e o fechamento do painel
+   não mudam `registros_corrig` sem correções.
+
+**Testes/auditorias executados nesta etapa documental:**
+1. `git status -sb`, branch, HEAD, upstream e ahead/behind — branch
+   `dev-v2.6.2-h2r-cadeia-produtos`, HEAD `23cf163`, upstream alinhado,
+   sem diff rastreado; apenas os dois não rastreados esperados.
+2. `git log --oneline 75e298c..HEAD` e `git log --name-status
+   75e298c..HEAD` — confirmados os incrementos recentes de
+   pós-validação, exportação e estatísticas/gráficos.
+3. Presença do contrato integral confirmada em
+   `diagnostics/contrato_governanca_dev_consolidado/CONTRATO_GOVERNANCA_DEV_MONITORA_CONSOLIDADO_INTEGRAL.md`.
+4. Grep/leitura estática do plano e do script nos pontos de painel,
+   checkpoint parcial, exportação de `registros_corrig` e cadeia
+   `registros_importados_bruto.csv -> registros_importados.csv ->
+   registros_importados_operacional_pre_painel.csv -> registros_corrig.csv
+   -> registros_validados.csv`.
+5. Revisão de diff documental: nenhuma alteração no script e nenhuma
+   alteração em produto central.
+
+**Riscos remanescentes:**
+- O painel ainda não exibe, como fonte determinante derivada do contrato
+  único, regra/severidade/origem/bloqueio para cada ocorrência conforme o
+  critério de aceitação da seção 28.
+- As fontes operacionais do painel permanecem legítimas, mas paralelas ao
+  contrato único; removê-las sem prova de equivalência quebraria a
+  curadoria.
+- A validação de comportamento do painel exige teste Shiny controlado;
+  esta etapa evitou esse risco deliberadamente e não declara conclusão
+  funcional do motor único para painel.
+
+**Próximo ponto recomendado:** implementar, em tarefa separada e com teste
+Shiny/stub dedicado, um helper somente leitura
+`perfil_painel_edicao` derivado de `monitora_contrato_unico_indices()`,
+default OFF, inicialmente apenas para produzir uma tabela de auditoria da
+interface. Só depois avaliar exposição visual no painel.
