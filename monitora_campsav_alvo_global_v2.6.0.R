@@ -35867,6 +35867,29 @@ registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou m
 
 monitora_perf_registrar_checkpoint("padronizacao_categorias_e_material_botanico", "padronização de categorias gerais, materiais botânicos e campos condicionais", registros_corrig)
 
+### v2.6.2 - 03.5M-D2 -----------------------------------------------------------
+### Relatório opt-in de pipes por contrato único (default OFF, ver
+### MONITORA_DIAGNOSTICO_PIPES_CONTRATO) capturado ANTES do bloco de extração
+### do último token (abaixo) rodar sobre as colunas condicionais de forma de
+### vida (bromelioide/cactacea/orquidea/samambaia × nativa/exótica/seca-morta)
+### e sobre ponto_amostral/ponto_metro/Encostam. A 03.5M-D2 (auditoria)
+### encontrou que, na run FNCS real 35md1, o pipe presente em
+### registros_importados_bruto.csv já não aparece em nenhum diagnóstico
+### posterior (registros_corrig) porque o bloco abaixo resolve
+### (`word(x, sep = fixed("|"), -1)`) essas colunas bem antes de qualquer
+### checkpoint 03.5M existente -- este é o único ponto de integração que pode
+### capturar o pipe ainda intacto, para fins de diagnóstico. Reaproveita
+### integralmente o wrapper e a função já testados na 03.5M-C/C2; não
+### introduz nenhuma lógica nova. Nunca bloqueia o fluxo, nunca altera
+### `registros_corrig` -- envolvido em try() além do wrapper já tratar erro
+### internamente. Ver diagnostics/dev_035m_d2_camadas_pipe_fncs/.
+if (exists("monitora_pipe_contrato_relatorio_optin_seguro", mode = "function")) {
+  try(monitora_pipe_contrato_relatorio_optin_seguro(
+    registros_corrig, contexto = "pre_normalizacao_formas_vida_condicionais",
+    output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID
+  ), silent = TRUE)
+}
+
 ### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por
 ### "|")
 
