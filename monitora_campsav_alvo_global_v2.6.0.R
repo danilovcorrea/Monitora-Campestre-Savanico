@@ -29528,6 +29528,27 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     )
   }
 
+  ### v2.6.2 - 03.5O-C -----------------------------------------------------
+  ### Propaga, como metadado auxiliar opt-in (mesma flag
+  ### MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS já usada em
+  ### monitora_registros_corrig_severidade_contrato_unico()/03.5N-C), a
+  ### contagem de atributos bloqueantes de alta severidade do contrato único
+  ### já calculada acima em auditoria_contrato_corrig$resumo. Não recalcula
+  ### nada novo e não participa de n_bloq/decisão de bloqueio desta função;
+  ### só torna visível no resumo da própria exportação (auditoria_registros_
+  ### validados_resumo.csv), fora do schema de registros_validados.csv.
+  ### Degrada com segurança (NA) quando a flag está desligada, a auditoria do
+  ### contrato de registros_corrig não rodou ou a coluna não existe.
+  n_bloqueios_alta_severidade_contrato_unico_registros_corrig <- NA_integer_
+  if (!is.null(auditoria_contrato_corrig) && is.list(auditoria_contrato_corrig) &&
+      !is.null(auditoria_contrato_corrig$resumo) &&
+      "n_bloqueios_alta_severidade_contrato_unico" %in% names(auditoria_contrato_corrig$resumo)) {
+    n_bloqueios_alta_severidade_contrato_unico_registros_corrig <- suppressWarnings(
+      as.integer(auditoria_contrato_corrig$resumo$n_bloqueios_alta_severidade_contrato_unico[1L])
+    )
+  }
+  ### FIM v2.6.2 - 03.5O-C ---------------------------------------------------
+
   caminhos <- list(
     mapeamento_log = file.path(log_dir, paste0("auditoria_registros_validados_mapeamento_", exec_id, ".csv")),
     mapeamento_out = file.path(output_dir, "auditoria_registros_validados_mapeamento.csv"),
@@ -29579,6 +29600,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     n_bloqueios_sanitizacao_outras_formas = as.integer(nrow(problemas_sanitizacao_outras) > 0L),
     n_bloqueios_sanitizacao_desconhecida = nrow(problemas_sanitizacao_desconhecida),
     n_bloqueios = n_bloq,
+    n_bloqueios_alta_severidade_contrato_unico_registros_corrig = n_bloqueios_alta_severidade_contrato_unico_registros_corrig,
     auditoria_mapeamento = monitora_privacidade_caminho_relativo(caminhos$mapeamento_log),
     auditoria_formatos = monitora_privacidade_caminho_relativo(caminhos$formatos_log),
     auditoria_hora = monitora_privacidade_caminho_relativo(caminhos$hora_log),
