@@ -69,6 +69,13 @@ O arquivo `correcoes_semanticas.csv` registra intenções de correção, não ap
 
 Arquivos em `input/`, `output/`, `log/` e `extracted/` podem conter dados sensíveis, como coordenadas, UUIDs, fotos, observações de campo, nomes de UC e dados cadastrais. Esses arquivos não integram a release pública.
 
+## Governança de desenvolvimento
+
+O contrato normativo de desenvolvimento (fonte canônica única, sem
+supressão de premissas) está em
+[`diagnostics/contrato_governanca_dev_consolidado/`](diagnostics/contrato_governanca_dev_consolidado/README.md),
+que também indexa os documentos derivados/auxiliares.
+
 ## Como citar
 
 CBC/ICMBio-MMA. 2026. *Script de tratamento, validação e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico do Programa Monitora*. Versão `v2.6.0`. Repositório GitHub: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
