@@ -24452,7 +24452,13 @@ monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
   ### Em data.table, names(out) pode compartilhar referência interna; se o vetor
   ### for mantido por referência, o setnames(out, nomes_internos) pode vazar para
   ### o cabeçalho manual e produzir MONITORA_COL_00001... no CSV final.
-  nomes_originais <- enc2utf8(as.character(base::names(out)))
+  ### Hotfix 03.5M-D2-H1: enc2utf8(as.character(...)) sozinho NÃO garante uma
+  ### cópia independente (ambos podem devolver o mesmo objeto quando o vetor já
+  ### é character/UTF-8), e setnames() muta por referência -- confirmado por
+  ### teste isolado que isso corrompia nomes_originais na prática, produzindo
+  ### MONITORA_COL_00001... em TODAS as colunas do CSV final, mesmo sem
+  ### duplicatas. paste0() sempre aloca um vetor novo, forçando a cópia real.
+  nomes_originais <- paste0(enc2utf8(as.character(base::names(out))))
   if (!length(nomes_originais)) stop("registros_importados.csv bruto sem colunas.", call. = FALSE)
 
   duplicadas <- nomes_originais[duplicated(nomes_originais)]
