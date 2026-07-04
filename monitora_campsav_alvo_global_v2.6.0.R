@@ -217,6 +217,19 @@ MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS <- "N"
 ### diagnostics/dev_035m_c_relatorio_pipes_contrato/.
 MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- "N"
 
+### v2.6.2 - 03.5N-C -----------------------------------------------------------
+### Alerta opcional de severidade por contrato único (03.5I/J/K) sobre a
+### auditoria contratual XLSForm21 que decide a aptidão de registros_corrig.csv
+### para gerar registros_validados.csv. Padrão desligado: "N", zero efeito
+### colateral, zero custo. Quando "S", só ENRIQUECE as auditorias já gravadas
+### (colunas severidade_contrato_unico/bloqueia_migracao_automatica_contrato_unico
+### + contagem no resumo) e emite warning() adicional quando há bloqueio de
+### alta severidade -- nunca participa do cálculo de `bloqueante`, nunca
+### bloqueia registros_corrig.csv nem altera o schema/cardinalidade de
+### registros_validados.csv. Ver
+### diagnostics/plano_executivo_motor_unico_20260704/.
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS <- "N"
+
 ### Módulo opcional de validação espacial de COLETAS -------------------------
 ### O padrão é desligado. Altere para "S" para gerar validação espacial e habilitar
 ### a aba espacial do painel. Também pode ser definido por variável de ambiente.
@@ -394,6 +407,14 @@ MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- Sys.getenv(
 MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- toupper(trimws(as.character(MONITORA_DIAGNOSTICO_PIPES_CONTRATO)[1]))
 if (!(MONITORA_DIAGNOSTICO_PIPES_CONTRATO %in% c("S", "N"))) {
   MONITORA_DIAGNOSTICO_PIPES_CONTRATO <- "N"
+}
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS <- Sys.getenv(
+  "MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS",
+  unset = as.character(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS)[1]
+)
+MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS <- toupper(trimws(as.character(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS)[1]))
+if (!(MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS %in% c("S", "N"))) {
+  MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS <- "N"
 }
 
 
@@ -29109,6 +29130,41 @@ monitora_registros_validados_gravar_bloqueios <- function(resumo = NULL,
 }
 ### FIM v2.6.0 ---------------------------------------------------------
 
+### v2.6.2 - 03.5N-C -----------------------------------------------------------
+### Enriquecimento opt-in (MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS,
+### default "N") da auditoria contratual XLSForm21 (função abaixo) com
+### severidade/bloqueio já derivados em monitora_contrato_unico_indices()
+### (nenhum fato novo). Reaproveita
+### monitora_contrato_unico_diagnosticar_observado_canonico(), o mesmo mapeador
+### observado->canônico já testado em 03.5L-C/03.5M-C3, evitando duplicar regra
+### de match fora do contrato único. Com a flag desligada, ausência da função ou
+### qualquer falha, retorna data.table vazio -- degradação segura: o merge do
+### chamador é left-join por `atributo`, nunca remove/duplica linha da
+### auditoria e nunca participa do cálculo de `bloqueante`.
+monitora_registros_corrig_severidade_contrato_unico <- function(atributos) {
+  vazio <- data.table::data.table(
+    atributo = character(),
+    severidade_contrato_unico = character(),
+    bloqueia_migracao_automatica_contrato_unico = logical()
+  )
+  flag <- get0("MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS", ifnotfound = "N", inherits = TRUE)
+  if (!identical(as.character(flag)[1L], "S")) return(vazio)
+  if (!exists("monitora_contrato_unico_diagnosticar_observado_canonico", mode = "function")) return(vazio)
+  tryCatch({
+    mapa <- data.table::as.data.table(monitora_contrato_unico_diagnosticar_observado_canonico(
+      colunas_observadas = atributos,
+      contexto = "pos_validacao_registros_corrig_xlsform21"
+    ))
+    if (!nrow(mapa) || !all(c("coluna_observada", "severidade", "bloqueia_migracao_automatica") %in% names(mapa))) return(vazio)
+    data.table::data.table(
+      atributo = as.character(mapa$coluna_observada),
+      severidade_contrato_unico = as.character(mapa$severidade),
+      bloqueia_migracao_automatica_contrato_unico = as.logical(mapa$bloqueia_migracao_automatica)
+    )
+  }, error = function(e) vazio)
+}
+### FIM v2.6.2 - 03.5N-C ---------------------------------------------------
+
 monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(auditoria,
                                                                            vazias_obrig = NULL,
                                                                            problemas_fmt = NULL,
@@ -29182,6 +29238,18 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
     contrato[, motivo := motivos]
   }
   contrato[, status_contrato := ifelse(bloqueante, "bloqueante", "ok")]
+
+  ### v2.6.2 - 03.5N-C: enriquecimento opt-in aditivo (ver
+  ### monitora_registros_corrig_severidade_contrato_unico() acima). Colunas
+  ### novas ficam NA quando a flag está desligada ou o match falha; não
+  ### alteram `bloqueante`/`status_contrato` nem removem/duplicam linha.
+  contrato[, `:=`(severidade_contrato_unico = NA_character_, bloqueia_migracao_automatica_contrato_unico = NA)]
+  sev_contrato_unico <- monitora_registros_corrig_severidade_contrato_unico(contrato$atributo)
+  if (nrow(sev_contrato_unico)) {
+    contrato[sev_contrato_unico, on = "atributo",
+             `:=`(severidade_contrato_unico = i.severidade_contrato_unico,
+                  bloqueia_migracao_automatica_contrato_unico = i.bloqueia_migracao_automatica_contrato_unico)]
+  }
   contrato_logico <- data.table::copy(contrato)
   contrato_auditoria <- monitora_privacidade_sanitizar_auditoria(contrato, mascarar_exemplos = FALSE)
 
@@ -29197,6 +29265,9 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
     n_condicional_invalido = sum(!contrato_logico$condicional_ok, na.rm = TRUE),
     n_sanitizacao_invalida = sum(!contrato_logico$sanitizacao_ok, na.rm = TRUE),
     n_ajustes_xlsform21 = sum(suppressWarnings(as.integer(contrato_logico$n_ajustes_xlsform21)), na.rm = TRUE),
+    n_bloqueios_alta_severidade_contrato_unico = sum(contrato_logico$bloqueante &
+      !is.na(contrato_logico$severidade_contrato_unico) &
+      contrato_logico$severidade_contrato_unico == "alta", na.rm = TRUE),
     status = ifelse(any(contrato_logico$bloqueante, na.rm = TRUE), "bloqueante", "ok"),
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
@@ -29216,6 +29287,21 @@ monitora_registros_corrig_gravar_auditoria_contrato_xlsform21 <- function(audito
       arq_log,
       paste0("auditoria contratual de registros_corrig nos atributos do XLSForm 21FEV25: ", nrow(contrato_logico), " atributo(s), bloqueios=", sum(contrato_logico$bloqueante, na.rm = TRUE)),
       "registros_validados herda de registros_corrig saneado"
+    )
+  }
+  ### v2.6.2 - 03.5N-C: alerta opt-in complementar (mesma flag do
+  ### enriquecimento acima) -- cruza os atributos já bloqueantes por regra
+  ### própria do XLSForm21 com a severidade do contrato único, só para
+  ### visibilidade extra; não é uma nova condição de bloqueio.
+  n_bloq_alta_sev_cu <- sum(contrato_logico$bloqueante &
+    !is.na(contrato_logico$severidade_contrato_unico) &
+    contrato_logico$severidade_contrato_unico == "alta", na.rm = TRUE)
+  if (isTRUE(n_bloq_alta_sev_cu > 0L)) {
+    warning(
+      n_bloq_alta_sev_cu, " atributo(s) bloqueante(s) na auditoria contratual de registros_corrig (contexto=",
+      as.character(contexto)[1L], ") correspondem a alta severidade do contrato único; revisar ", basename(arq_log),
+      " (diagnóstico opt-in, não introduz bloqueio além da regra já existente)",
+      call. = FALSE
     )
   }
   invisible(list(auditoria = contrato_auditoria, resumo = resumo))
