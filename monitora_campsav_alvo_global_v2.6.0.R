@@ -33376,6 +33376,22 @@ monitora_pipe_contrato_diagnosticar_dataset <- function(registros, max_colunas =
     estrategia <- if (!is.null(class_contrato_row)) class_contrato_row$estrategia_pipe else NA_character_
     status_match <- if (!is.null(class_contrato_row)) class_contrato_row$status_match else NA_character_
     atributo_canon <- if (!is.null(class_contrato_row)) class_contrato_row$atributo_canonico_sugerido else NA_character_
+    ### v2.6.2 - 03.5M-C3: mesma severidade já derivada em
+    ### monitora_contrato_unico_indices() (nenhum fato novo) e já presente em
+    ### class_contrato_row via monitora_pipe_contrato_classificar_coluna() ->
+    ### monitora_contrato_unico_diagnosticar_observado_canonico() desde
+    ### 03.5L-C -- só propagada aqui para permitir o mesmo alerta
+    ### determinante de alta severidade usado no ponto de importação.
+    severidade <- if (!is.null(class_contrato_row) && "severidade" %in% names(class_contrato_row)) {
+      class_contrato_row$severidade
+    } else {
+      NA_character_
+    }
+    bloqueia_migracao_automatica <- if (!is.null(class_contrato_row) && "bloqueia_migracao_automatica" %in% names(class_contrato_row)) {
+      isTRUE(class_contrato_row$bloqueia_migracao_automatica)
+    } else {
+      NA
+    }
 
     ### Mapa aproximado para comparar a decisão do classificador legado
     ### (categorias pipe_*) com a estratégia recomendada pelo contrato --
@@ -33401,6 +33417,8 @@ monitora_pipe_contrato_diagnosticar_dataset <- function(registros, max_colunas =
       cardinalidade_operacional = cardinalidade,
       estrategia_pipe_contrato = estrategia,
       status_match_contrato = status_match,
+      severidade = severidade,
+      bloqueia_migracao_automatica = bloqueia_migracao_automatica,
       divergencia_legado_vs_contrato = isTRUE(divergencia),
       deve_preservar_pipe = identical(estrategia, "preservar_texto_livre"),
       deve_tratar_select_multiple = identical(estrategia, "tratar_como_conjunto_tokens"),
@@ -33529,6 +33547,18 @@ monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeli
     n_pipe_ambiguo_fora <- sum(diag$tem_pipe & diag$eh_ambiguo_ou_fora_contrato, na.rm = TRUE)
     exige_relevance <- n_pipe_condicional_esparso > 0L
 
+    ### v2.6.2 - 03.5M-C3: mesmo padrão de alerta determinante do incremento
+    ### 03.5L-C (importação) -- colunas com pipe cuja severidade (derivada em
+    ### monitora_contrato_unico_indices(), sem fato novo) é "alta" E que
+    ### bloqueiam migração automática deixam de ser só relatório silencioso.
+    ### Continua opt-in pela mesma flag, nunca altera `registros`.
+    tem_severidade <- "severidade" %in% names(diag)
+    n_pipe_alta_severidade_bloqueante <- if (tem_severidade) {
+      sum(diag$tem_pipe & diag$severidade == "alta" & diag$bloqueia_migracao_automatica, na.rm = TRUE)
+    } else {
+      NA_integer_
+    }
+
     recomendacao <- if (n_colunas_com_pipe == 0L) {
       "sem_acao"
     } else if (n_pipe_condicional_esparso > 0L || n_pipe_ambiguo_fora > 0L) {
@@ -33550,6 +33580,7 @@ monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeli
       paste0("Colunas com pipe em estruturado_condicional_esparso: ", n_pipe_condicional_esparso),
       paste0("Colunas com pipe ambíguas/fora do contrato: ", n_pipe_ambiguo_fora),
       paste0("Há caso que exigiria relevance/elegibilidade: ", if (isTRUE(exige_relevance)) "SIM" else "NÃO"),
+      paste0("Colunas com pipe de alta severidade e bloqueantes (alerta determinante): ", n_pipe_alta_severidade_bloqueante),
       paste0("Recomendação operacional: ", recomendacao),
       paste0("Diagnóstico completo: ", basename(caminho_diag)),
       paste0("Resumo: ", basename(caminho_resumo))
@@ -33558,11 +33589,24 @@ monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeli
     writeLines(txt, caminho_txt)
 
     if (exists("monitora_log_registrar_evento", mode = "function")) {
+      alerta_alta_severidade <- isTRUE(tem_severidade) && isTRUE(n_pipe_alta_severidade_bloqueante > 0L)
       monitora_log_registrar_evento(
-        "relatorio_pipes_contrato_optin", "INFO", caminho_txt,
-        paste0("Relatório opt-in de pipes por contrato gerado para ", as.character(contexto)[1L], "; recomendacao=", recomendacao),
+        "relatorio_pipes_contrato_optin",
+        if (alerta_alta_severidade) "AVISO" else "INFO",
+        caminho_txt,
+        paste0("Relatório opt-in de pipes por contrato gerado para ", as.character(contexto)[1L], "; recomendacao=", recomendacao,
+               if (alerta_alta_severidade) paste0("; ", n_pipe_alta_severidade_bloqueante, " coluna(s) com pipe de alta severidade bloqueiam migração automática") else ""),
         "produto diagnóstico opt-in; não altera nenhum produto real"
       )
+      if (alerta_alta_severidade) {
+        warning(
+          n_pipe_alta_severidade_bloqueante,
+          " coluna(s) com pipe de alta severidade em ", as.character(contexto)[1L],
+          " bloqueiam migração automática pelo contrato único; revisar ", basename(caminho_txt),
+          " (diagnóstico não altera nenhum produto real)",
+          call. = FALSE
+        )
+      }
     }
   }, error = function(e) {
     warning("Falha ao gravar relatório opt-in de pipes por contrato; nenhum produto real afetado: ",
