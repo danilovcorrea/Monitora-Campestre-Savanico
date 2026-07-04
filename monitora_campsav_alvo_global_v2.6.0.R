@@ -32806,6 +32806,68 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
   )
 }
 
+### v2.6.2 - 03.5R-C ------------------------------------------------------------
+### Helper somente leitura de auditoria do painel de correções (seção 11 do
+### plano executivo do motor único,
+### diagnostics/plano_executivo_motor_unico_20260704/PLANO_EXECUTIVO_MOTOR_UNICO_20260704.md).
+### Deriva exclusivamente de monitora_contrato_unico_indices() (03.5J):
+### reaproveita $perfis$perfil_painel_edicao (já existente ali) e o enriquece
+### com origem/severidade/status de confiança já calculados em
+### $indices$por_atributo_canonico -- nenhum fato novo, nenhuma regra de
+### match duplicada. NÃO é chamada por monitora_correcao_painel() nem por
+### nenhum outro consumidor operacional do painel; produz só uma tabela de
+### auditoria em memória, para inspeção antes de qualquer exposição visual
+### futura na interface (ver critérios de aceite da seção 11). Opt-in via
+### MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO (default desligada): com
+### a flag desligada, o único custo é a checagem da variável de ambiente; com
+### a flag ligada, qualquer campo ausente do contrato ou erro interno degrada
+### para invisible(NULL), sem propagar erro e sem modificar `contrato_indices`
+### nem `ocorrencias_painel` por referência (merge() sempre retorna objeto
+### novo).
+monitora_perfil_painel_edicao_contrato_unico <- function(contrato_indices = NULL, ocorrencias_painel = NULL) {
+  if (!isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))) {
+    return(invisible(NULL))
+  }
+
+  tryCatch({
+    if (is.null(contrato_indices)) contrato_indices <- monitora_contrato_unico_indices()
+    perfil_base <- contrato_indices$perfis$perfil_painel_edicao
+    if (!data.table::is.data.table(perfil_base) || !nrow(perfil_base)) return(invisible(NULL))
+    perfil_base <- data.table::copy(perfil_base)
+
+    por_atributo <- contrato_indices$indices$por_atributo_canonico
+    if (!data.table::is.data.table(por_atributo) ||
+        !all(c("atributo_canonico_2025", "origem_regra", "status_confianca", "severidade") %in% names(por_atributo))) {
+      return(invisible(NULL))
+    }
+    meta_atributo <- unique(por_atributo[, .(atributo_canonico_2025, origem_regra, status_confianca, severidade)])
+
+    perfil_base <- merge(perfil_base, meta_atributo, by = "atributo_canonico_2025", all.x = TRUE)
+    ### Mesma regra estrutural já usada em $perfis$perfil_pre_painel (linha
+    ### ~32738) para "bloqueia_registros_validados" -- aqui só anotação de
+    ### auditoria do painel, não participa de nenhuma decisão de bloqueio real.
+    perfil_base[, bloqueio_estrutural_contrato_unico :=
+      cardinalidade_operacional == "ambiguo_indeterminado" | status_confianca == "baixa_ambiguo"]
+
+    if (!is.null(ocorrencias_painel) &&
+        data.table::is.data.table(ocorrencias_painel) &&
+        "atributo_canonico_2025" %in% names(ocorrencias_painel)) {
+      contagem_ocorrencias <- ocorrencias_painel[, .(n_ocorrencias_painel = .N), by = atributo_canonico_2025]
+      perfil_base <- merge(perfil_base, contagem_ocorrencias, by = "atributo_canonico_2025", all.x = TRUE)
+      perfil_base[is.na(n_ocorrencias_painel), n_ocorrencias_painel := 0L]
+    }
+
+    data.table::setcolorder(perfil_base, intersect(c(
+      "atributo_canonico_2025", "caminho_registro", "name_curto", "label_2025_sem_html",
+      "origem_regra", "severidade", "bloqueio_estrutural_contrato_unico",
+      "cardinalidade_operacional", "status_confianca", "list_name", "choices_disponiveis",
+      "tipo_base", "relevant", "campo_pai", "n_ocorrencias_painel"
+    ), names(perfil_base)))
+    perfil_base[]
+  }, error = function(e) invisible(NULL))
+}
+### FIM v2.6.2 - 03.5R-C ---------------------------------------------------
+
 ### v2.6.2 - 03.5K -------------------------------------------------------------
 ### Diagnóstico observado→canônico (03.5K), usando só o contrato único (03.5I)
 ### e seus índices (03.5J). Recebe apenas NOMES de coluna (não precisa ler
