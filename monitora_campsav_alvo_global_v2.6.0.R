@@ -33480,6 +33480,42 @@ monitora_pipe_contrato_relatorio_optin_seguro <- function(registros, contexto = 
   invisible(resultado)
 }
 
+### v2.6.2 - 03.5M-D0 ----------------------------------------------------------
+### Fixture 100% sintético (nenhum dado real) inspirado no padrão já
+### documentado em diagnostics/hotfix_035g2_restringe_aliases_pipe/
+### HOTFIX_035G2_RESTRINGE_ALIASES_PIPE.md, seção 2: "COLETA 11168 tem
+### bromelioide apenas nos pontos 90 e 91, com valor bruto
+### 'terrestre|terrestre'; o resolvedor tenta aplicar os 2 tokens aos pontos
+### 1 e 2 (...), deixando os demais 99 pontos sem resolução". Esta função só
+### GERA dados artificiais (parâmetros com valores default reproduzindo esse
+### padrão) para uso em teste/diagnóstico isolado do protótipo de contrato
+### (03.5M-A). Não lê nenhum arquivo, não depende de nenhum dado real, não é
+### chamada por nenhum consumidor operacional, não altera nenhum objeto
+### global.
+monitora_pipe_contrato_fixture_condicional_esparso_035m_d0 <- function(n_pontos = 101L,
+                                                                         pontos_elegiveis = c(90L, 91L),
+                                                                         tokens = c("terrestre", "terrestre")) {
+  stopifnot(length(pontos_elegiveis) == length(tokens), all(pontos_elegiveis >= 1L), all(pontos_elegiveis <= n_pontos))
+  valores_parent <- rep("graminoide", n_pontos)
+  valores_parent[pontos_elegiveis] <- "bromelioide"
+  valor_pipe <- paste(tokens, collapse = "|")
+  esperado <- rep(NA_character_, n_pontos)
+  esperado[pontos_elegiveis] <- tokens
+  list(
+    n_pontos = n_pontos,
+    pontos_elegiveis = pontos_elegiveis,
+    valores_parent_forma_vida_nativa = valores_parent,
+    valor_pipe_bromelioide = valor_pipe,
+    esperado_por_ponto = esperado,
+    descricao = paste0(
+      "Fixture 100% sintético (03.5M-D0), sem nenhum dado real. Reproduz o padrão estrutural documentado em ",
+      "diagnostics/hotfix_035g2_restringe_aliases_pipe/HOTFIX_035G2_RESTRINGE_ALIASES_PIPE.md (COLETA 11168): ",
+      n_pontos, " pontos, bromelioide elegível só nos pontos ", paste(pontos_elegiveis, collapse = " e "),
+      ", valor bruto '", valor_pipe, "'."
+    )
+  )
+}
+
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
