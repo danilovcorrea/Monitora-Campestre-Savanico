@@ -486,3 +486,135 @@ maior blast radius por interação humana direta (edição ao vivo de
 `registros_corrig` no Shiny); estatísticas/gráficos (consumo somente
 leitura de produtos já materializados) é o próximo candidato de menor
 blast radius e deve ser avaliado antes do painel.
+
+## 10. Incremento 03.5P-C executado (2026-07-04)
+
+Executado o próximo incremento recomendado na seção 9, na forma mais
+conservadora do padrão já usado nas seções 6-9: só declaração/log,
+zero cálculo novo, zero coluna nova em produto central.
+
+**Ponto auditado:** construção das tabelas estatísticas/gráficos, a
+partir de `### Construção das tabelas estatísticas` (materialização de
+`registros_corrig_stat`, consumida por todas as funções `monitora_plot_*`
+e `monitora_stat_*` mais abaixo no script). Confirmado, por leitura
+completa da seção e do comentário normativo já existente logo acima dela
+("O ponto de integração fica depois da padronização/deduplicação e antes
+da criação de `registros_corrig_stat`. Assim, qualquer correção validada
+afeta as estatísticas, gráficos e arquivos finais da mesma execução."),
+que:
+- `registros_corrig_stat` é sempre derivado de `registros_corrig` **em
+  memória** (nunca por releitura de CSV) — estatísticas/gráficos não
+  dependem de `registros_validados.csv` existir, ter sido gerado ou
+  aprovado nesta execução;
+- `monitora_registros_validados_exportar()` já é chamada antes deste
+  ponto (linha ~39573), mas seu retorno não é capturado nesse call site
+  específico — quando a exportação é bloqueada pela regra própria
+  XLSForm21 (schema embutido, seção 8), a execução **continua** e
+  constrói estatísticas normalmente, sem qualquer declaração de que o
+  produto contratual `registros_validados.csv` não foi de fato gerado
+  nesta rodada;
+- a única interrupção antes das estatísticas é por
+  `MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS` (pendências de
+  `registros_corrig`, não relacionadas ao schema XLSForm21 de
+  `registros_validados.csv`);
+- não havia hard-code nem fonte paralela concorrente disputando a
+  materialização de `registros_corrig_stat` — um único caminho de
+  construção; o risco identificado é de **ausência de declaração**, não
+  de ambiguidade de fonte.
+
+**Status antes:** nenhuma declaração, em log ou metadado, de que
+estatísticas/gráficos partem de `registros_corrig_stat`/`registros_corrig`
+e não de `registros_validados.csv`, nem de se `registros_validados.csv`
+foi de fato gerado nesta execução, nem de quantas colunas de
+`registros_corrig` (a fonte real das estatísticas) carregam severidade
+alta bloqueante do contrato único.
+
+**Status depois:**
+- Novo helper `monitora_estatisticas_declarar_status_fonte()`, chamado
+  uma única vez logo antes de `### Construção das tabelas estatísticas`
+  (dentro de `try(..., silent = TRUE)`, sem propagar erro). Opt-in pela
+  nova flag `MONITORA_DECLARAR_STATUS_FONTE_ESTATISTICAS` (padrão `"S"`,
+  diferente das flags anteriores que defaultam `"N"` — decisão
+  deliberada: esta função não grava nenhum arquivo novo, não lê dado
+  sensível, e o custo de log é desprezível mesmo com o flag ligado por
+  padrão; o consumo do contrato único dentro dela continua condicionado
+  à flag própria já existente e já `"N"` por padrão,
+  `MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS`).
+- Declara em um único evento de log (`declaracao_fonte_estatisticas`):
+  (a) que a fonte é sempre `registros_corrig_stat`/`registros_corrig`,
+  nunca `registros_validados.csv`; (b) se `registros_validados.csv` foi
+  solicitado nesta execução e, se sim, se foi de fato gerado ou ficou
+  bloqueado/abortado; (c) reaproveitando o helper já testado em 03.5N-C
+  (`monitora_registros_corrig_severidade_contrato_unico()`, mesma flag
+  opt-in própria), quantas colunas de `registros_corrig` têm severidade
+  alta bloqueante do contrato único — nenhum fato novo, nenhum cálculo
+  duplicado.
+- Severidade do evento: `"AVISO"` somente quando `registros_validados.csv`
+  foi solicitado e não foi gerado, ou quando há colunas de severidade
+  alta bloqueante do contrato único; `"INFO"` nos demais casos (inclusive
+  quando `registros_validados.csv` simplesmente não foi solicitado nesta
+  execução — situação normal, não deve gerar aviso).
+- **Nenhuma coluna nova em `registros_corrig_stat`, nenhum arquivo novo em
+  `output/`, nenhuma mudança em qualquer função `monitora_plot_*`/
+  `monitora_stat_*`, nenhuma participação em decisão de bloqueio.** Só
+  log de execução.
+
+**Fontes paralelas:** nenhuma removida (não havia; a mudança é
+puramente de visibilidade sobre uma fonte já única).
+
+**Testes executados** (proporcionais, sem dados reais nem pipeline
+pesado, script descartável em `/tmp/teste_035p_c/teste.R`):
+1. `Rscript -e 'parse("monitora_campsav_alvo_global_v2.6.0.R")'` sobre o
+   script completo — sintaxe OK.
+2. Teste sintético isolando uma cópia fiel da função inserida, com stubs
+   de `monitora_log_registrar_evento` e de
+   `monitora_registros_corrig_severidade_contrato_unico()`: 5 cenários —
+   (a) flag geral desligada → `NULL`, nenhum evento de log, custo zero;
+   (b) `registros_validados.csv` não solicitado → evento `INFO`,
+   `n_colunas_alta_severidade` = `NA` (contrato único não avaliado); (c)
+   solicitado mas não gerado (bloqueado) → evento `AVISO`, detalhe cita
+   explicitamente que não foi gerado; (d) gerado, com 1 coluna de
+   severidade alta bloqueante do contrato único → evento `AVISO`,
+   contagem exata (`1L`); (e) helper do contrato único removido do
+   ambiente (simula ausência/erro) → degrada para `NA` sem erro. Em
+   todos os 5 cenários, confirmado que o `data.table` de entrada
+   permanece com as mesmas linhas/colunas antes e depois da chamada —
+   critério de aceite de zero mudança de schema/cardinalidade cumprido
+   (bug de severidade encontrado e corrigido durante o próprio teste:
+   primeira versão emitia `AVISO` sempre que `registros_validados.csv`
+   não fosse gerado, mesmo quando simplesmente não solicitado — corrigido
+   antes do commit para só escalar quando *solicitado e não gerado*).
+3. `git diff --stat`: 76 inserções, 0 remoções — mudança puramente
+   aditiva.
+4. Grep estático: dentro do bloco novo, nenhuma leitura/escrita de
+   `registros_importados*.csv`/`registros_corrig.csv`/
+   `registros_validados.csv` (só menção em comentário/string de log);
+   nenhuma atribuição a `registros_corrig_stat`/`registros_validados`
+   dentro do bloco novo.
+
+**Riscos remanescentes:**
+- O "motivo exato" do bloqueio de `registros_validados.csv` não é
+  capturado neste ponto porque o call site de
+  `monitora_registros_validados_exportar()` na linha ~39573 não guarda o
+  valor de retorno (diferente do call site da linha ~30324, que usa
+  `val <- ...`); a declaração informa que houve bloqueio/abortagem, mas
+  remete o motivo detalhado ao relatório já existente
+  (`auditoria_registros_validados_resumo.csv`). Capturar o motivo exato
+  exigiria alterar o call site de exportação (fora do escopo deste
+  incremento isolado, que não deve tocar a função de exportação já
+  auditada em 03.5N-C/03.5O-C).
+- Mesmo risco estrutural das seções 6-9: sem teste dinâmico end-to-end
+  contra o contrato embutido real e `registros_corrig` real (mitigado
+  por reaproveitar exatamente o helper já testado em 03.5N-C, sem novo
+  cálculo).
+- Mudança de saída limitada a um evento de log por execução; passa a
+  aparecer por padrão (flag própria `"S"`), diferente do padrão `"N"`
+  das seções anteriores — decisão deliberada e justificada acima, não
+  regressão (nenhum arquivo/coluna de produto é afetado).
+
+**Próximo ponto determinante recomendado:** dos pontos ainda não
+conectados (seção 2), resta apenas o painel — maior blast radius por
+interação humana direta (edição ao vivo de `registros_corrig` no Shiny).
+Recomenda-se, antes de qualquer alteração de código no painel, uma
+auditoria documental dedicada (sem incremento de código na mesma etapa),
+seguindo a mesma decisão da seção 3 deste plano.
