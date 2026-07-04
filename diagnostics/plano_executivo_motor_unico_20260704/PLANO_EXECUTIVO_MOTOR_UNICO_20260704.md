@@ -277,3 +277,119 @@ estatísticas/gráficos. O painel tem maior blast radius por interação
 humana direta; pós-validação (aptidão de `registros_corrig.csv`) é o
 próximo candidato de menor blast radius, seguindo o mesmo padrão
 relatório→alerta antes de considerar qualquer bloqueio real.
+
+## 8. Incremento 03.5N-C executado (2026-07-04)
+
+Executado o próximo incremento recomendado na seção 7, na sua forma segura
+(enriquecimento de auditoria + alerta complementar, não bloqueio — mesma
+justificativa das seções 6 e 7).
+
+**Ponto auditado:** a governança real de bloqueios de
+`registros_validados.csv` vive em duas funções, ambas já existentes e já
+determinantes do fluxo primário (não diagnóstico opcional):
+`monitora_registros_corrig_gravar_auditoria_contrato_xlsform21()` (calcula
+`bloqueante`/`status_contrato` por atributo, a partir do schema XLSForm21
+embutido em `monitora_validados_schema_embutido()`) e
+`monitora_registros_validados_exportar()` (decide se
+`registros_validados.csv` é gerado, bloqueado ou abortado, usando esse
+mesmo cálculo). Essas duas funções usam uma fonte de schema/regras própria
+(XLSForm21 embutido), paralela ao contrato único
+(`monitora_contrato_unico_embutido()`/`monitora_contrato_unico_indices()`)
+— nenhuma delas consultava severidade do contrato único antes deste
+incremento. Importante: essa auditoria **nunca bloqueia
+`registros_corrig.csv`** (confirmado lendo o call site em
+`monitora_publicacao_aa_preparar_validar_registros_corrig()`, linha
+~30223, que chama com `abortar = FALSE`) — só marca flags globais e
+bloqueia `registros_validados.csv`.
+
+**Ponto conectado (incremento desta etapa):**
+`monitora_registros_corrig_gravar_auditoria_contrato_xlsform21()`.
+
+**Status antes:** a auditoria por atributo calculava `bloqueante` a partir
+de 6 critérios próprios (formato/domínio/condicional/sanitização/
+cardinalidade/chave única), gravava CSVs de auditoria e resumo, e emitia
+log "ERRO"/"INFO" conforme houvesse bloqueio — sem nenhuma referência a
+severidade do contrato único.
+
+**Status depois:**
+- Novo helper `monitora_registros_corrig_severidade_contrato_unico()`
+  (definido logo antes da função principal): reaproveita
+  `monitora_contrato_unico_diagnosticar_observado_canonico()` — o mesmo
+  mapeador observado→canônico já testado nos incrementos 03.5L-C e
+  03.5M-C3 — para obter `severidade`/`bloqueia_migracao_automatica` por
+  atributo (nenhum fato novo, nenhuma regra de match duplicada). É opt-in
+  pela nova flag `MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS`
+  (padrão "N"): com a flag desligada, função ausente ou qualquer erro
+  interno, retorna `data.table` vazio — degradação sempre segura.
+- `monitora_registros_corrig_gravar_auditoria_contrato_xlsform21()` faz um
+  left-join aditivo (por `atributo`, sem remover/duplicar linha) das
+  colunas `severidade_contrato_unico` e
+  `bloqueia_migracao_automatica_contrato_unico` na tabela de auditoria já
+  gravada em CSV. O `resumo` ganha
+  `n_bloqueios_alta_severidade_contrato_unico` (contagem de atributos que
+  já eram `bloqueante` pela regra própria E têm severidade "alta" no
+  contrato único). Quando essa contagem é > 0, emite um `warning()`
+  complementar citando o arquivo de auditoria a revisar — visibilidade
+  extra, não uma nova condição de bloqueio.
+- **`bloqueante`/`status_contrato` (a regra que efetivamente decide se
+  `registros_validados.csv` é bloqueado) permanecem calculados
+  exclusivamente pelos 6 critérios próprios já existentes — o contrato
+  único não participa dessa decisão nesta etapa.** Isso é deliberado: o
+  critério de aceite da seção 4/6/7 (zero mudança de schema/cardinalidade)
+  exige que nenhuma condição de bloqueio nova seja introduzida; conectar
+  o contrato único à própria decisão de `bloqueante` — deixando de ser
+  paralelo — é o próximo incremento, não este.
+
+**Fontes paralelas:** nenhuma removida (enriquecimento aditivo, não
+substituição; XLSForm21 embutido continua sendo a única fonte da decisão
+`bloqueante`).
+
+**Testes executados** (proporcionais, sem dados reais nem pipeline
+pesado, script descartável em `/tmp/teste_035n_c/teste.R`):
+1. `Rscript -e 'invisible(parse("monitora_campsav_alvo_global_v2.6.0.R"))'`
+   sobre o script completo — sintaxe OK.
+2. Teste sintético isolando as duas funções alteradas/novas com stub de
+   `monitora_contrato_unico_diagnosticar_observado_canonico()` e demais
+   dependências mínimas extraídas do próprio script-fonte (evita depender
+   do contrato embutido real): 4 cenários — (a) flag desligada → colunas
+   novas todas `NA`, contagem 0, custo da chamada ao contrato único
+   evitado; (b) flag ligada com 1 atributo bloqueante de severidade alta
+   → colunas enriquecidas corretamente, contagem 1, `warning()` emitido
+   citando o arquivo certo; (c) flag ligada mas função do contrato único
+   ausente → degrada para `NA` sem erro; (d) flag ligada mas função do
+   contrato único lança erro internamente → degrada para `NA` sem
+   propagar o erro. Em todos os 4 cenários, confirmado que a
+   `data.table` de entrada (`auditoria_stub`) permanece com as mesmas
+   linhas/colunas antes e depois das 4 chamadas — critério de aceite
+   cumprido.
+3. Grep estático: nenhuma referência a
+   `registros_importados.csv`/`registros_importados_bruto.csv` dentro do
+   helper ou da função principal; todos os `fwrite` da função principal
+   continuam gravando exclusivamente em `arq_log`/`arq_out`/
+   `arq_resumo_log`/`arq_resumo_out` (mesmos caminhos de antes, nenhum
+   caminho novo introduzido); nenhum consumidor de `contrato`/
+   `contrato_logico` no script acessa coluna por posição (`[[n]]`).
+
+**Riscos remanescentes:**
+- Mesmo risco estrutural das seções 6/7: sem teste dinâmico end-to-end
+  contra o contrato embutido real (mitigado por stub fiel ao formato já
+  confirmado de `monitora_contrato_unico_diagnosticar_observado_canonico()`,
+  que já tem 03.5L-C/03.5M-C3 em produção usando o mesmo contrato).
+- A decisão de bloqueio de `registros_validados.csv` continua 100% sob a
+  regra própria XLSForm21 — o contrato único aqui é só anotação; se algum
+  dia a intenção for usar severidade do contrato único para *decidir*
+  bloqueio, isso é mudança de comportamento do fluxo primário e exige novo
+  incremento dedicado com sua própria auditoria de risco, não uma
+  extensão silenciosa deste.
+- Mudança de saída perceptível (novas colunas nos CSVs de auditoria,
+  `warning()` extra) só se manifesta com a flag opt-in ligada —
+  comportamento pretendido, não regressão.
+
+**Próximo ponto determinante recomendado:** dos pontos ainda não
+conectados (seção 2), restam painel, exportação e estatísticas/gráficos.
+Exportação (`monitora_registros_validados_exportar()`, a função que decide
+se o produto é de fato escrito) é o próximo candidato natural — já
+consome o cálculo de `bloqueante` enriquecido nesta etapa, mas ainda não
+propaga a severidade do contrato único para sua própria mensagem de
+bloqueio/log; o painel continua tendo maior blast radius por interação
+humana direta e deve vir depois.
