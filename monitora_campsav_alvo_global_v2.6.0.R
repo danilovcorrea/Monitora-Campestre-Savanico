@@ -1133,6 +1133,7 @@ monitora_doc_produtos_dados_descricoes <- function(registros_corrig = NULL, outp
   candidatos <- list(
     registros_importados_bruto.csv = c(file.path(output_dir, "registros_importados_bruto.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados_bruto.csv")),
     registros_importados.csv = c(file.path(output_dir, "registros_importados.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados.csv")),
+    registros_importados_operacional_pre_painel.csv = c(file.path(output_dir, "registros_importados_operacional_pre_painel.csv"), file.path(output_dir, "01_produtos_dados", "registros_importados_operacional_pre_painel.csv")),
     registros_corrig.csv = c(file.path(output_dir, "registros_corrig.csv"), file.path(output_dir, "01_produtos_dados", "registros_corrig.csv")),
     registros_validados.csv = c(file.path(output_dir, "registros_validados.csv"), file.path(output_dir, "01_produtos_dados", "registros_validados.csv"))
   )
@@ -24519,6 +24520,87 @@ monitora_publicacao_h_fwrite_registros_importados <- function(x, file, ...) {
 }
 ### FIM v2.6.0 ------------------------------
 
+monitora_registros_importados_resumo_auditoria_gravar <- function(resumo,
+                                                                  output_dir = MONITORA_OUTPUT_DIR,
+                                                                  log_dir = MONITORA_LOG_DIR,
+                                                                  exec_id = MONITORA_EXEC_ID,
+                                                                  produto = NULL,
+                                                                  contexto = NULL,
+                                                                  camada = NULL,
+                                                                  na = "") {
+  if (!inherits(resumo, c("data.frame", "data.table"))) return(invisible(FALSE))
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+  if (!is.null(log_dir)) dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
+
+  novo <- data.table::as.data.table(data.table::copy(resumo))
+  produto_chr <- if (!is.null(produto)) as.character(produto)[1L] else if ("produto" %in% names(novo)) as.character(novo$produto[1L]) else NA_character_
+  contexto_chr <- if (!is.null(contexto)) as.character(contexto)[1L] else if ("contexto" %in% names(novo)) as.character(novo$contexto[1L]) else NA_character_
+  camada_chr <- if (!is.null(camada)) {
+    as.character(camada)[1L]
+  } else if ("camada" %in% names(novo)) {
+    as.character(novo$camada[1L])
+  } else if (isTRUE(grepl("_bruto\\.csv$", produto_chr))) {
+    "bruto"
+  } else if (isTRUE(grepl("nao_aplicavel|retomada", contexto_chr, ignore.case = TRUE))) {
+    "governanca_nao_aplicavel"
+  } else {
+    "operacional"
+  }
+
+  if (!("produto" %in% names(novo))) novo[, produto := produto_chr]
+  if (!("contexto" %in% names(novo))) novo[, contexto := contexto_chr]
+  if (!("camada" %in% names(novo))) novo[, camada := camada_chr]
+  novo[is.na(produto) | !nzchar(as.character(produto)), produto := produto_chr]
+  novo[is.na(contexto) | !nzchar(as.character(contexto)), contexto := contexto_chr]
+  novo[is.na(camada) | !nzchar(as.character(camada)), camada := camada_chr]
+
+  gravar_acumulado <- function(path) {
+    anterior <- if (file.exists(path)) {
+      tryCatch(
+        data.table::fread(path, encoding = "UTF-8", showProgress = FALSE, fill = TRUE),
+        error = function(e) data.table::data.table()
+      )
+    } else {
+      data.table::data.table()
+    }
+    if (nrow(anterior) || length(names(anterior))) {
+      if (!("produto" %in% names(anterior))) anterior[, produto := NA_character_]
+      if (!("contexto" %in% names(anterior))) anterior[, contexto := NA_character_]
+      if (!("camada" %in% names(anterior))) anterior[, camada := NA_character_]
+      out <- data.table::rbindlist(list(anterior, novo), fill = TRUE, use.names = TRUE)
+    } else {
+      out <- novo
+    }
+    monitora_fwrite(out, path, row.names = FALSE, na = na)
+  }
+
+  gravar_acumulado(file.path(output_dir, "auditoria_registros_importados_resumo.csv"))
+  if (!is.null(log_dir) && !is.null(exec_id)) {
+    gravar_acumulado(file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")))
+  }
+  invisible(TRUE)
+}
+
+monitora_motor_unico_importados_implementacoes_vivas_035n_e <- function() {
+  data.table::data.table(
+    funcao = c(
+      "monitora_registros_importados_exportar",
+      "monitora_registros_importados_saneado_exportar"
+    ),
+    linha_legado_aproximada = c(24584L, 24695L),
+    linha_viva_aproximada = c(33596L, 33645L),
+    status = "legado_sobrescrito_lexicalmente",
+    observacao = c(
+      "Definicao antiga preservada sem remocao; a definicao viva posterior sobrescreve o binding antes das chamadas operacionais.",
+      "Definicao antiga preservada sem remocao; a definicao viva posterior sobrescreve o binding antes das chamadas operacionais."
+    )
+  )
+}
+
+### LEGADO_SOBRESCRITO_035N_E:
+### Primeira definicao de monitora_registros_importados_exportar(), preservada
+### apenas para auditoria de linhagem. E sobrescrita lexicalmente pela
+### IMPLEMENTACAO_VIVA_035N_E posterior, em torno da linha 33596.
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
@@ -24570,8 +24652,10 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
       observacao = "Arquivo técnico bruto montado pelo script a partir dos CSVs lidos; preserva valores como texto e preserva cabeçalhos duplicados quando presentes. O produto comparável para bolsista é registros_importados.csv saneado.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE)
-    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE)
+    monitora_registros_importados_resumo_auditoria_gravar(
+      resumo, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      produto = "registros_importados_bruto.csv", contexto = contexto_chr, camada = "bruto"
+    )
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_CONTEXTO", contexto_chr, envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -24628,6 +24712,10 @@ monitora_registros_importados_saneado_preparar <- function(dt, contexto = "pos_c
   out[]
 }
 
+### LEGADO_SOBRESCRITO_035N_E:
+### Primeira definicao de monitora_registros_importados_saneado_exportar(),
+### preservada apenas para auditoria de linhagem. E sobrescrita lexicalmente
+### pela IMPLEMENTACAO_VIVA_035N_E posterior, em torno da linha 33645.
 monitora_registros_importados_saneado_exportar <- function(dt,
                                                            output_dir = MONITORA_OUTPUT_DIR,
                                                            log_dir = MONITORA_LOG_DIR,
@@ -24665,8 +24753,11 @@ monitora_registros_importados_saneado_exportar <- function(dt,
       observacao = "Gerado após normalização inicial de nomes/aliases e antes de deduplicação final, painel, exclusões e correções assistidas. Use este arquivo para comparação operacional; use registros_importados_bruto.csv para auditoria técnica fiel da leitura.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE, na = "")
-    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE, na = "")
+    monitora_registros_importados_resumo_auditoria_gravar(
+      resumo, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      produto = "registros_importados.csv", contexto = as.character(contexto)[1L],
+      camada = "operacional", na = ""
+    )
 
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_CONTEXTO", as.character(contexto)[1L], envir = .GlobalEnv)
@@ -25198,8 +25289,11 @@ monitora_registros_importados_auditar_nao_aplicavel <- function(output_dir = MON
       observacao = "Execução retomada por registros_corrig.csv: registros_importados.csv não é reconstruído, não representa a leitura bruta do registros_corrig de entrada e deve ser ignorado como produto da execução atual.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE, na = "")
-    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE, na = "")
+    monitora_registros_importados_resumo_auditoria_gravar(
+      resumo, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      produto = "registros_importados.csv", contexto = "modo_retomada_por_registros_corrig",
+      camada = "governanca_nao_aplicavel", na = ""
+    )
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_MATERIALIZADO", FALSE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_NAO_APLICAVEL_MODO_REGISTROS_CORRIG", TRUE, envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -33523,6 +33617,10 @@ monitora_pipe_contrato_fixture_condicional_esparso_035m_d0 <- function(n_pontos 
   )
 }
 
+### IMPLEMENTACAO_VIVA_035N_E:
+### Definicao operacional vigente de monitora_registros_importados_exportar().
+### Sobrescreve lexicalmente a definicao LEGADO_SOBRESCRITO_035N_E anterior
+### e e a versao alcancada pelas chamadas posteriores.
 monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUTPUT_DIR, log_dir = MONITORA_LOG_DIR, exec_id = MONITORA_EXEC_ID, contexto = "pos_concatenacao_csv", permitir_apenas_bruto = TRUE) {
   tryCatch({
     contexto_chr <- as.character(contexto)[1L]
@@ -33556,8 +33654,10 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
       observacao = "Produto bruto técnico; pode preservar pipes e cabeçalhos duplicados. O produto operacional é registros_importados.csv.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE)
-    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE)
+    monitora_registros_importados_resumo_auditoria_gravar(
+      resumo, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      produto = "registros_importados_bruto.csv", contexto = contexto_chr, camada = "bruto"
+    )
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_BRUTO_CONTEXTO", contexto_chr, envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -33570,6 +33670,11 @@ monitora_registros_importados_exportar <- function(dt, output_dir = MONITORA_OUT
   })
 }
 
+### IMPLEMENTACAO_VIVA_035N_E:
+### Definicao operacional vigente de
+### monitora_registros_importados_saneado_exportar(). Sobrescreve
+### lexicalmente a definicao LEGADO_SOBRESCRITO_035N_E anterior e preserva
+### `produto_nome` para H2R-C sem renomear a funcao viva.
 monitora_registros_importados_saneado_exportar <- function(dt,
                                                            output_dir = MONITORA_OUTPUT_DIR,
                                                            log_dir = MONITORA_LOG_DIR,
@@ -33628,8 +33733,12 @@ monitora_registros_importados_saneado_exportar <- function(dt,
       observacao = "Gerado após normalização/tokenização operacional e antes de correções assistidas; COLETAS quarentenadas por incompletude ficam fora deste produto.",
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    monitora_fwrite(resumo, file.path(output_dir, "auditoria_registros_importados_resumo.csv"), row.names = FALSE, na = "")
-    monitora_fwrite(resumo, file.path(log_dir, paste0("auditoria_registros_importados_resumo_", exec_id, ".csv")), row.names = FALSE, na = "")
+    monitora_registros_importados_resumo_auditoria_gravar(
+      resumo, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      produto = produto_nome, contexto = as.character(contexto)[1L],
+      camada = if (identical(produto_nome, "registros_importados_operacional_pre_painel.csv")) "operacional_pre_painel" else "operacional",
+      na = ""
+    )
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_MATERIALIZADO", TRUE, envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_IMPORTADOS_SANEADO_CONTEXTO", as.character(contexto)[1L], envir = .GlobalEnv)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -47672,28 +47781,16 @@ monitora_auditar_produtos_finais <- function() {
   }
   png_dir <- file.path(out_dir, "plots_png")
 
-  ### Reparação conservadora antes da auditoria final.
-  ###
-  ### Se o objeto final existe em memória, mas o CSV obrigatório não existe no
-  ### output canônico, regravamos o produto antes de declarar falha. Isso evita
-  ### falso negativo em execuções com diretório relativo confuso. A gravação só
-  ### ocorre quando o arquivo está ausente ou vazio; não sobrescreve produto
-  ### final já gravado.
+  ### v2.6.2 - Hotfix 035N-A -----------------------------------------------
+  ### Auditoria final estritamente observacional para produtos centrais.
+  ### A auditoria pode apontar ausência/vazio, mas nao regrava tardiamente
+  ### registros_corrig.csv nem registros_corrig_stat.csv a partir de objetos
+  ### em memoria. A linhagem desses produtos deve vir do fluxo legitimo de
+  ### exportacao anterior, sem reparo tardio na etapa de auditoria.
   produto_ausente_ou_vazio <- function(path, min_bytes = 1L) {
     !file.exists(path) || is.na(suppressWarnings(file.info(path)$size)) ||
       suppressWarnings(file.info(path)$size) < min_bytes
   }
-  reparar_csv_objeto <- function(nome_obj, path, min_bytes = 1L) {
-    if (produto_ausente_ou_vazio(path, min_bytes) && monitora_global_existe(nome_obj)) {
-      obj <- monitora_global_get(nome_obj)
-      if (is.data.frame(obj) || data.table::is.data.table(obj)) {
-        monitora_fwrite(obj, path, na = "")
-      }
-    }
-    invisible(file.exists(path))
-  }
-  reparar_csv_objeto("registros_corrig", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig.csv"), 1L)
-  reparar_csv_objeto("registros_corrig_stat", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig_stat.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig_stat.csv"), 1L)
   if (produto_ausente_ou_vazio(file.path(out_dir, "relatorio_execucao_ultima_execucao.csv"), 1L) &&
       monitora_global_existe("MONITORA_LOG_EXECUCAO")) {
     monitora_fwrite(monitora_global_get("MONITORA_LOG_EXECUCAO"), file.path(out_dir, "relatorio_execucao_ultima_execucao.csv"), na = "")
