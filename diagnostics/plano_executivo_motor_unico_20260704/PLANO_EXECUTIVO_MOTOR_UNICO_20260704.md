@@ -190,9 +190,90 @@ pesado, ver `diagnostics/` para os scripts descartáveis usados em `/tmp`):
   pretendido (é "alerta determinante"), mas é uma mudança perceptível de
   saída de log que só se manifesta com a flag opt-in ligada.
 
-**Próximo ponto determinante recomendado:** dos seis pontos ainda não
-conectados (seção 2), o próximo de menor blast radius após este é a
-pré-validação (`monitora_pipe_contrato_diagnosticar_dataset()` já existe
-como diagnóstico) — avaliar o mesmo padrão de escalada relatório→alerta
-para severidade alta ali, antes de considerar o painel (maior blast
-radius por interação humana direta).
+**Próximo ponto determinante recomendado (executado a seguir, seção 7):**
+dos seis pontos ainda não conectados (seção 2), o próximo de menor blast
+radius após este é a pré-validação (`monitora_pipe_contrato_diagnosticar_dataset()`
+já existe como diagnóstico) — avaliar o mesmo padrão de escalada
+relatório→alerta para severidade alta ali, antes de considerar o painel
+(maior blast radius por interação humana direta).
+
+## 7. Incremento 03.5M-C3 executado (2026-07-04)
+
+Executado exatamente o próximo incremento recomendado na seção 6, na sua
+forma segura (alerta, não bloqueio — mesma justificativa da seção 6).
+
+**Ponto auditado/conectado:** pré-validação de pipes por contrato único
+sobre um dataset já em memória (tipicamente `registros_corrig`) —
+`monitora_pipe_contrato_diagnosticar_dataset()` (per-coluna) e
+`monitora_pipe_contrato_relatorio_optin()` (relatório/log opt-in,
+consumida por `monitora_pipe_contrato_relatorio_optin_seguro()` em 3
+pontos de integração já vivos do script).
+
+**Status antes:** `monitora_pipe_contrato_classificar_coluna()` já
+retornava `severidade`/`bloqueia_migracao_automatica` (herdados de
+`monitora_contrato_unico_diagnosticar_observado_canonico()` desde a seção
+6), mas `monitora_pipe_contrato_diagnosticar_dataset()` não os extraía de
+`class_contrato_row` para o diagnóstico por coluna, e
+`monitora_pipe_contrato_relatorio_optin()` só emitia evento "INFO",
+sem distinguir pipes de alta severidade bloqueante.
+
+**Status depois:**
+- `monitora_pipe_contrato_diagnosticar_dataset()` passa a incluir as
+  colunas `severidade` e `bloqueia_migracao_automatica` no diagnóstico por
+  coluna (mesmo fato já calculado pelo contrato único; nenhum dado novo).
+  Extração degrada com segurança (`NA`) quando o classificador não expõe
+  essas colunas (compatibilidade com chamadores antigos).
+- `monitora_pipe_contrato_relatorio_optin()` calcula
+  `n_pipe_alta_severidade_bloqueante` (colunas com pipe, severidade "alta"
+  e `bloqueia_migracao_automatica` = TRUE) e, quando > 0, eleva o evento
+  de log de "INFO" para "AVISO" e emite `warning()` visível — citando o
+  relatório a revisar. Continua estritamente opt-in (mesma flag
+  `MONITORA_DIAGNOSTICO_PIPES_CONTRATO`, mesmo padrão "N"), continua sem
+  alterar `registros` (nenhum produto real, incluindo
+  `registros_corrig.csv`/`registros_validados.csv`): só o relatório/log
+  em `output/diagnosticos_pipes_contrato/` ganham visibilidade.
+- **"Bloqueio" real da pré-validação foi deliberadamente NÃO
+  implementado** — mesma razão da seção 6: exigiria decidir semântica de
+  bloqueio no fluxo primário, fora do escopo de um incremento isolado.
+
+**Fontes paralelas:** nenhuma removida (diagnóstico aditivo, não
+substituição).
+
+**Testes executados** (proporcionais, sem dados reais nem pipeline
+pesado, script descartável em `/tmp/teste_035m_c3/teste.R`):
+1. `Rscript -e 'parse(...)'` sobre o script completo — sintaxe OK.
+2. Teste sintético isolando as 3 funções alteradas/relacionadas
+   (`monitora_pipe_contrato_diagnosticar_dataset`,
+   `monitora_pipe_contrato_resumir_diagnostico_dataset`,
+   `monitora_pipe_contrato_relatorio_optin`) com stub do classificador
+   legado, do classificador de contrato e de `monitora_log_registrar_evento`:
+   (a) flag desligada → retorno `NULL`, no-op confirmado; (b) 1 coluna com
+   pipe de alta severidade bloqueante → evento AVISO + `warning()` com
+   contagem e caminho do relatório corretos; (c) `data.table` de entrada
+   (`registros`) com as mesmas linhas/colunas/nomes antes e depois da
+   chamada — critério de aceite de zero mudança de schema cumprido; (d)
+   classificador que não expõe `severidade`/`bloqueia_migracao_automatica`
+   (compatibilidade com versão anterior) → diagnóstico degrada para `NA`
+   sem erro, sem perder a coluna (bug de `data.table()` descartando coluna
+   `NULL` identificado e corrigido durante o próprio incremento, antes do
+   commit).
+3. Grep estático: nenhum consumidor de `diagnostico`/`diag`/`resumo` no
+   script acessa colunas por posição (`[[n]]`); todos os `fwrite`/
+   `writeLines` das funções alteradas continuam gravando só em
+   `dir_diag`/`output/diagnosticos_pipes_contrato/`; nenhuma referência
+   cruzada a `registros_importados.csv`/`registros_importados_bruto.csv`
+   dentro das funções de pré-validação de pipes.
+
+**Riscos remanescentes:**
+- Mesmo risco estrutural da seção 6: sem teste dinâmico end-to-end contra
+  o contrato embutido real (mitigado por stubs fiéis ao schema já
+  confirmado em `monitora_pipe_contrato_classificar_coluna()`).
+- Mesma mudança perceptível de saída de log (INFO→AVISO) só se manifesta
+  com a flag opt-in ligada — comportamento pretendido, não regressão.
+
+**Próximo ponto determinante recomendado:** dos pontos ainda não
+conectados (seção 2), restam painel, pós-validação, exportação e
+estatísticas/gráficos. O painel tem maior blast radius por interação
+humana direta; pós-validação (aptidão de `registros_corrig.csv`) é o
+próximo candidato de menor blast radius, seguindo o mesmo padrão
+relatório→alerta antes de considerar qualquer bloqueio real.
