@@ -110,3 +110,89 @@ antes e depois da conexão.
 
 O motor único **ainda não** atende integralmente à seção 28; está em
 progresso real e verificável, não apenas planejado.
+
+## 6. Incremento 03.5L-C executado (2026-07-04)
+
+Executado exatamente o próximo incremento recomendado na seção 4, na sua
+forma segura (alerta, não bloqueio — ver justificativa abaixo).
+
+**Ponto auditado/conectado:**
+`monitora_registros_importados_diagnostico_contrato_unico()` (e o merge de
+metadados em `monitora_contrato_unico_diagnosticar_observado_canonico()`
+do qual ela depende).
+
+**Status antes:** diagnóstico 100% opt-in (flag
+`MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_IMPORTADOS`, padrão "N"),
+gerava só arquivos de relatório (mapa + resumo + txt) e um evento de log
+sempre "INFO" — nenhuma coluna de alta severidade era destacada como tal;
+`severidade` (já calculada em `monitora_contrato_unico_indices()`) não
+chegava ao mapa observado→canônico.
+
+**Status depois:**
+- `meta_atributo` em `monitora_contrato_unico_diagnosticar_observado_canonico()`
+  passa a incluir `severidade` (coluna já existente em
+  `indices$por_atributo_canonico`; nenhum fato novo introduzido — mesma
+  garantia normativa do restante da função).
+- `monitora_registros_importados_diagnostico_contrato_unico()` calcula
+  `colunas_alta_severidade_bloqueantes` (severidade "alta" E
+  `bloqueia_migracao_automatica` = TRUE) e, quando > 0, eleva o evento de
+  log de "INFO" para "AVISO" e emite `warning()` visível no console —
+  citando o arquivo de diagnóstico a revisar. Continua estritamente
+  opt-in (mesma flag, mesmo padrão "N"), continua sem tocar
+  `registros_importados.csv` ou qualquer produto do pipeline: só altera o
+  que é escrito em `output/diagnosticos_contrato_unico_registros_importados/`
+  e no log de execução.
+- **"Bloqueio" (interromper migração automática) foi deliberadamente NÃO
+  implementado nesta etapa** — exigiria decidir o que "bloquear" significa
+  no fluxo real de importação (que ainda usa fonte paralela, seção 2), o
+  que é mudança de comportamento do pipeline primário e está fora do
+  escopo de um incremento isolado e de baixo risco. Only "alerta
+  determinante" foi entregue, que é o subconjunto seguro da recomendação
+  da seção 4 e satisfaz o critério de aceite (zero mudança de schema ou
+  cardinalidade).
+
+**Fontes paralelas:** nenhuma removida (não havia equivalência a
+substituir neste ponto — é diagnóstico, não substituição).
+
+**Testes executados** (proporcionais, sem dados reais nem pipeline
+pesado, ver `diagnostics/` para os scripts descartáveis usados em `/tmp`):
+1. `Rscript -e 'parse(...)'` sobre o script completo — sintaxe OK.
+2. Teste sintético isolando a função modificada com stubs das 3 dependências
+   de contrato único (evita depender do contrato embutido real, que requer
+   ~milhares de linhas adicionais de dump XLSForm fora do escopo deste
+   incremento): 4 cenários — (a) sem colunas de alta severidade → evento
+   INFO, sem warning; (b) 2 colunas de alta severidade bloqueantes →
+   evento AVISO + warning com contagem e caminho do arquivo corretos; (c)
+   coluna `severidade` ausente do diagnóstico (compatibilidade com
+   chamadores/versões antigas) → degrada para INFO sem erro; (d) flag
+   desligada → retorno `NULL`, no-op confirmado (custo zero preservado).
+   Em todos os 4 cenários, confirmado que o `data.table` de entrada
+   (`registros_importados`) permanece com as mesmas linhas/colunas antes e
+   depois da chamada — critério de aceite da seção 4 cumprido.
+3. Teste isolado do merge `meta_atributo` (novo `severidade` incluído)
+   contra uma tabela `atributos` sintética — confirma join por nome
+   correto, sem perda de linhas, sem colisão de coluna.
+4. Grep estático: nenhum consumidor de `mapa`/`diagnostico` no script
+   acessa colunas por posição (`[[n]]`); os dois consumidores existentes
+   (`monitora_registros_importados_comparar_ordem_legado_vs_contrato` e
+   `monitora_pipe_contrato_classificar_coluna`) selecionam por nome — a
+   nova coluna `severidade` não quebra nenhum dos dois. Grep também
+   confirma que a função alterada nunca escreve em
+   `registros_importados.csv`/`registros_importados_bruto.csv`.
+
+**Riscos remanescentes:**
+- Sem teste dinâmico end-to-end contra o contrato embutido real (custo
+  proibitivo para este incremento; mitigado pelos stubs fiéis ao schema
+  real e pelo teste de merge isolado).
+- A escalada para "AVISO" é nova visibilidade, não nova ação — usuários
+  que hoje ignoram logs "INFO" começarão a ver "AVISO" quando houver
+  colunas de alta severidade bloqueantes; isso é o comportamento
+  pretendido (é "alerta determinante"), mas é uma mudança perceptível de
+  saída de log que só se manifesta com a flag opt-in ligada.
+
+**Próximo ponto determinante recomendado:** dos seis pontos ainda não
+conectados (seção 2), o próximo de menor blast radius após este é a
+pré-validação (`monitora_pipe_contrato_diagnosticar_dataset()` já existe
+como diagnóstico) — avaliar o mesmo padrão de escalada relatório→alerta
+para severidade alta ali, antes de considerar o painel (maior blast
+radius por interação humana direta).
