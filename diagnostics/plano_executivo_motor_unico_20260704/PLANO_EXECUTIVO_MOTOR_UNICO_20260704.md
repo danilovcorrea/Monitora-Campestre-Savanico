@@ -393,3 +393,96 @@ consome o cálculo de `bloqueante` enriquecido nesta etapa, mas ainda não
 propaga a severidade do contrato único para sua própria mensagem de
 bloqueio/log; o painel continua tendo maior blast radius por interação
 humana direta e deve vir depois.
+
+## 9. Incremento 03.5O-C executado (2026-07-04)
+
+Executado o próximo incremento recomendado na seção 8, na sua forma mais
+conservadora ainda: só propagação de metadado já calculado, sem novo
+`warning()` e sem alterar nenhuma condição de bloqueio.
+
+**Ponto auditado:** `monitora_registros_validados_exportar()` — a função
+que de fato decide se `registros_validados.csv` é escrito, bloqueado ou
+abortado. Ela já chama
+`monitora_registros_corrig_gravar_auditoria_contrato_xlsform21()` (linha
+~29511) tanto no modo `somente_auditar_contrato_corrig` (contexto
+`pre_materializacao_registros_corrig`) quanto no modo de exportação real
+(contexto `assert_final_export_registros_validados`), herdando desde
+03.5N-C (seção 8) o enriquecimento de severidade do contrato único e o
+`warning()` complementar já emitidos ali. Confirmado, porém, que a
+contagem `n_bloqueios_alta_severidade_contrato_unico` calculada nessa
+chamada nunca chegava ao **próprio resumo da exportação**
+(`auditoria_registros_validados_resumo.csv`/`caminhos$resumo_out`, gravado
+mais adiante na mesma função) — quem só olha esse relatório específico não
+via a correlação com severidade do contrato único.
+
+**Status antes:** `resumo` (a tabela gravada em
+`auditoria_registros_validados_resumo.csv` e em
+`caminhos$resumo_log`) tinha `n_bloqueios` (soma dos 6 critérios próprios
+do XLSForm21) mas nenhuma coluna correlacionando esses bloqueios com
+severidade do contrato único.
+
+**Status depois:**
+- Novo bloco logo após a chamada a
+  `monitora_registros_corrig_gravar_auditoria_contrato_xlsform21()` extrai
+  `auditoria_contrato_corrig$resumo$n_bloqueios_alta_severidade_contrato_unico`
+  (dado já calculado em 03.5N-C; nenhum cálculo novo) com `NA_integer_`
+  como fallback seguro (auditoria ausente, não é lista, `resumo` nulo ou
+  coluna inexistente).
+- `resumo` ganha a coluna
+  `n_bloqueios_alta_severidade_contrato_unico_registros_corrig`, propagando
+  esse valor. Esta é a única mudança: uma coluna a mais em um CSV de
+  auditoria (`auditoria_registros_validados_resumo.csv`), nunca em
+  `registros_validados.csv` (`out`/`cols`/`caminho_saida`/`header_saida`
+  não foram tocados).
+- `n_bloq` (a variável que efetivamente decide bloqueio/abortagem de
+  `registros_validados.csv`, calculada separadamente a partir de
+  `vazias_obrig`/`problemas_fmt`/`problemas_dom`/`problemas_cond`/
+  `problemas_card`/`problemas_chave`/`problemas_sanitizacao_*`) **não foi
+  alterada nem lida pelo novo bloco** — zero participação na decisão real.
+  Nenhum `warning()` novo foi adicionado (o já existente, de 03.5N-C, já
+  cobre a visibilidade no momento em que a auditoria do contrato de
+  `registros_corrig` roda).
+
+**Fontes paralelas:** nenhuma removida (propagação aditiva de metadado já
+calculado; XLSForm21 embutido continua sendo a única fonte da decisão de
+bloqueio de `registros_validados.csv`).
+
+**Testes executados** (proporcionais, sem dados reais nem pipeline
+pesado):
+1. `Rscript -e 'parse("monitora_campsav_alvo_global_v2.6.0.R")'` sobre o
+   script completo — sintaxe OK.
+2. Teste sintético isolando a lógica de extração do novo bloco (sem
+   depender do contrato embutido real nem de `registros_corrig`): 4
+   cenários — (a) `auditoria_contrato_corrig` `NULL` (função ausente ou
+   flag geral desligada) → `NA` seguro; (b) flag da 03.5N-C desligada
+   (resumo tem a coluna, valor 0, comportamento real herdado) → propaga
+   `0L`; (c) flag ligada com bloqueios de alta severidade → propaga o
+   valor exato (`3L` no teste); (d) `resumo` sem a coluna (compatibilidade
+   com versão anterior do helper) → `NA` seguro, sem erro. Todos os 4
+   cenários confirmados.
+3. `git diff --stat` sobre o script: 22 inserções, 0 remoções — mudança
+   puramente aditiva, nenhuma linha de código pré-existente alterada.
+4. Grep estático: nenhuma referência nova a
+   `registros_importados.csv`/`registros_importados_bruto.csv` no diff;
+   consumidores existentes de `auditoria_registros_validados_resumo.csv`
+   (linhas ~30394-30412, no relatório consolidado) leem `n_bloqueios` por
+   nome de coluna (`"n_bloqueios" %in% names(rr)`), não por posição —
+   tolerantes à coluna nova, confirmando ausência de quebra.
+
+**Riscos remanescentes:**
+- Mesmo risco estrutural das seções 6/7/8: sem teste dinâmico end-to-end
+  contra o contrato embutido real e `registros_corrig` real (mitigado por
+  reaproveitar exatamente o dado já testado em 03.5N-C, sem novo cálculo).
+- A decisão de bloqueio/abortagem de `registros_validados.csv` continua
+  100% sob os 6 critérios próprios do XLSForm21 — o contrato único
+  continua sendo só anotação também neste ponto de exportação.
+- Mudança de saída limitada a uma coluna a mais em um CSV de auditoria;
+  só é não-`NA` quando a flag opt-in `MONITORA_DIAGNOSTICO_CONTRATO_UNICO_REGISTROS_VALIDADOS`
+  já existente está ligada — comportamento pretendido, não regressão.
+
+**Próximo ponto determinante recomendado:** dos pontos ainda não
+conectados (seção 2), restam painel e estatísticas/gráficos. Painel tem
+maior blast radius por interação humana direta (edição ao vivo de
+`registros_corrig` no Shiny); estatísticas/gráficos (consumo somente
+leitura de produtos já materializados) é o próximo candidato de menor
+blast radius e deve ser avaliado antes do painel.
