@@ -966,3 +966,121 @@ opt-in no painel (ex.: aba de auditoria somente leitura), seguindo os 6
 critérios de aceite da seção 11 — não executado nesta rodada, por decisão
 de manter o incremento isolado e proporcional (escopo desta etapa era
 apenas o teste controlado, não a exposição visual).
+
+## 14. Incremento 03.5S-C executado (2026-07-04) — exposição visual opt-in implementada
+
+Executado o próximo passo recomendado na seção 13: conectar
+`monitora_perfil_painel_edicao_contrato_unico()` (03.5R-C, validado com
+contrato real em 03.5R-C2/seção 13) a uma exposição visual opt-in dentro
+de `monitora_correcao_painel()`, seguindo os 6 critérios de aceite da
+seção 11.
+
+**Ponto de integração escolhido (menor blast radius identificado):** o
+padrão já existente de aba condicional dentro de `shiny::tabsetPanel()` —
+a aba "Validação espacial" já era construída condicionalmente via
+`if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ...))) shiny::tabPanel(...)`
+e seu `DT::renderDT` correspondente já reafirmava a mesma flag dentro do
+render (padrão duplo: UI condicional + render condicional). Este
+incremento replica exatamente esse padrão já em produção, em vez de
+introduzir um mecanismo novo.
+
+**Status antes:** o helper de auditoria existia e estava validado
+isoladamente (seções 12-13), mas não havia nenhum ponto na UI/server do
+painel que o consumisse; a única forma de inspecionar o perfil era chamar
+o helper manualmente fora do Shiny.
+
+**Status depois:**
+- UI: nova aba condicional `shiny::tabPanel("Auditoria contrato único
+  (opt-in)", ...)`, terceiro argumento de `shiny::tabsetPanel()` (depois de
+  "Correções de registros" e da aba condicional "Validação espacial"),
+  guardada por `isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))`.
+  Com a flag desligada (padrão), a expressão `if (...) shiny::tabPanel(...)`
+  avalia para `NULL` e a aba simplesmente não existe na UI — nenhum custo,
+  nenhuma alteração visual das abas existentes.
+- Conteúdo da aba (só quando ligada): um `h4`, um `helpText` explicando a
+  natureza somente leitura/em memória, e `monitora_painel_dt_output(...)`
+  (mesmo wrapper de `DT::DTOutput` já usado pelas outras tabelas do
+  painel).
+- Server: `output$auditoria_perfil_painel_contrato_unico <- DT::renderDT({...})`,
+  inserido imediatamente antes do render já existente de
+  `esp_tabela_pendencias`, reafirmando a mesma flag antes de chamar
+  `monitora_perfil_painel_edicao_contrato_unico()` (sem argumentos — o
+  helper resolve `monitora_contrato_unico_indices()` internamente, já
+  testado com contrato real na seção 13). Com a flag desligada, retorna
+  direto uma tabela de mensagem ("desativada"), sem chamar o helper. Com a
+  flag ligada e o helper retornando `NULL`/vazio (contrato incompleto),
+  retorna mensagem de indisponibilidade. Com dado válido, renderiza a
+  tabela com `selection = "none"` (somente leitura, sem seleção de linha
+  acionando qualquer `observeEvent`) e as mesmas `options` (`monitora_painel_dt_options()`)
+  já usadas pelas outras tabelas do painel.
+- **Nenhuma alteração em `dt` (o `registros_corrig` em edição no painel):**
+  o bloco novo nunca referencia `dt` nem grava em nenhuma variável
+  reativa/`rv$...`; é estritamente leitura do helper já testado.
+- **Nenhuma escrita em disco:** nenhum `fwrite`/`writeLines` no bloco
+  novo; nenhuma leitura de `output/`/`log/` como fonte (a fonte é só o
+  contrato embutido via `monitora_contrato_unico_indices()`).
+- **Nenhuma participação em bloqueio/correção:** a aba não tem nenhum
+  `actionButton`/`observeEvent`; é puramente informativa.
+
+**Fontes paralelas:** nenhuma removida — as fontes operacionais próprias
+do painel (XLSForm embutido, dicionário de atributos) continuam sendo o
+caminho real de edição; a nova aba é um complemento de auditoria, não uma
+substituição.
+
+**Testes executados** (proporcionais, sem dados reais, sem Shiny real
+rodando, script descartável em `/tmp/teste_035s_c/teste.R`):
+1. `Rscript -e 'invisible(parse("monitora_campsav_alvo_global_v2.6.0.R", keep.source = FALSE))'`
+   sobre o script completo (48235 linhas) — sintaxe OK.
+2. `git diff --stat` sobre o script: 27 inserções, 0 remoções — mudança
+   puramente aditiva, nenhuma linha pré-existente alterada.
+3. Teste isolado (sem `source()` do script inteiro, sem Shiny/DT reais):
+   reproduz textualmente a mesma expressão condicional de UI
+   (`if (isTRUE(monitora_cfg_env_bool(...))) ...`) e a mesma lógica do
+   `renderDT` inserido, com um stub do helper que conta chamadas. Dois
+   cenários: (a) flag OFF (default, variável de ambiente ausente) — aba
+   não construída (`NULL`), render retorna mensagem, helper chamado 0
+   vezes (custo zero confirmado); (b) flag ON
+   (`MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO=true`) — aba
+   construída, render retorna a tabela do helper, helper chamado
+   exatamente 1 vez, `nrow` da tabela preservado. Ambos os cenários
+   confirmados na primeira execução.
+4. Grep estático sobre o diff completo: nenhuma ocorrência de
+   `registros_importados`/`registros_importados_bruto` (sem reconstrução
+   tardia); nenhuma ocorrência de `output/`/`log/`/`MONITORA_OUTPUT_DIR`/
+   `MONITORA_LOG_DIR`/`fwrite`/`writeLines`/`fread` (sem dependência
+   normativa em output/log); nenhuma atribuição/`:=` envolvendo
+   `registros_corrig`/`registros_validados` (nenhum produto central
+   escrito); nenhuma mutação por referência (`dt[, ... :=`) sobre o `dt`
+   de entrada do painel.
+5. Grep de contexto: confirmado que o bloco novo só chama
+   `monitora_perfil_painel_edicao_contrato_unico()` (já testado em 03.5R-C/
+   03.5R-C2) e wrappers de UI/DT já existentes no próprio
+   `monitora_correcao_painel()` (`monitora_painel_dt_output`,
+   `monitora_painel_dt_options`) — nenhuma chamada nova a outro
+   consumidor operacional.
+
+**Riscos remanescentes:**
+- Sem teste dinâmico dentro do processo Shiny real do painel
+  (`shiny::runApp()`) — fora do escopo autorizado desta rodada (proibição
+  explícita de iniciar Shiny interativo real pesado). Mitigado por: (a) o
+  padrão de UI/render replicado é idêntico ao já usado em produção pela
+  aba "Validação espacial"; (b) o helper consumido já foi validado contra
+  o contrato real (seção 13); (c) teste isolado cobre exatamente a
+  expressão condicional e a lógica de render inseridas.
+- `bloqueio_estrutural_contrato_unico` (coluna exibida na tabela) continua
+  sendo só anotação de auditoria, não comparada em produção contra o
+  comportamento observado do painel real (risco herdado da seção 12/13,
+  não introduzido por este incremento).
+- A aba é puramente informativa; se um usuário mal interpretar
+  `bloqueio_estrutural_contrato_unico` como bloqueio real do painel, isso
+  seria um risco de UX, não de comportamento — mitigado pelo texto do
+  `helpText` da aba, que declara explicitamente a natureza somente
+  leitura/não bloqueante.
+
+**Próximo passo recomendado:** validar a aba dentro de uma sessão Shiny
+real controlada (ambiente de teste, sem dados reais) antes de considerar
+o critério de aceitação da seção 28 ("Painel exibindo regras/severidade/
+origem/bloqueio") integralmente cumprido; avaliar depois se
+`ocorrencias_painel` (parâmetro opcional do helper, ainda não conectado)
+deve ser alimentado com contagens reais de uso por atributo dentro da
+sessão do painel.
