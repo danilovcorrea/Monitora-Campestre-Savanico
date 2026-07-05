@@ -97,7 +97,7 @@ antes e depois da conexão.
 | Perfis derivados da mesma fonte | Parcial — índices existem, mas fluxo primário ainda não depende deles em todos os pontos |
 | Importação sem fontes paralelas | Parcial — 03.5L-C elevou divergências de alta severidade a alerta opt-in; fluxo primário ainda não é substituído pelo contrato |
 | Pré-validação com diagnósticos suficientes | Parcial — 03.5M-C/03.5M-C2 conectaram diagnóstico/relatório opt-in de pipes por contrato único; sem novo bloqueio primário |
-| Painel exibindo regras/severidade/origem/bloqueio | Auditado documentalmente em 03.5Q-C; não conectado ao contrato único nesta etapa por maior blast radius |
+| Painel exibindo regras/severidade/origem/bloqueio | Parcial — exposição opt-in implementada (03.5S-C) e validada dinamicamente em ambiente Shiny controlado via `shiny::testServer` (03.5T-C, seção 15); ainda sem validação em sessão `shiny::runApp()` real com navegador |
 | Pós-validação determinando aptidão de `registros_corrig.csv` | Parcial — 03.5N-C declarou severidade contratual em resumo/alerta; aptidão final segue pelo fluxo existente |
 | Exportação com 129 colunas quando apto | Parcial — 03.5O-C propagou severidade ao resumo de exportação; schema de exportação segue pelo fluxo existente |
 | Índices/caches deriváveis | Sim — `monitora_contrato_unico_indices()` |
@@ -1084,3 +1084,105 @@ origem/bloqueio") integralmente cumprido; avaliar depois se
 `ocorrencias_painel` (parâmetro opcional do helper, ainda não conectado)
 deve ser alimentado com contagens reais de uso por atributo dentro da
 sessão do painel.
+
+## 15. Validação Shiny controlada da aba opt-in do painel (2026-07-04, 03.5T-C)
+
+Executado o próximo passo recomendado na seção 14: validar dinamicamente
+(não apenas por reprodução estática de expressão/stub) a integração
+UI/server da aba "Auditoria contrato único (opt-in)" em ambiente Shiny
+controlado, sem dados reais, sem pipeline pesado e sem
+`shiny::runApp()` interativo/com navegador. Nenhuma linha do script fonte
+foi alterada — este incremento é só de verificação.
+
+**Método aplicado** (script descartável, não versionado, em
+`/tmp/teste_shiny_painel_optin/harness.R`, mesmo padrão das seções 12/13):
+
+1. `parse()` do script completo (48262 linhas) sem `source()` — sintaxe OK,
+   sem efeitos colaterais.
+2. Extração estática por AST (mesma técnica da seção 13) + fecho
+   transitivo via `codetools::findGlobals()`, resolvido e avaliado em
+   ambiente isolado (`new.env(parent = globalenv())`). Fecho idêntico ao
+   da seção 13: 23 funções, nenhuma com I/O de disco.
+3. Os dois blocos sob teste — UI (linhas 19214-19219) e a atribuição
+   `output$auditoria_perfil_painel_contrato_unico <- DT::renderDT({...},
+   server = TRUE)` (linhas 21312-21321) — foram extraídos **verbatim** via
+   `sed`, byte a byte, do arquivo fonte para dois arquivos texto, eliminando
+   risco de transcrição manual divergente do código real.
+4. Bloco de server reconstruído como `function(input, output, session) {
+   <texto-fonte original sem alteração> }` e exercitado com
+   `shiny::testServer()` real (sessão mock do pacote `shiny`, sem
+   `runApp()`, sem rede/navegador) — plumbing real de `output$...` +
+   `DT::renderDT(..., server = TRUE)` dentro de um servidor Shiny de fato,
+   nos dois estados da flag.
+5. Conteúdo do `renderDT` inspecionado separadamente: o corpo do bloco
+   (sem a assinatura `DT::renderDT({...}, server = TRUE)`) foi reconstruído
+   como uma função `function() {...}` real e chamado diretamente, para
+   examinar o objeto `DT::datatable` retornado (`$x$data`) sem depender do
+   formato interno do JSON server-side do `DT` (mais robusto que inspecionar
+   a saída processada de `testServer` para uma tabela `server = TRUE`).
+6. Expressão condicional da UI avaliada diretamente (sem `testServer`,
+   desnecessário aqui pois a expressão não referencia `input`/`session`).
+
+**Resultados:**
+- UI, flag OFF (padrão): expressão `if (...) shiny::tabPanel(...)` avalia
+  para `NULL` — aba ausente, sem custo.
+- UI, flag ON: retorna um `shiny.tag` (`div`); HTML renderizado
+  (`htmltools::doRenderTags`) contém o título exato "Auditoria contrato
+  único (opt-in)" e a classe `monitora-painel-dt` do wrapper de
+  `DT::DTOutput`.
+- Server via `shiny::testServer`, flag OFF: `DT::renderDT(..., server =
+  TRUE)` executa sem erro dentro de uma sessão Shiny real (mock), output
+  não-nulo.
+- Server via `shiny::testServer`, flag ON: idem, sem erro, output
+  não-nulo — confirma que o plumbing `output$... <- DT::renderDT(...)`
+  funciona de fato dentro do ciclo reativo do Shiny, não só como expressão
+  R isolada.
+- Conteúdo, flag OFF: `DT::datatable` com a mensagem exata "Auditoria do
+  contrato único desativada (flag opt-in desligada)."
+- Conteúdo, flag ON: `DT::datatable` com 105 linhas × 14 colunas, contendo
+  as 4 colunas-chave (`origem_regra`, `severidade`,
+  `bloqueio_estrutural_contrato_unico` e demais) — mesma cardinalidade já
+  observada na seção 13 com o contrato real.
+- `monitora_contrato_unico_indices()` chamado antes/depois da renderização:
+  `indices`/`perfis` idênticos entre chamadas (`all.equal`); a única
+  diferença observada (`meta$gerado_em`) é um timestamp de geração
+  (`Sys.time()`), não mutação por referência — comportamento esperado, não
+  um defeito.
+- Grep de segurança sobre os dois blocos extraídos: nenhuma ocorrência de
+  `registros_importados`/`registros_importados_bruto`/`registros_corrig.csv`/
+  `registros_validados.csv`/`output/`/`log/`/`MONITORA_OUTPUT_DIR`/
+  `MONITORA_LOG_DIR` — sem reconstrução tardia, sem dependência normativa em
+  output/log.
+- Nenhum erro de sintaxe/construção de UI encontrado; nenhum bug pequeno
+  surgiu — nenhuma alteração de código foi necessária.
+
+**Limitações (o que este teste NÃO cobre):**
+- `shiny::testServer` usa uma sessão mock: não há navegador real, não há
+  execução do `drawCallback` JS de `monitora_painel_dt_options()`, não há
+  navegação real entre abas de um `tabsetPanel` por um usuário, e o
+  `server = TRUE` do DT roda sem o ciclo real de paginação/AJAX de um
+  navegador conectado.
+- Não foi testado dentro do processo completo de `monitora_correcao_painel()`
+  rodando via `shiny::runApp()` com o restante do painel (filtros, outras
+  abas, `dt` real de `registros_corrig`) — permanece fora do escopo
+  autorizado desta rodada (proibição explícita de app interativo real).
+- `ocorrencias_painel` (parâmetro opcional do helper) continua não
+  conectado a nenhuma contagem real de uso do painel (risco herdado das
+  seções 12-14).
+
+**O critério da seção 28 para o painel pode ser considerado:** parcialmente
+cumprido, com evidência mais forte que a seção 14 — agora validado
+dinamicamente (plumbing Shiny real via `testServer`, não só expressão R
+estática/stub), mas ainda não integralmente cumprido, pois falta validação
+end-to-end em `runApp()` real com o painel completo e dado de sessão.
+
+**Riscos remanescentes:** os mesmos da seção 14, com o risco de "sem teste
+dinâmico dentro do processo Shiny real" reduzido (não eliminado) por este
+incremento.
+
+**Próximo passo recomendado:** para fechamento final do motor único e
+contrato único, falta (a) validação end-to-end em `shiny::runApp()` real
+do painel completo (ambiente de teste dedicado, fora do escopo de rodadas
+de economia de tokens) e (b) decidir se `ocorrencias_painel` deve ser
+alimentado com contagens reais de uso por atributo antes de declarar o
+critério da seção 28 integralmente cumprido para o painel.
