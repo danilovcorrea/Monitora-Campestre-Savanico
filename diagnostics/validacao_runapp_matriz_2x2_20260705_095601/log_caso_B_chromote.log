@@ -1,8 +1,8 @@
 $frameId
-[1] "F8C78B5D3F2B2EA8EF2E4C2AF46E46AF"
+[1] "BD23EAB1B802E604925150EB3FCE709F"
 
 $loaderId
-[1] "8AFCE4F06AAF25BB6BC52B039B9ECB79"
+[1] "ED2CE00D76A01F3406CA173A001BF4C8"
 
 $isDownload
 [1] FALSE
@@ -10,7 +10,7 @@ $isDownload
 titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
 atributo real encontrado no DOM: amostragem/registro/forma_vida_nativa_arvore_abaixo 
 clique[add_corr]: CLICADO:add_corr
-NOTIFICACAO_APOS_ADD_CORR: Processando: adicionar correção simples ou lote. Aguarde a conclusão antes de clicar novamente. || Selecione um ponto amostral ou use escopo de coleta inteira. 
+NOTIFICACAO_APOS_ADD_CORR: Processando: adicionar correção simples ou lote. Aguarde a conclusão antes de clicar novamente. || Correção adicionada: 1 operação(ões) nova(s). Há 1 operação(ões) semântica(s) pendente(s). A coleta selecionada foi mantida. 
 clique[cancelar]: CLICADO:cancelar
 clique[confirmar_encerrar_sem_materializar]: CLICADO:confirmar_encerrar_sem_materializar
 SEQUENCIA_CLIQUES: B: com operacoes no painel; fechar sem salvar | CLICADO:add_corr | CLICADO:cancelar | CLICADO:confirmar_encerrar_sem_materializar 

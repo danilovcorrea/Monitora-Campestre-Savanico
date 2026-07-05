@@ -1,0 +1,127 @@
+coluna_registros_corrig,coluna_norm,papel_coluna,categoria,token_associado,n_preenchidos,painel_editavel_seguro,observacao
+"COLETA","coleta","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"uuid_registro","uuid_registro","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"coleta_uuid","coleta_uuid","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"amostragem/registro/ponto_amostral","amostragem_registro_ponto_amostral","outro",NA,NA,6,TRUE,NA
+"amostragem/registro/ponto_metro","amostragem_registro_ponto_metro","outro",NA,NA,6,TRUE,NA
+"amostragem/registro/tipo_forma_vida","amostragem_registro_tipo_forma_vida","campo_superior_tipo_forma_vida",NA,NA,6,TRUE,NA
+"amostragem/registro/forma_vida_nativa_arvore_abaixo","amostragem_registro_forma_vida_nativa_arvore_abaixo","outro","nativa","arvore_abaixo",3,TRUE,NA
+"UC","uc","outro",NA,NA,6,TRUE,NA
+"EA","ea","outro",NA,NA,6,TRUE,NA
+"ANO","ano","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"CICLO","ciclo","outro",NA,NA,6,TRUE,NA
+"UA","ua","outro",NA,NA,6,TRUE,NA
+"CAMPANHA","campanha","outro",NA,NA,6,TRUE,NA
+"PROTOCOLO","protocolo","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"data_do_registro","data_do_registro","protegida",NA,NA,6,FALSE,"coluna estrutural protegida"
+"validado","validado","outro",NA,NA,6,TRUE,NA
+"forma_vida_exotica_bromelioide","forma_vida_exotica_bromelioide","atributo_dependente_habito","exotica","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_exotica_cactacea","forma_vida_exotica_cactacea","atributo_dependente_habito","exotica","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_exotica_orquidea","forma_vida_exotica_orquidea","atributo_dependente_habito","exotica","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_exotica_samambaia","forma_vida_exotica_samambaia","atributo_dependente_habito","exotica","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_nativa_bromelioide","forma_vida_nativa_bromelioide","atributo_dependente_habito","nativa","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_nativa_cactacea","forma_vida_nativa_cactacea","atributo_dependente_habito","nativa","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_nativa_orquidea","forma_vida_nativa_orquidea","atributo_dependente_habito","nativa","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_nativa_samambaia","forma_vida_nativa_samambaia","atributo_dependente_habito","nativa","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_seca_morta_bromelioide","forma_vida_seca_morta_bromelioide","atributo_dependente_habito","seca_morta","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_seca_morta_cactacea","forma_vida_seca_morta_cactacea","atributo_dependente_habito","seca_morta","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_seca_morta_orquidea","forma_vida_seca_morta_orquidea","atributo_dependente_habito","seca_morta","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"forma_vida_seca_morta_samambaia","forma_vida_seca_morta_samambaia","atributo_dependente_habito","seca_morta","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"usuario","usuario","outro",NA,NA,0,TRUE,NA
+"validador","validador","outro",NA,NA,0,TRUE,NA
+"data_validacao","data_validacao","outro",NA,NA,0,TRUE,NA
+"obs_validacao","obs_validacao","outro",NA,NA,0,TRUE,NA
+"planilha_upload","planilha_upload","outro",NA,NA,0,TRUE,NA
+"controle_versao","controle_versao","outro",NA,NA,0,TRUE,NA
+"n_form_ref","n_form_ref","outro",NA,NA,0,TRUE,NA
+"data_hora/data","data_hora_data","outro",NA,NA,0,TRUE,NA
+"data_hora/hora","data_hora_hora","outro",NA,NA,0,TRUE,NA
+"coletor/cpf","coletor_cpf","outro",NA,NA,0,TRUE,NA
+"coletor/nome","coletor_nome","outro",NA,NA,0,TRUE,NA
+"form_veg","form_veg","outro",NA,NA,0,TRUE,NA
+"impact_manejo_uso/impacto_manejo_uso","impact_manejo_uso_impacto_manejo_uso","outro",NA,NA,0,TRUE,NA
+"impact_manejo_uso/tipos_impacto_manejo_uso","impact_manejo_uso_tipos_impacto_manejo_uso","outro",NA,NA,0,TRUE,NA
+"impact_manejo_uso/tipos_impacto_manejo_uso_outro","impact_manejo_uso_tipos_impacto_manejo_uso_outro","outro",NA,NA,0,TRUE,NA
+"impact_manejo_uso/tipos_impacto_manejo_uso_descricao","impact_manejo_uso_tipos_impacto_manejo_uso_descricao","outro",NA,NA,0,TRUE,NA
+"observacoes_gerais","observacoes_gerais","outro",NA,NA,0,TRUE,NA
+"amostragem/ponto_inicio_transecto","amostragem_ponto_inicio_transecto","outro",NA,NA,0,TRUE,NA
+"amostragem/num_placa","amostragem_num_placa","outro",NA,NA,0,TRUE,NA
+"amostragem/especie","amostragem_especie","especie_nome_popular",NA,NA,0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_serrapilheira","amostragem_registro_forma_serrapilheira","outro",NA,NA,0,TRUE,NA
+"amostragem/registro/forma_vida_outros","amostragem_registro_forma_vida_outros","outro",NA,"outros",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa","amostragem_registro_forma_vida_nativa","lista_principal_forma_vida","nativa",NA,0,TRUE,"lista principal de tokens de forma de vida"
+"amostragem/registro/forma_vida_nativa_bromelioide","amostragem_registro_forma_vida_nativa_bromelioide","atributo_dependente_habito","nativa","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_nativa_bromelioide_sp","amostragem_registro_forma_vida_nativa_bromelioide_sp","especie_nome_popular","nativa","bromelioide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_nativa_cactacea","amostragem_registro_forma_vida_nativa_cactacea","atributo_dependente_habito","nativa","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_nativa_cactacea_sp","amostragem_registro_forma_vida_nativa_cactacea_sp","especie_nome_popular","nativa","cactacea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_nativa_orquidea","amostragem_registro_forma_vida_nativa_orquidea","atributo_dependente_habito","nativa","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_nativa_orquidea_sp","amostragem_registro_forma_vida_nativa_orquidea_sp","especie_nome_popular","nativa","orquidea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_nativa_samambaia","amostragem_registro_forma_vida_nativa_samambaia","atributo_dependente_habito","nativa","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_nativa_samambaia_sp","amostragem_registro_forma_vida_nativa_samambaia_sp","especie_nome_popular","nativa","samambaia",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_nativa_graminoide","amostragem_registro_forma_vida_nativa_graminoide","outro","nativa","graminoide",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_erva_nao_graminoide","amostragem_registro_forma_vida_nativa_erva_nao_graminoide","outro","nativa","graminoide",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_arbusto_abaixo","amostragem_registro_forma_vida_nativa_arbusto_abaixo","outro","nativa","arbusto_abaixo",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_arbusto_acima","amostragem_registro_forma_vida_nativa_arbusto_acima","outro","nativa","arbusto_acima",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_arvore_acima","amostragem_registro_forma_vida_nativa_arvore_acima","outro","nativa","arvore_acima",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_bambu","amostragem_registro_forma_vida_nativa_bambu","outro","nativa","bambu",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_lianas","amostragem_registro_forma_vida_nativa_lianas","outro","nativa","lianas",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_ervas_de_passarinho","amostragem_registro_forma_vida_nativa_ervas_de_passarinho","outro","nativa","ervas_de_passarinho",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_palmeira","amostragem_registro_forma_vida_nativa_palmeira","outro","nativa","palmeira",0,TRUE,NA
+"amostragem/registro/forma_vida_nativa_canela_de_ema","amostragem_registro_forma_vida_nativa_canela_de_ema","outro","nativa","canela_de_ema",0,TRUE,NA
+"amostragem/registro/forma_vida_exotica","amostragem_registro_forma_vida_exotica","lista_principal_forma_vida","exotica",NA,0,TRUE,"lista principal de tokens de forma de vida"
+"amostragem/registro/forma_vida_exotica_bromelioide","amostragem_registro_forma_vida_exotica_bromelioide","atributo_dependente_habito","exotica","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_exotica_cactacea","amostragem_registro_forma_vida_exotica_cactacea","atributo_dependente_habito","exotica","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_exotica_orquidea","amostragem_registro_forma_vida_exotica_orquidea","atributo_dependente_habito","exotica","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_exotica_samambaia","amostragem_registro_forma_vida_exotica_samambaia","atributo_dependente_habito","exotica","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/especies_exotica_graminoide","amostragem_registro_especies_exotica_graminoide","especie_nome_popular","exotica","graminoide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_graminoide_outra_sp","amostragem_registro_exotica_graminoide_outra_sp","especie_nome_popular","exotica","graminoide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_erva_nao_graminoide","amostragem_registro_especies_exotica_erva_nao_graminoide","especie_nome_popular","exotica","graminoide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_erva_outra_sp","amostragem_registro_exotica_erva_outra_sp","especie_nome_popular","exotica","outra",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_arbusto_abaixo","amostragem_registro_especies_exotica_arbusto_abaixo","especie_nome_popular","exotica","arbusto_abaixo",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_arbusto_abaixo_outra_sp","amostragem_registro_exotica_arbusto_abaixo_outra_sp","especie_nome_popular","exotica","arbusto_abaixo",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_arbusto_acima","amostragem_registro_especies_exotica_arbusto_acima","especie_nome_popular","exotica","arbusto_acima",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_arbusto_acima_outra_sp","amostragem_registro_exotica_arbusto_acima_outra_sp","especie_nome_popular","exotica","arbusto_acima",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_arvore_abaixo","amostragem_registro_especies_exotica_arvore_abaixo","especie_nome_popular","exotica","arvore_abaixo",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_arvore_abaixo_outra_sp","amostragem_registro_exotica_arvore_abaixo_outra_sp","especie_nome_popular","exotica","arvore_abaixo",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_arvore_acima","amostragem_registro_especies_exotica_arvore_acima","especie_nome_popular","exotica","arvore_acima",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_arvore_acima_outra_sp","amostragem_registro_exotica_arvore_acima_outra_sp","especie_nome_popular","exotica","arvore_acima",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_bambu","amostragem_registro_especies_exotica_bambu","especie_nome_popular","exotica","bambu",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_bambu_outra_sp","amostragem_registro_exotica_bambu_outra_sp","especie_nome_popular","exotica","bambu",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_lianas","amostragem_registro_especies_exotica_lianas","especie_nome_popular","exotica","lianas",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_lianas_outra_sp","amostragem_registro_exotica_lianas_outra_sp","especie_nome_popular","exotica","lianas",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_ervas_de_passarinho","amostragem_registro_especies_exotica_ervas_de_passarinho","especie_nome_popular","exotica","ervas_de_passarinho",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_ervas_de_passarinho_outra_sp","amostragem_registro_exotica_ervas_de_passarinho_outra_sp","especie_nome_popular","exotica","ervas_de_passarinho",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_palmeira","amostragem_registro_especies_exotica_palmeira","especie_nome_popular","exotica","palmeira",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_palmeira_outra_sp","amostragem_registro_exotica_palmeira_outra_sp","especie_nome_popular","exotica","palmeira",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_bromelioide","amostragem_registro_especies_exotica_bromelioide","especie_nome_popular","exotica","bromelioide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_bromelioide_outra_sp","amostragem_registro_exotica_bromelioide_outra_sp","especie_nome_popular","exotica","bromelioide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_cactacea","amostragem_registro_especies_exotica_cactacea","especie_nome_popular","exotica","cactacea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_cactacea_outra_sp","amostragem_registro_exotica_cactacea_outra_sp","especie_nome_popular","exotica","cactacea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_orquidea","amostragem_registro_especies_exotica_orquidea","especie_nome_popular","exotica","orquidea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_orquidea_outra_sp","amostragem_registro_exotica_orquidea_outra_sp","especie_nome_popular","exotica","orquidea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_samambaia","amostragem_registro_especies_exotica_samambaia","especie_nome_popular","exotica","samambaia",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_samambaia_outra_sp","amostragem_registro_exotica_samambaia_outra_sp","especie_nome_popular","exotica","samambaia",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/especies_exotica_outros","amostragem_registro_especies_exotica_outros","especie_nome_popular","exotica","outros",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/exotica_outros_outra_sp","amostragem_registro_exotica_outros_outra_sp","especie_nome_popular","exotica","outros",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta","amostragem_registro_forma_vida_seca_morta","lista_principal_forma_vida","seca_morta",NA,0,TRUE,"lista principal de tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta_bromelioide","amostragem_registro_forma_vida_seca_morta_bromelioide","atributo_dependente_habito","seca_morta","bromelioide",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_seca_morta_bromelioide_sp","amostragem_registro_forma_vida_seca_morta_bromelioide_sp","especie_nome_popular","seca_morta","bromelioide",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta_cactacea","amostragem_registro_forma_vida_seca_morta_cactacea","atributo_dependente_habito","seca_morta","cactacea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_seca_morta_cactacea_sp","amostragem_registro_forma_vida_seca_morta_cactacea_sp","especie_nome_popular","seca_morta","cactacea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta_orquidea","amostragem_registro_forma_vida_seca_morta_orquidea","atributo_dependente_habito","seca_morta","orquidea",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_seca_morta_orquidea_sp","amostragem_registro_forma_vida_seca_morta_orquidea_sp","especie_nome_popular","seca_morta","orquidea",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta_samambaia","amostragem_registro_forma_vida_seca_morta_samambaia","atributo_dependente_habito","seca_morta","samambaia",0,TRUE,"campo dependente/hábito de forma condicional"
+"amostragem/registro/forma_vida_seca_morta_samambaia_sp","amostragem_registro_forma_vida_seca_morta_samambaia_sp","especie_nome_popular","seca_morta","samambaia",0,TRUE,"campo de espécie/nome popular; não receber tokens de forma de vida"
+"amostragem/registro/forma_vida_seca_morta_graminoide","amostragem_registro_forma_vida_seca_morta_graminoide","outro","seca_morta","graminoide",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide","amostragem_registro_forma_vida_seca_morta_erva_nao_graminoide","outro","seca_morta","graminoide",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_arbusto_abaixo","amostragem_registro_forma_vida_seca_morta_arbusto_abaixo","outro","seca_morta","arbusto_abaixo",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_arbusto_acima","amostragem_registro_forma_vida_seca_morta_arbusto_acima","outro","seca_morta","arbusto_acima",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_mortaarvore_abaixo","amostragem_registro_forma_vida_seca_mortaarvore_abaixo","outro","seca_morta",NA,0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_arvore_acima","amostragem_registro_forma_vida_seca_morta_arvore_acima","outro","seca_morta","arvore_acima",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_bambu","amostragem_registro_forma_vida_seca_morta_bambu","outro","seca_morta","bambu",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_lianas","amostragem_registro_forma_vida_seca_morta_lianas","outro","seca_morta","lianas",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho","amostragem_registro_forma_vida_seca_morta_ervas_de_passarinho","outro","seca_morta","ervas_de_passarinho",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_palmeira","amostragem_registro_forma_vida_seca_morta_palmeira","outro","seca_morta","palmeira",0,TRUE,NA
+"amostragem/registro/forma_vida_seca_morta_canela_de_ema","amostragem_registro_forma_vida_seca_morta_canela_de_ema","outro","seca_morta","canela_de_ema",0,TRUE,NA
+"amostragem/registro/observacao","amostragem_registro_observacao","outro",NA,NA,0,TRUE,NA
+"amostragem/ponto_fim_transecto","amostragem_ponto_fim_transecto","outro",NA,NA,0,TRUE,NA

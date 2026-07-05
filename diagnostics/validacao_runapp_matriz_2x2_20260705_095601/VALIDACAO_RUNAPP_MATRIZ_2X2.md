@@ -1,6 +1,6 @@
 # Validacao da matriz 2x2 - fechamento do painel Shiny (H2R-C)
 
-Data/hora de execucao: 2026-07-05 10:24:35
+Data/hora de execucao: 2026-07-05 10:31:10
 Script de producao testado: `/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/monitora_campsav_alvo_global_v2.6.0.R`
 
 ## Contexto
@@ -15,9 +15,9 @@ Esta rodada valida a correcao aplicada em `monitora_painel_encerrar_sem_material
 | Caso | Acao | Operacoes no painel | Passou |
 |------|------|----------------------|--------|
 | A | Fechar sem salvar | Sem operacoes | SIM |
-| B | Fechar sem salvar | Com operacoes | NAO |
+| B | Fechar sem salvar | Com operacoes | SIM |
 | C | Salvar checkpoint com pendencias | Sem operacoes | SIM |
-| D | Salvar checkpoint com pendencias | Com operacoes | NAO |
+| D | Salvar checkpoint com pendencias | Com operacoes | SIM |
 
 ## Detalhes por caso
 
@@ -30,8 +30,8 @@ Esta rodada valida a correcao aplicada em `monitora_painel_encerrar_sem_material
 - log chromote: `log_caso_A_chromote.log`
 
 ### Caso B
-- passou: FALSE
-- precondicao_operacao_ok: FALSE
+- passou: TRUE
+- precondicao_operacao_ok: TRUE
 - contem_erro_funcao_ausente: FALSE
 - encerrou_sozinho: TRUE
 - log app: `log_caso_B_app.log`
@@ -46,8 +46,8 @@ Esta rodada valida a correcao aplicada em `monitora_painel_encerrar_sem_material
 - log chromote: `log_caso_C_chromote.log`
 
 ### Caso D
-- passou: FALSE
-- precondicao_operacao_ok: FALSE
+- passou: TRUE
+- precondicao_operacao_ok: TRUE
 - contem_erro_funcao_ausente: FALSE
 - encerrou_sozinho: TRUE
 - log app: `log_caso_D_app.log`
@@ -61,4 +61,4 @@ Esta rodada valida a correcao aplicada em `monitora_painel_encerrar_sem_material
 - Nenhum dado real foi lido; dataset 100% sintetico (6 linhas fabricadas).
 - Nao houve escrita em `input/`, `output/` ou `log/` reais do projeto.
 
-## Resultado final: FALHA
+## Resultado final: MATRIZ_RUNAPP_2X2_OK

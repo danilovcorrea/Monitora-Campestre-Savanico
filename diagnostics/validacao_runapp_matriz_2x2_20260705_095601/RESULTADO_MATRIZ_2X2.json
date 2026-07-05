@@ -18,8 +18,8 @@
   },
   "B": {
     "caso": "B",
-    "passou": false,
-    "precondicao_operacao_ok": false,
+    "passou": true,
+    "precondicao_operacao_ok": true,
     "contem_erro_funcao_ausente": false,
     "encerrou_sozinho": true,
     "json_caso": {
@@ -52,8 +52,8 @@
   },
   "D": {
     "caso": "D",
-    "passou": false,
-    "precondicao_operacao_ok": false,
+    "passou": true,
+    "precondicao_operacao_ok": true,
     "contem_erro_funcao_ausente": false,
     "encerrou_sozinho": true,
     "json_caso": {
@@ -62,8 +62,8 @@
       "classe_resultado": "data.table,data.frame",
       "retorno_normal": true,
       "mensagem_erro": null,
-      "n_linhas_resultado": 0,
-      "arquivo_saida_existe": false,
+      "n_linhas_resultado": 1,
+      "arquivo_saida_existe": true,
       "arquivo_saida_espacial_existe": false
     }
   }
