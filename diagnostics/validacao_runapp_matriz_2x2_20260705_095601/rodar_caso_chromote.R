@@ -111,6 +111,25 @@ adicionar_operacao_real <- function() {
 
   set_input("atributo", valor_atributo)
   Sys.sleep(1.5)
+
+  ## Iteracao 3 (log_caso_{B,D}_chromote.log, NOTIFICACAO_APOS_ADD_CORR):
+  ## a selecao do atributo acima dispara observeEvent(input$atributo) no
+  ## script de producao (~linha 21720-21747), que muda automaticamente o
+  ## radio "escopo" para "ponto" porque o dicionario sugere escopo pontual
+  ## para forma_vida_nativa_arvore_abaixo e nenhum "ponto" foi selecionado.
+  ## O dataset sintetico usado aqui tem exatamente 1 linha por COLETA e o
+  ## driver nao seleciona um ponto amostral real, entao manter escopo="ponto"
+  ## faz o observeEvent(input$add_corr) rejeitar a operacao em
+  ## "Selecione um ponto amostral ou use escopo de coleta inteira." (~linha
+  ## 22274-22277) -- exatamente a mensagem capturada na notificacao. Forcar
+  ## escopo="coleta_inteira" aqui e uma das duas opcoes aceitas pela propria
+  ## mensagem de validacao; o observeEvent(input$escopo) correspondente
+  ## (~linha 21775) recalcula escopo_efetivo e reajusta n_esperado para 101
+  ## automaticamente, e confirmar_abrangencia=TRUE (setado abaixo) cobre o
+  ## descompasso entre 101 esperado e a 1 linha real da COLETA sintetica.
+  set_input("escopo", "coleta_inteira")
+  Sys.sleep(1)
+
   set_input("acao", "update")
   Sys.sleep(1)
   set_input("valor_novo", "1")

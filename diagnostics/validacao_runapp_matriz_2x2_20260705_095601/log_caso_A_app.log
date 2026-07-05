@@ -9,22 +9,20 @@ n_funcoes_definidas_com_sucesso: 910
 n_constantes_MONITORA_definidas: 43 
 dt_sintetico dim: 6 x 16 
 === Chamando monitora_correcao_painel() (chamada real, caso A) ===
-2026-07-05 10:14:51 [painel_correcoes] Seletor de atributos do painel: 94 atributo(s) contratuais exibidos em ordem do template SISMONITORA/XLSForm 2025; alvos materiais/outros presentes=amostragem/registro/forma_serrapilheira | amostragem/registro/forma_vida_outros
-2026-07-05 10:14:51 [painel_correcoes] Auditoria de controle de atributos do painel gravada: /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_runapp_matriz_2x2_20260705_095601/tmp_isolado_A/output/auditoria_painel_controle_atributos.csv; bloqueado_sem_dominio_xlsform=37; ok=57
-2026-07-05 10:14:51 [painel_correcoes] Triagem unificada do painel preparada sem ocorrências diagnósticas.
-2026-07-05 10:14:52 [painel_correcoes] Listas diagnósticas do painel preparadas: 6 coleta(s) com UA duplicada no mesmo ano; 0 com ponto amostral sem interceptação; 6 com nativa sem forma de vida; 0 com exótica sem forma de vida; 0 com seca ou morta sem forma de vida; 0 com outra forma de vida; 0 com forma de vida desconhecida; 0 em lista de revisão de exótica sem espécie; 0 em lista de revisão de exótica com espécie.
-2026-07-05 10:14:52 [painel_correcoes] Relatórios de ocorrências diagnósticas [pre_painel] gerados em /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_runapp_matriz_2x2_20260705_095601/tmp_isolado_A/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas; arquivos_csv=14; tipos_com_ocorrencia=2; soma coletas impeditivas por tipo=12.
-2026-07-05 10:14:52 [painel_correcoes] Painel Shiny será aberto. A execução do script fica pausada enquanto o painel estiver aberto.
-2026-07-05 10:14:52 [painel_correcoes] Para continuar a execução, use 'Salvar correções e fechar' ou 'Fechar painel sem salvar e continuar script'. Se houver ocorrências impeditivas, uma janela central exigirá confirmação explícita do encerramento.
-2026-07-05 10:14:52 [painel_correcoes] runApp() será chamado agora; launch.browser=FALSE.
+2026-07-05 10:23:35 [painel_correcoes] Seletor de atributos do painel: 94 atributo(s) contratuais exibidos em ordem do template SISMONITORA/XLSForm 2025; alvos materiais/outros presentes=amostragem/registro/forma_serrapilheira | amostragem/registro/forma_vida_outros
+2026-07-05 10:23:36 [painel_correcoes] Auditoria de controle de atributos do painel gravada: /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_runapp_matriz_2x2_20260705_095601/tmp_isolado_A/output/auditoria_painel_controle_atributos.csv; bloqueado_sem_dominio_xlsform=37; ok=57
+2026-07-05 10:23:36 [painel_correcoes] Triagem unificada do painel preparada sem ocorrências diagnósticas.
+2026-07-05 10:23:36 [painel_correcoes] Listas diagnósticas do painel preparadas: 6 coleta(s) com UA duplicada no mesmo ano; 0 com ponto amostral sem interceptação; 6 com nativa sem forma de vida; 0 com exótica sem forma de vida; 0 com seca ou morta sem forma de vida; 0 com outra forma de vida; 0 com forma de vida desconhecida; 0 em lista de revisão de exótica sem espécie; 0 em lista de revisão de exótica com espécie.
+2026-07-05 10:23:36 [painel_correcoes] Relatórios de ocorrências diagnósticas [pre_painel] gerados em /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_runapp_matriz_2x2_20260705_095601/tmp_isolado_A/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas; arquivos_csv=14; tipos_com_ocorrencia=2; soma coletas impeditivas por tipo=12.
+2026-07-05 10:23:36 [painel_correcoes] Painel Shiny será aberto. A execução do script fica pausada enquanto o painel estiver aberto.
+2026-07-05 10:23:36 [painel_correcoes] Para continuar a execução, use 'Salvar correções e fechar' ou 'Fechar painel sem salvar e continuar script'. Se houver ocorrências impeditivas, uma janela central exigirá confirmação explícita do encerramento.
+2026-07-05 10:23:36 [painel_correcoes] runApp() será chamado agora; launch.browser=FALSE.
 
 Listening on http://127.0.0.1:38810
-2026-07-05 10:14:56 [painel_correcoes] Iniciando ação no painel: fechar painel sem salvar
-2026-07-05 10:14:58 [painel_correcoes] Iniciando ação no painel: encerrar execução sem materializar registros_corrig
-2026-07-05 10:14:58 [painel_correcoes] Comando recebido: cancelar execução sem materializar registros_corrig.csv. Motivo: usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes.
+2026-07-05 10:23:40 [painel_correcoes] Iniciando ação no painel: fechar painel sem salvar
+2026-07-05 10:23:42 [painel_correcoes] Iniciando ação no painel: encerrar execução sem materializar registros_corrig
+2026-07-05 10:23:42 [painel_correcoes] Comando recebido: cancelar execução sem materializar registros_corrig.csv. Motivo: usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes.
 ERRO_CAPTURADO: Execução encerrada pelo usuário sem materializar registros_corrig.csv: usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes.
-Warning message:
-In as.POSIXlt.POSIXct(x) : NAs introduced by coercion
 === Fim da chamada (retornou/foi interrompido) ===
 classe do resultado: erro_harness 
 RESULTADO_JSON_ESCRITO: /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_runapp_matriz_2x2_20260705_095601/tmp_isolado_A/RESULTADO_CASO_A.json 

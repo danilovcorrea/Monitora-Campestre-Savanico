@@ -1,8 +1,8 @@
 $frameId
-[1] "A63DB2C4E8A00A7B9D0D62BF5D1AED1B"
+[1] "7300F2A1AF62A93CE3336FE24FCDBFDA"
 
 $loaderId
-[1] "CED279C9DFF02108757ADD35F5F4D6CB"
+[1] "6331358029717507047D4D99092A29BD"
 
 $isDownload
 [1] FALSE
@@ -10,6 +10,7 @@ $isDownload
 titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
 atributo real encontrado no DOM: amostragem/registro/forma_vida_nativa_arvore_abaixo 
 clique[add_corr]: CLICADO:add_corr
+NOTIFICACAO_APOS_ADD_CORR: Processando: adicionar correção simples ou lote. Aguarde a conclusão antes de clicar novamente. || Selecione um ponto amostral ou use escopo de coleta inteira. 
 clique[salvar]: CLICADO:salvar
 clique[confirmar_salvar_checkpoint_pendente]: CLICADO:confirmar_salvar_checkpoint_pendente
 SEQUENCIA_CLIQUES: D: com operacoes no painel; salvar checkpoint com pendencias | CLICADO:add_corr | CLICADO:salvar | CLICADO:confirmar_salvar_checkpoint_pendente 
