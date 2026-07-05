@@ -43,6 +43,11 @@ ambiguidade sobre qual arquivo é normativo.
 - `diagnostics/plano_executivo_motor_unico_20260704/` — plano executivo e
   status de implementação do motor único, referenciando as seções 27–28
   do INTEGRAL.md.
+- `diagnostics/fechamento_motor_contrato_unico_20260705/` — fechamento
+  final integrado do motor único e do contrato único: matriz de critérios
+  da seção 28, testes executados, riscos remanescentes e próximo passo
+  H2R-C seguro. Não substitui o plano executivo nem o contrato integral;
+  é a leitura consolidada de estado desta etapa.
 
 ## Regra de não supressão
 
