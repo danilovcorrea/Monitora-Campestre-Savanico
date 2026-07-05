@@ -1,0 +1,13 @@
+{
+  "kind": "local_r_validation",
+  "validator": "monitora-local-r-h2r-c-linhagem",
+  "created_at": "2026-07-05T03:42:08.694240+00:00",
+  "repo": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260",
+  "script": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/monitora_campsav_alvo_global_v2.6.0.R",
+  "outdir": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_r_local_h2r_c_20260705_004208",
+  "r_returncode": 0,
+  "summary_md": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_r_local_h2r_c_20260705_004208/VALIDACAO_R_LOCAL_H2R_C.md",
+  "summary_json": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_r_local_h2r_c_20260705_004208/validacao_r_local_h2r_c.json",
+  "console_log": "/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/diagnostics/validacao_r_local_h2r_c_20260705_004208/rscript_console.log",
+  "token_economy": "R executed locally by Fedora/orchestrator; no Claude/Codex tokens consumed for R execution."
+}

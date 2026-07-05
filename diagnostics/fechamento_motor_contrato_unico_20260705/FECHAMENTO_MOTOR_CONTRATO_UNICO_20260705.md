@@ -330,3 +330,76 @@ de dois terços do script — refatoração em lote disfarçada, com risco de
 divergência silenciosa. Por isso, **não foi executado** nesta rodada;
 documentado como pendência real (seção 17 do plano executivo), não fingida
 como concluída. Nenhuma alteração de código foi feita.
+
+## 13. Atualização Etapa 05 — consolidação H2R-C com evidência R local
+
+Data/hora: 2026-07-05, execução por Codex em modo `commit_autorizado`.
+
+Estado confirmado no início da Etapa 05:
+
+- Branch: `dev-v2.6.2-h2r-cadeia-produtos`.
+- HEAD inicial: `89920d6` — "docs: dimensiona runapp completo do painel
+  com dt sintetico".
+- Upstream: `origin/dev-v2.6.2-h2r-cadeia-produtos`, 0 ahead / 0 behind.
+- `git diff --stat`: vazio antes da edição documental desta etapa.
+- Artefatos não rastreados preservados e não versionados nesta etapa:
+  `diagnostics/backup_pre_commit_h2r_c_20260704_124238/`,
+  `diagnostics/validacao_r_local_h2r_c_20260705_003935/`,
+  `diagnostics/validacao_r_local_h2r_c_20260705_004113/` e
+  `monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R`.
+
+Evidência R local versionada nesta etapa:
+
+- Diretório:
+  `diagnostics/validacao_r_local_h2r_c_20260705_004208/`.
+- Manifest:
+  `diagnostics/validacao_r_local_h2r_c_20260705_004208/MANIFEST.json`.
+- Resumo:
+  `diagnostics/validacao_r_local_h2r_c_20260705_004208/VALIDACAO_R_LOCAL_H2R_C.md`.
+- Resultado estruturado:
+  `diagnostics/validacao_r_local_h2r_c_20260705_004208/validacao_r_local_h2r_c.json`.
+- Resultado geral: `OK`; `r_returncode = 0`; `parse(file=script_path) OK`.
+
+Esta etapa **não executou Rscript dentro do motor de IA**. A evidência foi
+gerada localmente no Fedora/orquestrador em 2026-07-05 00:42:08 -0300
+contra o script oficial rastreado
+`monitora_campsav_alvo_global_v2.6.0.R`, com R 4.6.1. O consumo por Codex
+ficou restrito a leitura/auditoria dos artefatos já gerados.
+
+Checks H2R-C confirmados pela evidência `004208`:
+
+- Script principal faz parse com sucesso.
+- `registros_importados_operacional_pre_painel.csv` aparece como produto
+  próprio e esperado.
+- A função viva `monitora_registros_importados_saneado_exportar()` aceita
+  `produto_nome`, preservando o default `registros_importados.csv` para
+  chamadas existentes.
+- A escrita pós-tokenização usa
+  `produto_nome = "registros_importados_operacional_pre_painel.csv"`,
+  sem sobrescrever `registros_importados.csv`.
+- A ordem validada permanece:
+  `registros_importados_bruto.csv` -> `registros_importados.csv` ->
+  `registros_corrig` -> `registros_importados_operacional_pre_painel.csv`.
+- Após `rm(registros)`, a verificação confirma que não há reexecução
+  operacional de saneamento para reconstruir `registros_importados.csv` a
+  partir de camada posterior.
+
+Auditorias Codex adicionais, sem R e sem pipeline pesado:
+
+- Busca exata no script oficial confirmou o parâmetro `produto_nome`, a
+  chamada pós-tokenização com nome próprio, as listas internas de produtos
+  centrais e a linha de auditoria final para
+  `registros_importados_operacional_pre_painel.csv`.
+- `git diff --no-index --stat` entre o backup
+  `monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R` e o script
+  oficial confirmou divergência ampla esperada (backup obsoleto pré-H2R-C),
+  sem necessidade de versionar, apagar ou usar esse arquivo.
+- Nenhum dado real, output pesado, backup ou diagnóstico superseded foi
+  alterado.
+
+Conclusão da Etapa 05: não houve necessidade de nova alteração funcional
+no script principal. A intervenção suficiente e segura foi consolidar o
+handoff documental e versionar a evidência R local OK mais recente,
+mantendo fora do commit os diagnósticos `003935`/`004113` por estarem
+superseded e os backups já classificados como artefatos organizacionais
+preservados.

@@ -1,0 +1,11 @@
+$ git status -sb
+## dev-v2.6.2-h2r-cadeia-produtos...origin/dev-v2.6.2-h2r-cadeia-produtos
+?? diagnostics/backup_pre_commit_h2r_c_20260704_124238/
+?? diagnostics/validacao_r_local_h2r_c_20260705_003935/
+?? diagnostics/validacao_r_local_h2r_c_20260705_004113/
+?? diagnostics/validacao_r_local_h2r_c_20260705_004208/
+?? monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R
+[exit=0]
+
+$ git diff --stat
+[exit=0]

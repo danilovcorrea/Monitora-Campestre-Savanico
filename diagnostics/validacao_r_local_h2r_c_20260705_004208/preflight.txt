@@ -1,0 +1,53 @@
+$ git status -sb
+## dev-v2.6.2-h2r-cadeia-produtos...origin/dev-v2.6.2-h2r-cadeia-produtos
+?? diagnostics/backup_pre_commit_h2r_c_20260704_124238/
+?? diagnostics/validacao_r_local_h2r_c_20260705_003935/
+?? diagnostics/validacao_r_local_h2r_c_20260705_004113/
+?? monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R
+[exit=0]
+
+$ git branch --show-current
+dev-v2.6.2-h2r-cadeia-produtos
+[exit=0]
+
+$ git log -1 --oneline --decorate
+89920d6 (HEAD -> dev-v2.6.2-h2r-cadeia-produtos, origin/dev-v2.6.2-h2r-cadeia-produtos) docs: dimensiona runapp completo do painel com dt sintetico
+[exit=0]
+
+$ git rev-parse --abbrev-ref --symbolic-full-name @{u}
+origin/dev-v2.6.2-h2r-cadeia-produtos
+[exit=0]
+
+$ git rev-list --left-right --count HEAD...@{u}
+0	0
+[exit=0]
+
+$ git ls-files --others --exclude-standard
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/README.md
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/arquivos_nao_rastreados_relevantes.txt
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/git_diff_atual.patch
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/git_diff_stat.txt
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/git_log_1_oneline.txt
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/git_status_sb.txt
+diagnostics/backup_pre_commit_h2r_c_20260704_124238/monitora_campsav_alvo_global_v2.6.0.R
+diagnostics/validacao_r_local_h2r_c_20260705_003935/MANIFEST.json
+diagnostics/validacao_r_local_h2r_c_20260705_003935/VALIDACAO_R_LOCAL_H2R_C.md
+diagnostics/validacao_r_local_h2r_c_20260705_003935/postflight.txt
+diagnostics/validacao_r_local_h2r_c_20260705_003935/preflight.txt
+diagnostics/validacao_r_local_h2r_c_20260705_003935/rscript_console.log
+diagnostics/validacao_r_local_h2r_c_20260705_003935/validacao_r_local_h2r_c.json
+diagnostics/validacao_r_local_h2r_c_20260705_003935/validar_h2r_c_linhagem.R
+diagnostics/validacao_r_local_h2r_c_20260705_004113/MANIFEST.json
+diagnostics/validacao_r_local_h2r_c_20260705_004113/VALIDACAO_R_LOCAL_H2R_C.md
+diagnostics/validacao_r_local_h2r_c_20260705_004113/postflight.txt
+diagnostics/validacao_r_local_h2r_c_20260705_004113/preflight.txt
+diagnostics/validacao_r_local_h2r_c_20260705_004113/rscript_console.log
+diagnostics/validacao_r_local_h2r_c_20260705_004113/rscript_console_preview.log
+diagnostics/validacao_r_local_h2r_c_20260705_004113/validacao_r_local_h2r_c.json
+diagnostics/validacao_r_local_h2r_c_20260705_004113/validar_h2r_c_linhagem.R
+monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R
+[exit=0]
+
+$ Rscript --version
+Rscript (R) version 4.6.1 (2026-06-24)
+[exit=0]
