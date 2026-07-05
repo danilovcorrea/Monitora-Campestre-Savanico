@@ -1278,3 +1278,106 @@ separadamente e com orçamento próprio, o fecho de dependências completo de
 `monitora_correcao_painel()` para um `runApp()` do painel inteiro com `dt`
 sintético mínimo — nenhum dos dois executado nesta rodada, por
 proporcionalidade.
+
+## 17. Dimensionamento do fecho de dependências do `runApp()` completo (2026-07-05, 03.5V-C) — bloqueio documentado, não executado
+
+Continuação autônoma solicitada nesta mesma janela: avaliar se o
+`runApp()` do painel completo (item 2 da seção 11 do fechamento e final da
+seção 16 acima) podia ser executado nesta rodada, sem instalar pacotes.
+Conclusão: **não é seguro executar nesta rodada**; o bloqueio não é de
+pacote ausente, é estrutural. Documentado abaixo em vez de fingir
+conclusão.
+
+**Pacotes**: `shiny`, `DT`, `data.table`, `leaflet`, `httpuv` — todos já
+instalados neste ambiente (`requireNamespace(..., quietly = TRUE)` ==
+`TRUE` para os 5). `monitora_correcao_carregar_dependencias_painel()`
+(linha 2435) só exige `shiny`/`DT`; ambos presentes. **Instalação de
+pacote não é o que impede esta rodada.**
+
+**Tamanho real da função**: `monitora_correcao_painel()` vai da linha
+17528 à 23348 (5821 linhas) — a própria função é maior que muitos scripts
+inteiros.
+
+**Fecho de dependências (medido, não estimado)**: dentro dessas 5821
+linhas há 239 identificadores únicos `monitora_*`/`MONITORA_*`
+referenciados. Busca por definição top-level (`^nome <- `) encontrou **123
+definições** distintas necessárias (as 116 restantes são argumentos,
+locais, ou definidos por padrão não capturado pela busca simples — o
+número real de dependências é `>= 123`, não um teto). Essas 123 definições
+estão espalhadas da linha 493 à linha 32854 do arquivo — **68% da extensão
+do script de 48235 linhas**, não um bloco contíguo de helpers. Para
+comparação: o fecho usado com sucesso na seção 16 para a aba isolada
+(painel completo, não) tinha 23 funções.
+
+**Por que isso é qualitativamente diferente de "sourcing" parcial**: o
+script não é uma biblioteca de funções — é um pipeline linear. As últimas
+~8631 linhas (39602–48233) são um bloco protegido por
+`if (!isTRUE(MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE)) { ... }` que,
+quando o arquivo é `source()`ado do início ao fim, **executa o pipeline
+pesado real** (leitura de `registros_importados.csv` real, correções,
+geração de produtos finais) — exatamente o que esta rodada e as anteriores
+proíbem explicitamente (sem dados reais, sem pipeline pesado, sem
+`source()` do script inteiro). Ou seja, `source()` do arquivo inteiro está
+descartado por desenho, não por precaução excessiva.
+
+A alternativa — extrair manualmente, como na seção 16, só as 123+
+definições necessárias mais os objetos globais que elas por sua vez
+dependem (`MONITORA_BASE_DIR`, `MONITORA_INPUT_DIR`, `MONITORA_LOG_DIR`,
+`MONITORA_EXEC_ID`, etc., vários deles calculados com I/O real de disco —
+`normalizePath(..., mustWork = TRUE)` sobre `input/`/`log/` reais do
+repositório) — deixaria de ser uma "extração cirúrgica" e passaria a ser,
+na prática, reconstruir à mão mais de dois terços do script. Isso é
+refatoração em lote disfarçada de teste (proibida nesta rodada) e carrega
+risco real de divergência silenciosa entre o fecho reconstruído à mão e o
+comportamento real do script — a mesma classe de risco já sinalizada neste
+repositório para reconstrução tardia insegura de artefatos de dados, agora
+aplicada a código.
+
+**Achado colateral favorável (para uma rodada futura)**: todos os 12
+pontos de escrita em disco (`monitora_fwrite`/`unlink`) dentro da função
+foram inspecionados; todos ficam dentro de funções internas
+(`monitora_painel_salvar_e_fechar` e afins) só invocadas por
+`observeEvent()` ligado a botão explícito (salvar/confirmar/checkpoint) —
+nenhuma escrita ocorre na renderização inicial. Ou seja, um `runApp()`
+passivo (subir + `curl`/HTTP GET sem simular clique), se um dia o fecho de
+dependências for resolvido com segurança, não gravaria nada em disco por
+si só — mitigação relevante, mas não suficiente para destravar esta
+rodada, cujo bloqueio é a construção segura do fecho em si.
+
+**Decisão desta rodada**: ETAPA 2 (execução) **não realizada** — não seria
+seguro dentro dos limites autorizados (sem `source()` do script inteiro,
+sem pipeline pesado, sem refatoração em lote). Nenhuma linha de código
+alterada por este incremento; nenhum bug a corrigir (não há execução para
+revelar bug).
+
+**Próximo passo recomendado (fora do escopo autorizado aqui, requer
+decisão/orçamento dedicado)**:
+1. Em vez de seleção manual de linhas, usar extração programática do fecho
+   transitivo (ex.: `codetools::findGlobals()` recursivo a partir de
+   `monitora_correcao_painel`, já citado no fechamento seção 5 para os
+   índices do contrato único) para gerar a lista completa e auditável de
+   dependências, reduzindo o risco de omissão/divergência da seleção manual.
+2. Isolar os globais que hoje dependem de I/O real (`MONITORA_BASE_DIR`,
+   `MONITORA_INPUT_DIR`, `MONITORA_LOG_DIR`) atrás de stubs sintéticos
+   (diretórios temporários dedicados ao teste), para que o fecho extraído
+   nunca toque `input/`/`log/`/`output/` reais do repositório.
+3. Só depois disso, tentar o `runApp()` do painel completo com `dt`
+   sintético — como rodada própria, com orçamento de tokens dedicado (o
+   fecho é ~5x maior que o já extraído na seção 16, então o custo de
+   revisão/validação é proporcionalmente maior).
+
+**Achado adicional desta rodada (fora do escopo direto, registrado por
+transparência)**: durante a auditoria Git desta rodada foi encontrado um
+diretório não rastreado não previsto,
+`diagnostics/ambiente_teste_shiny_20260705/AMBIENTE_TESTE_SHINY_20260705.md`
+(datado de 2026-07-04 23:43, ~14 min após o commit `c381a49`), registrando
+que `shinytest2`, `chromote` e `webshot2` foram instalados em biblioteca
+de usuário (sem sudo) e passaram por smoke test, em uma sessão anterior
+não commitada e fora do escopo desta rodada — **esta rodada não instalou
+nenhum pacote**, apenas encontrou e preserva esse registro pré-existente.
+Isso significa que o pré-requisito de pacote do item 1 da seção 11 do
+fechamento (sessão real via `shinytest2`/`chromote`) **já está satisfeito
+no ambiente atual**, embora isso não tenha sido decidido/autorizado nem
+executado por este incremento. Não resolve o bloqueio do item 2 (fecho de
+dependências do painel completo), que é independente da disponibilidade
+desses pacotes.

@@ -54,6 +54,8 @@ Jornada principal de commits desde a baseline v2.6.0/auditoria de linhagem
 | `cf720a6` | teste do helper de painel contra contrato real |
 | `3f928b8`/`2e40ab2` | exposição visual opt-in do painel (aba "Auditoria contrato único") |
 | `669d555` | validação Shiny controlada (`testServer`) da aba opt-in do painel |
+| `c381a49` | `shiny::runApp()` real (`httpuv`/loopback) da aba opt-in isolada |
+| *(esta rodada)* | 03.5V-C — dimensiona fecho de dependências do `runApp()` do painel completo; bloqueio documentado, execução não realizada |
 
 ## 2. Entregas do contrato único
 
@@ -92,6 +94,7 @@ Nenhuma mudança de comportamento; documento puramente descritivo.
 | Painel (exposição visual) | 03.5S-C | aba opt-in "Auditoria contrato único (opt-in)" | mesma flag acima |
 | Painel (validação dinâmica) | 03.5T-C | `shiny::testServer()` real sobre a aba, sem `runApp()` | — (só verificação) |
 | Painel (`runApp()` real, isolado) | 03.5U-C | `shiny::runApp()` real (`httpuv`/loopback) sobre a aba isolada, HTTP 200, HTML inicial correto nos dois estados da flag | — (só verificação) |
+| Painel (dimensionamento `runApp()` completo) | 03.5V-C | fecho de dependências medido (123+ definições, 68% do script) e classificado como não seguro de extrair/executar nesta rodada; nenhuma execução realizada | — (só auditoria, ver seção 17 do plano executivo) |
 
 Em todos os pontos: **nenhuma fonte paralela foi removida** (a remoção só
 é autorizada após equivalência comprovada, seção 27 do contrato — ainda
@@ -192,6 +195,17 @@ linha do script foi alterada por esta rodada até este ponto.
    interação com as demais abas/filtros/`dt` real de `registros_corrig`
    (fora do escopo desta rodada — fecho de dependências do painel
    completo é ordens de grandeza maior que o da aba isolada).
+   **Atualização de 2026-07-05 (03.5V-C):** esse "ordens de grandeza
+   maior" foi medido, não só estimado: 123+ definições top-level
+   necessárias (vs. 23 para a aba isolada), espalhadas por 68% da
+   extensão do script de 48235 linhas, num script que é pipeline linear
+   (não biblioteca) e cujo `source()` completo dispararia o bloco de
+   pipeline pesado real protegido por
+   `MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE` (linhas 39602–48233).
+   Pacotes (`shiny`/`DT`/`data.table`/`leaflet`/`httpuv`) já estão todos
+   instalados — não é isso que bloqueia. Conclusão desta rodada: não
+   seguro extrair/executar sem uma rodada dedicada com orçamento e método
+   próprios (ver seção 17 do plano executivo). Não executado.
 2. **Contrato único ainda não decide bloqueio em nenhum ponto
    pós-importação.** Em pós-validação e exportação, ele é anotação/alerta;
    a decisão real permanece 100% sob os 6 critérios próprios do XLSForm21
@@ -226,6 +240,11 @@ linha do script foi alterada por esta rodada até este ponto.
 - Nenhuma refatoração ampla ou em lote foi feita.
 - Nenhuma reconstrução de `registros_importados.csv`/`registros_importados_bruto.csv`
   a partir de camadas posteriores foi feita ou proposta.
+- **Atualização de 2026-07-05 (03.5V-C):** dimensionado (não executado) o
+  `runApp()` do painel completo — fecho de dependências medido em 123+
+  definições/68% do script; classificado como não seguro de extrair ou de
+  fazer `source()` completo nesta rodada (ver seção 17 do plano
+  executivo). Nenhuma linha de código alterada.
 
 ## 10. Decisão sobre os dois artefatos não rastreados
 
@@ -243,6 +262,15 @@ executado — `shiny::runApp()` real da aba isolada, sem navegador, sem
 sessão WebSocket (ver seção 16 do plano executivo). O que falta para
 fechamento integral do critério "painel" está detalhado abaixo.
 
+**Atualização de 2026-07-05 (03.5V-C):** o item 2 abaixo foi dimensionado
+(não executado) — fecho de dependências medido em 123+ definições
+top-level espalhadas por 68% do script (vs. 23 para a aba isolada), num
+script que é pipeline linear cujo `source()` completo dispararia o
+pipeline pesado real. Classificado como não seguro para esta rodada;
+requer método programático de extração do fecho (`codetools::findGlobals`
+recursivo) e isolamento dos globais com I/O real, ambos fora do escopo
+autorizado aqui (ver seção 17 do plano executivo).
+
 Na ordem de menor para maior blast radius, não executado nesta rodada:
 
 1. **Sessão Shiny real via navegador/`shinytest2`/`chromote` (não
@@ -252,9 +280,10 @@ Na ordem de menor para maior blast radius, não executado nesta rodada:
    fora do escopo desta rodada.
 2. **`shiny::runApp()` real do painel completo**
    (`monitora_correcao_painel()` com `dt` sintético mínimo e demais abas),
-   em ambiente de teste dedicado — fecho de dependências ordens de
-   grandeza maior que o da aba isolada; único jeito de fechar
-   integralmente o critério "painel" da seção 28 em conjunto com o item 1.
+   em ambiente de teste dedicado — fecho de dependências medido em 123+
+   definições/68% do script (03.5V-C), ordens de grandeza maior que o da
+   aba isolada; único jeito de fechar integralmente o critério "painel" da
+   seção 28 em conjunto com o item 1.
 3. Avaliar se `ocorrencias_painel` deve ser alimentado com contagens reais
    de uso por atributo, e só depois disso decidir sobre qualquer
    participação do contrato único em decisões de bloqueio real
@@ -287,3 +316,17 @@ pesado, sem processo órfão (ver seção 16 do plano executivo e seções 4,
 real/sintético, ambos fora do escopo de proporcionalidade desta rodada.
 Nenhuma alteração de código foi feita nem necessária; nenhum bug foi
 encontrado na aba opt-in durante este teste.
+
+**Atualização de 2026-07-05 (03.5V-C):** em nova continuação autônoma,
+avaliou-se se o `runApp()` do painel completo (pendência acima) podia ser
+executado sem instalar pacotes. Pacotes não são o bloqueio (todos
+presentes). O bloqueio é estrutural e foi medido: 123+ definições
+top-level necessárias, espalhadas por 68% do script de 48235 linhas, num
+script que é pipeline linear (não biblioteca de funções) cujo `source()`
+completo executaria o bloco de pipeline pesado real protegido por
+`MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE`. Extrair esse fecho à mão,
+como feito para a aba isolada (23 funções), equivaleria a reconstruir mais
+de dois terços do script — refatoração em lote disfarçada, com risco de
+divergência silenciosa. Por isso, **não foi executado** nesta rodada;
+documentado como pendência real (seção 17 do plano executivo), não fingida
+como concluída. Nenhuma alteração de código foi feita.
