@@ -1,0 +1,17 @@
+$frameId
+[1] "40209E3A6EA5B80D70CCB47447EACE58"
+
+$loaderId
+[1] "465861734FFA2563DCEDCB96B21DDB2D"
+
+$isDownload
+[1] FALSE
+
+titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
+atributo real encontrado no DOM: (NENHUM) 
+PRECONDICAO_FALHOU: atributo forma_vida_nativa_arvore_abaixo nao encontrado no select real.
+clique[cancelar]: CLICADO:cancelar
+clique[confirmar_encerrar_sem_materializar]: CLICADO:confirmar_encerrar_sem_materializar
+SEQUENCIA_CLIQUES: B: com operacoes no painel; fechar sem salvar | PRECONDICAO_FALHOU:ATRIBUTO_NAO_ENCONTRADO | CLICADO:cancelar | CLICADO:confirmar_encerrar_sem_materializar 
+[1] TRUE
+FIM_CHROMOTE_CASO_B

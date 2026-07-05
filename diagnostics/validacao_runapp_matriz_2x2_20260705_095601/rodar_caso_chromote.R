@@ -51,15 +51,26 @@ clicar <- function(id) {
 ## Em vez de adivinhar o valor interno exato do atributo no selectizeInput
 ## "atributo" (a transformacao de nome de coluna passa pelo dicionario/
 ## contrato interno do painel e pode nao ser identica ao caminho XLSForm
-## original), o valor real e DESCOBERTO em tempo de execucao lendo as
-## <option> do <select id="atributo"> verdadeiro no DOM (o selectize.js
-## mantem o <select> original no DOM, apenas oculto). Isso torna o driver
-## robusto a variacoes de formatacao do nome, em vez de um valor fixo
-## adivinhado. Os demais inputs (acao/valor_novo/motivo/confirmar_abrangencia)
-## usam ids estaveis e confirmados no codigo-fonte da UI (script.R, linhas
-## ~19022-19038), validos independentemente do tipo de controle renderizado
-## dinamicamente para "valor_novo" (uiOutput ui_valor_novo_controle sempre
-## vincula ao id "valor_novo", script.R linha ~19276).
+## original), o valor real e DESCOBERTO em tempo de execucao consultando a
+## instancia selectize.js viva do controle (`el.selectize.options`), e nao o
+## <select> nativo subjacente. A tentativa anterior lia `sel.options`
+## assumindo que o selectize.js mantinha todas as <option> originais no
+## <select> oculto; na pratica o selectize.js faz `detach()` das <option> ao
+## inicializar e so devolve ao <select> nativo a(s) opcao(oes) atualmente
+## selecionada(s) (para submissao nativa de formulario), entao a busca por
+## substring em `sel.options` so enxerga a opcao default (a primeira em
+## ordem_template_sismonitora) e falha para qualquer outro atributo -- foi
+## isso que causou "atributo real encontrado no DOM: (NENHUM)" nos casos B/D
+## da primeira rodada (diagnostics/validacao_runapp_matriz_2x2_20260705_095601/
+## RESULTADO_MATRIZ_2X2.json). A API `el.selectize.options` guarda todas as
+## opcoes carregadas pelo widget independentemente da selecao atual, o que
+## torna o driver robusto a variacoes de formatacao do nome, em vez de um
+## valor fixo adivinhado. Os demais inputs (acao/valor_novo/motivo/
+## confirmar_abrangencia) usam ids estaveis e confirmados no codigo-fonte da
+## UI (script.R, linhas ~19022-19038), validos independentemente do tipo de
+## controle renderizado dinamicamente para "valor_novo" (uiOutput
+## ui_valor_novo_controle sempre vincula ao id "valor_novo", script.R linha
+## ~19276).
 ##
 ## Se a precondicao falhar (atributo nao encontrado ou operacao nao aceita
 ## pelo contrato), o driver reporta isso explicitamente no log; o
@@ -78,6 +89,13 @@ adicionar_operacao_real <- function() {
     (function(){
       var sel = document.getElementById("atributo");
       if (!sel) return "";
+      if (sel.selectize && sel.selectize.options) {
+        var opts = sel.selectize.options;
+        for (var k in opts) {
+          if (Object.prototype.hasOwnProperty.call(opts, k) && k.indexOf("forma_vida_nativa_arvore_abaixo") !== -1) return k;
+        }
+        return "";
+      }
       for (var i=0;i<sel.options.length;i++){
         if (sel.options[i].value.indexOf("forma_vida_nativa_arvore_abaixo") !== -1) return sel.options[i].value;
       }

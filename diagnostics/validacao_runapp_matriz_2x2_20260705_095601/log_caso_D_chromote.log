@@ -1,0 +1,17 @@
+$frameId
+[1] "B5A7CB6E525B8A7E77B04651CE1CE760"
+
+$loaderId
+[1] "BEC0D47D9F81C0EC05583DDEA4A90E2A"
+
+$isDownload
+[1] FALSE
+
+titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
+atributo real encontrado no DOM: (NENHUM) 
+PRECONDICAO_FALHOU: atributo forma_vida_nativa_arvore_abaixo nao encontrado no select real.
+clique[salvar]: CLICADO:salvar
+clique[confirmar_salvar_checkpoint_pendente]: CLICADO:confirmar_salvar_checkpoint_pendente
+SEQUENCIA_CLIQUES: D: com operacoes no painel; salvar checkpoint com pendencias | PRECONDICAO_FALHOU:ATRIBUTO_NAO_ENCONTRADO | CLICADO:salvar | CLICADO:confirmar_salvar_checkpoint_pendente 
+[1] TRUE
+FIM_CHROMOTE_CASO_D

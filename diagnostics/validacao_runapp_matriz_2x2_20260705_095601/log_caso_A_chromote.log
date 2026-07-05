@@ -1,0 +1,15 @@
+$frameId
+[1] "BCAABB5629190957C7EBA4138D6BC602"
+
+$loaderId
+[1] "BE783448ED9CD5DF5ACF89DC4AD6B632"
+
+$isDownload
+[1] FALSE
+
+titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
+clique[cancelar]: CLICADO:cancelar
+clique[confirmar_encerrar_sem_materializar]: CLICADO:confirmar_encerrar_sem_materializar
+SEQUENCIA_CLIQUES: A: sem operacoes no painel; fechar sem salvar | CLICADO:cancelar | CLICADO:confirmar_encerrar_sem_materializar 
+[1] TRUE
+FIM_CHROMOTE_CASO_A

@@ -1,0 +1,10 @@
+etapa,tipo_ocorrencia,n_coletas_triagem_painel,n_coletas_relatorio,consistente,coletas_na_triagem_nao_relatorio,coletas_no_relatorio_nao_triagem
+pre_painel,ponto_sem_interceptacao,0,0,TRUE,"",""
+pre_painel,nativa_sem_forma_vida,6,6,TRUE,"",""
+pre_painel,exotica_sem_forma_vida,0,0,TRUE,"",""
+pre_painel,seca_morta_sem_forma_vida,0,0,TRUE,"",""
+pre_painel,outra_forma_vida,0,0,TRUE,"",""
+pre_painel,forma_vida_desconhecida,0,0,TRUE,"",""
+pre_painel,forma_vida_exotica_sem_especie,0,0,TRUE,"",""
+pre_painel,forma_vida_exotica_com_especie,0,0,TRUE,"",""
+pre_painel,uas_duplicadas_mesmo_ano,6,6,TRUE,"",""

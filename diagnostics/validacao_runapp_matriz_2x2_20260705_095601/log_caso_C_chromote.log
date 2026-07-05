@@ -1,0 +1,15 @@
+$frameId
+[1] "2247B4FB9407FF990E6F23D4231901D6"
+
+$loaderId
+[1] "8C131B29D7DF29FF86C3BE0164AB6474"
+
+$isDownload
+[1] FALSE
+
+titulo pagina: Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas 
+clique[salvar]: CLICADO:salvar
+clique[confirmar_salvar_checkpoint_pendente]: CLICADO:confirmar_salvar_checkpoint_pendente
+SEQUENCIA_CLIQUES: C: sem operacoes no painel; salvar checkpoint com pendencias | CLICADO:salvar | CLICADO:confirmar_salvar_checkpoint_pendente 
+[1] TRUE
+FIM_CHROMOTE_CASO_C

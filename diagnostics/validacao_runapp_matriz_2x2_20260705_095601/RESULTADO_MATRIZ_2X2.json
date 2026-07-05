@@ -1,0 +1,70 @@
+{
+  "A": {
+    "caso": "A",
+    "passou": true,
+    "precondicao_operacao_ok": true,
+    "contem_erro_funcao_ausente": false,
+    "encerrou_sozinho": true,
+    "json_caso": {
+      "caso": "A",
+      "porta": 38810,
+      "classe_resultado": "erro_harness",
+      "retorno_normal": false,
+      "mensagem_erro": "Execução encerrada pelo usuário sem materializar registros_corrig.csv: usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes.",
+      "n_linhas_resultado": null,
+      "arquivo_saida_existe": false,
+      "arquivo_saida_espacial_existe": false
+    }
+  },
+  "B": {
+    "caso": "B",
+    "passou": false,
+    "precondicao_operacao_ok": false,
+    "contem_erro_funcao_ausente": false,
+    "encerrou_sozinho": true,
+    "json_caso": {
+      "caso": "B",
+      "porta": 38811,
+      "classe_resultado": "erro_harness",
+      "retorno_normal": false,
+      "mensagem_erro": "Execução encerrada pelo usuário sem materializar registros_corrig.csv: usuário optou por cancelar a execução diante de ocorrências impeditivas pendentes.",
+      "n_linhas_resultado": null,
+      "arquivo_saida_existe": false,
+      "arquivo_saida_espacial_existe": false
+    }
+  },
+  "C": {
+    "caso": "C",
+    "passou": true,
+    "precondicao_operacao_ok": true,
+    "contem_erro_funcao_ausente": false,
+    "encerrou_sozinho": true,
+    "json_caso": {
+      "caso": "C",
+      "porta": 38812,
+      "classe_resultado": "data.table,data.frame",
+      "retorno_normal": true,
+      "mensagem_erro": null,
+      "n_linhas_resultado": 0,
+      "arquivo_saida_existe": false,
+      "arquivo_saida_espacial_existe": false
+    }
+  },
+  "D": {
+    "caso": "D",
+    "passou": false,
+    "precondicao_operacao_ok": false,
+    "contem_erro_funcao_ausente": false,
+    "encerrou_sozinho": true,
+    "json_caso": {
+      "caso": "D",
+      "porta": 38813,
+      "classe_resultado": "data.table,data.frame",
+      "retorno_normal": true,
+      "mensagem_erro": null,
+      "n_linhas_resultado": 0,
+      "arquivo_saida_existe": false,
+      "arquivo_saida_espacial_existe": false
+    }
+  }
+}

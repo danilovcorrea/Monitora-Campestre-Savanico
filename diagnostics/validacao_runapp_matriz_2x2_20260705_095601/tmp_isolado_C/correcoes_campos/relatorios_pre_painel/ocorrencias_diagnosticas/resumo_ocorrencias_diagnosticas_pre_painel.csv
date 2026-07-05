@@ -1,0 +1,10 @@
+etapa,severidade,tipo_ocorrencia,rotulo_ocorrencia,n_linhas,n_coletas,coletas_exemplo
+pre_painel,impeditiva,exotica_sem_forma_vida,Exótica sem forma de vida,0,0,""
+pre_painel,impeditiva,forma_vida_desconhecida,Forma de vida desconhecida,0,0,""
+pre_painel,impeditiva,nativa_sem_forma_vida,Nativa sem forma de vida,6,6,SINTETICO-001 | SINTETICO-002 | SINTETICO-003 | SINTETICO-004 | SINTETICO-005 | SINTETICO-006
+pre_painel,impeditiva,outra_forma_vida,Outra forma de vida,0,0,""
+pre_painel,impeditiva,ponto_sem_interceptacao,Ponto amostral sem interceptação,0,0,""
+pre_painel,impeditiva,seca_morta_sem_forma_vida,Seca ou morta sem forma de vida,0,0,""
+pre_painel,impeditiva,uas_duplicadas_mesmo_ano,UAs duplicadas no mesmo ano,6,6,SINTETICO-001 | SINTETICO-002 | SINTETICO-003 | SINTETICO-004 | SINTETICO-005 | SINTETICO-006
+pre_painel,revisao,forma_vida_exotica_com_especie,Revisão: forma de vida exótica com espécie,0,0,""
+pre_painel,revisao,forma_vida_exotica_sem_especie,Revisão: forma de vida exótica sem espécie,0,0,""
