@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <script type="application/shiny-singletons"></script>
+  <script type="application/html-dependencies">jquery[3.7.1];shiny-css[1.14.0];shiny-busy-indicators[1.14.0];shiny-javascript[1.14.0];selectize[0.15.2];htmltools-fill[0.5.9];htmlwidgets[1.6.4];datatables-css[0.0.0];datatables-binding[0.34.0];crosstalk[1.2.2];bootstrap[3.4.1]</script>
+<script src="jquery-3.7.1/jquery.min.js"></script>
+<link href="shiny-css-1.14.0/shiny.min.css" rel="stylesheet" />
+<link href="shiny-busy-indicators-1.14.0/busy-indicators.css" rel="stylesheet" />
+<script src="shiny-javascript-1.14.0/shiny.min.js"></script>
+<link href="selectize-0.15.2/css/selectize.bootstrap3.css" rel="stylesheet" />
+<script src="selectize-0.15.2/js/selectize.min.js"></script>
+<script src="selectize-0.15.2/accessibility/js/selectize-plugin-a11y.min.js"></script>
+<link href="htmltools-fill-0.5.9/fill.css" rel="stylesheet" />
+<script src="htmlwidgets-1.6.4/htmlwidgets.js"></script>
+<link href="datatables-css-0.0.0/datatables-crosstalk.css" rel="stylesheet" />
+<script src="datatables-binding-0.34.0/datatables.js"></script>
+<link href="crosstalk-1.2.2/css/crosstalk.min.css" rel="stylesheet" />
+<script src="crosstalk-1.2.2/js/crosstalk.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="bootstrap-3.4.1/css/bootstrap.min.css" rel="stylesheet" />
+<link href="bootstrap-3.4.1/accessibility/css/bootstrap-accessibility.min.css" rel="stylesheet" />
+<script src="bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script src="bootstrap-3.4.1/accessibility/js/bootstrap-accessibility.min.js"></script>  <style>
+        .monitora-painel-dt .dataTables_wrapper {
+          width: 100%;
+        }
+        .monitora-painel-dt .dataTables_scrollBody {
+          overflow-x: auto !important;
+        }
+        .monitora-painel-dt table.dataTable {
+          table-layout: auto;
+          width: 100% !important;
+        }
+        .monitora-painel-dt table.dataTable th,
+        .monitora-painel-dt table.dataTable td {
+          max-width: 360px;
+          min-width: 70px;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          vertical-align: top;
+        }
+        .monitora-painel-dt table.dataTable th {
+          font-size: 0.92em;
+          line-height: 1.15;
+        }
+        .monitora-painel-dt table.dataTable td {
+          cursor: default;
+          line-height: 1.25;
+        }
+      </style>
+  <title>Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas</title>
+  <title>Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas</title>
+</head>
+<body>
+  <div class="container-fluid">
+    <h2>Monitora Campestre-Savânico - Alvo Global - Painel de correções assistidas</h2>
+    <div class="row">
+      <div class="col-sm-4">
+        <form class="well" role="complementary">
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="responsavel-label" for="responsavel">Responsável pela correção</label>
+            <input id="responsavel" type="text" class="shiny-input-text form-control" value="dfed" data-update-on="change"/>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_uc-label" for="filtro_uc">Filtrar UC(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_uc" multiple="multiple"><option value="UC_SINTETICA">UC_SINTETICA</option></select>
+              <script type="application/json" data-for="filtro_uc">{"placeholder":"Todas as UCs","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_ea-label" for="filtro_ea">Filtrar EA(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_ea" multiple="multiple"><option value="EA_SINTETICA">EA_SINTETICA</option></select>
+              <script type="application/json" data-for="filtro_ea">{"placeholder":"Todas as EAs das UCs selecionadas","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_ano-label" for="filtro_ano">Filtrar ano(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_ano" multiple="multiple"><option value="2026">2026</option></select>
+              <script type="application/json" data-for="filtro_ano">{"placeholder":"Todos os anos das UCs/EAs selecionadas","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_ciclo-label" for="filtro_ciclo">Filtrar ciclo(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_ciclo" multiple="multiple"><option value="1">1</option></select>
+              <script type="application/json" data-for="filtro_ciclo">{"placeholder":"Todos os ciclos dos filtros superiores","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_campanha-label" for="filtro_campanha">Filtrar campanha(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_campanha" multiple="multiple"><option value="CAMPANHA_SINTETICA">CAMPANHA_SINTETICA</option></select>
+              <script type="application/json" data-for="filtro_campanha">{"placeholder":"Todas as campanhas dos filtros superiores","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="filtro_ua-label" for="filtro_ua">Filtrar UA(s)</label>
+            <div>
+              <select class="shiny-input-select form-control" id="filtro_ua" multiple="multiple"><option value="UA_SINTETICA">UA_SINTETICA</option></select>
+              <script type="application/json" data-for="filtro_ua">{"placeholder":"Todas as UAs dos filtros superiores","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <span class="help-block">Nos filtros superiores, deixar vazio equivale a 'todos'. Se todos os valores de um nível forem selecionados, o nível também é tratado como sem restrição.</span>
+          <div class="form-group shiny-input-container">
+            <label class="control-label">Filtrar coletas por ocorrência diagnóstica</label>
+            <div style="font-weight: 600; margin-top: 6px; margin-bottom: 4px;">Ocorrências impeditivas para criação de registros_corrig.csv sem pendências:</div>
+            <div id="filtros_triagem_coleta_impeditivas" class="form-group shiny-input-checkboxgroup shiny-input-container" role="group" aria-labelledby="filtros_triagem_coleta_impeditivas-label">
+              <label class="control-label shiny-label-null" for="filtros_triagem_coleta_impeditivas" id="filtros_triagem_coleta_impeditivas-label"></label>
+              <div class="shiny-options-group">
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="uas_duplicadas_mesmo_ano"/>
+                    <span>UAs duplicadas no mesmo ano (6 coletas para triagem)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="ponto_sem_interceptacao"/>
+                    <span>Ponto amostral sem interceptação (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="nativa_sem_forma_vida"/>
+                    <span>Nativa sem forma de vida (6 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="exotica_sem_forma_vida"/>
+                    <span>Exótica sem forma de vida (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="seca_morta_sem_forma_vida"/>
+                    <span>Seca ou morta sem forma de vida (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="outra_forma_vida"/>
+                    <span>Outra forma de vida (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_impeditivas" value="forma_vida_desconhecida"/>
+                    <span>Forma de vida desconhecida (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div style="font-weight: 600; margin-top: 10px; margin-bottom: 4px;">Outras ocorrências para revisão:</div>
+            <div id="filtros_triagem_coleta_outras" class="form-group shiny-input-checkboxgroup shiny-input-container" role="group" aria-labelledby="filtros_triagem_coleta_outras-label">
+              <label class="control-label shiny-label-null" for="filtros_triagem_coleta_outras" id="filtros_triagem_coleta_outras-label"></label>
+              <div class="shiny-options-group">
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_outras" value="forma_vida_exotica_sem_especie"/>
+                    <span>Revisão: forma de vida exótica sem espécie (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+                <div class="checkbox">
+                  <label>
+                    <input type="checkbox" name="filtros_triagem_coleta_outras" value="forma_vida_exotica_com_especie"/>
+                    <span>Revisão: forma de vida exótica com espécie (0 coletas com ocorrência)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <span class="help-block">Nenhum critério marcado = listar todas as coletas disponíveis nos filtros gerais. Critérios marcados = listar coletas com pelo menos uma das ocorrências selecionadas.</span>
+          <span class="help-block">Enquanto houver ocorrência impeditiva, registros_corrig.csv poderá ser salvo apenas como checkpoint de trabalho marcado com pendências; registros_validados.csv não será criado até o saneamento assistido dessas ocorrências.</span>
+          <button class="btn btn-default action-button btn-default btn-block" id="limpar_filtros" style="width:100%;" type="button"><span class="action-label">Limpar filtros</span></button>
+          <span class="help-block">Limpa UC, EA, ano, ciclo, campanha, UA e critérios diagnósticos. Mantém a COLETA selecionada, o lote de COLETAS e as correções pendentes.</span>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="coleta-label" for="coleta">Coleta a corrigir</label>
+            <div>
+              <select class="shiny-input-select form-control" id="coleta"><option value="">(nenhuma coleta selecionada; escolha manualmente para carregar a prévia)</option>
+<option value="SINTETICO-001">SINTETICO-001</option>
+<option value="SINTETICO-002">SINTETICO-002</option>
+<option value="SINTETICO-003">SINTETICO-003</option>
+<option value="SINTETICO-004">SINTETICO-004</option>
+<option value="SINTETICO-005">SINTETICO-005</option>
+<option value="SINTETICO-006">SINTETICO-006</option></select>
+              <script type="application/json" data-for="coleta">{"placeholder":"Nenhuma COLETA selecionada","allowEmptyOption":true,"plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div id="escopo_coletas" class="form-group shiny-input-radiogroup shiny-input-container" role="radiogroup" aria-labelledby="escopo_coletas-label">
+            <label class="control-label" id="escopo_coletas-label" for="escopo_coletas">Escopo de COLETAS</label>
+            <div class="shiny-options-group">
+              <div class="radio">
+                <label>
+                  <input type="radio" name="escopo_coletas" value="coleta_individual" checked="checked"/>
+                  <span>Coleta individual</span>
+                </label>
+              </div>
+              <div class="radio">
+                <label>
+                  <input type="radio" name="escopo_coletas" value="coletas_do_lote"/>
+                  <span>Coletas do lote</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="coletas_lote-label" for="coletas_lote">COLETAS do lote</label>
+            <div>
+              <select class="shiny-input-select form-control" id="coletas_lote" multiple="multiple"><option value="SINTETICO-001">SINTETICO-001</option>
+<option value="SINTETICO-002">SINTETICO-002</option>
+<option value="SINTETICO-003">SINTETICO-003</option>
+<option value="SINTETICO-004">SINTETICO-004</option>
+<option value="SINTETICO-005">SINTETICO-005</option>
+<option value="SINTETICO-006">SINTETICO-006</option></select>
+              <script type="application/json" data-for="coletas_lote">{"placeholder":"Selecione COLETAS dentro dos filtros atuais","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-sm-6">
+              <button class="btn btn-default action-button btn-default" id="adicionar_filtradas_lote" type="button"><span class="action-label">Adicionar filtradas ao lote</span></button>
+            </div>
+            <div class="col-sm-6">
+              <button class="btn btn-default action-button btn-default" id="limpar_coletas_lote" type="button"><span class="action-label">Limpar lote</span></button>
+            </div>
+          </div>
+          <span class="help-block">Escopo 'Coleta individual' usa apenas a COLETA selecionada acima. Escopo 'Coletas do lote' usa exatamente as COLETAS atualmente listadas em 'COLETAS do lote'. Use 'Adicionar filtradas ao lote' para preencher o lote com as COLETAS que atendem aos filtros superiores e depois revise/remova/adicione manualmente antes de aplicar.</span>
+          <div id="ui_ponto" class="shiny-html-output"></div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="atributo-label" for="atributo">Atributo a corrigir</label>
+            <div>
+              <select class="shiny-input-select form-control" id="atributo"><option value="UC" selected>Unidade de Conservação (UC) → uc</option>
+<option value="data_hora/data">Data (data_hora/data) → data_hora/data</option>
+<option value="data_hora/hora">Horário (data_hora/hora) → data_hora/hora</option>
+<option value="coletor/cpf">CPF (coletor/cpf) → coletor/cpf</option>
+<option value="coletor/nome">Nome completo (coletor/nome) → coletor/nome</option>
+<option value="form_veg">Qual a formação vegetacional onde está situado o transecto? (form_veg) → form_veg</option>
+<option value="impact_manejo_uso/impacto_manejo_uso">Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso/impacto_manejo_uso) → impact_manejo_uso/impacto_manejo_uso</option>
+<option value="impact_manejo_uso/tipos_impacto_manejo_uso">Qual(is)? (impact_manejo_uso/tipos_impacto_manejo_uso) → impact_manejo_uso/tipos_impacto_manejo_uso</option>
+<option value="impact_manejo_uso/tipos_impacto_manejo_uso_outro">Outros tipos de manejo ou uso: (impact_manejo_uso/tipos_impacto_manejo_uso_outro) → impact_manejo_uso/tipos_impacto_manejo_uso_outro</option>
+<option value="impact_manejo_uso/tipos_impacto_manejo_uso_descricao">Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso/tipos_impacto_manejo_uso_descricao) → impact_manejo_uso/tipos_impacto_manejo_uso_descricao</option>
+<option value="observacoes_gerais">Descreva observações gerais do transecto, caso necessário: (observacoes_gerais) → observacoes_gerais</option>
+<option value="amostragem/ponto_inicio_transecto">Coordenada inicial da amostragem (amostragem/ponto_inicio_transecto) → amostragem/ponto_inicio_transecto</option>
+<option value="amostragem/num_placa">Número da plaqueta (amostragem/num_placa) → amostragem/num_placa</option>
+<option value="amostragem/especie">Haverá identificação de espécie ou outro nível taxonômico? (amostragem/especie) → amostragem/especie</option>
+<option value="amostragem/registro/tipo_forma_vida">**Encostam** na vareta: (amostragem/registro/tipo_forma_vida) → amostragem/registro/tipo_forma_vida</option>
+<option value="amostragem/registro/forma_serrapilheira">Materiais botânicos em decomposição no solo observados: (amostragem/registro/forma_serrapilheira) → amostragem/registro/forma_serrapilheira material botanico materiais botanicos decomposicao solo serrapilheira fragmentos botanicos material inundado</option>
+<option value="amostragem/registro/forma_vida_outros">Outras plantas terrestres, líquens e/ou fungos: (amostragem/registro/forma_vida_outros) → amostragem/registro/forma_vida_outros outras plantas terrestres liquens fungos musgos hepaticas antoceros</option>
+<option value="amostragem/registro/forma_vida_nativa">Formas de vida de plantas nativas: (amostragem/registro/forma_vida_nativa) → amostragem/registro/forma_vida_nativa</option>
+<option value="amostragem/registro/forma_vida_nativa_bromelioide">A erva bromelioide nativa observada é: (amostragem/registro/forma_vida_nativa_bromelioide) → amostragem/registro/forma_vida_nativa_bromelioide</option>
+<option value="amostragem/registro/forma_vida_nativa_bromelioide_sp">Espécie ou nome popular (Erva bromelioide nativa) (amostragem/registro/forma_vida_nativa_bromelioide_sp) → amostragem/registro/forma_vida_nativa_bromelioide_sp</option>
+<option value="amostragem/registro/forma_vida_nativa_cactacea">O cacto nativo observado é: (amostragem/registro/forma_vida_nativa_cactacea) → amostragem/registro/forma_vida_nativa_cactacea</option>
+<option value="amostragem/registro/forma_vida_nativa_cactacea_sp">Espécie ou nome popular (Cacto nativo ) (amostragem/registro/forma_vida_nativa_cactacea_sp) → amostragem/registro/forma_vida_nativa_cactacea_sp</option>
+<option value="amostragem/registro/forma_vida_nativa_orquidea">A orquídea nativa observada é: (amostragem/registro/forma_vida_nativa_orquidea) → amostragem/registro/forma_vida_nativa_orquidea</option>
+<option value="amostragem/registro/forma_vida_nativa_orquidea_sp">Espécie ou nome popular (Orquídea nativa) (amostragem/registro/forma_vida_nativa_orquidea_sp) → amostragem/registro/forma_vida_nativa_orquidea_sp</option>
+<option value="amostragem/registro/forma_vida_nativa_samambaia">A samambaia nativa observada é: (amostragem/registro/forma_vida_nativa_samambaia) → amostragem/registro/forma_vida_nativa_samambaia</option>
+<option value="amostragem/registro/forma_vida_nativa_samambaia_sp">Espécie ou nome popular (Samambaia nativa) (amostragem/registro/forma_vida_nativa_samambaia_sp) → amostragem/registro/forma_vida_nativa_samambaia_sp</option>
+<option value="amostragem/registro/forma_vida_nativa_graminoide">Espécie ou nome popular (Erva graminoide nativa) (amostragem/registro/forma_vida_nativa_graminoide) → amostragem/registro/forma_vida_nativa_graminoide</option>
+<option value="amostragem/registro/forma_vida_nativa_erva_nao_graminoide">Espécie ou nome popular (Erva não graminoide nativa) (amostragem/registro/forma_vida_nativa_erva_nao_graminoide) → amostragem/registro/forma_vida_nativa_erva_nao_graminoide</option>
+<option value="amostragem/registro/forma_vida_nativa_arbusto_abaixo">Espécie ou nome popular (Arbusto nativo tocando a vareta a uma altura inferior a 50cm) (amostragem/registro/forma_vida_nativa_arbusto_abaixo) → amostragem/registro/forma_vida_nativa_arbusto_abaixo</option>
+<option value="amostragem/registro/forma_vida_nativa_arbusto_acima">Espécie ou nome popular (Arbusto nativo tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro/forma_vida_nativa_arbusto_acima) → amostragem/registro/forma_vida_nativa_arbusto_acima</option>
+<option value="amostragem/registro/forma_vida_nativa_arvore_abaixo">Espécie ou nome popular (Árvore nativa com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro/forma_vida_nativa_arvore_abaixo) → amostragem/registro/forma_vida_nativa_arvore_abaixo</option>
+<option value="amostragem/registro/forma_vida_nativa_arvore_acima">Espécie ou nome popular (Árvore nativa com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro/forma_vida_nativa_arvore_acima) → amostragem/registro/forma_vida_nativa_arvore_acima</option>
+<option value="amostragem/registro/forma_vida_nativa_bambu">Espécie ou nome popular (Bambu nativo) (amostragem/registro/forma_vida_nativa_bambu) → amostragem/registro/forma_vida_nativa_bambu</option>
+<option value="amostragem/registro/forma_vida_nativa_lianas">Espécie ou nome popular (Liana nativa) (amostragem/registro/forma_vida_nativa_lianas) → amostragem/registro/forma_vida_nativa_lianas</option>
+<option value="amostragem/registro/forma_vida_nativa_ervas_de_passarinho">Espécie ou nome popular (Erva-de-passarinho nativa) (amostragem/registro/forma_vida_nativa_ervas_de_passarinho) → amostragem/registro/forma_vida_nativa_ervas_de_passarinho</option>
+<option value="amostragem/registro/forma_vida_nativa_palmeira">Espécie ou nome popular (Palmeira nativa) (amostragem/registro/forma_vida_nativa_palmeira) → amostragem/registro/forma_vida_nativa_palmeira</option>
+<option value="amostragem/registro/forma_vida_nativa_canela_de_ema">Espécie ou nome popular (Velloziaceae nativa) (amostragem/registro/forma_vida_nativa_canela_de_ema) → amostragem/registro/forma_vida_nativa_canela_de_ema</option>
+<option value="amostragem/registro/forma_vida_exotica">Formas de vida de plantas exóticas: (amostragem/registro/forma_vida_exotica) → amostragem/registro/forma_vida_exotica</option>
+<option value="amostragem/registro/forma_vida_exotica_bromelioide">A erva bromelioide exótica observada é: (amostragem/registro/forma_vida_exotica_bromelioide) → amostragem/registro/forma_vida_exotica_bromelioide</option>
+<option value="amostragem/registro/forma_vida_exotica_cactacea">O cacto exótico observado é: (amostragem/registro/forma_vida_exotica_cactacea) → amostragem/registro/forma_vida_exotica_cactacea</option>
+<option value="amostragem/registro/forma_vida_exotica_orquidea">A orquídea exótica observada é: (amostragem/registro/forma_vida_exotica_orquidea) → amostragem/registro/forma_vida_exotica_orquidea</option>
+<option value="amostragem/registro/forma_vida_exotica_samambaia">A samambaia exótica observada é: (amostragem/registro/forma_vida_exotica_samambaia) → amostragem/registro/forma_vida_exotica_samambaia</option>
+<option value="amostragem/registro/especies_exotica_graminoide">**Espécies** de ervas graminóides exóticas: (amostragem/registro/especies_exotica_graminoide) → amostragem/registro/especies_exotica_graminoide</option>
+<option value="amostragem/registro/exotica_graminoide_outra_sp">Outra espécie de erva graminoide exótica: (amostragem/registro/exotica_graminoide_outra_sp) → amostragem/registro/exotica_graminoide_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_erva_nao_graminoide">**Espécies** de ervas não graminóides exóticas: (amostragem/registro/especies_exotica_erva_nao_graminoide) → amostragem/registro/especies_exotica_erva_nao_graminoide</option>
+<option value="amostragem/registro/exotica_erva_outra_sp">Outra espécie de erva não graminoide exótica: (amostragem/registro/exotica_erva_outra_sp) → amostragem/registro/exotica_erva_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_arbusto_abaixo">**Espécies** de arbustos exóticos tocando a vareta a uma altura inferior a 50cm: (amostragem/registro/especies_exotica_arbusto_abaixo) → amostragem/registro/especies_exotica_arbusto_abaixo</option>
+<option value="amostragem/registro/exotica_arbusto_abaixo_outra_sp">Outra espécie de arbusto exótico tocando a vareta a uma altura inferior a 50cm: (amostragem/registro/exotica_arbusto_abaixo_outra_sp) → amostragem/registro/exotica_arbusto_abaixo_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_arbusto_acima">**Espécies** de arbustos exóticos tocando a vareta a uma altura igual ou superior a 50cm: (amostragem/registro/especies_exotica_arbusto_acima) → amostragem/registro/especies_exotica_arbusto_acima</option>
+<option value="amostragem/registro/exotica_arbusto_acima_outra_sp">Outra espécie de arbusto exótico tocando a vareta a uma igual ou superior a 50cm: (amostragem/registro/exotica_arbusto_acima_outra_sp) → amostragem/registro/exotica_arbusto_acima_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_arvore_abaixo">**Espécies** de árvores exóticas com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro/especies_exotica_arvore_abaixo) → amostragem/registro/especies_exotica_arvore_abaixo</option>
+<option value="amostragem/registro/exotica_arvore_abaixo_outra_sp">Outra espécie de árvore exótica com diâmetro do tronco menor que 5cm a 30cm do solo (D30): (amostragem/registro/exotica_arvore_abaixo_outra_sp) → amostragem/registro/exotica_arvore_abaixo_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_arvore_acima">**Espécies** de árvores exóticas com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro/especies_exotica_arvore_acima) → amostragem/registro/especies_exotica_arvore_acima</option>
+<option value="amostragem/registro/exotica_arvore_acima_outra_sp">Outra espécie de árvore exótica com diâmetro do tronco igual ou maior que 5cm a 30 cm do solo(D30): (amostragem/registro/exotica_arvore_acima_outra_sp) → amostragem/registro/exotica_arvore_acima_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_bambu">**Espécies** de bambus exóticos: (amostragem/registro/especies_exotica_bambu) → amostragem/registro/especies_exotica_bambu</option>
+<option value="amostragem/registro/exotica_bambu_outra_sp">Outra espécie de bambu exótico: (amostragem/registro/exotica_bambu_outra_sp) → amostragem/registro/exotica_bambu_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_lianas">**Espécies** de lianas exóticas: (amostragem/registro/especies_exotica_lianas) → amostragem/registro/especies_exotica_lianas</option>
+<option value="amostragem/registro/exotica_lianas_outra_sp">Outra espécie de liana exótica: (amostragem/registro/exotica_lianas_outra_sp) → amostragem/registro/exotica_lianas_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_ervas_de_passarinho">**Espécies** de ervas-de-passarinho (hemiparasita) exóticas: (amostragem/registro/especies_exotica_ervas_de_passarinho) → amostragem/registro/especies_exotica_ervas_de_passarinho</option>
+<option value="amostragem/registro/exotica_ervas_de_passarinho_outra_sp">Outra espécie de erva-de-passarinho exótica: (amostragem/registro/exotica_ervas_de_passarinho_outra_sp) → amostragem/registro/exotica_ervas_de_passarinho_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_palmeira">**Espécies** de palmeiras exóticas: (amostragem/registro/especies_exotica_palmeira) → amostragem/registro/especies_exotica_palmeira</option>
+<option value="amostragem/registro/exotica_palmeira_outra_sp">Outra espécie de palmeira exótica: (amostragem/registro/exotica_palmeira_outra_sp) → amostragem/registro/exotica_palmeira_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_bromelioide">**Espécies** de ervas bromelioides exóticas: (amostragem/registro/especies_exotica_bromelioide) → amostragem/registro/especies_exotica_bromelioide</option>
+<option value="amostragem/registro/exotica_bromelioide_outra_sp">Outra espécie de erva bromelióide exótica: (amostragem/registro/exotica_bromelioide_outra_sp) → amostragem/registro/exotica_bromelioide_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_cactacea">**Espécies** de cacto exótico: (amostragem/registro/especies_exotica_cactacea) → amostragem/registro/especies_exotica_cactacea</option>
+<option value="amostragem/registro/exotica_cactacea_outra_sp">Outra espécie de cacto exótico: (amostragem/registro/exotica_cactacea_outra_sp) → amostragem/registro/exotica_cactacea_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_orquidea">**Espécies** de orquídeas exóticas: (amostragem/registro/especies_exotica_orquidea) → amostragem/registro/especies_exotica_orquidea</option>
+<option value="amostragem/registro/exotica_orquidea_outra_sp">Outra espécie de orquídea exótica: (amostragem/registro/exotica_orquidea_outra_sp) → amostragem/registro/exotica_orquidea_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_samambaia">**Espécies** de samambaias exóticas: (amostragem/registro/especies_exotica_samambaia) → amostragem/registro/especies_exotica_samambaia</option>
+<option value="amostragem/registro/exotica_samambaia_outra_sp">Outra espécie de samambaia exótica: (amostragem/registro/exotica_samambaia_outra_sp) → amostragem/registro/exotica_samambaia_outra_sp</option>
+<option value="amostragem/registro/especies_exotica_outros">**Espécies** de outras exóticas: (amostragem/registro/especies_exotica_outros) → amostragem/registro/especies_exotica_outros</option>
+<option value="amostragem/registro/exotica_outros_outra_sp">Outra espécie exótica: (amostragem/registro/exotica_outros_outra_sp) → amostragem/registro/exotica_outros_outra_sp</option>
+<option value="amostragem/registro/forma_vida_seca_morta">Formas de vida de plantas secas ou mortas: (amostragem/registro/forma_vida_seca_morta) → amostragem/registro/forma_vida_seca_morta</option>
+<option value="amostragem/registro/forma_vida_seca_morta_bromelioide">A erva bromelioide seca ou morta observada é: (amostragem/registro/forma_vida_seca_morta_bromelioide) → amostragem/registro/forma_vida_seca_morta_bromelioide</option>
+<option value="amostragem/registro/forma_vida_seca_morta_bromelioide_sp">Espécie ou nome popular (Erva bromelioide seca ou morta) (amostragem/registro/forma_vida_seca_morta_bromelioide_sp) → amostragem/registro/forma_vida_seca_morta_bromelioide_sp</option>
+<option value="amostragem/registro/forma_vida_seca_morta_cactacea">O cacto seco ou morto observado é: (amostragem/registro/forma_vida_seca_morta_cactacea) → amostragem/registro/forma_vida_seca_morta_cactacea</option>
+<option value="amostragem/registro/forma_vida_seca_morta_cactacea_sp">Espécie ou nome popular (Cacto seco ou morto) (amostragem/registro/forma_vida_seca_morta_cactacea_sp) → amostragem/registro/forma_vida_seca_morta_cactacea_sp</option>
+<option value="amostragem/registro/forma_vida_seca_morta_orquidea">A orquídea seca ou morta observada é: (amostragem/registro/forma_vida_seca_morta_orquidea) → amostragem/registro/forma_vida_seca_morta_orquidea</option>
+<option value="amostragem/registro/forma_vida_seca_morta_orquidea_sp">Espécie ou nome popular (Orquídea seca ou morta) (amostragem/registro/forma_vida_seca_morta_orquidea_sp) → amostragem/registro/forma_vida_seca_morta_orquidea_sp</option>
+<option value="amostragem/registro/forma_vida_seca_morta_samambaia">A samambaia seca ou morta observada é: (amostragem/registro/forma_vida_seca_morta_samambaia) → amostragem/registro/forma_vida_seca_morta_samambaia</option>
+<option value="amostragem/registro/forma_vida_seca_morta_samambaia_sp">Espécie ou nome popular (Samambaia seca ou morta) (amostragem/registro/forma_vida_seca_morta_samambaia_sp) → amostragem/registro/forma_vida_seca_morta_samambaia_sp</option>
+<option value="amostragem/registro/forma_vida_seca_morta_graminoide">Espécie ou nome popular (Erva graminoide seca ou morta) (amostragem/registro/forma_vida_seca_morta_graminoide) → amostragem/registro/forma_vida_seca_morta_graminoide</option>
+<option value="amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide">Espécie ou nome popular (Erva não graminoide seca ou morta) (amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide) → amostragem/registro/forma_vida_seca_morta_erva_nao_graminoide</option>
+<option value="amostragem/registro/forma_vida_seca_morta_arbusto_abaixo">Espécie ou nome popular (Arbusto seco ou morto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro/forma_vida_seca_morta_arbusto_abaixo) → amostragem/registro/forma_vida_seca_morta_arbusto_abaixo</option>
+<option value="amostragem/registro/forma_vida_seca_morta_arbusto_acima">Espécie ou nome popular (Arbusto seco ou morto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro/forma_vida_seca_morta_arbusto_acima) → amostragem/registro/forma_vida_seca_morta_arbusto_acima</option>
+<option value="amostragem/registro/forma_vida_seca_mortaarvore_abaixo">Espécie ou nome popular (Árvore seca ou morta com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro/forma_vida_seca_mortaarvore_abaixo) → amostragem/registro/forma_vida_seca_mortaarvore_abaixo</option>
+<option value="amostragem/registro/forma_vida_seca_morta_arvore_acima">Espécie ou nome popular ( Árvore seca ou morta com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro/forma_vida_seca_morta_arvore_acima) → amostragem/registro/forma_vida_seca_morta_arvore_acima</option>
+<option value="amostragem/registro/forma_vida_seca_morta_bambu">Espécie ou nome popular (Bambu seco ou morto ) (amostragem/registro/forma_vida_seca_morta_bambu) → amostragem/registro/forma_vida_seca_morta_bambu</option>
+<option value="amostragem/registro/forma_vida_seca_morta_lianas">Espécie ou nome popular (Liana seca ou morta) (amostragem/registro/forma_vida_seca_morta_lianas) → amostragem/registro/forma_vida_seca_morta_lianas</option>
+<option value="amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho">Espécie ou nome popular (Erva-de-passarinho seca ou morta) (amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho) → amostragem/registro/forma_vida_seca_morta_ervas_de_passarinho</option>
+<option value="amostragem/registro/forma_vida_seca_morta_palmeira">Espécie ou nome popular (Palmeira seca ou morta) (amostragem/registro/forma_vida_seca_morta_palmeira) → amostragem/registro/forma_vida_seca_morta_palmeira</option>
+<option value="amostragem/registro/forma_vida_seca_morta_canela_de_ema">Espécie ou nome popular ( Velloziaceae seca ou morta) (amostragem/registro/forma_vida_seca_morta_canela_de_ema) → amostragem/registro/forma_vida_seca_morta_canela_de_ema</option>
+<option value="amostragem/registro/observacao">Descreva observações gerais do ponto amostral, caso necessário: (amostragem/registro/observacao) → amostragem/registro/observacao</option>
+<option value="amostragem/ponto_fim_transecto">Coordenada final da amostragem (amostragem/ponto_fim_transecto) → amostragem/ponto_fim_transecto</option></select>
+              <script type="application/json" data-for="atributo">{"placeholder":"Digite para buscar atributo contratual do template","maxOptions":5000,"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <span class="help-block">A lista acima é contratual/global: mostra atributos de registros_corrig que constam no template SISMONITORA/XLSForm 2025, independentemente da COLETA, do ponto selecionado ou de já haver valor preenchido no atributo. Campos técnicos, auxiliares ou fora do template não são operáveis no painel.</span>
+          <div id="escopo" class="form-group shiny-input-radiogroup shiny-input-container" role="radiogroup" aria-labelledby="escopo-label">
+            <label class="control-label" id="escopo-label" for="escopo">Escopo da aplicação</label>
+            <div class="shiny-options-group">
+              <div class="radio">
+                <label>
+                  <input type="radio" name="escopo" value="coleta_inteira" checked="checked"/>
+                  <span>Aplicar aos 101 registros da coleta</span>
+                </label>
+              </div>
+              <div class="radio">
+                <label>
+                  <input type="radio" name="escopo" value="ponto"/>
+                  <span>Aplicar apenas ao ponto selecionado</span>
+                </label>
+              </div>
+              <div class="radio">
+                <label>
+                  <input type="radio" name="escopo" value="linhas_pendentes_ocorrencia"/>
+                  <span>Aplicar somente às linhas pendentes da ocorrência diagnóstica</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="acao-label" for="acao">Ação</label>
+            <div>
+              <select id="acao" class="shiny-input-select"><option value="update" selected>Substituir valor</option>
+<option value="clear">Limpar valor</option></select>
+              <script type="application/json" data-for="acao" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <span class="help-block">A ação disponível depende do tipo do atributo. Campos de lista múltipla não aceitam substituição do valor inteiro: use adicionar, remover ou substituir token.</span>
+          <div class="shiny-input-textarea form-group shiny-input-container">
+            <label class="control-label" id="valor_original-label" for="valor_original">Valor original esperado / token origem (trava; opcional, mas recomendado)</label>
+            <textarea id="valor_original" class="form-control" rows="2" data-update-on="change"></textarea>
+          </div>
+          <div id="ui_valor_novo_controle" class="shiny-html-output"></div>
+          <div id="ui_contrato_entrada_info" class="shiny-html-output"></div>
+          <div id="ui_habito_correcao_contratual" class="shiny-html-output"></div>
+          <div id="ui_n_esperado_contextual" class="shiny-html-output"></div>
+          <div class="form-group shiny-input-container">
+            <div class="checkbox">
+              <label>
+                <input id="confirmar_abrangencia" type="checkbox" class="shiny-input-checkbox"/>
+                <span>Confirmo que revisei a abrangência e o número de linhas-alvo</span>
+              </label>
+            </div>
+          </div>
+          <div class="shiny-input-textarea form-group shiny-input-container">
+            <label class="control-label" id="motivo-label" for="motivo">Motivo / justificativa</label>
+            <textarea id="motivo" class="form-control" rows="2" data-update-on="change"></textarea>
+          </div>
+          <button id="add_corr" type="button" class="btn btn-default action-button"><span class="action-label">Adicionar correção simples/lote</span></button>
+          <button class="btn btn-default action-button btn-danger btn-block" id="limpar_outras_formas_escopo" style="width:100%; white-space: normal; text-align: left;" type="button"><span class="action-label">Sanitizar outras forma de vida no escopo</span></button>
+          <span class="help-block">Sanitização assistida de outra(s) forma(s) de vida: remove tokens históricos nas listas nativa/exótica/seca-morta e limpa descritores dependentes somente quando o bolsista aciona este botão. Para musgos, adiciona o token correspondente em outras plantas terrestres. Para lote, gera uma única operação atômica para todas as COLETAS listadas em 'COLETAS do lote'. Se não for aplicada, a ocorrência permanece como pendência impeditiva.</span>
+          <button class="btn btn-default action-button btn-danger" id="excluir_coletas_filtradas" type="button"><span class="action-label">Excluir COLETAS selecionadas</span></button>
+          <span class="help-block">Exclusão de COLETAS: em escopo 'Coleta individual', remove todos os registros da COLETA selecionada acima; em escopo 'Coletas do lote', remove todos os registros das COLETAS listadas no lote. A operação é sempre atômica EXCCOL, inclusive para uma única COLETA, e exige confirmação de abrangência e justificativa.</span>
+          <hr/>
+          <h4>Movimento assistido de forma de vida</h4>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_forma-label" for="mv_forma">Forma de vida</label>
+            <div>
+              <select id="mv_forma" class="shiny-input-select"><option value="graminoide">Erva graminoide (gramíneas, ciperáceas e juncáceas)</option>
+<option value="erva_nao_graminoide">Erva não graminoide</option>
+<option value="arbusto_abaixo">Arbusto tocando a vareta a uma altura inferior a 50cm</option>
+<option value="arbusto_acima" selected>Arbusto tocando a vareta a uma altura igual ou superior a 50cm</option>
+<option value="arvore_abaixo">Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)</option>
+<option value="arvore_acima">Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)</option>
+<option value="bambu">Bambu ou taquara</option>
+<option value="bromelioide">Erva bromelioide (bromeliáceas, apiáceas, eriocauláceas)</option>
+<option value="cactacea">Cacto</option>
+<option value="lianas">Liana, cipó ou trepadeira</option>
+<option value="ervas_de_passarinho">Erva-de-passarinho (hemiparasita)</option>
+<option value="orquidea">Orquídea</option>
+<option value="palmeira">Palmeira</option>
+<option value="samambaia">Samambaia</option>
+<option value="canela_de_ema">Velósia (Velloziaceae)</option>
+<option value="desconhecida">Forma de vida desconhecida</option></select>
+              <script type="application/json" data-for="mv_forma" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_origem-label" for="mv_origem">Origem</label>
+            <div>
+              <select id="mv_origem" class="shiny-input-select"><option value="nativa">nativa</option>
+<option value="exotica" selected>exotica</option>
+<option value="seca_morta">seca_morta</option></select>
+              <script type="application/json" data-for="mv_origem" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_destino-label" for="mv_destino">Destino</label>
+            <div>
+              <select id="mv_destino" class="shiny-input-select"><option value="nativa" selected>nativa</option>
+<option value="exotica">exotica</option>
+<option value="seca_morta">seca_morta</option></select>
+              <script type="application/json" data-for="mv_destino" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_habito-label" for="mv_habito">Hábito, quando obrigatório</label>
+            <div>
+              <select id="mv_habito" class="shiny-input-select"><option value="" selected>(não se aplica a esta forma de vida)</option></select>
+              <script type="application/json" data-for="mv_habito">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <button id="add_mv" type="button" class="btn btn-default action-button"><span class="action-label">Adicionar movimento de forma de vida</span></button>
+          <hr/>
+          <h4>Movimento em lote de formas de vida</h4>
+          <span class="help-block">Usa exatamente as COLETAS listadas em 'COLETAS do lote'. Gera 1 operação atômica MVLOTE para mover todas ou algumas formas da origem para o destino. Ocorrências com dependentes ambíguos são mantidas sem migração e registradas em relatório; as demais ocorrências migráveis seguem em 1 operação atômica.</span>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_origem-label" for="mv_lote_origem">Origem do lote</label>
+            <div>
+              <select id="mv_lote_origem" class="shiny-input-select"><option value="nativa">nativa</option>
+<option value="exotica" selected>exotica</option>
+<option value="seca_morta">seca_morta</option></select>
+              <script type="application/json" data-for="mv_lote_origem" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_formas-label" for="mv_lote_formas">Forma(s) de vida de origem</label>
+            <div>
+              <select class="shiny-input-select form-control" id="mv_lote_formas" multiple="multiple"><option value="__todas__" selected>Todas as formas encontradas na origem</option>
+<option value="desconhecida">desconhecida</option>
+<option value="graminoide">Erva graminoide (gramíneas, ciperáceas e juncáceas)</option>
+<option value="erva_nao_graminoide">Erva não graminoide</option>
+<option value="arbusto_abaixo">Arbusto tocando a vareta a uma altura inferior a 50cm</option>
+<option value="arbusto_acima">Arbusto tocando a vareta a uma altura igual ou superior a 50cm</option>
+<option value="arvore_abaixo">Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)</option>
+<option value="arvore_acima">Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)</option>
+<option value="bambu">Bambu ou taquara</option>
+<option value="bromelioide">Erva bromelioide (bromeliáceas, apiáceas, eriocauláceas)</option>
+<option value="cactacea">Cacto</option>
+<option value="lianas">Liana, cipó ou trepadeira</option>
+<option value="ervas_de_passarinho">Erva-de-passarinho (hemiparasita)</option>
+<option value="orquidea">Orquídea</option>
+<option value="palmeira">Palmeira</option>
+<option value="samambaia">Samambaia</option>
+<option value="canela_de_ema">Velósia (Velloziaceae)</option>
+<option value="desconhecida">Forma de vida desconhecida</option></select>
+              <script type="application/json" data-for="mv_lote_formas">{"placeholder":"Todas ou formas selecionadas","plugins":["remove_button","selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_habito_padrao-label" for="mv_lote_habito_padrao">Hábito padrão da origem, se aplicável</label>
+            <div>
+              <select id="mv_lote_habito_padrao" class="shiny-input-select"><option value="" selected>(não informado)</option>
+<option value="terrestre">terrestre</option>
+<option value="epifita">epifita</option>
+<option value="rupicola">rupicola</option></select>
+              <script type="application/json" data-for="mv_lote_habito_padrao">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_destino-label" for="mv_lote_destino">Destino do lote</label>
+            <div>
+              <select id="mv_lote_destino" class="shiny-input-select"><option value="nativa" selected>nativa</option>
+<option value="exotica">exotica</option>
+<option value="seca_morta">seca_morta</option></select>
+              <script type="application/json" data-for="mv_lote_destino" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_forma_destino-label" for="mv_lote_forma_destino">Forma(s) de vida de destino</label>
+            <div>
+              <select class="shiny-input-select form-control" id="mv_lote_forma_destino"><option value="graminoide">Erva graminoide (gramíneas, ciperáceas e juncáceas)</option>
+<option value="erva_nao_graminoide">Erva não graminoide</option>
+<option value="arbusto_abaixo">Arbusto tocando a vareta a uma altura inferior a 50cm</option>
+<option value="arbusto_acima">Arbusto tocando a vareta a uma altura igual ou superior a 50cm</option>
+<option value="arvore_abaixo">Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)</option>
+<option value="arvore_acima">Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)</option>
+<option value="bambu">Bambu ou taquara</option>
+<option value="bromelioide">Erva bromelioide (bromeliáceas, apiáceas, eriocauláceas)</option>
+<option value="cactacea">Cacto</option>
+<option value="lianas">Liana, cipó ou trepadeira</option>
+<option value="ervas_de_passarinho">Erva-de-passarinho (hemiparasita)</option>
+<option value="orquidea">Orquídea</option>
+<option value="palmeira">Palmeira</option>
+<option value="samambaia" selected>Samambaia</option>
+<option value="canela_de_ema">Velósia (Velloziaceae)</option>
+<option value="desconhecida">Forma de vida desconhecida</option></select>
+              <script type="application/json" data-for="mv_lote_forma_destino">{"placeholder":"Forma válida do XLSForm para o destino","plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <div class="form-group shiny-input-container">
+            <label class="control-label" id="mv_lote_habito_destino-label" for="mv_lote_habito_destino">Hábito padrão do destino, quando obrigatório</label>
+            <div>
+              <select id="mv_lote_habito_destino" class="shiny-input-select"><option value="" selected>(não informado)</option>
+<option value="terrestre">terrestre</option>
+<option value="epifita">epifita</option>
+<option value="rupicola">rupicola</option></select>
+              <script type="application/json" data-for="mv_lote_habito_destino">{"plugins":["selectize-plugin-a11y"]}</script>
+            </div>
+          </div>
+          <button class="btn btn-default action-button btn-warning" id="add_mv_lote" type="button"><span class="action-label">Adicionar movimento em lote de formas de vida</span></button>
+          <hr/>
+          <button class="btn btn-default action-button btn-primary" id="salvar" type="button"><span class="action-label">Salvar correções e fechar</span></button>
+          <button id="cancelar" type="button" class="btn btn-default action-button"><span class="action-label">Fechar painel sem salvar e continuar script</span></button>
+        </form>
+      </div>
+      <div class="col-sm-8" role="main">
+        <div class="tabbable">
+          <ul class="nav nav-tabs" data-tabsetid="1326">
+            <li class="active">
+              <a href="#tab-1326-1" data-toggle="tab" data-bs-toggle="tab" data-value="Correções de registros">Correções de registros</a>
+            </li>
+          </ul>
+          <div class="tab-content" data-tabsetid="1326">
+            <div class="tab-pane active" data-value="Correções de registros" id="tab-1326-1">
+              <h4>Diagnóstico dos registros selecionados</h4>
+              <div id="diagnostico_ui" class="shiny-html-output"></div>
+              <div id="alerta_abrangencia" class="shiny-html-output"></div>
+              <h4>Triagem de formas de vida exóticas, desconhecidas e outras formas de vida nos registros selecionados</h4>
+              <div id="resumo_exoticas" class="shiny-html-output"></div>
+              <div class="monitora-painel-dt">
+                <div class="datatables html-widget html-widget-output shiny-report-size html-fill-item" id="tabela_exoticas" style="width:100%;height:auto;"></div>
+              </div>
+              <div class="row">
+                <div class="col-sm-4">
+                  <button class="btn btn-default action-button btn-warning" id="usar_exotica_selecionada" type="button"><span class="action-label">Mover exótica(s) selecionada(s) → nativa</span></button>
+                  <span class="help-block">Aplicável somente a linhas tipo_triagem = exotica.</span>
+                </div>
+                <div class="col-sm-4">
+                  <div class="form-group shiny-input-container">
+                    <label class="control-label" id="triagem_destino_desconhecida-label" for="triagem_destino_desconhecida">Destino da forma desconhecida</label>
+                    <div>
+                      <select id="triagem_destino_desconhecida" class="shiny-input-select"><option value="nativa" selected>nativa</option>
+<option value="exotica">exotica</option>
+<option value="seca_morta">seca_morta</option></select>
+                      <script type="application/json" data-for="triagem_destino_desconhecida" data-nonempty="">{"plugins":["selectize-plugin-a11y"]}</script>
+                    </div>
+                  </div>
+                  <div class="form-group shiny-input-container">
+                    <label class="control-label" id="triagem_forma_valida-label" for="triagem_forma_valida">Forma de vida válida</label>
+                    <div>
+                      <select class="shiny-input-select form-control" id="triagem_forma_valida"><option value="arbusto_abaixo" selected>arbusto_abaixo</option>
+<option value="arbusto_acima">arbusto_acima</option>
+<option value="arvore_abaixo">arvore_abaixo</option>
+<option value="arvore_acima">arvore_acima</option>
+<option value="bambu">bambu</option>
+<option value="bromelioide">bromelioide</option>
+<option value="cactacea">cactacea</option>
+<option value="erva_bromelioide">erva_bromelioide</option>
+<option value="erva_nao_graminoide">erva_nao_graminoide</option>
+<option value="graminoide">graminoide</option>
+<option value="lianas">lianas</option>
+<option value="orquidea">orquidea</option>
+<option value="palmeira">palmeira</option>
+<option value="samambaia">samambaia</option></select>
+                      <script type="application/json" data-for="triagem_forma_valida">{"placeholder":"Escolha uma forma válida do XLSForm atual","plugins":["selectize-plugin-a11y"]}</script>
+                    </div>
+                  </div>
+                  <div class="form-group shiny-input-container">
+                    <label class="control-label" id="triagem_habito-label" for="triagem_habito">Hábito, quando obrigatório</label>
+                    <div>
+                      <select id="triagem_habito" class="shiny-input-select"><option value="" selected>(não se aplica a esta forma de vida)</option></select>
+                      <script type="application/json" data-for="triagem_habito">{"plugins":["selectize-plugin-a11y"]}</script>
+                    </div>
+                  </div>
+                  <button class="btn btn-default action-button btn-info" id="substituir_desconhecida_selecionada" type="button"><span class="action-label">Substituir desconhecida(s) por forma válida</span></button>
+                  <span class="help-block">Remove o token desconhecida/desconhecido da lista original e adiciona a forma válida na lista escolhida.</span>
+                </div>
+                <div class="col-sm-4">
+                  <button class="btn btn-default action-button btn-danger" id="remover_outras_selecionadas" type="button"><span class="action-label">Excluir outra(s) forma(s) de vida</span></button>
+                  <span class="help-block">Remove, nas linhas selecionadas, tokens históricos de outra(s) forma(s) de vida e limpa os descritores dependentes correspondentes. Se o ponto ficaria sem categoria válida, aplica a regra de solo_nu. A ação gera uma única operação atômica auditável.</span>
+                </div>
+              </div>
+              <hr/>
+              <h4>Prévia das COLETAS do lote</h4>
+              <div id="alerta_lote_multicoletas" class="shiny-html-output"></div>
+              <div class="monitora-painel-dt">
+                <div class="datatables html-widget html-widget-output shiny-report-size html-fill-item" id="preview_lote_multicoletas" style="width:100%;height:auto;"></div>
+              </div>
+              <h4>Registros selecionados</h4>
+              <div class="monitora-painel-dt">
+                <div class="datatables html-widget html-widget-output shiny-report-size html-fill-item" id="tabela" style="width:100%;height:auto;"></div>
+              </div>
+              <h4>Correções pendentes nesta sessão</h4>
+              <div id="status_correcoes" class="shiny-html-output"></div>
+              <div id="preview_pendencias_sessao" class="shiny-html-output"></div>
+              <button class="btn btn-default action-button btn-danger" id="excluir_correcoes_pendentes" type="button"><span class="action-label">Excluir correção(ões) pendente(s) selecionada(s)</span></button>
+              <div class="monitora-painel-dt">
+                <div class="datatables html-widget html-widget-output shiny-report-size html-fill-item" id="correcoes" style="width:100%;height:auto;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

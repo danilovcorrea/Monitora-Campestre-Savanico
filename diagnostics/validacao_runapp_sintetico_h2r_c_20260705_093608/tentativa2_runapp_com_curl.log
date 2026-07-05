@@ -1,0 +1,22 @@
+=== Harness runApp() sintetico H2R-C ===
+tmp_root: diagnostics/validacao_runapp_sintetico_h2r_c_20260705_093608/tmp_isolado 
+script_path: /home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/monitora_campsav_alvo_global_v2.6.0.R 
+R.version.string: R version 4.6.1 (2026-06-24) 
+n_expressoes_top_level: 910 
+n_atribuicoes_function_capturadas (recursivo, incl. if-wrapped): 910 
+n_funcoes_definidas_com_sucesso: 910 
+n_constantes_MONITORA_definidas: 41 
+schema129 nrow: 129 
+dt_sintetico dim: 6 x 16 
+dt_sintetico names: COLETA, uuid_registro, coleta_uuid, amostragem/registro/ponto_amostral, amostragem/registro/ponto_metro, amostragem/registro/tipo_forma_vida, amostragem/registro/forma_vida_nativa_arvore_abaixo, UC, EA, ANO, CICLO, UA, CAMPANHA, PROTOCOLO, data_do_registro, validado 
+=== Chamando monitora_correcao_painel() (chamada real) ===
+2026-07-05 09:37:52 [painel_correcoes] Seletor de atributos do painel: 94 atributo(s) contratuais exibidos em ordem do template SISMONITORA/XLSForm 2025; alvos materiais/outros presentes=amostragem/registro/forma_serrapilheira | amostragem/registro/forma_vida_outros
+2026-07-05 09:37:52 [painel_correcoes] Auditoria de controle de atributos do painel gravada: diagnostics/validacao_runapp_sintetico_h2r_c_20260705_093608/tmp_isolado/output/auditoria_painel_controle_atributos.csv; bloqueado_sem_dominio_xlsform=37; ok=57
+2026-07-05 09:37:52 [painel_correcoes] Triagem unificada do painel preparada sem ocorrências diagnósticas.
+2026-07-05 09:37:53 [painel_correcoes] Listas diagnósticas do painel preparadas: 6 coleta(s) com UA duplicada no mesmo ano; 0 com ponto amostral sem interceptação; 6 com nativa sem forma de vida; 0 com exótica sem forma de vida; 0 com seca ou morta sem forma de vida; 0 com outra forma de vida; 0 com forma de vida desconhecida; 0 em lista de revisão de exótica sem espécie; 0 em lista de revisão de exótica com espécie.
+2026-07-05 09:37:53 [painel_correcoes] Relatórios de ocorrências diagnósticas [pre_painel] gerados em diagnostics/validacao_runapp_sintetico_h2r_c_20260705_093608/tmp_isolado/correcoes_campos/relatorios_pre_painel/ocorrencias_diagnosticas; arquivos_csv=14; tipos_com_ocorrencia=2; soma coletas impeditivas por tipo=12.
+2026-07-05 09:37:53 [painel_correcoes] Painel Shiny será aberto. A execução do script fica pausada enquanto o painel estiver aberto.
+2026-07-05 09:37:53 [painel_correcoes] Para continuar a execução, use 'Salvar correções e fechar' ou 'Fechar painel sem salvar e continuar script'. Se houver ocorrências impeditivas, uma janela central exigirá confirmação explícita do encerramento.
+2026-07-05 09:37:53 [painel_correcoes] runApp() será chamado agora; launch.browser=FALSE.
+
+Listening on http://127.0.0.1:38765

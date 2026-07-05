@@ -1,0 +1,15 @@
+$frameId
+[1] "DBE2F9AB6F072CBE7E1E81FE88B8CA40"
+
+$loaderId
+[1] "4E76D22D40321A275E0DE37D8F54BE76"
+
+$isDownload
+[1] FALSE
+
+resultado clique salvar: CLICADO 
+botoes apos clique salvar:
+ [{"id":"limpar_filtros","text":"Limpar filtros"},{"id":"adicionar_filtradas_lote","text":"Adicionar filtradas ao lote"},{"id":"limpar_coletas_lote","text":"Limpar lote"},{"id":"add_corr","text":"Adicionar correção simples/lote"},{"id":"limpar_outras_formas_escopo","text":"Sanitizar outras forma de vida no escopo"},{"id":"excluir_coletas_filtradas","text":"Excluir COLETAS selecionadas"},{"id":"add_mv","text":"Adicionar movimento de forma de vida"},{"id":"add_mv_lote","text":"Adicionar movimento em lote de formas de vida"},{"id":"salvar","text":"Salvar correções e fechar"},{"id":"cancelar","text":"Fechar painel sem salvar e continuar script"},{"id":"usar_exotica_selecionada","text":"Mover exótica(s) selecionada(s) → nativa"},{"id":"substituir_desconhecida_selecionada","text":"Substituir desconhecida(s) por forma válida"},{"id":"remover_outras_selecionadas","text":"Excluir outra(s) forma(s) de vida"},{"id":"excluir_correcoes_pendentes","text":"Excluir correção(ões) pendente(s) selecionada(s)"},{"id":"","text":"Voltar ao painel"},{"id":"confirmar_salvar_checkpoint_pendente","text":"Salvar checkpoint com pendências"},{"id":"confirmar_encerrar_sem_materializar","text":"Cancelar execução sem materializar"}] 
+resultado clique confirmacao: CLICADO:confirmar_salvar_checkpoint_pendente 
+[1] TRUE
+FIM_CHROMOTE_SALVAR
