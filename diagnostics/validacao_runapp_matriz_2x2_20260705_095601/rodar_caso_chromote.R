@@ -122,6 +122,28 @@ adicionar_operacao_real <- function() {
 
   r <- clicar("add_corr")
   Sys.sleep(2)
+
+  ## Diagnostico adicional: varias validacoes do observeEvent(input$add_corr)
+  ## no script de producao retornam cedo emitindo apenas
+  ## monitora_painel_notificar(..., type = "error") (shiny::showNotification),
+  ## sem nenhuma linha em monitora_correcao_console_msg. Isso torna
+  ## precondicao_operacao_ok=FALSE indistinguivel, so pelo log do app, de uma
+  ## rejeicao silenciosa vs. um problema no proprio driver. Como
+  ## showNotification sempre renderiza ".shiny-notification-content" no DOM,
+  ## capturamos aqui o texto de qualquer notificacao visivel logo apos o
+  ## clique, para que a causa raiz fique registrada no log do chromote sem
+  ## precisar adivinhar qual validacao no script de producao foi acionada.
+  notificacoes <- b$Runtime$evaluate('
+    (function(){
+      var els = document.querySelectorAll(".shiny-notification-content");
+      var textos = [];
+      for (var i=0;i<els.length;i++){ textos.push(els[i].innerText || els[i].textContent || ""); }
+      return textos.join(" || ");
+    })()
+  ')
+  texto_notificacoes <- notificacoes$result$value
+  cat("NOTIFICACAO_APOS_ADD_CORR:", if (nzchar(texto_notificacoes)) texto_notificacoes else "(NENHUMA)", "\n")
+
   invisible(r)
 }
 

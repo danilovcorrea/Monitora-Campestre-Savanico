@@ -1,6 +1,6 @@
 # Validacao da matriz 2x2 - fechamento do painel Shiny (H2R-C)
 
-Data/hora de execucao: 2026-07-05 10:09:08
+Data/hora de execucao: 2026-07-05 10:15:52
 Script de producao testado: `/home/dfed/Projetos/Monitora-Campestre-Savanico_v262_rollforward_v260/monitora_campsav_alvo_global_v2.6.0.R`
 
 ## Contexto
