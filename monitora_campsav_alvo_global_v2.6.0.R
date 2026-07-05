@@ -19210,6 +19210,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::uiOutput("esp_auditoria_sessao_info"),
           shiny::actionButton("esp_excluir_correcoes_pendentes", "Excluir operação(ões) espaciais pendente(s) selecionada(s)", class = "btn-danger"),
           DT::DTOutput("esp_correcoes")
+          ),
+          if (isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))) shiny::tabPanel(
+            "Auditoria contrato único (opt-in)",
+            shiny::h4("Perfil de edição do painel derivado do contrato único"),
+            shiny::helpText("Tabela somente leitura em memória, via monitora_perfil_painel_edicao_contrato_unico()/monitora_contrato_unico_indices(). Não altera, bloqueia nem corrige registros_corrig; ausente por padrão (flag MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO)."),
+            monitora_painel_dt_output("auditoria_perfil_painel_contrato_unico")
           )
         )
       )
@@ -21293,6 +21299,27 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         m
       })
     }
+
+    ### v2.6.2 - 03.5S-C ---------------------------------------------------
+    ### Aba de auditoria somente leitura do painel (seções 11-13 do plano
+    ### executivo do motor único). Reaproveita o helper já testado
+    ### monitora_perfil_painel_edicao_contrato_unico() (03.5R-C/03.5R-C2);
+    ### não recebe input do usuário, não corrige, não bloqueia e não grava
+    ### nenhum produto -- só exibe a tabela em memória quando a flag opt-in
+    ### MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO está ligada (o
+    ### próprio helper já retorna NULL com a flag desligada, sem custo de
+    ### merge/cópia; o output só existe na UI quando a flag está ligada).
+    output$auditoria_perfil_painel_contrato_unico <- DT::renderDT({
+      if (!isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))) {
+        return(DT::datatable(data.table::data.table(mensagem = "Auditoria do contrato único desativada (flag opt-in desligada)."), rownames = FALSE))
+      }
+      perfil_auditoria_painel <- monitora_perfil_painel_edicao_contrato_unico()
+      if (!data.table::is.data.table(perfil_auditoria_painel) || !nrow(perfil_auditoria_painel)) {
+        return(DT::datatable(data.table::data.table(mensagem = "Perfil do contrato único indisponível para auditoria nesta sessão."), rownames = FALSE))
+      }
+      DT::datatable(perfil_auditoria_painel, selection = "none", options = monitora_painel_dt_options(), rownames = FALSE)
+    }, server = TRUE)
+    ### FIM v2.6.2 - 03.5S-C ------------------------------------------------
 
     output$esp_tabela_pendencias <- DT::renderDT({
       if (!isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
