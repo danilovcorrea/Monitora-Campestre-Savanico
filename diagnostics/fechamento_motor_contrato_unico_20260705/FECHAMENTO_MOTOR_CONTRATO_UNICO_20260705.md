@@ -403,3 +403,94 @@ handoff documental e versionar a evidência R local OK mais recente,
 mantendo fora do commit os diagnósticos `003935`/`004113` por estarem
 superseded e os backups já classificados como artefatos organizacionais
 preservados.
+
+## 14. Etapa 06 — fechamento governado desta rodada (fila de jobs + fecho `codetools` + entrega)
+
+Data/hora: 2026-07-05, execução por Claude em modo `release` /
+`publicacao_autorizada`, autorização explícita do usuário para
+autonomia de etapa, commit e push da branch dev até a entrega dos
+produtos finais (motor único e contrato único).
+
+### 14.1 Fila de jobs (`/home/dfed/.monitora-agent/jobs`)
+
+Auditada no início desta etapa: 108 diretórios de job. Estado por
+`status.json`/campo `state`: 102 `done`, 5 `error`, 1 `running`. O job
+`running` (`5a25820ee629`, engine `claude`, mode `release`, autonomy
+`publicacao_autorizada`, `request.json` com o texto desta própria tarefa)
+é **esta sessão** — não há, portanto, nenhum outro job pendente/rodando
+de fato a coordenar. Os 5 jobs em `error` foram inspecionados: todos
+falharam por causas externas já resolvidas ou irrelevantes ao escopo
+desta etapa (ex.: `6ed8cde6afc4` falhou em 3s por limite de sessão do
+Claude — "You've hit your session limit" — não por bloqueio de
+segurança nem por falha técnica do repositório); nenhum deixou o
+worktree ou o índice em estado inconsistente (`git status`/`git diff`
+conferidos limpos antes desta etapa, seção 1 acima). Nenhuma ação de
+recuperação foi necessária.
+
+### 14.2 Avanço programático do fecho de dependências do painel completo
+
+Em vez de repetir a tentativa de `runApp()` do painel completo já
+avaliada como não segura nas seções 8/9/11/17 (fecho manual de 123+
+definições, 68% do script, risco de reconstrução em lote disfarçada),
+esta etapa executou o **item 1 do "próximo passo recomendado" da seção
+17**: cálculo programático (não manual) do fecho transitivo via
+`codetools::findGlobals()` recursivo, em modo 100% estático (`parse()`
+sem `source()`, nenhuma função executada, nenhum I/O real). Evidência
+completa em
+`diagnostics/validacao_fecho_painel_codetools_20260705_015121/`
+(`fecho_painel_codetools.R`, `console.log` com `exit=0`,
+`fecho_painel_codetools.json`, `VALIDACAO_FECHO_PAINEL_CODETOOLS.md`).
+
+Achado principal: o fecho transitivo completo mede **231 funções**
+(vs. 123 na estimativa manual de um nível da seção 17) e **45**
+constantes `MONITORA_*` candidatas a stub sintético para uma rodada
+futura, além de 25 nomes de função ainda não capturados pelo filtro
+programático (gap explícito, documentado, não resolvido aqui). Isso
+**reforça com evidência mais forte** — não contradiz — a conclusão já
+registrada de que a extração manual do fecho seria arriscada; o método
+programático deste documento é o caminho correto para uma eventual
+rodada dedicada de `runApp()` do painel completo, que **continua não
+executada** nesta etapa.
+
+### 14.3 Validações de segurança reconfirmadas nesta etapa
+
+1. `Rscript -e 'invisible(parse("monitora_campsav_alvo_global_v2.6.0.R", keep.source = FALSE))'`
+   — `PARSE_OK`.
+2. Grep de reconstrução tardia de `registros_importados.csv`/
+   `registros_importados_bruto.csv` a partir de `registros_corrig`/
+   `registros_validados` — nenhuma ocorrência (esperado).
+3. Confirmação dos defaults opt-in (`Sys.getenv(...)`) das flags do
+   motor único — inalterados.
+4. `git ls-files | grep registros_importados` — só documentos `.md` de
+   auditoria; nenhum CSV de linhagem versionado.
+5. Artefatos não rastreados preservados e intactos (tamanho/listagem
+   inalterados): `diagnostics/backup_pre_commit_h2r_c_20260704_124238/`
+   (3.0M), `monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R`
+   (3016451 bytes), `diagnostics/validacao_r_local_h2r_c_20260705_003935/`
+   e `diagnostics/validacao_r_local_h2r_c_20260705_004113/` (superseded,
+   mantidos fora do commit conforme decisão da Etapa 05).
+
+### 14.4 Status final honesto desta etapa — motor único e contrato único
+
+Esta etapa **não** altera a matriz da seção 5: motor único e contrato
+único seguem entregues no nível **incremental/opt-in real e verificável**
+já documentado (índices/perfis derivados cumpridos; participação em
+bloqueio real pós-importação ainda não convergida; painel com
+`shiny::runApp()` real da aba isolada cumprido, `runApp()` do painel
+completo ainda pendente e agora com fecho medido mais rigorosamente).
+Não há, nesta etapa, nenhuma alegação de conclusão 100% da seção 28 —
+isso seria contradizer evidência já registrada. A entrega dos "produtos
+finais" desta rodada consiste em: fila de jobs auditada e sem pendência
+externa real, documento de fechamento consolidado (este), evidência nova
+e segura sobre o fecho do painel, validações de segurança reconfirmadas,
+e publicação (commit + push) autorizada explicitamente pelo usuário para
+a branch `dev-v2.6.2-h2r-cadeia-produtos`.
+
+### 14.5 Próximo passo H2R-C seguro (reafirmado)
+
+Inalterado em relação à seção 11: (1) sessão via navegador/`shinytest2`
+sobre a aba isolada (pacotes já instalados, ver
+`diagnostics/ambiente_teste_shiny_20260705/`); (2) `runApp()` do painel
+completo com os 45 stubs sintéticos de constante identificados nesta
+etapa, como rodada própria com orçamento dedicado; (3) decisão sobre
+participação do contrato único em bloqueio real, fora desta etapa.
