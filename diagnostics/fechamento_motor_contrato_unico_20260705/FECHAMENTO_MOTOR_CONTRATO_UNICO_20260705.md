@@ -91,6 +91,7 @@ Nenhuma mudança de comportamento; documento puramente descritivo.
 | Painel (auditoria) | 03.5R-C/R-C2 | helper `monitora_perfil_painel_edicao_contrato_unico()`, testado com contrato real | `MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO` (`FALSE`) |
 | Painel (exposição visual) | 03.5S-C | aba opt-in "Auditoria contrato único (opt-in)" | mesma flag acima |
 | Painel (validação dinâmica) | 03.5T-C | `shiny::testServer()` real sobre a aba, sem `runApp()` | — (só verificação) |
+| Painel (`runApp()` real, isolado) | 03.5U-C | `shiny::runApp()` real (`httpuv`/loopback) sobre a aba isolada, HTTP 200, HTML inicial correto nos dois estados da flag | — (só verificação) |
 
 Em todos os pontos: **nenhuma fonte paralela foi removida** (a remoção só
 é autorizada após equivalência comprovada, seção 27 do contrato — ainda
@@ -106,7 +107,7 @@ os pontos pós-importação.
 | Todos os perfis derivados da mesma fonte | **PARCIAL/OPT-IN** | Índices/perfis existem e são usados por 6+ pontos diagnósticos; fluxo primário de decisão ainda não depende deles em todos os pontos |
 | Importação reconhece observado→canônico sem fontes paralelas | **PARCIAL/OPT-IN** | 03.5L-C eleva divergências de alta severidade a alerta opt-in; fonte paralela de importação continua sendo o caminho determinante |
 | Pré-validação produz diagnósticos suficientes | **PARCIAL/OPT-IN** | 03.5M-C3 conecta diagnóstico/alerta opt-in de pipes; sem bloqueio primário novo |
-| Painel exibe regras/severidade/origem/bloqueio | **PARCIAL/OPT-IN** | Helper + aba opt-in implementados e validados estaticamente (03.5R-C2) e dinamicamente via `testServer` (03.5T-C); **sem validação em `runApp()` real com navegador** |
+| Painel exibe regras/severidade/origem/bloqueio | **PARCIAL/OPT-IN** | Helper + aba opt-in implementados e validados estaticamente (03.5R-C2), dinamicamente via `testServer` (03.5T-C) e agora via `shiny::runApp()` real em `httpuv`/loopback (03.5U-C, 2026-07-05); **sem sessão reativa real (WebSocket) nem validação do painel completo com navegador** |
 | Pós-validação determina aptidão de `registros_corrig.csv` | **PARCIAL/OPT-IN** | 03.5N-C anota severidade contratual; decisão de aptidão continua pelos 6 critérios próprios do XLSForm21 |
 | Exportação gera `registros_validados.csv` com 129 colunas quando apto | **PARCIAL/OPT-IN** | 03.5O-C propaga severidade ao resumo; schema/decisão de exportação seguem pelo fluxo existente, não alterados |
 | Índices/caches deriváveis | **CUMPRIDO** | `monitora_contrato_unico_indices()` recalculável a partir do contrato embutido, sem I/O de disco (confirmado por fecho `codetools::findGlobals`, seções 13/15 do plano) |
@@ -179,12 +180,18 @@ linha do script foi alterada por esta rodada até este ponto.
 
 ## 8. Riscos remanescentes que impedem validação produtiva plena
 
-1. **Sem `shiny::runApp()` real end-to-end do painel completo.** A
-   validação mais forte disponível é `shiny::testServer()` sobre os
-   blocos extraídos verbatim (03.5T-C) — cobre plumbing reativo real, mas
-   não cobre navegador, `drawCallback` JS, paginação AJAX real do `DT`,
-   nem interação com as demais abas/filtros/`dt` real de
-   `registros_corrig`.
+1. **Sem `shiny::runApp()` real end-to-end do painel completo.** Em
+   2026-07-05 (03.5U-C), foi executado `shiny::runApp()` real (servidor
+   `httpuv` de fato, loopback, HTTP 200) sobre a aba isolada nos dois
+   estados da flag — confirma que a UI/servidor real (não só mock) sobe
+   sem erro e serve o HTML/output binding correto. Isso **não cobre**:
+   sessão reativa real via WebSocket (o `curl` usado só busca o HTML
+   estático inicial, sem exercitar o `renderDT` em si — essa parte segue
+   coberta apenas por `testServer`, seção 15 do plano executivo),
+   navegador, `drawCallback` JS, paginação AJAX real do `DT`, nem
+   interação com as demais abas/filtros/`dt` real de `registros_corrig`
+   (fora do escopo desta rodada — fecho de dependências do painel
+   completo é ordens de grandeza maior que o da aba isolada).
 2. **Contrato único ainda não decide bloqueio em nenhum ponto
    pós-importação.** Em pós-validação e exportação, ele é anotação/alerta;
    a decisão real permanece 100% sob os 6 critérios próprios do XLSForm21
@@ -210,9 +217,12 @@ linha do script foi alterada por esta rodada até este ponto.
 
 - Nenhum dado real foi usado.
 - Nenhum pipeline pesado foi executado.
-- Nenhum `shiny::runApp()` real/interativo foi executado (avaliado como
-  fora de segurança/proporcionalidade para esta rodada — ver seção 7,
-  item 7).
+- **Atualização de 2026-07-05 (03.5U-C):** foi executado `shiny::runApp()`
+  real (não mock) sobre a aba isolada, em loopback, com timeout e sem
+  processo órfão — ver seção 16 do plano executivo. Continua **não**
+  executado: `runApp()` do painel completo (`monitora_correcao_painel()`
+  com `dt` real/sintético e demais abas) e qualquer sessão com navegador
+  real/`shinytest2`/`chromote` (não instalados neste ambiente).
 - Nenhuma refatoração ampla ou em lote foi feita.
 - Nenhuma reconstrução de `registros_importados.csv`/`registros_importados_bruto.csv`
   a partir de camadas posteriores foi feita ou proposta.
@@ -228,19 +238,29 @@ consumido por qualquer fluxo de execução.
 
 ## 11. Próximo passo H2R-C seguro
 
+**Atualização de 2026-07-05 (03.5U-C):** o item 1 abaixo foi parcialmente
+executado — `shiny::runApp()` real da aba isolada, sem navegador, sem
+sessão WebSocket (ver seção 16 do plano executivo). O que falta para
+fechamento integral do critério "painel" está detalhado abaixo.
+
 Na ordem de menor para maior blast radius, não executado nesta rodada:
 
-1. **Teste `shiny::runApp()` real controlado do painel completo**, em
-   ambiente de teste dedicado (sem dados reais, com dataset sintético
-   mínimo), cobrindo a aba opt-in "Auditoria contrato único" dentro do
-   ciclo real de navegador/`DT` server-side — único jeito de fechar
-   integralmente o critério "painel" da seção 28.
-2. Avaliar se `ocorrencias_painel` deve ser alimentado com contagens reais
+1. **Sessão Shiny real via navegador/`shinytest2`/`chromote` (não
+   instalados neste ambiente) sobre a aba isolada**, para exercitar
+   WebSocket, `drawCallback` JS e paginação AJAX real do `DT` — requer
+   decisão explícita de instalar pacotes novos (rede/tempo adicional),
+   fora do escopo desta rodada.
+2. **`shiny::runApp()` real do painel completo**
+   (`monitora_correcao_painel()` com `dt` sintético mínimo e demais abas),
+   em ambiente de teste dedicado — fecho de dependências ordens de
+   grandeza maior que o da aba isolada; único jeito de fechar
+   integralmente o critério "painel" da seção 28 em conjunto com o item 1.
+3. Avaliar se `ocorrencias_painel` deve ser alimentado com contagens reais
    de uso por atributo, e só depois disso decidir sobre qualquer
    participação do contrato único em decisões de bloqueio real
    (pós-validação/exportação) — mudança de comportamento do fluxo
    primário, exige incremento dedicado com auditoria de risco própria.
-3. Nenhum dos dois itens acima deve ser feito na mesma etapa que qualquer
+4. Nenhum dos três itens acima deve ser feito na mesma etapa que qualquer
    outra alteração funcional, conforme seção 2 do contrato (evitar
    mudanças simultâneas em importação/painel/validação/exportação).
 
@@ -254,3 +274,16 @@ pendências reais e conhecidas — validação `runApp()` real, participação
 determinante do contrato único em bloqueio, suíte automatizada e medição
 de performance — que **exigem dados sintéticos/reais e/ou uma rodada
 dedicada** e não devem ser declaradas concluídas por este documento.
+
+**Atualização de 2026-07-05 (03.5U-C):** em continuação autônoma desta
+mesma rodada, foi executado `shiny::runApp()` real (servidor `httpuv` de
+fato em loopback, sem mock) sobre a aba isolada "Auditoria contrato único
+(opt-in)", nos dois estados da flag, sem dados reais, sem pipeline
+pesado, sem processo órfão (ver seção 16 do plano executivo e seções 4,
+8, 9 e 11 acima, já atualizadas). Isso reduz — sem eliminar — a pendência
+"sem `runApp()` real"; permanece pendente a sessão reativa via WebSocket
+(não exercitada por este teste, que só buscou o HTML estático inicial via
+`curl`) e o `runApp()` do painel completo com as demais abas e `dt`
+real/sintético, ambos fora do escopo de proporcionalidade desta rodada.
+Nenhuma alteração de código foi feita nem necessária; nenhum bug foi
+encontrado na aba opt-in durante este teste.

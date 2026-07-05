@@ -1186,3 +1186,95 @@ do painel completo (ambiente de teste dedicado, fora do escopo de rodadas
 de economia de tokens) e (b) decidir se `ocorrencias_painel` deve ser
 alimentado com contagens reais de uso por atributo antes de declarar o
 critério da seção 28 integralmente cumprido para o painel.
+
+## 16. `shiny::runApp()` real controlado da aba opt-in (2026-07-05, 03.5U-C)
+
+Executado o próximo passo indicado na seção 15: sair do `shiny::testServer()`
+(sessão mock, sem rede) para um `shiny::runApp()` **real**, com servidor
+`httpuv` de fato em loopback, cobrindo a aba "Auditoria contrato único
+(opt-in)" isolada. Nenhuma linha do script fonte foi alterada — este
+incremento é só de verificação.
+
+**Método aplicado** (script descartável, não versionado, em
+`/tmp/teste_shiny_painel_runapp_20260705/`, mesmo padrão das seções 12/13/15):
+
+1. Reaproveitado, sem alteração, o fecho de 23 funções já validado na
+   seção 13 (mesma lista de nomes), extraído por convenção de chave `}` na
+   coluna 0 (heurística confirmada manualmente contra os limites reais de
+   duas funções antes de generalizar) — sem `source()` do arquivo inteiro,
+   sem `library(sf)`/diretórios/manifesto de execução.
+2. Bloco de UI (linhas 19214-19219) e bloco de server
+   `output$auditoria_perfil_painel_contrato_unico <- DT::renderDT({...},
+   server = TRUE)` (linhas 21312-21321) extraídos verbatim via leitura de
+   linhas exatas do arquivo fonte, idênticos aos usados na seção 15.
+   Helpers locais `monitora_painel_dt_options()`/`monitora_painel_dt_output()`
+   (definidos dentro de `monitora_correcao_painel()`, linhas 18823-18850)
+   também extraídos verbatim, pois o bloco de UI/server depende deles.
+3. UI mínima real: `shiny::fluidPage(shiny::tabsetPanel(<aba base>,
+   <bloco condicional extraído>))` — a aba base garante que o
+   `tabsetPanel` seja válido quando a aba opt-in está ausente (flag OFF).
+4. Dois processos `Rscript` separados (a flag é lida na construção da UI,
+   uma vez por processo — mesmo comportamento real de
+   `monitora_correcao_painel()`), cada um sob `timeout 30s`, em
+   `127.0.0.1`, portas fixas locais (8391/8392), `launch.browser = FALSE`,
+   sem porta externa/pública.
+5. `curl` local (`127.0.0.1:<porta>`) para buscar a página inicial servida
+   pelo `httpuv` real, depois `kill` explícito do processo; confirmado via
+   `ps`/`pgrep` que nenhum processo Shiny ficou órfão em nenhum dos dois
+   casos.
+
+**Resultados:**
+- Flag OFF: `HTTP 200`; página não contém a string "Auditoria contrato";
+  aba base presente — confirma que a UI real (não só a expressão avaliada
+  isoladamente) omite a aba por padrão, servida por um `httpuv` de fato.
+- Flag ON: `HTTP 200`; página contém o título "Auditoria contrato único
+  (opt-in)" (2 ocorrências: título da aba + texto de ajuda), a classe
+  `monitora-painel-dt` do wrapper e o *output binding* `id` real
+  `auditoria_perfil_painel_contrato_unico` — confirma que
+  `DT::DTOutput()`/`monitora_painel_dt_output()` produzem o elemento HTML
+  correto quando servidos por um processo Shiny real, não só em memória.
+- Ambos os processos encerrados de forma controlada (`kill` + confirmação
+  `ps`/`pgrep` sem residual); nenhuma porta externa aberta; nenhum dado
+  real usado; nenhum pipeline pesado executado.
+
+**Limitações (o que este teste NÃO cobre, diferença explícita frente à
+seção 15):**
+- A resposta HTTP inicial capturada por `curl` é o *shell* estático da
+  página (~2,9 KB); o `curl` não estabelece sessão Shiny real
+  (WebSocket/SockJS), logo o corpo do `DT::renderDT(...)` (as 105 linhas
+  × 14 colunas ou a mensagem de flag desligada) **não** é exercitado por
+  este teste — isso já havia sido validado via `shiny::testServer()` na
+  seção 15, e continua sendo a evidência mais forte disponível para o
+  *plumbing* reativo em si.
+- Ainda não é o `runApp()` do painel completo (`monitora_correcao_painel()`
+  com `dt` real de `registros_corrig`, demais abas, filtros): o fecho de
+  dependências da função completa é ordens de grandeza maior que o fecho
+  de 23 funções aqui usado, e continua avaliado como desproporcional para
+  esta rodada de economia de tokens — mesma decisão já registrada nas
+  seções 8/11 do fechamento de 2026-07-05.
+- Sem `shinytest2`/`chromote`/navegador headless disponíveis neste
+  ambiente (verificado: pacotes instalados incluem `shiny`, `httpuv`,
+  `DT`, `curl`; não incluem `shinytest2`/`chromote`) — não é possível
+  exercitar `drawCallback` JS nem paginação AJAX real do `DT` nesta
+  rodada sem instalar pacotes novos, o que está fora do escopo autorizado.
+
+**O critério da seção 28 para o painel:** avança de "validado
+dinamicamente via sessão mock" (seção 15) para "validado também via
+servidor `httpuv` real (rede loopback real, HTML servido de fato)", mas
+**continua parcial** — falta a validação da sessão reativa real
+(WebSocket) e a validação end-to-end do painel completo com as demais
+abas e dado real de `registros_corrig`.
+
+**Riscos remanescentes:** os mesmos da seção 15, com o risco "sem nenhum
+teste sobre um servidor `httpuv` real" agora eliminado; permanece "sem
+teste de sessão reativa real (WebSocket) fora de mock" e "sem teste do
+painel completo".
+
+**Próximo passo recomendado:** para fechar integralmente o critério,
+seria necessário (a) instalar e autorizar `shinytest2`/`chromote` (decisão
+fora do escopo desta rodada, requer rede/tempo adicional) para exercitar
+sessão real com WebSocket e `drawCallback` JS, e/ou (b) avaliar,
+separadamente e com orçamento próprio, o fecho de dependências completo de
+`monitora_correcao_painel()` para um `runApp()` do painel inteiro com `dt`
+sintético mínimo — nenhum dos dois executado nesta rodada, por
+proporcionalidade.
