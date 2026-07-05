@@ -23264,6 +23264,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       shiny::stopApp(monitora_correcao_template())
     }
 
+    monitora_painel_encerrar_sem_materializar <- function(motivo = "cancelamento explícito no painel") {
+      painel_estado$finalizado <- TRUE
+      monitora_correcao_console_msg("Comando recebido: cancelar execução sem materializar registros_corrig.csv. Motivo: ", motivo, ".")
+      try(shiny::removeModal(), silent = TRUE)
+      res_cancelado <- monitora_correcao_template()
+      attr(res_cancelado, "painel_cancelar_sem_materializar") <- TRUE
+      attr(res_cancelado, "motivo_cancelamento") <- motivo
+      shiny::stopApp(res_cancelado)
+    }
+
     shiny::observeEvent(input$salvar, {
       if (!monitora_painel_iniciar_botao("salvar", "salvar correções/checkpoint e fechar painel")) return(NULL)
       on.exit(monitora_painel_liberar_botao("salvar"), add = TRUE)

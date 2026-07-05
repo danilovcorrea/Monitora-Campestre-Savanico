@@ -1,0 +1,142 @@
+#!/usr/bin/env Rscript
+# Interage de verdade (Chrome headless via chromote) com o runApp() real
+# iniciado por rodar_caso_app.R, executando a sequencia de cliques do caso
+# A/B/C/D da matriz 2x2. Mesma familia de tecnica validada em
+# diagnostics/validacao_runapp_sintetico_h2r_c_20260705_093608/chromote_fechar_gracioso.R
+# e chromote_salvar.R.
+#
+# Uso: Rscript rodar_caso_chromote.R <caso A|B|C|D> <porta>
+#
+# So deve ser executado localmente pelo usuario (Fedora), nunca pelo motor
+# de IA, e somente depois que rodar_caso_app.R ja estiver com o servidor
+# Shiny real no ar na porta informada.
+
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) < 2) stop("uso: rodar_caso_chromote.R <caso> <porta>")
+caso <- args[[1]]
+porta <- args[[2]]
+url <- paste0("http://127.0.0.1:", porta, "/")
+
+suppressMessages(library(chromote))
+b <- ChromoteSession$new()
+b$Page$navigate(url)
+Sys.sleep(3)
+
+titulo <- b$Runtime$evaluate("document.title")
+cat("titulo pagina:", titulo$result$value, "\n")
+
+clicar <- function(id) {
+  res <- b$Runtime$evaluate(sprintf('
+    (function(){
+      var el = document.getElementById("%s");
+      if (!el) return "NAO_ENCONTRADO:%s";
+      el.click();
+      return "CLICADO:%s";
+    })()
+  ', id, id, id))
+  cat("clique[", id, "]: ", res$result$value, "\n", sep = "")
+  invisible(res$result$value)
+}
+
+## Para os casos B/D ("com operacoes no painel"): adiciona uma correcao real
+## simples (botao real "add_corr") antes do fechar/salvar, usando o unico
+## atributo editavel garantidamente presente no dataset sintetico
+## (`forma_vida_nativa_arvore_abaixo`, ja validado na rodada anterior). Nao
+## foi usado o fluxo "add_mv" (movimento de forma de vida) porque ele exige
+## colunas-lista principais de origem/destino (ex.:
+## amostragem/registro/forma_vida_exotica) que o dataset sintetico atual nao
+## define; o clique falharia silenciosamente (script.R, monitora_correcao_coluna_forma_vida,
+## linha ~3082, retornaria NA e a operacao seria bloqueada).
+##
+## Em vez de adivinhar o valor interno exato do atributo no selectizeInput
+## "atributo" (a transformacao de nome de coluna passa pelo dicionario/
+## contrato interno do painel e pode nao ser identica ao caminho XLSForm
+## original), o valor real e DESCOBERTO em tempo de execucao lendo as
+## <option> do <select id="atributo"> verdadeiro no DOM (o selectize.js
+## mantem o <select> original no DOM, apenas oculto). Isso torna o driver
+## robusto a variacoes de formatacao do nome, em vez de um valor fixo
+## adivinhado. Os demais inputs (acao/valor_novo/motivo/confirmar_abrangencia)
+## usam ids estaveis e confirmados no codigo-fonte da UI (script.R, linhas
+## ~19022-19038), validos independentemente do tipo de controle renderizado
+## dinamicamente para "valor_novo" (uiOutput ui_valor_novo_controle sempre
+## vincula ao id "valor_novo", script.R linha ~19276).
+##
+## Se a precondicao falhar (atributo nao encontrado ou operacao nao aceita
+## pelo contrato), o driver reporta isso explicitamente no log; o
+## orquestrador (executar_matriz_2x2_local.R) distingue esse caso
+## ("precondicao_operacao_ok = FALSE") de uma falha real da correcao testada.
+adicionar_operacao_real <- function() {
+  set_input <- function(id, valor, tipo = "auto") {
+    js_valor <- if (identical(tipo, "bool")) tolower(as.character(valor)) else sprintf('"%s"', valor)
+    b$Runtime$evaluate(sprintf('Shiny.setInputValue("%s", %s, {priority: "event"});', id, js_valor))
+  }
+
+  set_input("coleta", "SINTETICO-001")
+  Sys.sleep(1.5)
+
+  achar_atributo <- b$Runtime$evaluate('
+    (function(){
+      var sel = document.getElementById("atributo");
+      if (!sel) return "";
+      for (var i=0;i<sel.options.length;i++){
+        if (sel.options[i].value.indexOf("forma_vida_nativa_arvore_abaixo") !== -1) return sel.options[i].value;
+      }
+      return "";
+    })()
+  ')
+  valor_atributo <- achar_atributo$result$value
+  cat("atributo real encontrado no DOM:", if (nzchar(valor_atributo)) valor_atributo else "(NENHUM)", "\n")
+  if (!nzchar(valor_atributo)) {
+    cat("PRECONDICAO_FALHOU: atributo forma_vida_nativa_arvore_abaixo nao encontrado no select real.\n")
+    return(invisible("PRECONDICAO_FALHOU:ATRIBUTO_NAO_ENCONTRADO"))
+  }
+
+  set_input("atributo", valor_atributo)
+  Sys.sleep(1.5)
+  set_input("acao", "update")
+  Sys.sleep(1)
+  set_input("valor_novo", "1")
+  Sys.sleep(0.5)
+  set_input("motivo", "harness matriz 2x2 - operacao sintetica de teste")
+  Sys.sleep(0.5)
+  set_input("confirmar_abrangencia", TRUE, tipo = "bool")
+  Sys.sleep(1)
+
+  r <- clicar("add_corr")
+  Sys.sleep(2)
+  invisible(r)
+}
+
+resultado_sequencia <- character(0)
+
+if (identical(caso, "A")) {
+  resultado_sequencia <- c(resultado_sequencia, "A: sem operacoes no painel; fechar sem salvar")
+  resultado_sequencia <- c(resultado_sequencia, clicar("cancelar"))
+  Sys.sleep(2)
+  resultado_sequencia <- c(resultado_sequencia, clicar("confirmar_encerrar_sem_materializar"))
+} else if (identical(caso, "B")) {
+  resultado_sequencia <- c(resultado_sequencia, "B: com operacoes no painel; fechar sem salvar")
+  resultado_sequencia <- c(resultado_sequencia, adicionar_operacao_real())
+  resultado_sequencia <- c(resultado_sequencia, clicar("cancelar"))
+  Sys.sleep(2)
+  resultado_sequencia <- c(resultado_sequencia, clicar("confirmar_encerrar_sem_materializar"))
+} else if (identical(caso, "C")) {
+  resultado_sequencia <- c(resultado_sequencia, "C: sem operacoes no painel; salvar checkpoint com pendencias")
+  resultado_sequencia <- c(resultado_sequencia, clicar("salvar"))
+  Sys.sleep(2)
+  resultado_sequencia <- c(resultado_sequencia, clicar("confirmar_salvar_checkpoint_pendente"))
+} else if (identical(caso, "D")) {
+  resultado_sequencia <- c(resultado_sequencia, "D: com operacoes no painel; salvar checkpoint com pendencias")
+  resultado_sequencia <- c(resultado_sequencia, adicionar_operacao_real())
+  resultado_sequencia <- c(resultado_sequencia, clicar("salvar"))
+  Sys.sleep(2)
+  resultado_sequencia <- c(resultado_sequencia, clicar("confirmar_salvar_checkpoint_pendente"))
+} else {
+  stop("caso invalido: ", caso, " (esperado A, B, C ou D)")
+}
+
+Sys.sleep(3)
+cat("SEQUENCIA_CLIQUES:", paste(resultado_sequencia, collapse = " | "), "\n")
+
+try(b$close(), silent = TRUE)
+cat("FIM_CHROMOTE_CASO_", caso, "\n", sep = "")
