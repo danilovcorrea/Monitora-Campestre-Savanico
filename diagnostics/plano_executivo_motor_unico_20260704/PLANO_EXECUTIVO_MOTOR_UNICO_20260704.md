@@ -842,3 +842,127 @@ schema em ambiente controlado, e só depois (b) avaliar uma exposição visual
 opt-in no painel (ex.: aba de auditoria somente leitura), seguindo os 6
 critérios de aceite da seção 11 — nenhum dos dois foi feito nesta etapa,
 por decisão de manter o incremento isolado e proporcional.
+
+## 13. Teste controlado com contrato real executado (2026-07-04, 03.5R-C2)
+
+Executado o próximo passo recomendado na seção 12 (item "a"): validar
+`monitora_perfil_painel_edicao_contrato_unico()` contra o retorno REAL de
+`monitora_contrato_unico_indices()` (contrato embutido = schema/metadado do
+XLSForm publicado, não dado de campo/observação), em vez do stub fiel
+usado na seção 12. Nenhuma linha do helper foi alterada — este incremento é
+só de verificação.
+
+**Problema de método enfrentado:** `source()`-ar o script inteiro para obter
+as funções reais teria efeitos colaterais pesados e indesejados neste
+escopo (o próprio script cria diretórios, grava manifesto de execução,
+exige `library(sf)`/`tidyverse` etc., e a partir da linha 26273 há um bloco
+`if (!(MONITORA_MODO_EXECUCAO %in% c(...))) { ... }` sem reindentação que
+engloba quase todo o restante do arquivo até o fim, inclusive o bloco de
+execução do pipeline guardado por `MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE`,
+linha 39575). Por isso `parse()` de nível superior nunca enxerga
+`monitora_contrato_unico_indices` nem o helper como atribuições de topo
+isoladas — ambas estão aninhadas dentro desse `if`.
+
+**Solução aplicada (extração estática, sem `source()`):** um script
+descartável (não versionado, mesmo padrão de `/tmp/teste_035r_c/teste.R` da
+seção 12) percorre a árvore sintática do arquivo (`parse(..., keep.source =
+FALSE)`) recursivamente por blocos `{}` e ramos `if`/`else`, coletando
+*apenas* atribuições de função (`nome <- function(...)`) e de constante
+simples, em qualquer profundidade — sem nunca executar `dir.create()`,
+`library()`, `tryCatch()`/`for` de nível superior nem descer ao corpo de
+nenhuma função. Em seguida, `codetools::findGlobals()` computa o fecho
+transitivo de dependências a partir dos dois alvos
+(`monitora_perfil_painel_edicao_contrato_unico`,
+`monitora_contrato_unico_indices`), e só as definições desse fecho são
+avaliadas num ambiente isolado (`new.env(parent = globalenv())`).
+
+Fecho resolvido: 23 funções, 0 constantes de topo necessárias —
+`monitora_cfg_env_bool`, `monitora_contrato_unico_cardinalidade_operacional`,
+`monitora_contrato_unico_embutido`, `monitora_contrato_unico_indices`,
+`monitora_contrato_unico_labels_sem_html`,
+`monitora_contrato_unico_normalizar_texto_seguro`,
+`monitora_contrato_unico_validar_estrutura_indices`,
+`monitora_correcao_dependencias_padrao`,
+`monitora_correcao_fread_tsv_embutido`, `monitora_correcao_limpar_texto`,
+`monitora_correcao_norm_xlsform_id`,
+`monitora_correcao_normalizar_nome_coluna`,
+`monitora_correcao_unificar_dependencias`,
+`monitora_correcao_xlsforms_embutidos`,
+`monitora_correcao_xlsforms_embutidos_cache_publicacao_ae`,
+`monitora_perfil_painel_edicao_contrato_unico`,
+`monitora_pipe_aliases_campos_conhecidos`,
+`monitora_publicacao_ae_cache_env`, `monitora_validados_aliases`,
+`monitora_validados_aliases_adicionais`,
+`monitora_validados_aliases_xlsform_historico`,
+`monitora_validados_schema_embutido`, `monitora_validados_unir_aliases`.
+Nenhuma dessas funções faz I/O de disco nem depende de `MONITORA_BASE_DIR`
+— o "contrato embutido" é dado literal (`data.table` construído a partir de
+strings TSV embutidas no próprio código-fonte, ex.: linha 3943 em diante),
+não um arquivo lido do disco.
+
+**Testes executados** (isolados, sem dados reais, sem Shiny, script
+descartável em `/tmp/teste_perfil_painel_contrato_real.R`):
+1. `parse()` do script completo (48208 linhas) — sintaxe OK.
+2. `monitora_contrato_unico_indices()` real, chamada sem stub, no ambiente
+   isolado — sucesso em 0,12s, retorna `list(indices, perfis, meta)` com 16
+   índices e 6 perfis; `$perfis$perfil_painel_edicao` real tem 105
+   atributos × 10 colunas.
+3. Flag desligada (default, sem setar variável de ambiente) →
+   `invisible(NULL)`, confirmado agora também com o contrato real (não só
+   com stub).
+4. Flag ligada (`MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO=true`) →
+   `data.table` válido, 105 linhas (== `nrow` do perfil original — mesma
+   cardinalidade preservada), 14 colunas, contém as 4 colunas-chave
+   (`atributo_canonico_2025`, `origem_regra`, `severidade`,
+   `bloqueio_estrutural_contrato_unico`) sem nenhuma ausente.
+5. `contrato_indices` comparado por `identical()` contra uma cópia
+   (`data.table::copy()`) tirada antes das chamadas: idêntico depois —
+   confirma que nada foi modificado por referência (merge sempre retorna
+   objeto novo).
+6. Contrato incompleto (`perfil_painel_edicao` vazio, `indices` vazio) →
+   `invisible(NULL)`, mesmo comportamento de degradação segura já visto com
+   stub na seção 12.
+7. `ocorrencias_painel` opcional com 3 atributos reais do perfil → coluna
+   `n_ocorrencias_painel` presente, soma correta (3), sem erro.
+8. Grep repetido dentro do bloco do helper (linha ~32809 a `### FIM
+   v2.6.2 - 03.5R-C`): nenhuma referência a
+   `registros_importados.csv`/`registros_importados_bruto.csv`/
+   `registros_corrig.csv`/`registros_validados.csv`, nenhuma referência a
+   `output/`/`log/`/`MONITORA_OUTPUT_DIR`/`MONITORA_LOG_DIR` — mesmo
+   resultado da seção 12, sem alteração de código para reconferir.
+9. Grep de chamadores (`monitora_perfil_painel_edicao_contrato_unico(`)
+   sobre o script inteiro: nenhuma ocorrência além da própria definição —
+   confirma que o helper continua não conectado a nenhum consumidor
+   operacional.
+
+**Resultado:** compatibilidade mínima do helper com o contrato/índices
+reais confirmada — mesmo schema, mesma cardinalidade, mesmo comportamento
+de default OFF e de degradação segura já observados com o stub da seção
+12, agora reproduzidos com dado real (embutido) em vez de dado sintético.
+Nenhuma incompatibilidade encontrada; nenhuma alteração de código foi
+necessária no helper.
+
+**Limitações:**
+- Ainda não testado dentro do processo Shiny real do painel (fora do
+  escopo autorizado desta rodada); o teste roda em `Rscript` isolado, sem
+  `shiny::runApp()`.
+- A extração estática reproduz o texto-fonte exato das funções (nenhuma
+  reescrita manual, apenas recorte por AST), então uma incompatibilidade de
+  schema real teria aparecido nos testes 4/5/7 acima; ainda assim, isso não
+  substitui um teste end-to-end dentro do processo real do painel.
+- Script de teste é descartável e não foi versionado — mesma decisão já
+  tomada nas seções anteriores (`dev_035i`/`dev_035j` só têm documentação
+  `.md`, sem `.R` de teste versionado); o método e o resultado ficam
+  registrados aqui para reprodutibilidade.
+
+**Riscos remanescentes:** os mesmos da seção 12 (sem exposição visual no
+painel; `bloqueio_estrutural_contrato_unico` ainda não comparado contra o
+comportamento observado do painel real; `ocorrencias_painel` ainda sem
+conexão real).
+
+**Próximo passo recomendado:** com o teste contra contrato real concluído
+com sucesso, o próximo ponto determinante é avaliar uma exposição visual
+opt-in no painel (ex.: aba de auditoria somente leitura), seguindo os 6
+critérios de aceite da seção 11 — não executado nesta rodada, por decisão
+de manter o incremento isolado e proporcional (escopo desta etapa era
+apenas o teste controlado, não a exposição visual).
