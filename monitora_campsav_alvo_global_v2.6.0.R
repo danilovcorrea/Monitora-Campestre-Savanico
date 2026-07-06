@@ -3697,6 +3697,15 @@ monitora_correcao_resolver_coluna_habito <- function(dt, categoria, forma, dicio
   NA_character_
 }
 
+### Fonte única dos tokens de forma de vida que exigem hábito obrigatório
+### (terrestre/epifita/rupicola). Usada tanto pelos bloqueios de movimento em
+### lote (MVLOTE/TRIOUT) quanto pelo diagnóstico de ocorrências pré/pós-painel
+### (monitora_correcao_mask_habito_obrigatorio_ausente(), 03.5Q-A), para não
+### divergir em duas listas hard-coded do mesmo contrato.
+monitora_correcao_tokens_formas_exigem_habito <- function() {
+  c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+}
+
 monitora_correcao_classificar_dependencia <- function(parent_col, token, dep_col) {
   txt <- tolower(paste(parent_col, token, dep_col, collapse = " "))
   parent_norm <- monitora_correcao_normalizar_nome_coluna(parent_col)
@@ -6359,6 +6368,27 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
     out <- merge(out, contrato[, ..cols_contrato], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
   } else if (exists("monitora_correcao_anotar_contrato_template_sismonitora", mode = "function")) {
     out <- monitora_correcao_anotar_contrato_template_sismonitora(out, dt)
+  }
+  if (exists("monitora_perfil_painel_edicao_operacional_contrato_unico", mode = "function")) {
+    perfil_oper <- tryCatch(
+      monitora_perfil_painel_edicao_operacional_contrato_unico(out$atributo_coluna_registros_corrig),
+      error = function(e) data.table::data.table()
+    )
+    if (nrow(perfil_oper)) {
+      cols_oper <- intersect(c(
+        "atributo_coluna_registros_corrig", "atributo_canonico_2025", "caminho_registro",
+        "name_curto", "tipo_base_contrato_unico", "cardinalidade_operacional_contrato_unico",
+        "relevant_contrato_unico", "campo_pai_contrato_unico",
+        "escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico",
+        "motivo_escopo_contrato_unico"
+      ), names(perfil_oper))
+      cols_drop <- setdiff(cols_oper, "atributo_coluna_registros_corrig")
+      cols_drop <- intersect(cols_drop, names(out))
+      if (length(cols_drop)) out[, (cols_drop) := NULL]
+      out <- merge(out, perfil_oper[, ..cols_oper], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+      out[escopo_operacional_contrato_unico %in% c("ponto"), escopo_sugerido := "ponto"]
+      out[escopo_operacional_contrato_unico %in% c("coleta_inteira"), escopo_sugerido := "coleta_inteira"]
+    }
   }
   out[]
 }
@@ -10382,6 +10412,17 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
   d[tipo_base_edicao == "uuid", motivo_bloqueio_edicao := "UUID não deve ser editado diretamente"]
   d[tipo_base_edicao == "uuid", acoes_permitidas := ""]
   d[, painel_editavel := !protegido & nzchar(acoes_permitidas)]
+  if (!("motivo_escopo_contrato_unico" %in% names(d))) d[, motivo_escopo_contrato_unico := ""]
+  if (all(c("escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico") %in% names(d))) {
+    d[is.na(escopos_permitidos_contrato_unico), escopos_permitidos_contrato_unico := ""]
+    d[!nzchar(as.character(escopos_permitidos_contrato_unico)), motivo_bloqueio_edicao := data.table::fifelse(
+      is.na(motivo_bloqueio_edicao) | !nzchar(as.character(motivo_bloqueio_edicao)),
+      data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo_escopo_contrato_unico, "fora do escopo operacional do perfil_painel_edicao"),
+      paste0(motivo_bloqueio_edicao, "; ", data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo_escopo_contrato_unico, "fora do escopo operacional do perfil_painel_edicao"))
+    )]
+    d[!nzchar(as.character(escopos_permitidos_contrato_unico)), acoes_permitidas := ""]
+    d[!nzchar(as.character(escopos_permitidos_contrato_unico)), painel_editavel := FALSE]
+  }
 
   if (exists("monitora_correcao_anotar_contrato_template_sismonitora", mode = "function")) {
     d <- monitora_correcao_anotar_contrato_template_sismonitora(d, dt)
@@ -10398,6 +10439,9 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
     d[, posicoes_template_sismonitora := ""]
     d[, estrategias_template_sismonitora := ""]
   }
+  for (cc in c("escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico", "motivo_escopo_contrato_unico")) {
+    if (!(cc %in% names(d))) d[, (cc) := ""]
+  }
 
   d[, painel_motivo_bloqueio := data.table::fifelse(painel_editavel, "", data.table::fifelse(!is.na(motivo_bloqueio_edicao), motivo_bloqueio_edicao, "sem ação permitida para edição direta"))]
   d[, .(
@@ -10413,6 +10457,9 @@ monitora_correcao_contrato_edicao <- function(dt, meta_xls = NULL, dicionario = 
     atributos_template_sismonitora,
     posicoes_template_sismonitora,
     estrategias_template_sismonitora,
+    escopo_operacional_contrato_unico,
+    escopos_permitidos_contrato_unico,
+    motivo_escopo_contrato_unico,
     painel_editavel,
     painel_motivo_bloqueio,
     acoes_permitidas
@@ -10656,7 +10703,7 @@ monitora_correcao_exemplos_formato_msg <- function(tipo_base) {
   "Preencha conforme o tipo do campo no contrato XLSForm."
 }
 
-monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list_name = NA_character_, meta_xls = NULL, valor_original = NA_character_) {
+monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list_name = NA_character_, meta_xls = NULL, valor_original = NA_character_, escolhas_fallback = character(0)) {
   acao <- monitora_correcao_acao_normalizar(acao)
   tipo_base <- as.character(tipo_base)[1L]
   valor <- as.character(valor)[1L]
@@ -10666,6 +10713,10 @@ monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list
   if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(ok = TRUE, status = "ok", mensagem = "formato compatível"))
   if (tipo_base %in% c("select_one", "select_multiple")) {
     escolhas <- monitora_correcao_choices_xlsform(list_name, meta_xls)
+    if (!length(escolhas) && tipo_base == "select_one") {
+      escolhas <- unique(trimws(as.character(escolhas_fallback)))
+      escolhas <- escolhas[!is.na(escolhas) & nzchar(escolhas)]
+    }
     if (!length(escolhas)) {
       return(list(ok = FALSE, status = "bloqueada_dominio_xlsform_ausente", mensagem = paste0("Correção bloqueada: o atributo usa lista XLSForm, mas o domínio de tokens não foi carregado para list_name='", list_name, "'.")))
     }
@@ -10759,7 +10810,12 @@ monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo,
     return(list(ok = FALSE, status = "bloqueada_acao_incompativel", mensagem = paste0("ação '", acao_norm, "' não permitida para '", col, "' (tipo=", info$tipo_base_edicao, "; ações permitidas=", paste(acoes, collapse = ", "), ")")))
   }
   valor_original <- if (!is.null(corr_linha) && "valor_original_esperado" %in% names(corr_linha)) as.character(corr_linha$valor_original_esperado[1L]) else NA_character_
-  monitora_correcao_validar_formato_valor(valor_novo, info$tipo_base_edicao, acao_norm, info$xlsform_list_name, meta_xls, valor_original)
+  escolhas_fallback <- character(0)
+  if (identical(as.character(info$tipo_base_edicao[1L]), "select_one") && col %in% names(dt)) {
+    escolhas_fallback <- unique(trimws(as.character(dt[[col]])))
+    escolhas_fallback <- escolhas_fallback[!is.na(escolhas_fallback) & nzchar(escolhas_fallback)]
+  }
+  monitora_correcao_validar_formato_valor(valor_novo, info$tipo_base_edicao, acao_norm, info$xlsform_list_name, meta_xls, valor_original, escolhas_fallback = escolhas_fallback)
 }
 
 monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo, corr_linha, dicionario = NULL, meta_xls = NULL) {
@@ -12083,7 +12139,7 @@ monitora_correcao_aplicar_movimento_forma_vida_lote_atomico <- function(dt, linh
 
   habito_destino <- if ("habito_escolhido" %in% names(linha_lote)) trimws(as.character(linha_lote$habito_escolhido[1L])) else ""
   if (is.na(habito_destino)) habito_destino <- ""
-  forma_exige_habito <- monitora_correcao_limpar_texto(forma_destino) %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+  forma_exige_habito <- monitora_correcao_limpar_texto(forma_destino) %in% monitora_correcao_tokens_formas_exigem_habito()
   if (isTRUE(forma_exige_habito)) {
     if (!nzchar(habito_destino) || !(habito_destino %in% c("terrestre", "epifita", "rupicola"))) return(falhar("falha_habito_obrigatorio", paste0("forma de destino '", forma_destino, "' exige hábito terrestre/epifita/rupicola")))
     dep_destino <- tryCatch(monitora_correcao_resolver_coluna_habito(dt, destino, forma_destino, dicionario, linha = linhas_alvo[1L], meta_xls = NULL), error = function(e) NA_character_)
@@ -12285,7 +12341,7 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
 
   habito <- if ("habito_escolhido" %in% names(linha_mov)) trimws(as.character(linha_mov$habito_escolhido[1L])) else ""
   if (is.na(habito)) habito <- ""
-  forma_exige_habito <- monitora_correcao_limpar_texto(forma_destino) %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+  forma_exige_habito <- monitora_correcao_limpar_texto(forma_destino) %in% monitora_correcao_tokens_formas_exigem_habito()
   dep_destino <- if ("campo_dependente_preenchido" %in% names(linha_mov)) trimws(as.character(linha_mov$campo_dependente_preenchido[1L])) else NA_character_
   if (is.na(dep_destino) || !nzchar(dep_destino) || !(dep_destino %in% names(dt))) dep_destino <- tryCatch(monitora_correcao_resolver_coluna_habito(dt, destino, forma_destino, dicionario, linha = linhas[1L], meta_xls = NULL), error = function(e) NA_character_)
   atualizacao_habito <- NULL
@@ -12590,7 +12646,7 @@ monitora_correcao_aplicar_triagem_desconhecida_atomica <- function(dt, linha_tri
 
   habito <- if ("habito_escolhido" %in% names(linha_tri)) trimws(as.character(linha_tri$habito_escolhido[1L])) else ""
   if (is.na(habito)) habito <- ""
-  forma_exige_habito <- monitora_correcao_limpar_texto(forma) %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+  forma_exige_habito <- monitora_correcao_limpar_texto(forma) %in% monitora_correcao_tokens_formas_exigem_habito()
   dep_destino <- if ("campo_dependente_preenchido" %in% names(linha_tri)) trimws(as.character(linha_tri$campo_dependente_preenchido[1L])) else NA_character_
   if (is.na(dep_destino) || !nzchar(dep_destino) || !(dep_destino %in% names(dt))) dep_destino <- tryCatch(monitora_correcao_resolver_coluna_habito(dt, destino, forma, dicionario, linha = linhas[1L], meta_xls = NULL), error = function(e) NA_character_)
   atualizacao_habito <- NULL
@@ -17176,6 +17232,97 @@ monitora_pre_painel_quarentenar_coletas_incompletas <- function(dt,
   list(dt = d, auditoria = aud, quarentenadas = character(0), registros_quarentenados = regs_quar)
 }
 
+### v2.6.2 - 03.5Q-A ------------------------------------------------------------
+### Máscaras de qualidade fase-independentes para as ocorrências solo_nu e
+### hábito obrigatório, reutilizadas pelo catálogo/relatórios diagnósticos
+### pré/pós-painel (monitora_diag_rel_gerar_ocorrencias()) e pelos contadores
+### de checkbox do painel (monitora_painel_coletas_diagnosticas_preferir_relatorios()),
+### para não duplicar a mesma regra de negócio em dois lugares divergentes.
+### O bloqueio final em registros_validados.csv continua em
+### monitora_validados_validar_condicionais_xlsform21(); esta função apenas
+### antecipa a mesma detecção para revisão assistida no painel.
+monitora_correcao_mask_solo_nu_incompativel <- function(dt, chaves = NULL) {
+  dt <- data.table::as.data.table(dt)
+  n <- nrow(dt)
+  if (!n) return(rep(FALSE, 0L))
+  if (is.null(chaves)) chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
+  tipo_col <- chaves[["tipo_forma_vida"]]
+  if (is.null(tipo_col) || is.na(as.character(tipo_col)[1L]) || !nzchar(as.character(tipo_col)[1L]) || !(as.character(tipo_col)[1L] %in% names(dt))) {
+    return(rep(FALSE, n))
+  }
+  tipo_val <- dt[[as.character(tipo_col)[1L]]]
+  tem_solo <- tryCatch(monitora_relatorio_exoticas_tem_token(tipo_val, "solo_nu"), error = function(e) rep(FALSE, n))
+  tem_outro <- tryCatch(monitora_relatorio_exoticas_tem_token(tipo_val, c("serrapilheira", "nativa", "exotica", "seca_morta", "outra_forma_vida")), error = function(e) rep(FALSE, n))
+  tem_solo[is.na(tem_solo)] <- FALSE
+  tem_outro[is.na(tem_outro)] <- FALSE
+  tem_solo & tem_outro
+}
+
+### Ocorrência diagnóstica "hábito obrigatório ausente": para as formas
+### condicionais (monitora_correcao_tokens_formas_exigem_habito()), o campo
+### dependente de hábito (terrestre/epifita/rupicola) precisa estar preenchido
+### com um valor válido. Sem esta antecipação, a única checagem existente era
+### monitora_validados_validar_condicionais_xlsform21() no fechamento de
+### registros_validados.csv -- tarde demais para revisão assistida no painel.
+monitora_correcao_mask_habito_obrigatorio_ausente <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  n <- nrow(dt)
+  mask <- rep(FALSE, n)
+  cols_forma_hit <- character(0)
+  cols_habito_hit <- character(0)
+  if (!n) return(list(mask = mask, cols_forma_hit = cols_forma_hit, cols_habito_hit = cols_habito_hit))
+  formas <- monitora_correcao_tokens_formas_exigem_habito()
+  habitos_validos <- c("terrestre", "epifita", "rupicola")
+  for (categoria in c("nativa", "exotica", "seca_morta")) {
+    cols_cat <- tryCatch(monitora_correcao_colunas_forma_vida_categoria(dt, categoria), error = function(e) character(0))
+    cols_cat <- unique(cols_cat[!is.na(cols_cat) & nzchar(cols_cat) & cols_cat %in% names(dt)])
+    if (!length(cols_cat)) next
+    for (cc in cols_cat) {
+      for (forma in formas) {
+        hit <- tryCatch(monitora_correcao_contem_qualquer_token_vec(dt[[cc]], forma), error = function(e) rep(FALSE, n))
+        hit[is.na(hit)] <- FALSE
+        if (!any(hit)) next
+        dep_col <- tryCatch(monitora_correcao_resolver_coluna_habito(dt, categoria, forma), error = function(e) NA_character_)
+        if (!is.na(dep_col) && nzchar(dep_col) && dep_col %in% names(dt)) {
+          valor_hab <- tolower(trimws(as.character(dt[[dep_col]])))
+          vazio_hab <- tryCatch(monitora_correcao_vazio_vec(dt[[dep_col]]), error = function(e) is.na(valor_hab) | !nzchar(valor_hab))
+          vazio_hab[is.na(vazio_hab)] <- TRUE
+          faltando <- hit & (vazio_hab | !(valor_hab %in% habitos_validos))
+          if (any(faltando)) cols_habito_hit <- unique(c(cols_habito_hit, dep_col))
+        } else {
+          faltando <- hit
+        }
+        if (any(faltando)) {
+          mask <- mask | faltando
+          cols_forma_hit <- unique(c(cols_forma_hit, cc))
+        }
+      }
+    }
+  }
+  list(mask = mask, cols_forma_hit = cols_forma_hit, cols_habito_hit = cols_habito_hit)
+}
+### FIM v2.6.2 - 03.5Q-A ----------------------------------------------------
+
+### v2.6.2 - 03.5V-C ------------------------------------------------------------
+### Catálogo operacional (fase-independente) dos tipos de ocorrência
+### diagnóstica pré/pós-painel. Extraído de monitora_diag_rel_gerar_ocorrencias()
+### para ser a única fonte consultada tanto por ela quanto pela ponte de
+### validações (monitora_ponte_pre_painel_regras_contrato_unico(), 03.5V-C,
+### definida perto de monitora_validacao_regras_por_perfil_contrato_unico),
+### evitando duas listas hard-coded divergentes do mesmo catálogo.
+monitora_diag_rel_catalogo_ocorrencias_base <- function() {
+  data.table::data.table(
+    tipo_ocorrencia = c(
+      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "solo_nu_com_outra_categoria", "habito_obrigatorio_ausente"
+    ),
+    rotulo_ocorrencia = c(
+      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie", "Solo nu com outra categoria (exclusividade violada)", "Hábito obrigatório ausente"
+    ),
+    severidade = c(rep("impeditiva", 7L), rep("revisao", 2L), rep("impeditiva", 2L))
+  )
+}
+### FIM v2.6.2 - 03.5V-C ----------------------------------------------------
+
 ### Relatórios diagnósticos de ocorrências do painel ------------------------
 ### Gera relatórios operacionais pré/pós-painel para todas as ocorrências
 ### diagnósticas exibidas no filtro. Esta rotina é independente dos relatórios
@@ -17218,26 +17365,21 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     )
   }
 
-  catalogo <- data.table::data.table(
-    tipo_ocorrencia = c(
-      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie"
-    ),
-    rotulo_ocorrencia = c(
-      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie"
-    ),
-    severidade = c(rep("impeditiva", 7L), rep("revisao", 2L)),
-    arquivo = c(
-      paste0("registros_ua_duplicada_mesmo_ano_", fase, ".csv"),
-      paste0("registros_ponto_sem_interceptacao_", fase, ".csv"),
-      paste0("registros_nativa_sem_forma_vida_", fase, ".csv"),
-      paste0("registros_exotica_sem_forma_vida_", fase, ".csv"),
-      paste0("registros_seca_morta_sem_forma_vida_", fase, ".csv"),
-      paste0("registros_outra_forma_vida_", fase, ".csv"),
-      paste0("registros_forma_vida_desconhecida_", fase, ".csv"),
-      paste0("registros_forma_vida_exotica_sem_especie_", fase, ".csv"),
-      paste0("registros_forma_vida_exotica_com_especie_", fase, ".csv")
-    )
+  catalogo <- data.table::copy(monitora_diag_rel_catalogo_ocorrencias_base())
+  prefixos_arquivo_catalogo <- c(
+    uas_duplicadas_mesmo_ano = "registros_ua_duplicada_mesmo_ano_",
+    ponto_sem_interceptacao = "registros_ponto_sem_interceptacao_",
+    nativa_sem_forma_vida = "registros_nativa_sem_forma_vida_",
+    exotica_sem_forma_vida = "registros_exotica_sem_forma_vida_",
+    seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_vida_",
+    outra_forma_vida = "registros_outra_forma_vida_",
+    forma_vida_desconhecida = "registros_forma_vida_desconhecida_",
+    forma_vida_exotica_sem_especie = "registros_forma_vida_exotica_sem_especie_",
+    forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
+    solo_nu_com_outra_categoria = "registros_solo_nu_com_outra_categoria_",
+    habito_obrigatorio_ausente = "registros_habito_obrigatorio_ausente_"
   )
+  catalogo[, arquivo := paste0(prefixos_arquivo_catalogo[tipo_ocorrencia], fase, ".csv")]
 
   chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
   col_ok <- function(col) !is.null(col) && length(col) && !is.na(as.character(col)[1L]) && nzchar(as.character(col)[1L]) && as.character(col)[1L] %in% names(dt)
@@ -17451,6 +17593,17 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
   rels[["forma_vida_exotica_sem_especie"]] <- add_rows("forma_vida_exotica_sem_especie", idx = idx_sem_sp, token = "exotica_com_forma_sem_sp_vinculada", campo_forma = paste(cols_exo, collapse = " | "), valor_forma = collapse_cols_linha(cols_exo, idx_sem_sp), dependentes = dependentes_categoria("exotica", idx_sem_sp, cols_exo), acao = "Revisar espécie exótica vinculada à forma de vida. Ocorrência de revisão; não bloqueia sozinha registros_corrig.csv.")
   rels[["forma_vida_exotica_com_especie"]] <- add_rows("forma_vida_exotica_com_especie", idx = idx_com_sp, token = "exotica_com_forma_e_sp_vinculada", campo_forma = paste(cols_exo, collapse = " | "), valor_forma = collapse_cols_linha(cols_exo, idx_com_sp), dependentes = dependentes_categoria("exotica", idx_com_sp, cols_exo), acao = "Revisar consistência taxonômica da espécie exótica vinculada. Ocorrência informativa/revisão.")
 
+  ### v2.6.2 - 03.5Q-A: antecipa para o painel (pré e pós) as duas checagens que
+  ### hoje só bloqueiam no fechamento de registros_validados.csv via
+  ### monitora_validados_validar_condicionais_xlsform21().
+  idx_solo_incompat <- which(monitora_correcao_mask_solo_nu_incompativel(dt, chaves))
+  rels[["solo_nu_com_outra_categoria"]] <- add_rows("solo_nu_com_outra_categoria", idx = idx_solo_incompat, token = "solo_nu", campo_forma = ifelse(col_ok(tipo_col), as.character(tipo_col)[1L], ""), valor_forma = collapse_cols_linha(if (col_ok(tipo_col)) as.character(tipo_col)[1L] else character(0), idx_solo_incompat), acao = "solo_nu é exclusivo (constraint XLSForm: count-selected(.)=1 quando solo_nu selecionado). Remover solo_nu ou a(s) outra(s) categoria(s) conforme o registro original.")
+
+  habito_res <- monitora_correcao_mask_habito_obrigatorio_ausente(dt)
+  idx_habito_ausente <- which(habito_res$mask)
+  cols_habito_forma <- c(habito_res$cols_forma_hit, habito_res$cols_habito_hit)
+  rels[["habito_obrigatorio_ausente"]] <- add_rows("habito_obrigatorio_ausente", idx = idx_habito_ausente, token = paste(monitora_correcao_tokens_formas_exigem_habito(), collapse = "/"), campo_forma = paste(cols_habito_forma, collapse = " | "), valor_forma = collapse_cols_linha(cols_habito_forma, idx_habito_ausente), acao = "Preencher o hábito (terrestre/epifita/rupicola) exigido para bromelioide/erva_bromelioide/cactacea/orquidea/samambaia; usar a operação assistida no painel ou corrigir manualmente.")
+
   for (tp in catalogo$tipo_ocorrencia) if (is.null(rels[[tp]])) rels[[tp]] <- empty_rel()
   todos <- data.table::rbindlist(rels[catalogo$tipo_ocorrencia], fill = TRUE, use.names = TRUE)
   if (nrow(todos)) {
@@ -17525,6 +17678,86 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
   invisible(list(diretorio = base_dir, indice = indice, resumo = resumo_all, registros = todos, validacao = validacao))
 }
 
+### v2.6.2 - 03.5Q-B ------------------------------------------------------------
+### Grava um data.table em CSV com o mesmo fallback (fwrite -> write.csv) usado
+### dentro de monitora_diag_rel_gerar_ocorrencias(); extraído para nível
+### superior para ser reaproveitado por monitora_diag_rel_reutilizar_ocorrencias_pos_painel()
+### sem duplicar a lógica de fallback em dois lugares divergentes.
+monitora_diag_rel_write_dt <- function(x, arquivo) {
+  x <- data.table::as.data.table(x)
+  dir.create(dirname(arquivo), recursive = TRUE, showWarnings = FALSE)
+  tryCatch(
+    data.table::fwrite(x, arquivo, na = ""),
+    error = function(e) utils::write.csv(as.data.frame(x), arquivo, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+  )
+  invisible(arquivo)
+}
+
+### Reaproveita o resultado já calculado de monitora_diag_rel_gerar_ocorrencias()
+### numa fase anterior (fase_origem, tipicamente "pre_painel") como o resultado
+### da fase seguinte (fase_pos, tipicamente "pos_painel"), quando o chamador já
+### verificou que nada relevante ao catálogo de ocorrências mudou entre as duas
+### fases (ver uso em MONITORA_RELATORIOS_DIAGNOSTICOS_POS_PAINEL, marco
+### 03.5Q-B: evita revarrer `dt` inteiro -- grepl/token por categoria de forma
+### de vida em todas as linhas -- quando o resultado seria idêntico ao já
+### calculado). Relabela `etapa` e os nomes de arquivo/caminho para a fase de
+### destino e regrava os CSVs no diretório de destino, para que os produtos em
+### disco também reflitam a fase correta (auditabilidade), sem reprocessar
+### `dt`.
+monitora_diag_rel_reutilizar_ocorrencias_pos_painel <- function(pre_result, base_dir_pos, fase_pos = "pos_painel", fase_origem = "pre_painel") {
+  relabel_etapa <- function(x) {
+    if (!data.table::is.data.table(x) || !("etapa" %in% names(x))) return(x)
+    x <- data.table::copy(x)
+    x[, etapa := fase_pos]
+    x[]
+  }
+  relabel_nome_fase <- function(txt) {
+    txt <- as.character(txt)
+    padrao <- paste0("_", fase_origem, "(\\.[a-zA-Z0-9]+)$")
+    ifelse(grepl(padrao, txt), sub(padrao, paste0("_", fase_pos, "\\1"), txt), txt)
+  }
+
+  dir.create(base_dir_pos, recursive = TRUE, showWarnings = FALSE)
+
+  registros_pos <- relabel_etapa(pre_result$registros)
+  resumo_pos <- relabel_etapa(pre_result$resumo)
+  validacao_pos <- relabel_etapa(pre_result$validacao)
+
+  indice_pos <- data.table::copy(pre_result$indice)
+  if (data.table::is.data.table(indice_pos) && nrow(indice_pos)) {
+    indice_pos[, etapa := fase_pos]
+    indice_pos[, arquivo := relabel_nome_fase(arquivo)]
+    indice_pos[, caminho := file.path(base_dir_pos, arquivo)]
+  }
+
+  if (data.table::is.data.table(registros_pos) && data.table::is.data.table(indice_pos) && nrow(indice_pos)) {
+    for (ii in seq_len(nrow(indice_pos))) {
+      tp <- indice_pos$tipo_ocorrencia[ii]
+      arq <- indice_pos$caminho[ii]
+      x <- if (nrow(registros_pos)) registros_pos[tipo_ocorrencia == tp] else registros_pos
+      monitora_diag_rel_write_dt(x, arq)
+    }
+  }
+  monitora_diag_rel_write_dt(
+    if (data.table::is.data.table(registros_pos)) registros_pos else data.table::data.table(),
+    file.path(base_dir_pos, paste0("registros_ocorrencias_diagnosticas_", fase_pos, ".csv"))
+  )
+  if (data.table::is.data.table(resumo_pos) && "severidade" %in% names(resumo_pos)) {
+    monitora_diag_rel_write_dt(resumo_pos[severidade == "impeditiva"], file.path(base_dir_pos, paste0("resumo_ocorrencias_impeditivas_", fase_pos, ".csv")))
+    monitora_diag_rel_write_dt(resumo_pos, file.path(base_dir_pos, paste0("resumo_ocorrencias_diagnosticas_", fase_pos, ".csv")))
+  }
+  if (data.table::is.data.table(indice_pos) && nrow(indice_pos)) {
+    indice_pos[, arquivo_existe := file.exists(caminho)]
+    monitora_diag_rel_write_dt(indice_pos, file.path(base_dir_pos, "indice_relatorios_ocorrencias_diagnosticas.csv"))
+  }
+  if (data.table::is.data.table(validacao_pos) && nrow(validacao_pos)) {
+    monitora_diag_rel_write_dt(validacao_pos, file.path(base_dir_pos, paste0("validacao_contagens_triagem_vs_relatorios_", fase_pos, ".csv")))
+  }
+
+  list(diretorio = base_dir_pos, indice = indice_pos, resumo = resumo_pos, registros = registros_pos, validacao = validacao_pos)
+}
+### FIM v2.6.2 - 03.5Q-B ----------------------------------------------------
+
 monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITORA_ARQUIVO_CORRECOES_CAMPOS) {
   monitora_correcao_carregar_dependencias_painel()
   dt <- data.table::as.data.table(dt)
@@ -17533,7 +17766,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   dict <- monitora_correcao_dicionario_atributos(dt, meta_xls)
   contrato_edicao <- monitora_correcao_contrato_edicao(dt, meta_xls, dict)
   if (!("painel_editavel" %in% names(dict)) && "atributo_coluna_registros_corrig" %in% names(dict) && nrow(contrato_edicao)) {
-    dict <- merge(dict, contrato_edicao[, .(atributo_coluna_registros_corrig, tipo_base_edicao, painel_editavel, painel_motivo_bloqueio, acoes_permitidas)], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
+    cols_merge_contrato_ini <- intersect(c(
+      "atributo_coluna_registros_corrig", "tipo_base_edicao", "painel_editavel",
+      "painel_motivo_bloqueio", "acoes_permitidas", "escopo_operacional_contrato_unico",
+      "escopos_permitidos_contrato_unico", "motivo_escopo_contrato_unico"
+    ), names(contrato_edicao))
+    dict <- merge(dict, contrato_edicao[, ..cols_merge_contrato_ini], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
   }
   if ("atributo_coluna_registros_corrig" %in% names(dict) && "painel_editavel" %in% names(dict)) {
     dict <- dict[painel_editavel %in% TRUE]
@@ -17567,7 +17805,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       contrato_edicao <- monitora_correcao_contrato_edicao(dt, meta_xls, dict)
       cols_contrato_painel <- intersect(
-        c("atributo_coluna_registros_corrig", "tipo_base_edicao", "painel_editavel", "painel_motivo_bloqueio", "acoes_permitidas", "atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora"),
+        c("atributo_coluna_registros_corrig", "tipo_base_edicao", "painel_editavel", "painel_motivo_bloqueio", "acoes_permitidas", "atende_template_sismonitora", "ordem_template_sismonitora", "atributos_template_sismonitora", "posicoes_template_sismonitora", "estrategias_template_sismonitora", "escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico", "motivo_escopo_contrato_unico"),
         names(contrato_edicao)
       )
       if (length(cols_contrato_painel) > 1L) {
@@ -17631,6 +17869,42 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     trimws(gsub("\\s+", " ", gsub("\u200b", "", x), perl = TRUE))
   }
 
+  monitora_painel_rotulo_token <- function(label, token) {
+    token <- as.character(token)
+    label <- monitora_painel_limpar_html_rotulo(label)
+    label[is.na(label) | !nzchar(label)] <- token[is.na(label) | !nzchar(label)]
+    igual <- monitora_correcao_normalizar_nome_coluna(label) == monitora_correcao_normalizar_nome_coluna(token)
+    out <- ifelse(igual, token, paste0(label, " — ", token))
+    out[is.na(out) | !nzchar(out)] <- token[is.na(out) | !nzchar(out)]
+    out
+  }
+
+  monitora_painel_choices_dominio_xlsform <- function(list_name, meta_xls = NULL, fallback = character(0)) {
+    list_name_alvo <- as.character(list_name)[1L]
+    meta <- monitora_correcao_xlsform_meta_atual(meta_xls)
+    op <- if (!is.null(meta$opcoes)) data.table::as.data.table(meta$opcoes) else data.table::data.table()
+    if (nrow(op) && all(c("list_name", "name") %in% names(op)) && !is.na(list_name_alvo) && nzchar(list_name_alvo)) {
+      for (cc in c("arquivo_xlsform", "list_name", "name", "label")) if (!(cc %in% names(op))) op[, (cc) := NA_character_]
+      cand <- op[list_name == list_name_alvo & !is.na(name) & nzchar(as.character(name))]
+      if (nrow(cand)) {
+        arq <- tryCatch(monitora_correcao_ultima_versao_xlsform(cand), error = function(e) NA_character_)
+        if (!is.na(arq) && nzchar(arq)) {
+          cand2 <- cand[arquivo_xlsform == arq]
+          if (nrow(cand2)) cand <- cand2
+        }
+        cand <- unique(cand[, .(name = as.character(name), label = as.character(label))], by = "name")
+        vals <- as.character(cand$name)
+        labs <- monitora_painel_rotulo_token(cand$label, vals)
+        o <- order(monitora_correcao_normalizar_nome_coluna(labs), vals)
+        return(stats::setNames(vals[o], labs[o]))
+      }
+    }
+    vals <- unique(trimws(as.character(fallback)))
+    vals <- vals[!is.na(vals) & nzchar(vals)]
+    vals <- sort(vals)
+    stats::setNames(vals, monitora_painel_rotulo_token(vals, vals))
+  }
+
   monitora_painel_choices_atributos_template <- function(d) {
     d <- data.table::as.data.table(data.table::copy(d))
     if ("ordem_template_sismonitora" %in% names(d)) {
@@ -17641,13 +17915,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     labels_base <- vals
     if ("xlsform_label" %in% names(d)) {
       lab <- monitora_painel_limpar_html_rotulo(d$xlsform_label)
-      labels_base <- ifelse(nzchar(lab), paste0(lab, " (", vals, ")"), labels_base)
+      labels_base <- ifelse(nzchar(lab), monitora_painel_rotulo_token(lab, vals), labels_base)
     }
     labels <- labels_base
     if ("atributos_template_sismonitora" %in% names(d)) {
       tpl <- as.character(d$atributos_template_sismonitora)
       tpl[is.na(tpl)] <- ""
-      labels <- ifelse(nzchar(tpl), paste0(labels_base, "  →  ", tpl), labels_base)
+      labels <- ifelse(nzchar(tpl), paste0(labels_base, "  |  ", tpl), labels_base)
     }
     ### Termos auxiliares explícitos ajudam a busca do selectize por expressões
     ### naturais usadas pelos bolsistas e pelo contrato do XLSForm 2025.
@@ -17669,14 +17943,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   }
   monitora_painel_choices_valor_atributo <- function(atributo, acao = NULL, incluir_observados = FALSE) {
     info <- monitora_painel_info_contrato_atributo(atributo)
-    escolhas <- unique(as.character(info$escolhas))
-    escolhas <- escolhas[!is.na(escolhas) & nzchar(trimws(escolhas))]
+    fallback <- character(0)
     if (isTRUE(incluir_observados) && !is.na(info$col) && nzchar(info$col) && info$col %in% names(dt)) {
       obs <- unique(unlist(lapply(as.character(dt[[info$col]]), monitora_correcao_tokens_valor), use.names = FALSE))
       obs <- obs[!is.na(obs) & nzchar(trimws(obs))]
-      escolhas <- unique(c(escolhas, obs))
+      fallback <- unique(c(fallback, obs))
+    } else if (!is.na(info$col) && nzchar(info$col) && info$col %in% names(dt)) {
+      fallback <- unique(c(fallback, as.character(dt[[info$col]])))
     }
-    stats::setNames(escolhas, escolhas)
+    monitora_painel_choices_dominio_xlsform(info$list_name, meta_xls, fallback = fallback)
   }
 
   monitora_painel_widget_valor_atributo <- function(atributo, acao = NULL) {
@@ -17721,10 +17996,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
     invisible(TRUE)
   }
-  monitora_painel_validar_entrada <- function(atributo, acao, valor_novo, valor_original = NA_character_) {
+  monitora_painel_validar_entrada <- function(atributo, acao, valor_novo, valor_original = NA_character_, escopo = NULL) {
     col <- monitora_correcao_resolver_coluna(dt, atributo, dict)
     fake <- data.table::data.table(valor_original_esperado = valor_original)
-    monitora_correcao_validar_destino_operacao(dt, col, acao, valor_novo, fake, dict, meta_xls)
+    valid_destino <- monitora_correcao_validar_destino_operacao(dt, col, acao, valor_novo, fake, dict, meta_xls)
+    if (!isTRUE(valid_destino$ok)) return(valid_destino)
+    if (!is.null(escopo) && exists("monitora_correcao_validar_escopo_operacional_contrato_unico", mode = "function")) {
+      valid_escopo <- monitora_correcao_validar_escopo_operacional_contrato_unico(col, escopo, dict)
+      if (!isTRUE(valid_escopo$ok)) return(valid_escopo)
+    }
+    valid_destino
   }
   monitora_painel_coluna_ok <- function(col, x = dt) {
     !is.na(col) && nzchar(col) && col %in% names(x)
@@ -17823,6 +18104,34 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   monitora_painel_formas_validas_choices_categoria <- function(categoria) {
     categoria <- as.character(categoria)[1]
     lista <- paste0("forma_vida_", categoria)
+    escolhas_cu <- tryCatch({
+      cu <- monitora_contrato_unico_indices_cache()
+      ch <- data.table::as.data.table(cu$indices$por_choice_name)
+      attrs <- data.table::as.data.table(cu$indices$por_list_name)
+      if (!nrow(ch) || !all(c("list_name", "name") %in% names(ch))) data.table::data.table() else {
+        for (cc in c("list_name", "name", "label")) if (!(cc %in% names(ch))) ch[, (cc) := NA_character_]
+        ch <- ch[list_name == lista & !is.na(name) & nzchar(as.character(name))]
+        if (nrow(attrs) && all(c("list_name", "cardinalidade_operacional", "relevant", "campo_pai") %in% names(attrs))) {
+          attrs <- unique(attrs[list_name == lista, .(list_name, cardinalidade_operacional, relevant, campo_pai)])
+          ch <- merge(ch, attrs, by = "list_name", all.x = TRUE, sort = FALSE)
+          ch <- ch[
+            is.na(cardinalidade_operacional) |
+              cardinalidade_operacional %in% c("select_multiple", "estruturado_completo_por_ponto", "estruturado_condicional_esparso")
+          ]
+          ch <- ch[is.na(campo_pai) | !nzchar(as.character(campo_pai)) | campo_pai %in% c("tipo_forma_vida", lista)]
+        }
+        ch[, token_norm := monitora_relatorio_exoticas_normalizar_token(name)]
+        ch <- ch[!is.na(token_norm) & nzchar(token_norm) & !(token_norm %in% MONITORA_TRIAGEM_TOKENS_INVALIDOS)]
+        unique(ch[, .(name = token_norm, label = as.character(label))], by = "name")
+      }
+    }, error = function(e) data.table::data.table())
+    if (nrow(escolhas_cu)) {
+      escolhas_cu[, rotulo := monitora_painel_rotulo_token(label, name)]
+      vals <- as.character(escolhas_cu$name)
+      labs <- as.character(escolhas_cu$rotulo)
+      o <- order(vals)
+      return(stats::setNames(vals[o], labs[o]))
+    }
     op <- if (!is.null(meta_xls) && !is.null(meta_xls$opcoes)) data.table::as.data.table(meta_xls$opcoes) else data.table::data.table()
     if (nrow(op) && all(c("list_name", "name", "label") %in% names(op))) {
       op[, arquivo_xlsform_chr := if ("arquivo_xlsform" %in% names(op)) as.character(arquivo_xlsform) else ""]
@@ -17836,7 +18145,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         cand <- cand[!is.na(token_norm) & nzchar(token_norm) & !(token_norm %in% MONITORA_TRIAGEM_TOKENS_INVALIDOS)]
         if (nrow(cand)) {
           cand <- unique(cand[, .(name = token_norm, label = as.character(label))], by = "name")
-          cand[, rotulo := ifelse(!is.na(label) & nzchar(label), paste0(name, " — ", label), name)]
+          cand[, rotulo := monitora_painel_rotulo_token(label, name)]
           vals <- as.character(cand$name)
           labs <- as.character(cand$rotulo)
           o <- order(vals)
@@ -17996,7 +18305,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     ### forma_vida_nativa, forma_vida_exotica e forma_vida_seca_morta; portanto
     ### não inclui atributos de Encostam na vareta, como serrapilheira,
     ### fragmentos_botanicos ou material_inundado, nem forma_vida_outros.
-    op <- if (!is.null(meta_xls) && !is.null(meta_xls$opcoes)) data.table::as.data.table(meta_xls$opcoes) else data.table::data.table()
     listas_forma <- paste0("forma_vida_", MONITORA_TRIAGEM_CATEGORIAS_FORMA)
     tokens_excluir_mv <- unique(c(
       MONITORA_TRIAGEM_TOKENS_OUTRAS,
@@ -18034,6 +18342,44 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     fallback_atual[, tokens_historicos := token_representativo]
 
     out <- fallback_atual
+    contrato_mv <- tryCatch({
+      cu <- monitora_contrato_unico_indices_cache()
+      ch <- data.table::as.data.table(cu$indices$por_choice_name)
+      attrs <- data.table::as.data.table(cu$indices$por_list_name)
+      if (!nrow(ch) || !all(c("list_name", "name") %in% names(ch))) data.table::data.table() else {
+        for (cc in c("list_name", "name", "label")) if (!(cc %in% names(ch))) ch[, (cc) := NA_character_]
+        ch <- ch[list_name %in% listas_forma]
+        if (nrow(attrs) && all(c("list_name", "cardinalidade_operacional", "relevant", "campo_pai") %in% names(attrs))) {
+          attrs <- unique(attrs[list_name %in% listas_forma, .(list_name, cardinalidade_operacional, relevant, campo_pai)])
+          ch <- merge(ch, attrs, by = "list_name", all.x = TRUE, sort = FALSE)
+          ch <- ch[
+            is.na(cardinalidade_operacional) |
+              cardinalidade_operacional %in% c("select_multiple", "estruturado_completo_por_ponto", "estruturado_condicional_esparso")
+          ]
+          ch <- ch[is.na(campo_pai) | !nzchar(as.character(campo_pai)) | campo_pai %in% c("tipo_forma_vida", listas_forma)]
+        }
+        ch[, token_norm := monitora_relatorio_exoticas_normalizar_token(name)]
+        ch[, label_chr := trimws(as.character(label))]
+        ch[is.na(label_chr) | !nzchar(label_chr), label_chr := token_norm]
+        ch <- ch[!is.na(token_norm) & nzchar(token_norm)]
+        ch <- ch[!(token_norm %in% tokens_excluir_mv)]
+        if (!nrow(ch)) data.table::data.table() else {
+          ch[, label_key := monitora_correcao_normalizar_nome_coluna(label_chr)]
+          ch[, ordem := seq_len(.N)]
+          atuais <- unique(ch[, .(
+            token_representativo = token_norm,
+            label_exibicao = label_chr,
+            label_key = label_key,
+            ordem = ordem
+          )], by = "token_representativo")
+          atuais[, tokens_historicos := token_representativo]
+          atuais[, .(token_representativo, label_exibicao, tokens_historicos, ordem)]
+        }
+      }
+    }, error = function(e) data.table::data.table())
+    if (nrow(contrato_mv)) out <- contrato_mv
+
+    op <- if (!nrow(contrato_mv) && !is.null(meta_xls) && !is.null(meta_xls$opcoes)) data.table::as.data.table(meta_xls$opcoes) else data.table::data.table()
     if (nrow(op) && all(c("list_name", "name", "label") %in% names(op))) {
       op[, arquivo_xlsform_chr := if ("arquivo_xlsform" %in% names(op)) as.character(arquivo_xlsform) else ""]
       cand <- op[list_name %in% listas_forma]
@@ -18092,7 +18438,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       out <- unique(out, by = "token_representativo")
     }
 
-    choices <- stats::setNames(as.character(out$token_representativo), as.character(out$label_exibicao))
+    choices <- stats::setNames(
+      as.character(out$token_representativo),
+      monitora_painel_rotulo_token(out$label_exibicao, out$token_representativo)
+    )
     tokens_historicos <- stats::setNames(strsplit(as.character(out$tokens_historicos), "|", fixed = TRUE), as.character(out$token_representativo))
     token_para_representativo <- stats::setNames(as.character(out$token_representativo), as.character(out$token_representativo))
     for (ii in seq_len(nrow(out))) {
@@ -18552,7 +18901,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         })
       ))),
       forma_vida_exotica_sem_especie = coleta_vals(tri[status_vinculo == "exotica_com_forma_sem_sp_vinculada"]),
-      forma_vida_exotica_com_especie = coleta_vals(tri[status_vinculo == "exotica_com_forma_e_sp_vinculada"])
+      forma_vida_exotica_com_especie = coleta_vals(tri[status_vinculo == "exotica_com_forma_e_sp_vinculada"]),
+      ### v2.6.2 - 03.5Q-A: mesma máscara usada em monitora_diag_rel_gerar_ocorrencias()
+      ### (fonte única monitora_correcao_mask_solo_nu_incompativel() /
+      ### monitora_correcao_mask_habito_obrigatorio_ausente()).
+      solo_nu_com_outra_categoria = coleta_vals_mask(
+        tryCatch(monitora_correcao_mask_solo_nu_incompativel(dt, chaves), error = function(e) rep(FALSE, nrow(dt)))
+      ),
+      habito_obrigatorio_ausente = coleta_vals_mask(
+        tryCatch(monitora_correcao_mask_habito_obrigatorio_ausente(dt)$mask, error = function(e) rep(FALSE, nrow(dt)))
+      )
     )
   }
 
@@ -18584,7 +18942,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$outra_forma_vida), " com outra forma de vida; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida), " com forma de vida desconhecida; ",
     length(coletas_triagem_por_tipo$forma_vida_exotica_sem_especie), " em lista de revisão de exótica sem espécie; ",
-    length(coletas_triagem_por_tipo$forma_vida_exotica_com_especie), " em lista de revisão de exótica com espécie."
+    length(coletas_triagem_por_tipo$forma_vida_exotica_com_especie), " em lista de revisão de exótica com espécie; ",
+    length(coletas_triagem_por_tipo$solo_nu_com_outra_categoria), " com solo nu incompatível com outra categoria; ",
+    length(coletas_triagem_por_tipo$habito_obrigatorio_ausente), " com hábito obrigatório ausente."
   )
 
   tryCatch({
@@ -18601,6 +18961,19 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     dir.create(dirname(arq_erro), recursive = TRUE, showWarnings = FALSE)
     writeLines(conditionMessage(e), arq_erro, useBytes = TRUE)
     monitora_correcao_console_msg("ERRO ao gerar relatórios diagnósticos [pre_painel]: ", conditionMessage(e), ". Detalhes: ", arq_erro)
+  })
+
+  ### v2.6.2 - 03.5V-C: ponte diagnóstica de cobertura entre o catálogo
+  ### operacional de ocorrências pré-painel acima e o contrato único. Somente
+  ### auditoria (não bloqueia o painel); qualquer falha aqui é registrada, não
+  ### silenciada, para não ocultar uma possível divergência de cobertura.
+  tryCatch({
+    monitora_ponte_pre_painel_regras_contrato_unico()
+  }, error = function(e) {
+    arq_erro <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pre_painel", paste0("erro_ponte_regras_contrato_unico_pre_painel_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".txt"))
+    dir.create(dirname(arq_erro), recursive = TRUE, showWarnings = FALSE)
+    writeLines(conditionMessage(e), arq_erro, useBytes = TRUE)
+    monitora_correcao_console_msg("ERRO na ponte de validacoes pre-painel (03.5V-C): ", conditionMessage(e), ". Detalhes: ", arq_erro)
   })
   if (exists("monitora_output_organizar_produtos", mode = "function")) {
     try(monitora_output_organizar_produtos(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), contexto = "pos_relatorios_diagnosticos_pre_painel"), silent = TRUE)
@@ -18628,7 +19001,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "exotica_sem_forma_vida",
           "seca_morta_sem_forma_vida",
           "outra_forma_vida",
-          "forma_vida_desconhecida"
+          "forma_vida_desconhecida",
+          "solo_nu_com_outra_categoria",
+          "habito_obrigatorio_ausente"
         ),
         c(
           paste0("UAs duplicadas no mesmo ano (", n_tipo("uas_duplicadas_mesmo_ano"), " coletas para triagem)"),
@@ -18637,7 +19012,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           paste0("Exótica sem forma de vida (", n_tipo("exotica_sem_forma_vida"), " coletas com ocorrência)"),
           paste0("Seca ou morta sem forma de vida (", n_tipo("seca_morta_sem_forma_vida"), " coletas com ocorrência)"),
           paste0("Outra forma de vida (", n_tipo("outra_forma_vida"), " coletas com ocorrência)"),
-          paste0("Forma de vida desconhecida (", n_tipo("forma_vida_desconhecida"), " coletas com ocorrência)")
+          paste0("Forma de vida desconhecida (", n_tipo("forma_vida_desconhecida"), " coletas com ocorrência)"),
+          paste0("Solo nu com outra categoria (", n_tipo("solo_nu_com_outra_categoria"), " coletas com ocorrência)"),
+          paste0("Hábito obrigatório ausente (", n_tipo("habito_obrigatorio_ausente"), " coletas com ocorrência)")
         )
       ),
       outras = stats::setNames(
@@ -18655,7 +19032,88 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
   choices_triagem_coleta <- monitora_painel_choices_triagem_coleta(valores_coleta)
 
-  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0), correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0), auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table())
+  monitora_painel_ocorrencias_idx_leve <- function(triagem, coletas_por_tipo) {
+    out <- list()
+    tri <- tryCatch(data.table::as.data.table(triagem), error = function(e) data.table::data.table())
+    if (nrow(tri)) {
+      for (cc in c("tipo_triagem", "status_vinculo", "COLETA", "linha_indice_global", "linha_filtro", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO")) {
+        if (!(cc %in% names(tri))) tri[, (cc) := NA_character_]
+      }
+      map_tipo <- data.table::data.table(
+        tipo_ocorrencia = c("outra_forma_vida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "exotica_sem_forma_vida"),
+        pred_col = c("tipo_triagem", "tipo_triagem", "status_vinculo", "status_vinculo", "status_vinculo"),
+        pred_val = c("outras_formas_vida", "forma_vida_desconhecida", "exotica_com_forma_sem_sp_vinculada", "exotica_com_forma_e_sp_vinculada", "erro_exotica_sem_forma_vida_detalhada")
+      )
+      for (ii in seq_len(nrow(map_tipo))) {
+        cc <- map_tipo$pred_col[ii]
+        vv <- map_tipo$pred_val[ii]
+        sub <- tri[as.character(get(cc)) == vv]
+        if (!nrow(sub)) next
+        linha_idx <- suppressWarnings(as.integer(sub$linha_indice_global))
+        linha_idx[is.na(linha_idx)] <- suppressWarnings(as.integer(sub$linha_filtro[is.na(linha_idx)]))
+        out[[length(out) + 1L]] <- data.table::data.table(
+          tipo_ocorrencia = map_tipo$tipo_ocorrencia[ii],
+          COLETA = as.character(sub$COLETA),
+          linha_indice = linha_idx,
+          UC = as.character(sub$UC),
+          EA = as.character(sub$EA),
+          UA = as.character(sub$UA),
+          CICLO = as.character(sub$CICLO),
+          CAMPANHA = as.character(sub$CAMPANHA),
+          ANO = as.character(sub$ANO),
+          fonte_indice = "triagem_painel_unificada"
+        )
+      }
+    }
+    if (is.list(coletas_por_tipo) && length(coletas_por_tipo)) {
+      tipos_com_linha <- unique(vapply(out, function(x) as.character(x$tipo_ocorrencia[1L]), character(1)))
+      for (nm in setdiff(names(coletas_por_tipo), tipos_com_linha)) {
+        vals <- unique(as.character(coletas_por_tipo[[nm]]))
+        vals <- vals[!is.na(vals) & nzchar(vals)]
+        if (!length(vals)) next
+        out[[length(out) + 1L]] <- data.table::data.table(
+          tipo_ocorrencia = nm,
+          COLETA = vals,
+          linha_indice = NA_integer_,
+          UC = NA_character_,
+          EA = NA_character_,
+          UA = NA_character_,
+          CICLO = NA_character_,
+          CAMPANHA = NA_character_,
+          ANO = NA_character_,
+          fonte_indice = "coletas_triagem_por_tipo"
+        )
+      }
+    }
+    idx <- if (length(out)) data.table::rbindlist(out, fill = TRUE, use.names = TRUE) else data.table::data.table(
+      tipo_ocorrencia = character(), COLETA = character(), linha_indice = integer(),
+      UC = character(), EA = character(), UA = character(), CICLO = character(), CAMPANHA = character(),
+      ANO = character(), fonte_indice = character()
+    )
+    if (nrow(idx)) {
+      idx <- unique(idx, by = c("tipo_ocorrencia", "COLETA", "linha_indice", "fonte_indice"))
+      data.table::setorder(idx, tipo_ocorrencia, COLETA, linha_indice, na.last = TRUE)
+    }
+    idx[]
+  }
+
+  monitora_painel_ocorrencias_resumo_leve <- function(idx) {
+    idx <- data.table::as.data.table(idx)
+    if (!nrow(idx)) {
+      return(data.table::data.table(tipo_ocorrencia = character(), n_ocorrencias = integer(), n_linhas = integer(), n_coletas = integer()))
+    }
+    idx[, .(
+      n_ocorrencias = .N,
+      n_linhas = data.table::uniqueN(linha_indice[!is.na(linha_indice)]),
+      n_coletas = data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)])
+    ), by = tipo_ocorrencia][order(tipo_ocorrencia)][]
+  }
+
+  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0), correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0), auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table(), ocorrencias_idx = data.table::data.table(), ocorrencias_resumo = data.table::data.table())
+  ocorrencias_idx_base_painel <- monitora_painel_ocorrencias_idx_leve(triagem_painel_unificada, coletas_triagem_por_tipo)
+  rv$ocorrencias_idx <- data.table::copy(ocorrencias_idx_base_painel)
+  ocorrencias_resumo_base_painel <- monitora_painel_ocorrencias_resumo_leve(ocorrencias_idx_base_painel)
+  rv$ocorrencias_resumo <- data.table::copy(ocorrencias_resumo_base_painel)
   validacao_esp_painel <- data.table::data.table()
   if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
     res_esp_pre_painel <- get0("MONITORA_VALIDACAO_ESPACIAL_PRE_PAINEL_RESULTADO", ifnotfound = NULL, inherits = TRUE)
@@ -19061,7 +19519,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::selectizeInput(
           "mv_lote_formas",
           "Forma(s) de vida de origem",
-          choices = c("Todas as formas encontradas na origem" = "__todas__", "desconhecida" = "desconhecida", formas_mv_choices),
+          choices = c("Todas as formas encontradas na origem" = "__todas__", "Forma de vida desconhecida" = "desconhecida", "Outras plantas terrestres, líquens e/ou fungos" = "outra_forma_vida", formas_mv_choices),
           selected = "__todas__",
           multiple = TRUE,
           options = list(placeholder = "Todas ou formas selecionadas", plugins = list("remove_button"))
@@ -19499,6 +19957,42 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_notificar(paste0(n_prot, " ação(ões) bloqueada(s): coluna estrutural/protegida não pode ser corrigida no painel."), type = "error", duration = 10)
           if (!nrow(ops)) return(0L)
         }
+        if (exists("monitora_correcao_validar_escopo_operacional_contrato_unico", mode = "function")) {
+          acao_op <- if ("acao" %in% names(ops)) ops$acao else rep("", nrow(ops))
+          tipo_op <- if ("tipo_correcao" %in% names(ops)) ops$tipo_correcao else rep("", nrow(ops))
+          exclusao_coleta_op <- mapply(
+            function(acao_i, tipo_i) isTRUE(monitora_correcao_acao_exclusao_coleta(acao_i, tipo_i)),
+            acao_op, tipo_op,
+            USE.NAMES = FALSE
+          )
+          for (cc_tmp in c("tipo_correcao", "escopo_aplicacao")) if (!(cc_tmp %in% names(ops))) ops[, (cc_tmp) := ""]
+          tipos_genericos <- c("", "simples_ou_lote", "lote_multicoletas_campo_superior", "pendencia_sem_forma_vida_lote")
+          validar_escopo_op <- !exclusao_coleta_op & as.character(ops$tipo_correcao) %in% tipos_genericos
+          if (any(validar_escopo_op, na.rm = TRUE)) {
+            ok_escopo <- rep(TRUE, nrow(ops))
+            msg_escopo <- character(0)
+            for (ii_esc in which(validar_escopo_op)) {
+              vv <- monitora_correcao_validar_escopo_operacional_contrato_unico(
+                ops$atributo_coluna_registros_corrig[ii_esc],
+                ops$escopo_aplicacao[ii_esc],
+                dict
+              )
+              if (!isTRUE(vv$ok)) {
+                ok_escopo[ii_esc] <- FALSE
+                msg_escopo <- c(msg_escopo, vv$mensagem)
+              }
+            }
+            if (any(!ok_escopo)) {
+              n_escopo <- sum(!ok_escopo)
+              ops <- ops[ok_escopo]
+              msg_escopo <- unique(msg_escopo)
+              msg_escopo <- msg_escopo[!is.na(msg_escopo) & nzchar(msg_escopo)]
+              detalhe_escopo <- if (length(msg_escopo)) paste0(" ", msg_escopo[1L]) else ""
+              monitora_painel_notificar(paste0(n_escopo, " ação(ões) bloqueada(s): escopo incompatível com o perfil_painel_edicao do contrato único.", detalhe_escopo), type = "error", duration = 12)
+              if (!nrow(ops)) return(0L)
+            }
+          }
+        }
       }
       sig_novas <- monitora_painel_assinatura_operacoes(ops)
       manter <- !duplicated(sig_novas)
@@ -19512,7 +20006,66 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (n_bloq > 0L) {
         monitora_painel_notificar(paste0(n_bloq, " ação(ões) repetida(s) não foram adicionadas às correções pendentes."), type = "warning", duration = 8)
       }
+      try(monitora_painel_atualizar_ocorrencias_idx_fila(), silent = TRUE)
       nrow(ops_add)
+    }
+
+    monitora_painel_ocorrencia_tipo_por_operacao <- function(ops) {
+      ops <- data.table::as.data.table(ops)
+      if (!nrow(ops)) return(character(0))
+      for (cc in c("tipo_correcao", "acao", "atributo_coluna_registros_corrig", "tipo_triagem", "ocorrencia_diagnostica_contextual", "categoria_origem", "escopo_diagnostico_mvlote", "categoria_base_diagnostica")) {
+        if (!(cc %in% names(ops))) ops[, (cc) := ""]
+      }
+      txt <- monitora_correcao_normalizar_nome_coluna(paste(
+        ops$tipo_correcao, ops$acao, ops$atributo_coluna_registros_corrig,
+        ops$tipo_triagem, ops$ocorrencia_diagnostica_contextual,
+        ops$categoria_origem, ops$escopo_diagnostico_mvlote,
+        ops$categoria_base_diagnostica
+      ))
+      out <- rep(NA_character_, nrow(ops))
+      out[grepl("outras_formas_vida|outra_forma_vida|limpar_outras", txt)] <- "outra_forma_vida"
+      out[grepl("desconhecid|substituir_desconhecida|tridesc", txt)] <- "forma_vida_desconhecida"
+      out[grepl("nativa_sem_forma_vida", txt)] <- "nativa_sem_forma_vida"
+      out[grepl("exotica_sem_forma_vida|erro_exotica_sem_forma", txt)] <- "exotica_sem_forma_vida"
+      out[grepl("seca_morta_sem_forma_vida", txt)] <- "seca_morta_sem_forma_vida"
+      out[grepl("movimento_forma_vida|mover_forma_vida", txt) & grepl("exotica", txt) & is.na(out)] <- "forma_vida_exotica_sem_especie"
+      out
+    }
+
+    monitora_painel_linhas_operacao_fila <- function(ops) {
+      ops <- data.table::as.data.table(ops)
+      if (!nrow(ops)) return(vector("list", 0L))
+      out <- vector("list", nrow(ops))
+      for (ii in seq_len(nrow(ops))) {
+        vals <- character(0)
+        for (cc in intersect(c("linhas_alvo_serializadas", "linhas_alvo_serializadas_operacao", "linha_indice"), names(ops))) {
+          vals <- c(vals, as.character(ops[[cc]][ii]))
+        }
+        li <- suppressWarnings(as.integer(monitora_correcao_parse_serial_generico(vals)))
+        li <- unique(li[!is.na(li) & li >= 1L])
+        out[[ii]] <- li
+      }
+      out
+    }
+
+    monitora_painel_atualizar_ocorrencias_idx_fila <- function() {
+      idx <- data.table::copy(ocorrencias_idx_base_painel)
+      ops <- tryCatch(data.table::as.data.table(rv$correcoes), error = function(e) data.table::data.table())
+      if (nrow(idx) && nrow(ops)) {
+        tipos <- monitora_painel_ocorrencia_tipo_por_operacao(ops)
+        linhas_lst <- monitora_painel_linhas_operacao_fila(ops)
+        remover <- rep(FALSE, nrow(idx))
+        for (ii in seq_len(nrow(ops))) {
+          tipo_i <- tipos[ii]
+          linhas_i <- linhas_lst[[ii]]
+          if (is.na(tipo_i) || !nzchar(tipo_i) || !length(linhas_i) || !("linha_indice" %in% names(idx))) next
+          remover <- remover | (idx$tipo_ocorrencia == tipo_i & idx$linha_indice %in% linhas_i)
+        }
+        if (any(remover, na.rm = TRUE)) idx <- idx[!remover]
+      }
+      rv$ocorrencias_idx <- idx[]
+      rv$ocorrencias_resumo <- monitora_painel_ocorrencias_resumo_leve(idx)
+      invisible(TRUE)
     }
 
     monitora_painel_atributo_lote_sensivel <- function(col) {
@@ -19530,6 +20083,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (identical(escopo, "linhas_pendentes_ocorrencia") && identical(papel_esc, "lista_principal_forma_vida") && categoria_esc %in% c("nativa", "exotica", "seca_morta")) return("linhas_pendentes_ocorrencia")
       info <- dict[atributo_coluna_registros_corrig == atributo]
       escopo_dict <- if (nrow(info) > 0L && "escopo_sugerido" %in% names(info)) info$escopo_sugerido[1L] else NA_character_
+      escopo_cu <- if (nrow(info) > 0L && "escopo_operacional_contrato_unico" %in% names(info)) info$escopo_operacional_contrato_unico[1L] else NA_character_
+      if (identical(escopo_cu, "coleta_inteira")) return("coleta_inteira")
+      if (identical(escopo_cu, "ponto") && identical(escopo, "coleta_inteira")) return("ponto")
       if (isTRUE(monitora_painel_atributo_lote_sensivel(atributo)) || identical(escopo_dict, "coleta_inteira")) return("coleta_inteira")
       if (!nzchar(escopo)) "ponto" else escopo
     }
@@ -19642,7 +20198,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         }
         if (length(linhas_globais) != 1L) { bloqueadas <- bloqueadas + 1L; next }
 
-        forma_condicional <- forma_val %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")
+        forma_condicional <- forma_val %in% monitora_correcao_tokens_formas_exigem_habito()
         habito_val <- monitora_painel_valor(input$mv_habito)
         if (!nzchar(habito_val)) {
           habito_origem <- monitora_painel_valor(alvo$habito_exotica)
@@ -20670,10 +21226,22 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     output$status_correcoes <- shiny::renderUI({
       n_ops <- tryCatch(monitora_painel_n_operacoes_semanticas(rv$correcoes), error = function(e) 0L)
       n_itens <- tryCatch(nrow(rv$correcoes), error = function(e) 0L)
+      abertas <- tryCatch(data.table::as.data.table(rv$ocorrencias_resumo), error = function(e) data.table::data.table())
+      n_abertas <- if (nrow(abertas) && "n_ocorrencias" %in% names(abertas)) sum(abertas$n_ocorrencias, na.rm = TRUE) else 0L
+      n_coletas_abertas <- if (nrow(abertas) && "n_coletas" %in% names(abertas)) sum(abertas$n_coletas, na.rm = TRUE) else 0L
+      estimadas <- tryCatch(monitora_painel_resumo_impeditivas_preview(), error = function(e) data.table::data.table())
+      n_estimadas <- if (nrow(estimadas) && "n_linhas" %in% names(estimadas)) sum(estimadas$n_linhas, na.rm = TRUE) else 0L
+      n_coletas_estimadas <- if (nrow(estimadas) && "n_coletas" %in% names(estimadas)) sum(estimadas$n_coletas, na.rm = TRUE) else 0L
+      status_txt <- paste0(
+        "Pendências impeditivas abertas: ", n_abertas, " ocorrência(s) em ", n_coletas_abertas,
+        " coleta(s). Correções na fila: ", n_ops, " operação(ões) semântica(s), ",
+        n_itens, " item(ns) auditável(is). Pendências estimadas após fila: ",
+        n_estimadas, " linha(s) em ", n_coletas_estimadas, " coleta(s)."
+      )
       if (is.na(n_ops) || n_ops == 0L) {
-        shiny::div(class = "alert alert-info", "Nenhuma correção adicionada nesta sessão. Depois de preparar uma alteração, clique em 'Adicionar correção simples/lote', 'Adicionar movimento de forma de vida' ou 'Adicionar movimento em lote de formas de vida' antes de salvar.")
+        shiny::div(class = "alert alert-info", status_txt, shiny::br(), "Nenhuma correção adicionada nesta sessão. Depois de preparar uma alteração, clique em 'Adicionar correção simples/lote', 'Adicionar movimento de forma de vida' ou 'Adicionar movimento em lote de formas de vida' antes de salvar.")
       } else {
-        shiny::div(class = "alert alert-success", paste0(n_ops, " operação(ões) semântica(s) pendente(s) nesta sessão (", n_itens, " item(ns) auditável(is)). Clique em 'Salvar correções e fechar' para gravar e aplicar."))
+        shiny::div(class = "alert alert-success", status_txt, shiny::br(), "Clique em 'Salvar correções e fechar' para gravar e aplicar.")
       }
     })
 
@@ -21569,6 +22137,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       ids_remover <- unique(ids_vis[sel])
       ids_corr <- monitora_painel_id_operacao_semantica(rv$correcoes)
       rv$correcoes <- rv$correcoes[!(ids_corr %in% ids_remover)]
+      try(monitora_painel_atualizar_ocorrencias_idx_fila(), silent = TRUE)
       monitora_painel_notificar(paste0(length(ids_remover), " operação(ões) semântica(s) pendente(s) excluída(s)."), type = "message", duration = 6)
     })
 
@@ -22131,7 +22700,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           monitora_painel_notificar(msg_lote, type = "error", duration = 10)
           return(NULL)
         }
-        valid_entrada_lote <- monitora_painel_validar_entrada(atributo_sel, acao_val, monitora_painel_valor(input$valor_novo), monitora_painel_valor(input$valor_original))
+        valid_entrada_lote <- monitora_painel_validar_entrada(atributo_sel, acao_val, monitora_painel_valor(input$valor_novo), monitora_painel_valor(input$valor_original), escopo_lote_val)
         if (!isTRUE(valid_entrada_lote$ok)) {
           monitora_painel_bloquear_operacao(valid_entrada_lote$mensagem, etapa = "validacao_entrada_lote", atributo = atributo_sel, acao = acao_val, duration = 12)
           return(NULL)
@@ -22288,7 +22857,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_notificar("Correção bloqueada: o atributo selecionado é uma chave de identificação e o valor novo está vazio. Se a intenção era mover exótica para nativa, selecione a linha na triagem e clique em adicionar; o painel converterá para movimento assistido.", type = "error", duration = 12)
         return(NULL)
       }
-      valid_entrada <- monitora_painel_validar_entrada(atributo_sel, input$acao, input$valor_novo, input$valor_original)
+      valid_entrada <- monitora_painel_validar_entrada(atributo_sel, input$acao, input$valor_novo, input$valor_original, escopo_efetivo)
       if (!isTRUE(valid_entrada$ok)) {
         monitora_painel_notificar(valid_entrada$mensagem, type = "error", duration = 12)
         return(NULL)
@@ -22427,6 +22996,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
       formas_sel_brutas <- unique(as.character(input$mv_lote_formas))
       formas_sel_brutas <- formas_sel_brutas[!is.na(formas_sel_brutas) & nzchar(trimws(formas_sel_brutas))]
+      if (any(monitora_correcao_limpar_texto(formas_sel_brutas) %in% c("outra_forma_vida", "forma_vida_outros", "outras_plantas_terrestres_liquens_e_ou_fungos"))) {
+        monitora_painel_notificar("Movimento em lote bloqueado para 'Outras plantas terrestres, líquens e/ou fungos': use a ação atômica 'Sanitizar outras forma de vida no escopo' para preservar o contrato e os descritores dependentes.", type = "error", duration = 14)
+        return(NULL)
+      }
       if (any(monitora_correcao_limpar_texto(formas_sel_brutas) %in% c("desconhecida", "desconhecido")) && !any(formas_sel_brutas %in% "__todas__")) {
         linhas_desc_cat <- tryCatch(monitora_correcao_linhas_desconhecida_categoria_base(dt, origem_val, linhas_globais, dicionario = dicionario_painel), error = function(e) integer(0))
         if (!length(linhas_desc_cat)) {
@@ -22592,11 +23165,24 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       mv_origem_val <- monitora_painel_valor(input$mv_origem)
       mv_destino_val <- monitora_painel_valor(input$mv_destino)
       mv_forma_val <- monitora_painel_valor(input$mv_forma)
+      motivo_mov <- monitora_painel_valor(input$motivo)
+      if (!mv_origem_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA || !mv_destino_val %in% MONITORA_TRIAGEM_CATEGORIAS_FORMA) {
+        monitora_painel_notificar("Movimento incompleto: escolha origem e destino válidos.", type = "error", duration = 8)
+        return(NULL)
+      }
+      if (!nzchar(motivo_mov)) {
+        monitora_painel_notificar("Movimento incompleto: informe motivo/justificativa antes de adicionar à fila.", type = "error", duration = 10)
+        return(NULL)
+      }
       alvo_forma <- if (nrow(alvo) > 0L) monitora_painel_valor(alvo$forma_vida_exotica) else ""
       usar_alvo_triado <- nrow(alvo) > 0L && identical(mv_origem_val, "exotica") && identical(mv_destino_val, "nativa") && nzchar(alvo_forma)
       if (isTRUE(usar_alvo_triado)) mv_forma_val <- alvo_forma
       mv_forma_val_original <- mv_forma_val
       mv_forma_val <- monitora_painel_canonizar_forma_habito(mv_forma_val)
+      if (identical(mv_origem_val, mv_destino_val) && identical(monitora_correcao_limpar_texto(mv_forma_val), monitora_correcao_limpar_texto(mv_forma_val_original))) {
+        monitora_painel_notificar("Movimento bloqueado: origem, destino e forma indicam operação sem efeito.", type = "error", duration = 10)
+        return(NULL)
+      }
 
       x <- dados_filtrados()
       if (!monitora_painel_coluna_ok(chaves$coleta, dt)) {
@@ -22697,7 +23283,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         id, input$responsavel, "movimento_forma_vida_atomico", 1L, esc, coleta_val,
         uuid_registro = uuid_arg, ponto_amostral = ponto_arg, atributo = "__mover_forma_vida__",
         acao = "mover_forma_vida", valor_original = valor_original_remove, valor_novo = mv_forma_val,
-        n_esperado = n_exp, n_alvo = length(linhas), motivo = input$motivo,
+        n_esperado = n_exp, n_alvo = length(linhas), motivo = motivo_mov,
         token_pai = mv_forma_val, categoria_origem = mv_origem_val, categoria_destino = mv_destino_val,
         token_removido = monitora_correcao_colapsar_lista_serializada(tokens_origem_remover),
         campo_dependente_preenchido = ifelse(!is.na(dep_destino), dep_destino, NA_character_),
@@ -22723,42 +23309,62 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       }
     })
 
+    ### v2.6.2 - 03.5R-D --------------------------------------------------------
+    ### `resumo_impeditivas_pre_cache_painel` memoiza o resultado desta função:
+    ### é, por definição, a foto das pendências impeditivas "na abertura do
+    ### painel", calculada sobre `dt` — que não é reatribuído em nenhum ponto
+    ### do servidor deste painel (a base fica fixa por sessão). Sem cache, a
+    ### varredura completa de `dt` feita por monitora_painel_resumo_impeditivas_dados()
+    ### (inclui grepl/token-matching por coluna de forma de vida) era refeita a
+    ### cada chamada — e há vários consumidores no mesmo ciclo de render
+    ### (modal de impeditivas, output$preview_pendencias_sessao,
+    ### monitora_painel_salvar_e_fechar()), inclusive disparados a cada
+    ### adição/remoção de correção pendente, sem que a base tivesse mudado.
+    ### Retorna sempre uma cópia (data.table tem semântica de referência) para
+    ### que `:=` de um chamador não corrompa o valor memoizado dos demais.
+    resumo_impeditivas_pre_cache_painel <- NULL
     monitora_painel_resumo_impeditivas_pre <- function() {
+      if (!is.null(resumo_impeditivas_pre_cache_painel)) return(data.table::copy(resumo_impeditivas_pre_cache_painel))
       resumo_estado <- tryCatch(monitora_painel_resumo_impeditivas_dados(dt), error = function(e) NULL)
-      if (!is.null(resumo_estado) && data.table::is.data.table(resumo_estado) && nrow(resumo_estado)) return(resumo_estado[])
-      tipos <- c(
-        "uas_duplicadas_mesmo_ano",
-        "ponto_sem_interceptacao",
-        "nativa_sem_forma_vida",
-        "exotica_sem_forma_vida",
-        "seca_morta_sem_forma_vida",
-        "outra_forma_vida",
-        "forma_vida_desconhecida"
-      )
-      rotulos <- c(
-        "UAs duplicadas no mesmo ano",
-        "Ponto amostral sem interceptação",
-        "Nativa sem forma de vida",
-        "Exótica sem forma de vida",
-        "Seca ou morta sem forma de vida",
-        "Outra forma de vida",
-        "Forma de vida desconhecida"
-      )
-      tryCatch({
-        data.table::rbindlist(lapply(seq_along(tipos), function(i) {
-          z <- coletas_triagem_por_tipo[[tipos[i]]]
-          z <- unique(as.character(z))
-          z <- z[!is.na(z) & nzchar(z)]
-          data.table::data.table(
-            tipo = tipos[i],
-            ocorrencia = rotulos[i],
-            n_linhas = NA_integer_,
-            n_coletas = length(z)
-          )
-        }), fill = TRUE, use.names = TRUE)
-      }, error = function(e) {
-        data.table::data.table(tipo = character(), ocorrencia = character(), n_coletas = integer())
-      })
+      out <- if (!is.null(resumo_estado) && data.table::is.data.table(resumo_estado) && nrow(resumo_estado)) {
+        resumo_estado[]
+      } else {
+        tipos <- c(
+          "uas_duplicadas_mesmo_ano",
+          "ponto_sem_interceptacao",
+          "nativa_sem_forma_vida",
+          "exotica_sem_forma_vida",
+          "seca_morta_sem_forma_vida",
+          "outra_forma_vida",
+          "forma_vida_desconhecida"
+        )
+        rotulos <- c(
+          "UAs duplicadas no mesmo ano",
+          "Ponto amostral sem interceptação",
+          "Nativa sem forma de vida",
+          "Exótica sem forma de vida",
+          "Seca ou morta sem forma de vida",
+          "Outra forma de vida",
+          "Forma de vida desconhecida"
+        )
+        tryCatch({
+          data.table::rbindlist(lapply(seq_along(tipos), function(i) {
+            z <- coletas_triagem_por_tipo[[tipos[i]]]
+            z <- unique(as.character(z))
+            z <- z[!is.na(z) & nzchar(z)]
+            data.table::data.table(
+              tipo = tipos[i],
+              ocorrencia = rotulos[i],
+              n_linhas = NA_integer_,
+              n_coletas = length(z)
+            )
+          }), fill = TRUE, use.names = TRUE)
+        }, error = function(e) {
+          data.table::data.table(tipo = character(), ocorrencia = character(), n_coletas = integer())
+        })
+      }
+      resumo_impeditivas_pre_cache_painel <<- out
+      data.table::copy(out)
     }
 
     monitora_painel_tem_impeditivas_pre <- function() {
@@ -23021,7 +23627,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
                 data.table::set(xprev, i = linhas_p, j = col_d, value = vals_d2)
               }
               hab_p <- trimws(as.character(if ("habito_escolhido" %in% names(op_mvd)) op_mvd$habito_escolhido[1L] else ""))
-              if (!is.na(hab_p) && nzchar(hab_p) && monitora_correcao_limpar_texto(forma_d) %in% c("bromelioide", "erva_bromelioide", "cactacea", "orquidea", "samambaia")) {
+              if (!is.na(hab_p) && nzchar(hab_p) && monitora_correcao_limpar_texto(forma_d) %in% monitora_correcao_tokens_formas_exigem_habito()) {
                 dep_h <- tryCatch(monitora_correcao_resolver_coluna_habito(xprev, destino_p, forma_d, dicionario_painel, linha = linhas_p[1L], meta_xls = NULL), error = function(e) NA_character_)
                 if (!is.na(dep_h) && dep_h %in% names(xprev) && monitora_correcao_coluna_habito_segura(xprev, dep_h, destino_p, forma_d)) data.table::set(xprev, i = linhas_p, j = dep_h, value = hab_p)
               }
@@ -32546,15 +33152,136 @@ monitora_contrato_unico_embutido <- function() {
   }
   data.table::setorder(atributos, posicao_schema129, na.last = TRUE)
 
+  ### 03.5V-B/C: inventario declarativo das regras impeditivas/diagnosticas
+  ### hoje espalhadas pelos validadores e diagnosticos. Esta tabela e
+  ### metadado de contrato: nao executa regra, nao muda decisor e nao substitui
+  ### os validadores operacionais existentes.
+  regras_base <- data.table::data.table(
+    regra = c(
+      "uas_duplicadas_mesmo_ano",
+      "ponto_sem_interceptacao",
+      "nativa_sem_forma_vida",
+      "exotica_sem_forma_vida",
+      "seca_morta_sem_forma_vida",
+      "outra_forma_vida",
+      "forma_vida_desconhecida",
+      "forma_vida_exotica_sem_especie",
+      "forma_vida_exotica_com_especie",
+      "solo_nu_com_outra_categoria",
+      "habito_obrigatorio_ausente",
+      "campo_obrigatorio_relevante_vazio",
+      "valor_fora_dominio",
+      "formato_final_invalido",
+      "pipe_residual_estruturado"
+    ),
+    tipo_regra = c(
+      "impeditiva", "impeditiva", "impeditiva", "impeditiva", "impeditiva",
+      "impeditiva", "impeditiva", "diagnostica", "diagnostica",
+      "impeditiva", "impeditiva", "impeditiva", "impeditiva", "impeditiva",
+      "diagnostica"
+    ),
+    severidade_contrato_unico = c(
+      "alta", "alta", "alta", "alta", "alta",
+      "alta", "alta", "media", "media",
+      "alta", "alta", "alta", "alta", "alta",
+      "media"
+    ),
+    fonte_operacional_atual = c(
+      rep("monitora_publicacao_ab_auditar_pendencias_impeditivas / monitora_diag_rel_gerar_ocorrencias", 7L),
+      rep("monitora_diag_rel_gerar_ocorrencias", 2L),
+      ### v2.6.2 - 03.5Q-A: passam a ser diagnosticadas também antes do painel
+      ### (monitora_diag_rel_gerar_ocorrencias(), via
+      ### monitora_correcao_mask_solo_nu_incompativel() /
+      ### monitora_correcao_mask_habito_obrigatorio_ausente()); o bloqueio final
+      ### de registros_validados.csv continua em
+      ### monitora_validados_validar_condicionais_xlsform21().
+      "monitora_diag_rel_gerar_ocorrencias / monitora_validados_validar_condicionais_xlsform21",
+      "monitora_diag_rel_gerar_ocorrencias / monitora_validados_validar_condicionais_xlsform21",
+      "monitora_validados_validar_condicionais_xlsform21",
+      "monitora_validados_validar_dominios_xlsform21",
+      "monitora_validados_validar_formatos_saida / monitora_validados_schema_embutido",
+      "monitora_pipe_contrato_diagnosticar_dataset / monitora_bloquear_pipe_residual_produto"
+    ),
+    atributo_principal = c(
+      "UC+UA+ANO+COLETA",
+      "amostragem/registro/tipo_forma_vida",
+      "amostragem/registro/forma_vida_nativa",
+      "amostragem/registro/forma_vida_exotica",
+      "amostragem/registro/forma_vida_seca_morta",
+      "amostragem/registro/forma_vida_outros",
+      "amostragem/registro/forma_vida_nativa",
+      "forma_vida_exotica",
+      "forma_vida_exotica",
+      "amostragem/registro/tipo_forma_vida",
+      "habito",
+      "campo_relevant_required",
+      "select_one/select_multiple",
+      "registros_validados.csv",
+      "coluna_estruturada_com_pipe"
+    ),
+    bloqueia_registros_validados = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE),
+    acao_contrato_unico = c(
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_sem_migrar_consumidor",
+      "diagnosticar_sem_migrar_consumidor",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_e_bloquear_exportacao_validada",
+      "diagnosticar_sem_migrar_consumidor"
+    )
+  )
+  perfis_por_regra <- list(
+    uas_duplicadas_mesmo_ano = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    ponto_sem_interceptacao = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    nativa_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    exotica_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    seca_morta_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    outra_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    forma_vida_desconhecida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    forma_vida_exotica_sem_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),
+    forma_vida_exotica_com_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),
+    solo_nu_com_outra_categoria = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    habito_obrigatorio_ausente = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    campo_obrigatorio_relevante_vazio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    valor_fora_dominio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),
+    formato_final_invalido = "perfil_export_registros_validados",
+    pipe_residual_estruturado = c("perfil_importacao", "perfil_pre_painel", "perfil_pos_painel_corrig")
+  )
+  regras_validacao <- data.table::rbindlist(lapply(seq_len(nrow(regras_base)), function(i) {
+    rr <- regras_base$regra[i]
+    data.table::data.table(
+      perfil = perfis_por_regra[[rr]],
+      regra = rr,
+      tipo_regra = regras_base$tipo_regra[i],
+      severidade_contrato_unico = regras_base$severidade_contrato_unico[i],
+      fonte_operacional_atual = regras_base$fonte_operacional_atual[i],
+      atributo_principal = regras_base$atributo_principal[i],
+      bloqueia_registros_validados = regras_base$bloqueia_registros_validados[i],
+      acao_contrato_unico = regras_base$acao_contrato_unico[i],
+      origem = "contrato_unico_035v_b_c"
+    )
+  }), fill = TRUE, use.names = TRUE)
+  data.table::setorder(regras_validacao, perfil, regra)
+
   list(
     atributos = atributos[],
     aliases = aliases[],
     choices = opcoes[],
     dependencias = dependencias[],
+    regras_validacao = regras_validacao[],
     meta = data.table::data.table(
       versao_canonica_2025 = "21FEV25",
       n_atributos = nrow(atributos),
       n_aliases = nrow(aliases),
+      n_regras_validacao = nrow(regras_validacao),
       gerado_em = as.character(Sys.time()),
       origem = "monitora_contrato_unico_embutido (03.5I, requisito diagnostics/requisitos_035i_fonte_unica_contrato)"
     )
@@ -32843,6 +33570,135 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
   )
 }
 
+### v2.6.2 - 03.5R-B ------------------------------------------------------------
+### Memoiza monitora_contrato_unico_indices() por processo/sessão, no mesmo
+### padrão já usado por monitora_correcao_xlsforms_embutidos_cache_publicacao_ae()
+### (monitora_publicacao_ae_cache_env, linha ~2543). Fecha o pré-requisito de
+### performance apontado pela matriz 03.5V-A e confirmado pendente pela
+### auditoria 03.5R-A (diagnostics/dev_035_rab_boundary_20260705_171020/):
+### sem isto, monitora_perfil_painel_edicao_operacional_contrato_unico() e os
+### widgets de escolha de forma de vida do painel reconstruíam os índices do
+### zero a cada clique/render, embutido == monitora_contrato_unico_embutido()
+### em todas as chamadas reais do painel (sem argumento). Só é seguro para o
+### caso `contrato = NULL` (o único usado pelos consumidores do painel); com
+### `contrato` explícito o cache é ignorado, para nunca devolver índices de um
+### contrato diferente do pedido. Não altera nenhum valor calculado, apenas
+### evita recomputação redundante do mesmo contrato estático na mesma sessão.
+monitora_contrato_unico_indices_cache <- function(contrato = NULL, validar = TRUE, forcar = FALSE) {
+  if (!is.null(contrato)) return(monitora_contrato_unico_indices(contrato = contrato, validar = validar))
+  env <- if (exists("monitora_publicacao_ae_cache_env", mode = "function")) monitora_publicacao_ae_cache_env("contrato_unico_indices") else .GlobalEnv
+  chave <- paste0("indices_validar_", isTRUE(validar))
+  if (!isTRUE(forcar) && exists(chave, envir = env, inherits = FALSE)) return(get(chave, envir = env, inherits = FALSE))
+  out <- monitora_contrato_unico_indices(contrato = NULL, validar = validar)
+  assign(chave, out, envir = env)
+  out
+}
+
+### v2.6.2 - 03.5V-B/C ---------------------------------------------------------
+### Consulta read-only da tabela de regras impeditivas/diagnosticas registrada
+### no contrato unico. Helper aditivo. A partir de 03.5V-C tem um consumidor
+### operacional: monitora_ponte_pre_painel_regras_contrato_unico() (abaixo),
+### que e somente diagnostico -- não decide bloqueio, só garante cobertura.
+monitora_validacao_regras_por_perfil_contrato_unico <- function(perfil,
+                                                                 contrato = NULL,
+                                                                 incluir_todos = FALSE) {
+  if (missing(perfil) || is.null(perfil) || !length(perfil)) {
+    stop("Informe um perfil do contrato unico.", call. = FALSE)
+  }
+  if (is.null(contrato)) contrato <- monitora_contrato_unico_embutido()
+  regras <- if (!is.null(contrato$regras_validacao)) {
+    data.table::copy(data.table::as.data.table(contrato$regras_validacao))
+  } else {
+    data.table::data.table()
+  }
+  if (!nrow(regras)) {
+    return(data.table::data.table(
+      perfil = character(), regra = character(), tipo_regra = character(),
+      severidade_contrato_unico = character(), fonte_operacional_atual = character(),
+      atributo_principal = character(), bloqueia_registros_validados = logical(),
+      acao_contrato_unico = character(), origem = character()
+    ))
+  }
+  perfil_chr <- unique(trimws(as.character(perfil)))
+  perfil_chr <- perfil_chr[!is.na(perfil_chr) & nzchar(perfil_chr)]
+  if (!length(perfil_chr)) stop("Informe um perfil nao vazio do contrato unico.", call. = FALSE)
+  if (!isTRUE(incluir_todos) && !all(perfil_chr %in% unique(regras$perfil))) {
+    faltando <- setdiff(perfil_chr, unique(regras$perfil))
+    stop("Perfil sem regras no contrato unico: ", paste(faltando, collapse = ", "), call. = FALSE)
+  }
+  out <- regras[perfil %in% perfil_chr]
+  data.table::setorder(out, perfil, regra)
+  out[]
+}
+
+### v2.6.2 - 03.5V-C ------------------------------------------------------------
+### Adaptador/ponte entre o catálogo operacional de ocorrências diagnósticas
+### pré-painel (monitora_diag_rel_catalogo_ocorrencias_base(), consumido por
+### monitora_diag_rel_gerar_ocorrencias() e por
+### monitora_publicacao_ab_auditar_pendencias_impeditivas()) e a tabela
+### declarativa de regras do contrato único (perfil "perfil_pre_painel").
+###
+### Não decide bloqueio nenhum -- mantém a recomendação da Auditoria 03.5V-A
+### de não migrar a lógica de bloqueio do pré-painel nesta etapa. É uma
+### checagem de cobertura: garante que nenhum tipo de pendência hoje ativo
+### antes do painel (catálogo operacional) fique sem registro correspondente
+### no contrato único, e vice-versa. Qualquer divergência é sempre gravada em
+### disco e emitida via console/log -- nunca apenas silenciada -- para que
+### pendências de cobertura não fiquem ocultas antes do painel.
+monitora_ponte_pre_painel_regras_contrato_unico <- function(contrato = NULL, base_dir = NULL) {
+  if (is.null(contrato)) contrato <- tryCatch(monitora_contrato_unico_embutido(), error = function(e) NULL)
+  regras_pre_painel <- tryCatch(
+    monitora_validacao_regras_por_perfil_contrato_unico("perfil_pre_painel", contrato = contrato, incluir_todos = TRUE),
+    error = function(e) data.table::data.table(regra = character(), fonte_operacional_atual = character())
+  )
+  catalogo_base <- tryCatch(
+    monitora_diag_rel_catalogo_ocorrencias_base(),
+    error = function(e) data.table::data.table(tipo_ocorrencia = character(), severidade = character())
+  )
+
+  fonte_ocorrencias <- grepl(
+    "monitora_diag_rel_gerar_ocorrencias|monitora_publicacao_ab_auditar_pendencias_impeditivas",
+    regras_pre_painel$fonte_operacional_atual
+  )
+  regras_ocorrencias <- unique(regras_pre_painel$regra[fonte_ocorrencias])
+
+  tipos_sem_regra_contrato <- sort(setdiff(catalogo_base$tipo_ocorrencia, regras_ocorrencias))
+  regras_sem_tipo_operacional <- sort(setdiff(regras_ocorrencias, catalogo_base$tipo_ocorrencia))
+
+  divergencias <- data.table::data.table(
+    tipo_divergencia = c(
+      rep("pendencia_operacional_sem_regra_contrato_unico", length(tipos_sem_regra_contrato)),
+      rep("regra_contrato_unico_sem_pendencia_operacional_ativa", length(regras_sem_tipo_operacional))
+    ),
+    identificador = c(tipos_sem_regra_contrato, regras_sem_tipo_operacional)
+  )
+  status <- if (nrow(divergencias)) "divergencia_encontrada" else "cobertura_ok"
+
+  out_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
+  if (is.null(base_dir)) base_dir <- file.path(out_dir, "relatorios_pre_painel")
+  dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
+  arq <- file.path(base_dir, "ponte_regras_contrato_unico_pre_painel.csv")
+  try(monitora_fwrite(divergencias, arq, na = ""), silent = TRUE)
+
+  if (nrow(divergencias)) {
+    msg <- paste0(
+      "Ponte de validacoes pre-painel (03.5V-C): ", nrow(divergencias),
+      " divergencia(s) entre o catalogo operacional de ocorrencias e o contrato unico. Ver ", arq, "."
+    )
+    if (exists("monitora_correcao_console_msg", mode = "function")) {
+      monitora_correcao_console_msg(msg)
+    } else {
+      message(msg)
+    }
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      try(monitora_log_registrar_evento("ponte_regras_pre_painel", "AVISO", arq, msg, "ponte 03.5V-C"), silent = TRUE)
+    }
+  }
+
+  list(status = status, divergencias = divergencias[], arquivo = arq)
+}
+### FIM v2.6.2 - 03.5V-C ----------------------------------------------------
+
 ### v2.6.2 - 03.5R-C ------------------------------------------------------------
 ### Helper somente leitura de auditoria do painel de correções (seção 11 do
 ### plano executivo do motor único,
@@ -32867,7 +33723,7 @@ monitora_perfil_painel_edicao_contrato_unico <- function(contrato_indices = NULL
   }
 
   tryCatch({
-    if (is.null(contrato_indices)) contrato_indices <- monitora_contrato_unico_indices()
+    if (is.null(contrato_indices)) contrato_indices <- monitora_contrato_unico_indices_cache()
     perfil_base <- contrato_indices$perfis$perfil_painel_edicao
     if (!data.table::is.data.table(perfil_base) || !nrow(perfil_base)) return(invisible(NULL))
     perfil_base <- data.table::copy(perfil_base)
@@ -32904,6 +33760,152 @@ monitora_perfil_painel_edicao_contrato_unico <- function(contrato_indices = NULL
   }, error = function(e) invisible(NULL))
 }
 ### FIM v2.6.2 - 03.5R-C ---------------------------------------------------
+
+### v2.6.2 - 03.5R-A/B --------------------------------------------------------
+### Projeta o perfil_painel_edicao do contrato unico para o painel operacional.
+### A decisao usa apenas metadados do contrato (perfil 03.5J) e a lista local de
+### colunas protegidas. Nao cria novo contrato paralelo: resolve cada coluna
+### observada para caminho/name/label do perfil e anota o escopo permitido.
+monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_observadas = NULL,
+                                                                      contrato_indices = NULL) {
+  if (is.null(contrato_indices)) {
+    contrato_indices <- tryCatch(monitora_contrato_unico_indices_cache(), error = function(e) NULL)
+  }
+  perfil <- if (!is.null(contrato_indices) && !is.null(contrato_indices$perfis$perfil_painel_edicao)) {
+    data.table::copy(data.table::as.data.table(contrato_indices$perfis$perfil_painel_edicao))
+  } else {
+    data.table::data.table()
+  }
+  if (!nrow(perfil)) {
+    return(data.table::data.table(
+      atributo_coluna_registros_corrig = character(),
+      atributo_canonico_2025 = character(),
+      caminho_registro = character(),
+      name_curto = character(),
+      cardinalidade_operacional_contrato_unico = character(),
+      escopo_operacional_contrato_unico = character(),
+      escopos_permitidos_contrato_unico = character(),
+      motivo_escopo_contrato_unico = character()
+    ))
+  }
+  for (cc in c("atributo_canonico_2025", "caminho_registro", "name_curto", "label_2025_sem_html", "tipo_base", "cardinalidade_operacional", "relevant", "campo_pai")) {
+    if (!(cc %in% names(perfil))) perfil[, (cc) := NA_character_]
+  }
+  perfil[, `:=`(
+    caminho_norm_035r = monitora_contrato_unico_normalizar_texto_seguro(caminho_registro),
+    name_norm_035r = monitora_contrato_unico_normalizar_texto_seguro(name_curto),
+    label_norm_035r = monitora_contrato_unico_normalizar_texto_seguro(label_2025_sem_html)
+  )]
+
+  cols <- unique(as.character(colunas_observadas))
+  cols <- cols[!is.na(cols) & nzchar(cols)]
+  if (!length(cols)) cols <- unique(c(perfil$caminho_registro, perfil$name_curto))
+  cols <- cols[!is.na(cols) & nzchar(cols)]
+  obs <- data.table::data.table(
+    atributo_coluna_registros_corrig = cols,
+    coluna_norm_035r = monitora_contrato_unico_normalizar_texto_seguro(cols)
+  )
+
+  resolver_um <- function(col, norm_col) {
+    hit <- perfil[caminho_registro == col | name_curto == col | label_2025_sem_html == col]
+    if (!nrow(hit)) hit <- perfil[caminho_norm_035r == norm_col | name_norm_035r == norm_col | label_norm_035r == norm_col]
+    if (!nrow(hit)) {
+      final <- sub("^.*/", "", col)
+      final_norm <- monitora_contrato_unico_normalizar_texto_seguro(final)
+      hit <- perfil[name_curto == final | name_norm_035r == final_norm]
+    }
+    if (!nrow(hit)) return(data.table::data.table())
+    hit[1L]
+  }
+  mapa <- data.table::rbindlist(lapply(seq_len(nrow(obs)), function(i) {
+    h <- resolver_um(obs$atributo_coluna_registros_corrig[i], obs$coluna_norm_035r[i])
+    if (!nrow(h)) {
+      return(data.table::data.table(
+        atributo_coluna_registros_corrig = obs$atributo_coluna_registros_corrig[i],
+        atributo_canonico_2025 = NA_character_, caminho_registro = NA_character_, name_curto = NA_character_,
+        tipo_base_contrato_unico = NA_character_, cardinalidade_operacional_contrato_unico = NA_character_,
+        relevant_contrato_unico = NA_character_, campo_pai_contrato_unico = NA_character_
+      ))
+    }
+    data.table::data.table(
+      atributo_coluna_registros_corrig = obs$atributo_coluna_registros_corrig[i],
+      atributo_canonico_2025 = h$atributo_canonico_2025[1L],
+      caminho_registro = h$caminho_registro[1L],
+      name_curto = h$name_curto[1L],
+      tipo_base_contrato_unico = h$tipo_base[1L],
+      cardinalidade_operacional_contrato_unico = h$cardinalidade_operacional[1L],
+      relevant_contrato_unico = h$relevant[1L],
+      campo_pai_contrato_unico = h$campo_pai[1L]
+    )
+  }), fill = TRUE, use.names = TRUE)
+
+  caminho_norm <- monitora_contrato_unico_normalizar_texto_seguro(mapa$caminho_registro)
+  nome_norm <- monitora_contrato_unico_normalizar_texto_seguro(mapa$atributo_coluna_registros_corrig)
+  padrao_superior_herdavel <- paste(
+    "(^|_)(uc|ea|ua|ciclo|campanha|ano|usuario|validado|validado_por|data_validacao|obs_validacao|planilha_upload)($|_)",
+    "form_veg|estrato|area_elegivel|data_hora|data_data_hora|hora_data_hora|protocolo|coordenad|latitude|longitude|num_placa",
+    sep = "|"
+  )
+  superior_herdavel <- grepl(padrao_superior_herdavel, nome_norm, perl = TRUE) |
+    grepl(padrao_superior_herdavel, caminho_norm, perl = TRUE)
+  em_registro <- grepl("(^|_)amostragem_registro_|(^|/)amostragem/registro/", caminho_norm) |
+    grepl("(^|_)registro_", caminho_norm)
+  condicional <- !is.na(mapa$relevant_contrato_unico) & nzchar(as.character(mapa$relevant_contrato_unico)) |
+    !is.na(mapa$campo_pai_contrato_unico) & nzchar(as.character(mapa$campo_pai_contrato_unico)) |
+    mapa$cardinalidade_operacional_contrato_unico %in% c("select_multiple", "estruturado_completo_por_ponto", "estruturado_condicional_esparso")
+  protegido <- monitora_correcao_coluna_protegida(mapa$atributo_coluna_registros_corrig) |
+    mapa$cardinalidade_operacional_contrato_unico %in% c("tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado") |
+    grepl("(^|_)uuid$|(^|_)uuid_|foto|imagem|image", nome_norm)
+  ponto <- !protegido & !superior_herdavel & (em_registro | condicional)
+  coleta <- !protegido & !ponto & !is.na(mapa$atributo_canonico_2025) & nzchar(mapa$atributo_canonico_2025)
+  mapa[, escopo_operacional_contrato_unico := data.table::fcase(
+    protegido, "protegido",
+    ponto, "ponto",
+    coleta, "coleta_inteira",
+    default = "fora_do_perfil_painel_edicao"
+  )]
+  mapa[, escopos_permitidos_contrato_unico := data.table::fcase(
+    escopo_operacional_contrato_unico == "ponto", "ponto;uuid_registro;linhas_pendentes_ocorrencia",
+    escopo_operacional_contrato_unico == "coleta_inteira", "coleta_inteira",
+    default = ""
+  )]
+  mapa[, motivo_escopo_contrato_unico := data.table::fcase(
+    escopo_operacional_contrato_unico == "protegido", "atributo protegido ou fora da edicao generica do perfil_painel_edicao",
+    escopo_operacional_contrato_unico == "ponto", "atributo de registro/ponto ou condicional pelo perfil_painel_edicao",
+    escopo_operacional_contrato_unico == "coleta_inteira", "atributo superior/herdavel pelo perfil_painel_edicao",
+    default = "atributo nao resolvido no perfil_painel_edicao"
+  )]
+  mapa[]
+}
+
+monitora_correcao_validar_escopo_operacional_contrato_unico <- function(atributo, escopo, dict = NULL) {
+  atributo <- as.character(atributo)[1L]
+  escopo <- as.character(escopo)[1L]
+  if (is.na(escopo) || !nzchar(escopo)) escopo <- "ponto"
+  info <- data.table::data.table()
+  if (!is.null(dict)) {
+    d <- data.table::as.data.table(dict)
+    if ("atributo_coluna_registros_corrig" %in% names(d)) {
+      info <- d[atributo_coluna_registros_corrig == atributo]
+    }
+  }
+  if (!nrow(info) || !("escopos_permitidos_contrato_unico" %in% names(info))) {
+    info <- monitora_perfil_painel_edicao_operacional_contrato_unico(atributo)
+  }
+  if (!nrow(info)) {
+    return(list(ok = FALSE, status = "bloqueada_escopo_contrato_ausente", mensagem = paste0("Atributo sem perfil_painel_edicao no contrato unico: ", atributo)))
+  }
+  info <- info[1L]
+  permitido <- monitora_correcao_split_serial(info$escopos_permitidos_contrato_unico[1L])
+  permitido <- unique(c(permitido, if ("ponto" %in% permitido) "uuid_registro" else character(0)))
+  if (!length(permitido)) {
+    return(list(ok = FALSE, status = "bloqueada_escopo_protegido_contrato_unico", mensagem = paste0("Edição genérica bloqueada pelo contrato único para '", atributo, "': ", info$motivo_escopo_contrato_unico[1L])))
+  }
+  if (!(escopo %in% permitido)) {
+    return(list(ok = FALSE, status = "bloqueada_escopo_incompativel_contrato_unico", mensagem = paste0("Escopo '", escopo, "' incompatível com '", atributo, "' no perfil_painel_edicao do contrato único. Escopo(s) permitido(s): ", paste(permitido, collapse = ", "), ".")))
+  }
+  list(ok = TRUE, status = "ok", mensagem = "escopo compatível com perfil_painel_edicao")
+}
 
 ### v2.6.2 - 03.5K -------------------------------------------------------------
 ### Diagnóstico observado→canônico (03.5K), usando só o contrato único (03.5I)
@@ -36296,6 +37298,68 @@ if (exists("monitora_pipe_contrato_relatorio_optin_seguro", mode = "function")) 
   ), silent = TRUE)
 }
 
+### v2.6.2 - 03.5M-D3 -----------------------------------------------------------
+### Resolve campos select_one condicionais/esparsos por elegibilidade no grupo
+### (COLETA, quando disponivel), em vez de aplicar sempre o ultimo token do
+### valor com pipe a todos os pontos elegiveis. Se a contagem de tokens nao
+### bate com a contagem de pontos elegiveis, degrada para NA no campo filho:
+### e preferivel manter pendencia explicita a propagar valor semanticamente
+### errado e silencioso.
+monitora_pipe_condicional_token_presente_035m_d3 <- function(x, token) {
+  token <- monitora_correcao_limpar_texto(token)
+  if (!nzchar(token)) return(rep(FALSE, length(x)))
+  grepl(token, monitora_correcao_limpar_texto(x), fixed = TRUE)
+}
+
+monitora_pipe_condicional_resolver_035m_d3 <- function(valor, parent, token, grupo = NULL, ordem = NULL) {
+  valor <- as.character(valor)
+  n <- length(valor)
+  if (!n) return(character(0))
+  parent <- rep_len(as.character(parent), n)
+  elegivel <- monitora_pipe_condicional_token_presente_035m_d3(parent, token)
+  elegivel[is.na(elegivel)] <- FALSE
+  out <- rep(NA_character_, n)
+  if (!any(elegivel)) return(out)
+
+  valor <- trimws(valor)
+  valor[is.na(valor) | !nzchar(valor)] <- NA_character_
+  grupo <- if (is.null(grupo)) rep("todos", n) else rep_len(as.character(grupo), n)
+  grupo[is.na(grupo) | !nzchar(grupo)] <- "sem_grupo"
+  ordem <- if (is.null(ordem)) seq_len(n) else rep_len(ordem, n)
+  ordem_num <- suppressWarnings(as.numeric(ordem))
+  ordem_num[is.na(ordem_num)] <- seq_len(n)[is.na(ordem_num)]
+
+  for (g in unique(grupo[elegivel])) {
+    idx_g <- which(grupo == g)
+    idx_e <- idx_g[elegivel[idx_g]]
+    if (!length(idx_e)) next
+    idx_e <- idx_e[order(ordem_num[idx_e], idx_e)]
+
+    sem_pipe <- !is.na(valor[idx_e]) & !grepl("|", valor[idx_e], fixed = TRUE)
+    if (any(sem_pipe)) out[idx_e[sem_pipe]] <- valor[idx_e[sem_pipe]]
+
+    cand_pipe <- unique(valor[idx_g][!is.na(valor[idx_g]) & grepl("|", valor[idx_g], fixed = TRUE)])
+    cand_pipe <- cand_pipe[!is.na(cand_pipe) & nzchar(cand_pipe)]
+    if (length(cand_pipe) != 1L) next
+    toks <- trimws(strsplit(cand_pipe, "|", fixed = TRUE)[[1L]])
+    toks[toks == ""] <- NA_character_
+    if (length(toks) != length(idx_e)) next
+    out[idx_e] <- toks
+  }
+  out
+}
+
+.monitora_pipe_cond_grupo_035m_d3 <- if ("COLETA" %in% names(registros_corrig)) {
+  as.character(registros_corrig$COLETA)
+} else {
+  rep("todos", nrow(registros_corrig))
+}
+.monitora_pipe_cond_ordem_035m_d3 <- if ("ponto_amostral (amostragem/registro)" %in% names(registros_corrig)) {
+  suppressWarnings(as.integer(gsub("[^0-9]+", "", as.character(registros_corrig$`ponto_amostral (amostragem/registro)`))))
+} else {
+  seq_len(nrow(registros_corrig))
+}
+
 ### extração do último token em colunas específicas (o SISMONITORA exporta a lista concatenada por
 ### "|")
 
@@ -36409,45 +37473,16 @@ if (is.null(registros_corrig[['A erva bromelioide observada é: (amostragem/regi
   set(registros_corrig, j = 'A erva bromelioide observada é: (amostragem/registro)', value = NA_character_)
 
 registros_corrig$`A erva bromelioide observada é: (amostragem/registro)` <-
-  fcase(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro)`,
-        sep = fixed("|"),-1
-      )
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fcase(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro)`,
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
+      registros_corrig$`A bromélia observada é: (amostragem/registro)`,
+      default = registros_corrig$`A erva bromelioide observada é: (amostragem/registro)`
     ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A bromélia observada é: (amostragem/registro)`,
-        sep = fixed("|"),
-        -1
-      )
-    ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A erva bromelioide observada é: (amostragem/registro)`,
-        sep = fixed("|"),
-        -1
-      )
-    ),default = NA_character_
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
+    "bromelioide", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## cactacea nativa
@@ -36456,18 +37491,10 @@ if (is.null(registros_corrig[['A cactácea observada é: (amostragem/registro)']
   set(registros_corrig, j = 'A cactácea observada é: (amostragem/registro)', value = NA_character_)
 
 registros_corrig$'A cactácea observada é: (amostragem/registro)' <-
-  fifelse(
-    str_detect(
-      registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-      "cactacea",
-      negate = FALSE
-    ),
-    word(
-      registros_corrig$'A cactácea observada é: (amostragem/registro)',
-      sep = fixed("|"),
-      -1
-    ),
-    NA_character_
+  monitora_pipe_condicional_resolver_035m_d3(
+    registros_corrig$'A cactácea observada é: (amostragem/registro)',
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
+    "cactacea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## orquídea nativa
@@ -36479,34 +37506,14 @@ if (is.null(registros_corrig[['A orquídea observada é: (amostragem/registro)']
   set(registros_corrig, j = 'A orquídea observada é: (amostragem/registro)', value = NA_character_)
 
 registros_corrig$`A orquídea observada é: (amostragem/registro)` <-
-  fifelse(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro)`,
-        sep = fixed("|"),-1
-      ),
-      NA_character_
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fifelse(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro)`,
+      registros_corrig$`A orquídea observada é: (amostragem/registro)`
     ),
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A orquídea observada é: (amostragem/registro)`,
-        sep = fixed("|"),
-        -1
-      ),
-      NA_character_
-    ),
-    NA_character_
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">nativas:</span> (amostragem/registro)`,
+    "orquidea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## forma de vida de planta exótica
@@ -36538,45 +37545,16 @@ if (is.null(registros_corrig[['A erva bromelioide observada é: (amostragem/regi
   set(registros_corrig, j = 'A erva bromelioide observada é: (amostragem/registro).1', value = NA_character_)
 
 registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
-  fcase(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).1`,
-        sep = fixed("|"),-1
-      )
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fcase(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).1`,
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
+      registros_corrig$`A bromélia observada é: (amostragem/registro).1`,
+      default = registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1`
     ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A bromélia observada é: (amostragem/registro).1`,
-        sep = fixed("|"),
-        -1
-      )
-    ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1`,
-        sep = fixed("|"),
-        -1
-      )
-    )
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
+    "bromelioide", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## cactacea exótica
@@ -36584,19 +37562,11 @@ registros_corrig$`A erva bromelioide observada é: (amostragem/registro).1` <-
 if (is.null(registros_corrig[['A cactácea observada é: (amostragem/registro).1']]))
   set(registros_corrig, j = 'A cactácea observada é: (amostragem/registro).1', value = NA_character_)
 
-registros_corrig$'A cactácea observada é: (amostragem/registro)' <-
-  fifelse(
-    str_detect(
-      registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-      "cactacea",
-      negate = FALSE
-    ),
-    word(
-      registros_corrig$'A cactácea observada é: (amostragem/registro).1',
-      sep = fixed("|"),
-      -1
-    ),
-    NA_character_
+registros_corrig$'A cactácea observada é: (amostragem/registro).1' <-
+  monitora_pipe_condicional_resolver_035m_d3(
+    registros_corrig$'A cactácea observada é: (amostragem/registro).1',
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
+    "cactacea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## orquídea exótica
@@ -36608,34 +37578,14 @@ if (is.null(registros_corrig[['A orquídea observada é: (amostragem/registro).1
   set(registros_corrig, j = 'A orquídea observada é: (amostragem/registro).1', value = NA_character_)
 
 registros_corrig$`A orquídea observada é: (amostragem/registro).1` <-
-  fifelse(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).1`,
-        sep = fixed("|"),-1
-      ),
-      NA_character_
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fifelse(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).1`,
+      registros_corrig$`A orquídea observada é: (amostragem/registro).1`
     ),
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A orquídea observada é: (amostragem/registro).1`,
-        sep = fixed("|"),
-        -1
-      ),
-      NA_character_
-    ),
-    NA_character_
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">exóticas:</span> (amostragem/registro)`,
+    "orquidea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## forma de vida de planta seca ou morta
@@ -36667,45 +37617,16 @@ if (is.null(registros_corrig[['A erva bromelioide observada é: (amostragem/regi
   set(registros_corrig, j = 'A erva bromelioide observada é: (amostragem/registro).2', value = NA_character_)
 
 registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2` <-
-  fcase(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).2`,
-        sep = fixed("|"),-1
-      )
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fcase(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a bromélia observada é: (amostragem/registro).2`,
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
+      registros_corrig$`A bromélia observada é: (amostragem/registro).2`,
+      default = registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2`
     ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A bromélia observada é: (amostragem/registro).2`,
-        sep = fixed("|"),
-        -1
-      )
-    ),
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24 Básico e Avançado",
-    fcase(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-        "bromelioide",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A erva bromelioide observada é: (amostragem/registro).2`,
-        sep = fixed("|"),
-        -1
-      )
-    )
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
+    "bromelioide", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## cactacea seca ou morta
@@ -36714,18 +37635,10 @@ if (is.null(registros_corrig[['A cactácea observada é: (amostragem/registro).2
   set(registros_corrig, j = 'A cactácea observada é: (amostragem/registro).2', value = NA_character_)
 
 registros_corrig$'A cactácea observada é: (amostragem/registro).2' <-
-  fifelse(
-    str_detect(
-      registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-      "cactacea",
-      negate = FALSE
-    ),
-    word(
-      registros_corrig$'A cactácea observada é: (amostragem/registro).1',
-      sep = fixed("|"),
-      -1
-    ),
-    NA_character_
+  monitora_pipe_condicional_resolver_035m_d3(
+    registros_corrig$'A cactácea observada é: (amostragem/registro).2',
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
+    "cactacea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 ## orquídea seca ou morta
@@ -36737,37 +37650,18 @@ if (is.null(registros_corrig[['A orquídea observada é: (amostragem/registro).2
   set(registros_corrig, j = 'A orquídea observada é: (amostragem/registro).2', value = NA_character_)
 
 registros_corrig$`A orquídea observada é: (amostragem/registro).2` <-
-  fifelse(
-    registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).2`,
-        sep = fixed("|"),-1
-      ),
-      NA_character_
+  monitora_pipe_condicional_resolver_035m_d3(
+    data.table::fifelse(
+      registros_corrig$PROTOCOLO == "PLANTASHERBACEASELENHOSAS_CAMPSAV_11AGO22 Básico e Avançado",
+      registros_corrig$`Selecione se a orquidea observada é: (amostragem/registro).2`,
+      registros_corrig$`A orquídea observada é: (amostragem/registro).2`
     ),
-    fifelse(
-      str_detect(
-        registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
-        "orquidea",
-        negate = FALSE
-      ),
-      word(
-        registros_corrig$`A orquídea observada é: (amostragem/registro).2`,
-        sep = fixed("|"),
-        -1
-      ),
-      NA_character_
-    ),
-    NA_character_
+    registros_corrig$`Formas de vida de plantas <span style=""color:red"">secas ou mortas:</span> (amostragem/registro)`,
+    "orquidea", grupo = .monitora_pipe_cond_grupo_035m_d3, ordem = .monitora_pipe_cond_ordem_035m_d3
   )
 
 monitora_perf_registrar_checkpoint("padronizacao_formas_vida_condicionais_basicas", "formas de vida principais e campos condicionais de nativas/exóticas/secas-mortas", registros_corrig)
+rm(.monitora_pipe_cond_grupo_035m_d3, .monitora_pipe_cond_ordem_035m_d3)
 
 ### `Outra forma de vida de planta nativa: (amostragem/registro)`
 
@@ -39553,21 +40447,64 @@ if (isTRUE(MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS)) {
 monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pos_correcoes", "auditoria pós-correções de múltiplas COLETAS na mesma UC+UA+ANO; pendências seguem para checkpoint marcado", registros_corrig)
 
 if (exists("monitora_diag_rel_gerar_ocorrencias", mode = "function")) {
-  tryCatch({
-    MONITORA_RELATORIOS_DIAGNOSTICOS_POS_PAINEL <- monitora_diag_rel_gerar_ocorrencias(
-      registros_corrig,
-      fase = "pos_painel",
-      base_dir = file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pos_painel", "ocorrencias_diagnosticas"),
-      coletas_triagem_por_tipo = NULL,
-      triagem_painel_unificada = NULL,
-      validar_contagens = FALSE
+  MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pos_painel", "ocorrencias_diagnosticas")
+
+  ### v2.6.2 - 03.5Q-B: mesmo critério já usado acima para pular
+  ### monitora_relatorios_suporte_painel_gravar() na fase pos_correcoes
+  ### (MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS +
+  ### monitora_correcao_arquivo_afeta_relatorios_suporte()): se a sessão não
+  ### gerou arquivo de correções de campos ou as correções geradas não tocam
+  ### nenhum atributo relevante ao catálogo de ocorrências (forma de
+  ### vida/hábito/espécie/Encostam), o catálogo pós-painel é idêntico ao
+  ### pré-painel e não precisa revarrer `registros_corrig` inteiro de novo.
+  ### Correções espaciais (MONITORA_ARQUIVO_CORRECOES_ESPACIAIS) só reescrevem
+  ### coordenadas de início/fim, nunca forma de vida/hábito/espécie/UC/UA, logo
+  ### não entram neste critério.
+  MONITORA_REUTILIZAR_OCORRENCIAS_POS_PAINEL <- tryCatch({
+    isTRUE(get0("MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS", ifnotfound = "S", inherits = TRUE) == "S") &&
+      is.list(get0("MONITORA_RELATORIOS_DIAGNOSTICOS_PRE_PAINEL", ifnotfound = NULL, inherits = TRUE)) &&
+      !(isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE) && monitora_correcao_arquivo_afeta_relatorios_suporte(MONITORA_ARQUIVO_CORRECOES_CAMPOS))
+  }, error = function(e) FALSE)
+
+  if (isTRUE(MONITORA_REUTILIZAR_OCORRENCIAS_POS_PAINEL)) {
+    MONITORA_RELATORIOS_DIAGNOSTICOS_POS_PAINEL <- tryCatch(
+      monitora_diag_rel_reutilizar_ocorrencias_pos_painel(
+        MONITORA_RELATORIOS_DIAGNOSTICOS_PRE_PAINEL,
+        base_dir_pos = MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL,
+        fase_pos = "pos_painel",
+        fase_origem = "pre_painel"
+      ),
+      error = function(e) NULL
     )
-  }, error = function(e) {
-    arq_erro <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pos_painel", "ocorrencias_diagnosticas", paste0("erro_relatorios_ocorrencias_diagnosticas_pos_painel_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".txt"))
-    dir.create(dirname(arq_erro), recursive = TRUE, showWarnings = FALSE)
-    writeLines(conditionMessage(e), arq_erro, useBytes = TRUE)
-    monitora_correcao_console_msg("ERRO ao gerar relatórios diagnósticos [pos_painel]: ", conditionMessage(e), ". Detalhes: ", arq_erro)
-  })
+    if (is.null(MONITORA_RELATORIOS_DIAGNOSTICOS_POS_PAINEL)) MONITORA_REUTILIZAR_OCORRENCIAS_POS_PAINEL <- FALSE
+  }
+
+  if (isTRUE(MONITORA_REUTILIZAR_OCORRENCIAS_POS_PAINEL)) {
+    monitora_correcao_console_msg("Relatórios diagnósticos de ocorrências pós-painel reaproveitados do pré-painel: nenhuma correção da sessão alterou forma de vida, hábito, espécie ou Encostam.")
+    if (exists("monitora_log_registrar_evento", mode = "function")) {
+      monitora_log_registrar_evento("relatorios_diagnosticos_ocorrencias_pos_painel", "INFO", NA_character_, "Relatórios diagnósticos de ocorrências pós-painel reutilizados do pré-painel por ausência de alteração relevante", "otimização 03.5Q-B: evita recomputação global quando não houve mudança")
+    }
+    if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
+      monitora_perf_registrar_checkpoint("relatorios_diagnosticos_ocorrencias_pos_painel_reutilizados", "ocorrências diagnósticas pós-painel reutilizadas do pré-painel sem recomputação", registros_corrig)
+    }
+  } else {
+    tryCatch({
+      MONITORA_RELATORIOS_DIAGNOSTICOS_POS_PAINEL <- monitora_diag_rel_gerar_ocorrencias(
+        registros_corrig,
+        fase = "pos_painel",
+        base_dir = MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL,
+        coletas_triagem_por_tipo = NULL,
+        triagem_painel_unificada = NULL,
+        validar_contagens = FALSE
+      )
+    }, error = function(e) {
+      arq_erro <- file.path(MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL, paste0("erro_relatorios_ocorrencias_diagnosticas_pos_painel_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".txt"))
+      dir.create(dirname(arq_erro), recursive = TRUE, showWarnings = FALSE)
+      writeLines(conditionMessage(e), arq_erro, useBytes = TRUE)
+      monitora_correcao_console_msg("ERRO ao gerar relatórios diagnósticos [pos_painel]: ", conditionMessage(e), ". Detalhes: ", arq_erro)
+    })
+  }
+
   if (exists("monitora_output_organizar_produtos", mode = "function")) {
     try(monitora_output_organizar_produtos(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), contexto = "pos_relatorios_diagnosticos_pos_painel"), silent = TRUE)
   }
