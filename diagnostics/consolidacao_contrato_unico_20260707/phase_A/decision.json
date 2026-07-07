@@ -1,0 +1,20 @@
+{
+  "phase_id": "phase_A",
+  "status": "passed",
+  "can_continue": true,
+  "action_required": false,
+  "reason": "auditoria completa",
+  "files_changed": [],
+  "tests_run": [
+    "parse",
+    "git diff --check"
+  ],
+  "tests_passed": true,
+  "auto_fix_attempts": 0,
+  "data_real_touched": false,
+  "data_real_saved": false,
+  "data_real_versionable_detected": false,
+  "performance_checked": false,
+  "performance_regression": null,
+  "commit_push_allowed": false
+}

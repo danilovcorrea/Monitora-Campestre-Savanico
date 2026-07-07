@@ -1,0 +1,137 @@
+# 06_MAPA_PIPES_CONDICIONAIS
+
+## relevance
+- L215: `### diagnostics/auditoria_035m_a_pipes_relevance_cardinalidade/,`
+- L7017: `    ### pipes/relevance/cardinalidade. Se a sentinela da própria operação não`
+- L24514: `  contrato_xlsform_regras_relevance_normalizacao = 5025L,`
+- L24817: `      contrato_xlsform_regras_relevance_normalizacao = 9220L,`
+- L29253: `    ## Relevance de serrapilheira/outros e categorias principais.`
+- L29258: `      registrar("relevance_forma_serrapilheira", "amostragem/registro/forma_serrapilheira", sum(antes != depois, na.rm = TRUE), "selected(tipo_forma_vida, 'serr`
+- L29265: `      registrar("relevance_forma_vida_outros", "amostragem/registro/forma_vida_outros", sum(antes != depois, na.rm = TRUE), "selected(tipo_forma_vida, 'outra_fo`
+- L29274: `      registrar("relevance_lista_principal_forma_vida", main, sum(antes != depois, na.rm = TRUE), paste0("selected(tipo_forma_vida, '", cat, "')"))`
+- L29284: `          registrar("relevance_dependente_forma_vida", dc, sum(antes_dep != depois_dep, na.rm = TRUE), paste0("selected(", main, ", '", form, "')"))`
+- L29290: `  ## 2. Relevance de impactos/manejo.`
+- L29303: `      registrar("relevance_tipos_impacto_manejo_uso", tipos_col, sum(antes_t != depois_t, na.rm = TRUE), "${impacto_manejo_uso}=sim")`
+- L29315: `        registrar("relevance_impacto_manejo_uso_dependente", cc, sum(antes_c != depois_c, na.rm = TRUE), "relevance XLSForm 21FEV25")`
+- L30083: `    monitora_publicacao_ac_perf_checkpoint("contrato_xlsform_regras_relevance_normalizacao", "regras/relevance/normalizações XLSForm aplicadas à matriz contratu`
+- L30086: `  ## Recalcula métricas da auditoria de mapeamento após normalização/relevance.`
+- L30135: `    monitora_publicacao_ac_perf_checkpoint("contrato_xlsform_validacao_condicionais", "condicionais/relevance finais validadas", out)`
+- L32815: `### (monitora_validados_schema_embutido), regras de relevance padrão`
+- L33316: `    "por_choice_name", "por_relevance_campo_pai", "por_cardinalidade_operacional",`
+- L33437: `  por_relevance_campo_pai <- data.table::copy(atributos[!is.na(campo_pai) & nzchar(campo_pai)])`
+- L33438: `  data.table::setkeyv(por_relevance_campo_pai, "campo_pai")`
+- L33471: `    por_relevance_campo_pai = por_relevance_campo_pai[],`
+- L34114: `    "Campo condicional/esparso (relevance nao trivial); NAO resolvido por ponto absoluto -- requer 03.5M.",`
+- L34378: `### elegibilidade por relevance) -- aqui esse caso é diagnosticado, nunca`
+- L34379: `### resolvido às cegas. Ver diagnostics/auditoria_035m_a_pipes_relevance_cardinalidade/.`
+- L34394: `    meta_relevance <- unique(atributos_idx[, .(atributo_canonico_2025, relevant, campo_pai)])`
+- L34395: `    diag <- merge(diag, meta_relevance, by.x = "atributo_canonico_sugerido", by.y = "atributo_canonico_2025", all.x = TRUE)`
+- L34403: `    cardinalidade_operacional == "estruturado_condicional_esparso", "resolver_por_elegibilidade_relevance_necessaria",`
+- L34420: `monitora_pipe_contrato_avaliar_relevance_simples <- function(relevant_expr, valores_parent) {`
+- L34511: `  if (identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria")) {`
+- L34516: `      base$status_resolucao <- "depende_de_parent_relevance_contexto_insuficiente"`
+- L34524: `    elegibilidade <- monitora_pipe_contrato_avaliar_relevance_simples(relevant_expr, valores_parent)`
+- L34526: `      base$status_resolucao <- "relevance_nao_parseavel_contexto_insuficiente"`
+- L34527: `      base$observacao <- paste0("Expressão de relevance não reconhecida pelo parser conservador (só 'selected(${campo}, ',valor,') [and ...]'): ", relevant_expr`
+- L34542: `    base$status_resolucao <- "resolvido_por_elegibilidade_relevance"`
+- L34634: `      exige_relevance_elegibilidade = identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria"),`
+- L34660: `    exige_relevance_elegibilidade & tem_pipe, "alto_exige_relevance",`
+- L34668: `    exige_relevance_elegibilidade, "aguardar_contexto_relevance_antes_de_migrar",`
+- L34757: `    exige_relevance <- n_pipe_condicional_esparso > 0L`
+- L34791: `      paste0("Há caso que exigiria relevance/elegibilidade: ", if (isTRUE(exige_relevance)) "SIM" else "NÃO"),`
+
+## elegibilidade
+- L34378: `### elegibilidade por relevance) -- aqui esse caso é diagnosticado, nunca`
+- L34403: `    cardinalidade_operacional == "estruturado_condicional_esparso", "resolver_por_elegibilidade_relevance_necessaria",`
+- L34511: `  if (identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria")) {`
+- L34524: `    elegibilidade <- monitora_pipe_contrato_avaliar_relevance_simples(relevant_expr, valores_parent)`
+- L34525: `    if (is.null(elegibilidade)) {`
+- L34530: `    pontos_elegiveis <- which(elegibilidade)`
+- L34542: `    base$status_resolucao <- "resolvido_por_elegibilidade_relevance"`
+- L34634: `      exige_relevance_elegibilidade = identical(estrategia, "resolver_por_elegibilidade_relevance_necessaria"),`
+- L34660: `    exige_relevance_elegibilidade & tem_pipe, "alto_exige_relevance",`
+- L34668: `    exige_relevance_elegibilidade, "aguardar_contexto_relevance_antes_de_migrar",`
+- L34791: `      paste0("Há caso que exigiria relevance/elegibilidade: ", if (isTRUE(exige_relevance)) "SIM" else "NÃO"),`
+- L37302: `### Resolve campos select_one condicionais/esparsos por elegibilidade no grupo`
+
+## select_multiple
+- L3974: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manej`
+- L3988: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttip`
+- L3989: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multipl`
+- L4011: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_mult`
+- L4012: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exot`
+- L4013: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tselect_mult`
+- L4014: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple espec`
+- L4015: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especie`
+- L4016: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especie`
+- L4017: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_`
+- L4018: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\`
+- L4019: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_`
+- L4020: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lian`
+- L4021: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_`
+- L4022: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_`
+- L4023: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotic`
+- L4024: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outr`
+- L4043: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tse`
+- L4076: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manej`
+- L4089: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttip`
+- L4090: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multipl`
+- L4112: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_mult`
+- L4113: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exot`
+- L4114: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tselect_mult`
+- L4115: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple espec`
+- L4116: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especie`
+- L4117: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especie`
+- L4118: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_`
+- L4119: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\`
+- L4120: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_`
+- L4121: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lian`
+- L4122: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_`
+- L4123: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_`
+- L4124: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotic`
+- L4125: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outr`
+- L4144: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_05MAI23.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tse`
+- L4179: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impac`
+- L4195: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multi`
+- L4196: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_serrapilheira\tamostragem/registro/forma_serrapilheira\tselect_multiple forma_vida_serrapilhe`
+- L4197: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_outros\tamostragem/registro/forma_vida_outros\tselect_multiple forma_vida_outros\tselect`
+- L4198: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect`
+- L4221: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tsel`
+- L4226: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple espec`
+- L4228: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_erva_nao_graminoide\tamostragem/registro/especies_exotica_erva_nao_graminoide\tsel`
+- L4230: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multip`
+- L4232: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple`
+- L4234: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple`
+- L4236: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple e`
+- L4238: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotic`
+- L4240: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exot`
+- L4242: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_ervas_de_passarinho\tamostragem/registro/especies_exotica_ervas_de_passarinho\tsel`
+- L4244: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_`
+- L4246: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_bromelioide\tamostragem/registro/especies_exotica_bromelioide\tselect_multiple esp`
+- L4248: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_`
+- L4250: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_`
+- L4252: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especie`
+- L4254: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exot`
+- L4259: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_nSrC9X3.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_m`
+- L4308: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipos_impacto_manejo_uso\tamostragem/registro/tipos_impacto_manejo_uso\tselect_multiple tipos_impacto_manejo_`
+- L4321: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\ttipo_forma_vida\tamostragem/registro/tipo_forma_vida\tselect_multiple tipo_forma_vida\tselect_multiple\ttipo_`
+- L4322: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_nativa\tamostragem/registro/forma_vida_nativa\tselect_multiple forma_vida_nativa\tselect_multiple\`
+- L4342: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_exotica\tamostragem/registro/forma_vida_exotica\tselect_multiple forma_vida_exotica\tselect_multip`
+- L4343: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_graminoide\tamostragem/registro/especies_exotica_graminoide\tselect_multiple especies_exotic`
+- L4344: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_erva\tamostragem/registro/especies_exotica_erva\tselect_multiple especies_exotica_erva\tsele`
+- L4345: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_abaixo\tamostragem/registro/especies_exotica_arbusto_abaixo\tselect_multiple especie`
+- L4346: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arbusto_acima\tamostragem/registro/especies_exotica_arbusto_acima\tselect_multiple especies_`
+- L4347: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_abaixo\tamostragem/registro/especies_exotica_arvore_abaixo\tselect_multiple especies_`
+- L4348: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_arvore_acima\tamostragem/registro/especies_exotica_arvore_acima\tselect_multiple especies_ex`
+- L4349: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_bambu\tamostragem/registro/especies_exotica_bambu\tselect_multiple especies_exotica_bambu\ts`
+- L4350: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_cactacea\tamostragem/registro/especies_exotica_cactacea\tselect_multiple especies_exotica_ca`
+- L4351: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_lianas\tamostragem/registro/especies_exotica_lianas\tselect_multiple especies_exotica_lianas`
+- L4352: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_orquidea\tamostragem/registro/especies_exotica_orquidea\tselect_multiple especies_exotica_or`
+- L4353: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_palmeira\tamostragem/registro/especies_exotica_palmeira\tselect_multiple especies_exotica_pa`
+- L4354: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_samambaia\tamostragem/registro/especies_exotica_samambaia\tselect_multiple especies_exotica_`
+- L4355: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tespecies_exotica_outros\tamostragem/registro/especies_exotica_outros\tselect_multiple especies_exotica_outros`
+- L4360: `    "plantas_herb_e_lenhosas_campsav_ago2022.xlsx\tforma_vida_seca_morta\tamostragem/registro/forma_vida_seca_morta\tselect_multiple forma_vida_seca_morta\tsele`
+- L5731: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\tnativa\tforma_vida_nativa\tselect_multiple forma_vida_nativa\tforma_vida_nativa\tFormas de`
+- L5768: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\ttipo_forma_vida\texotica\tforma_vida_exotica\tselect_multiple forma_vida_exotica\tforma_vida_exotica\tForma`
+- L5769: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tmodulo\tavancado\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\tespecies_exotic`
+- L5770: `    "PLANTASHERBACEASELENHOSAS_CAMPSAV_03MAI24.xlsx\tforma_vida_exotica\tgraminoide\tespecies_exotica_graminoide\tselect_multiple especies_exotica_graminoide\te`

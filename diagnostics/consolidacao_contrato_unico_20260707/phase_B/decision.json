@@ -1,0 +1,23 @@
+{
+  "phase_id": "phase_B",
+  "status": "passed",
+  "can_continue": true,
+  "action_required": false,
+  "reason": "painel atributos escopos movimento",
+  "files_changed": [
+    "monitora_campsav_alvo_global_v2.6.0.R"
+  ],
+  "tests_run": [
+    "parse",
+    "synthetic helpers",
+    "git diff --check"
+  ],
+  "tests_passed": true,
+  "auto_fix_attempts": 1,
+  "data_real_touched": false,
+  "data_real_saved": false,
+  "data_real_versionable_detected": false,
+  "performance_checked": false,
+  "performance_regression": null,
+  "commit_push_allowed": false
+}

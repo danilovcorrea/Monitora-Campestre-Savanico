@@ -1,0 +1,178 @@
+# 02_MAPA_FUNCOES_LEGADAS_CONTRATO_UNICO
+
+## monitora_validados_schema_embutido
+- L10480: `    if (!exists("monitora_validados_schema_embutido", mode = "function")) {`
+- L10490: `    schema <- monitora_validados_schema_embutido()`
+- L16906: `  if (!exists("monitora_validados_schema_embutido", mode = "function")) return(data.table::data.table())`
+- L16907: `  schema <- tryCatch(monitora_validados_schema_embutido(), error = function(e) NULL)`
+- L25984: `  if (exists("monitora_validados_schema_embutido", mode = "function") &&`
+- L25986: `    schema <- tryCatch(monitora_validados_schema_embutido(), error = function(e) NULL)`
+- L28155: `monitora_validados_schema_embutido <- function() {`
+- L29968: `  schema <- monitora_validados_schema_embutido()`
+- L32815: `### (monitora_validados_schema_embutido), regras de relevance padrão`
+- L32927: `  schema129 <- tryCatch(monitora_validados_schema_embutido(), error = function(e) data.table::data.table())`
+- L33202: `      "monitora_validados_validar_formatos_saida / monitora_validados_schema_embutido",`
+
+## legad
+- L150: `### (correcoes_semanticas_consolidada.csv), mas correcoes_campos.csv legado também`
+- L273: `### - "tres_linhas": legado experimental; pode não renderizar bem no RStudio.`
+- L872: `    tipo_modificacao = c("limpeza de colunas técnicas legadas", "padronização de categorias e campos condicionais", "correção de ponto_metro", "fechamento de En`
+- L875: `      "Remove ou ignora colunas técnicas legadas de execuções anteriores antes da montagem operacional.",`
+- L1376: `    cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N imped`
+- L1996: `### apresentam mtime ausente/ilegível em mounts, caches ou arquivos legados.`
+- L6314: `  ### posteriores, inclusive nomes legados como "Data (data_hora)".`
+- L9357: `###   convertidos automaticamente; são limpos como resíduo legado sem gerar token atual;`
+- L9432: `  status <- rep("limpeza_descritor_legado_sem_conversao", length(z))`
+- L9618: `  ### 3) COLETA como fallback legado;`
+- L9785: `  ###    descritores sem equivalência inequívoca são limpos como resíduo legado,`
+- L9791: `    legado <- !conv & !monitora_correcao_vazio_vec(antes)`
+- L9806: `    if (any(legado, na.rm = TRUE)) {`
+- L9807: `      registrar_evento(cc, linhas[legado], antes[legado], as.character(cls$status_sanitizacao[legado]), "Descritor histórico de outra forma de vida sem equivalê`
+- L9810: `    limpar <- ((conv & campo_outros_ok) | legado) & !monitora_correcao_vazio_vec(antes)`
+- L9955: `  ### preferidas ao escopo amplo de COLETAS. COLETA é apenas fallback legado.`
+- L10071: `  ###    legado para arquivos antigos sem COLETA/contexto.`
+- L10122: `  ### correcoes_campos legados, mas evita que posição antiga domine a run atual.`
+- L10474: `### do contrato final. Campos técnicos, auxiliares, diagnósticos ou legados que`
+- L13317: `  ### Somente arquivos legados sem COLETA podem cair para linha_indice.`
+- L13921: `  ### movimento_forma_vida_atomico quanto grupos legados MOVFV expandidos em`
+- L17095: `  caminho_legado <- file.path(output_dir, "registros_importados.csv")`
+- L17096: `  caminho_bruto_legado <- file.path(output_dir, "registros_importados_bruto.csv")`
+- L17099: `  if ((!file.exists(caminho) || !isTRUE(file.info(caminho)$size > 0)) && file.exists(caminho_legado)) caminho <- caminho_legado`
+- L17100: `  if ((!file.exists(caminho_bruto) || !isTRUE(file.info(caminho_bruto)$size > 0)) && file.exists(caminho_bruto_legado)) caminho_bruto <- caminho_bruto_legado`
+- L22586: `        ### resíduo histórico (listas antigas, descritores/fotos legados). O`
+- L23535: `      ### Fallback legado abaixo só roda se o motor único falhar.`
+- L24471: `  limpeza_colunas_tecnicas_legadas = 450L,`
+- L25254: `    linha_legado_aproximada = c(24584L, 24695L),`
+- L25256: `    status = "legado_sobrescrito_lexicalmente",`
+- L25264: `### LEGADO_SOBRESCRITO_035N_E:`
+- L25379: `### LEGADO_SOBRESCRITO_035N_E:`
+- L25624: `        orientacao = "Coluna nao reconhecida no contrato XLSForm embutido como texto livre nem como campo estruturado; residuo de '|' preservado sem bloqueio. R`
+- L25927: `### produto da execução corrente. Se houver arquivo legado em output/, ele é`
+- L25928: `### auditado como legado/não aplicável para evitar interpretação de que representa`
+- L25948: `      arquivo_legado_em_output = isTRUE(existe),`
+- L25949: `      tamanho_bytes_legado = if (isTRUE(existe)) as.numeric(info$size[1L]) else NA_real_,`
+- L25950: `      mtime_legado = if (isTRUE(existe)) monitora_formatar_posixct_seguro(info$mtime[1L], "%Y-%m-%d %H:%M:%S") else NA_character_,`
+- L25966: `        "registros_importados.csv legado detectado em output/; marcado como não aplicável à execução atual retomada por registros_corrig.csv."`
+- L27189: `monitora_dt_remover_colunas_tecnicas_legadas <- function(dt, momento = "importacao") {`
+- L27198: `      "limpeza_colunas_tecnicas_legadas",`
+- L27201: `      paste0(length(legacy_cols), " coluna(s) tecnica(s) legada(s) removida(s) em ", momento, ": ", paste(legacy_cols, collapse = ", ")),`
+- L27863: `      mensagem = "Campo atual forma_vida_outros sanitizado antes de registros_validados.csv: preserva apenas tokens atuais 21FEV25 e remove/converte resíduos le`
+- L29507: `    orientacao = "Aplicar a rotina de sanitização/triagem de outra forma de vida em registros_corrig antes de gerar registros_validados.csv; não converter texto`
+- L31093: `        "warning legado de falso bloqueio de registros_validados suprimido no exportador de registros_corrig"`
+- L32800: `  ### do XLSForm embutido) tem prioridade sobre o padrão de nome legado`
+- L34271: `monitora_registros_importados_comparar_ordem_legado_vs_contrato <- function(registros_importados,`
+- L34283: `    ordem_legado <- names(registros_importados)`
+- L34285: `    idx <- match(ordem_legado, d$coluna_observada)`
+- L34288: `      posicao_legado = seq_along(ordem_legado),`
+- L34289: `      coluna_observada = ordem_legado,`
+- L34306: `    ### NA e a ordem sugerida degrada para a ordem legada (sem reordenar).`
+- L34320: `    ordem_sugerida_idx <- order(is.na(comparacao$posicao_contrato_sugerida), comparacao$posicao_contrato_sugerida, comparacao$posicao_legado)`
+- L34339: `    warning("Comparação de ordem legado vs. contrato único (registros_importados) falhou e foi ignorada (produto não afetado): ",`
+- L34350: `    data.table::fwrite(resultado$comparacao, file.path(dir_diag, paste0("comparacao_ordem_legado_vs_contrato_", sufixo, "_", exec_id_chr, ".csv")), na = "")`
+- L34355: `        paste0("Comparação de ordem legado vs. contrato único gerada para ", as.character(contexto)[1L]),`
+- L34553: `### Diagnóstico/comparação legado vs. contrato único sobre um dataset já`
+- L34581: `    class_legado <- tryCatch(monitora_produtos_classificar_pipe_coluna(cc, produto = produto), error = function(e) NA_character_)`
+- L34605: `    ### Mapa aproximado para comparar a decisão do classificador legado`
+- L34608: `    decisao_legado_normalizada <- data.table::fcase(`
+- L34609: `      identical(class_legado, "pipe_permitido_texto_livre"), "preservar_texto_livre",`
+- L34610: `      class_legado %in% c("pipe_residual_operacional", "pipe_residual_revisar"), "resolver_por_ponto_absoluto_permitido",`
+- L34611: `      identical(class_legado, "pipe_residual_tecnico_tolerado"), "nao_inferir_sem_regra_explicita",`
+- L34612: `      identical(class_legado, "pipe_esperado_em_bruto"), "nao_aplicavel_produto_bruto",`
+- L34613: `      identical(class_legado, "pipe_indeterminado"), "diagnosticar_indeterminado_nao_forcar",`
+- L34616: `    divergencia <- !is.na(decisao_legado_normalizada) & !is.na(estrategia) & !identical(decisao_legado_normalizada, estrategia)`
+- L34623: `      classificacao_legado = class_legado,`
+- L34624: `      decisao_legado_normalizada = decisao_legado_normalizada,`
+- L34631: `      divergencia_legado_vs_contrato = isTRUE(divergencia),`
+- L34661: `    deve_tratar_select_multiple & tem_pipe & classificacao_legado %in% c("pipe_residual_operacional", "pipe_residual_revisar"), "medio_select_multiple_tratado_c`
+- L34662: `    divergencia_legado_vs_contrato & tem_pipe, "medio_divergencia_legado_contrato",`
+- L34678: `      n_divergencias = sum(divergencia_legado_vs_contrato, na.rm = TRUE)`
+- L34681: `    por_decisao_legado = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(classificacao_legado)][],`
+- L34682: `    por_divergencia = d[, .(n_colunas = .N, n_colunas_com_pipe = sum(tem_pipe, na.rm = TRUE)), by = .(divergencia_legado_vs_contrato)][],`
+- L34744: `        resumo_detalhado[, .(coluna, cardinalidade_operacional, estrategia_pipe_contrato, classificacao_legado,`
+- L34745: `                              tem_pipe, n_linhas_com_pipe, divergencia_legado_vs_contrato, risco, acao_recomendada)],`
+- L34904: `### Sobrescreve lexicalmente a definicao LEGADO_SOBRESCRITO_035N_E anterior`
+- L34958: `### lexicalmente a definicao LEGADO_SOBRESCRITO_035N_E anterior e preserva`
+- L35265: `        "warning legado de falso bloqueio de registros_validados suprimido no exportador de registros_corrig"`
+- L35338: `  ### produto canônico, a raiz é sempre sobrescrita; se só existir raiz legada,`
+
+## perfil_
+- L2225: `### MONITORA_PERFIL_EXECUCAO = "auto" (padrão: equilíbrio adaptativo)`
+- L2226: `### MONITORA_PERFIL_EXECUCAO = "rapido" (maior performance; exige RAM folgada)`
+- L2227: `### MONITORA_PERFIL_EXECUCAO = "economico" (menor pico de RAM; pode ser mais lento)`
+- L2242: `MONITORA_PERFIL_EXECUCAO <- monitora_cfg_env_chr("MONITORA_PERFIL_EXECUCAO", "auto")`
+- L2243: `if (!(MONITORA_PERFIL_EXECUCAO %in% c("auto", "rapido", "economico", "conservador"))) {`
+- L2244: `  MONITORA_PERFIL_EXECUCAO <- "auto"`
+- L2246: `if (identical(MONITORA_PERFIL_EXECUCAO, "conservador")) MONITORA_PERFIL_EXECUCAO <- "economico"`
+- L2248: `perfil_rapido <- identical(MONITORA_PERFIL_EXECUCAO, "rapido")`
+- L2249: `perfil_economico <- identical(MONITORA_PERFIL_EXECUCAO, "economico")`
+- L2252: `default_batch <- if (perfil_rapido) 100L else if (perfil_economico) 10L else 50L`
+- L2253: `default_threads <- if (perfil_rapido) {`
+- L2255: `} else if (perfil_economico) {`
+- L2263: `MONITORA_EXPORTAR_GRAFICOS <- monitora_cfg_env_bool("MONITORA_EXPORTAR_GRAFICOS", !perfil_economico)`
+- L2288: `MONITORA_EXPORTAR_KML <- monitora_cfg_env_bool("MONITORA_EXPORTAR_KML", !perfil_economico)`
+- L2300: `MONITORA_MAX_LINHAS_GRAFICOS_AUTO <- monitora_cfg_env_int("MONITORA_MAX_LINHAS_GRAFICOS_AUTO", if (perfil_rapido) 500000L else 250000L)`
+- L2301: `MONITORA_MAX_UAS_KML_AUTO <- monitora_cfg_env_int("MONITORA_MAX_UAS_KML_AUTO", if (perfil_rapido) 10000L else 5000L)`
+- L2302: `MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA <- monitora_cfg_env_int("MONITORA_MAX_CHAVES_AUDITORIA_DUP_SEMANTICA", if (perfil_economico) 50000L else 100000L)`
+- L2307: `MONITORA_GC_MODO <- monitora_cfg_env_chr("MONITORA_GC_MODO", if (perfil_economico) "auto" else "auto")`
+- L2312: `MONITORA_GC_AUTO_MIN_MEM_MB <- monitora_cfg_env_int("MONITORA_GC_AUTO_MIN_MEM_MB", if (perfil_economico) 6000L else 4000L)`
+- L2744: `monitora_publicacao_p_coluna_perfil_numerico <- function(dt, col, min_prop_num = 0.80, min_prop_range = 0.80, min_distintos = 2L, intervalo = c(-Inf, Inf)) {`
+- L2756: `monitora_publicacao_p_coluna_perfil_ponto_amostral <- function(dt, col) {`
+- L2769: `monitora_publicacao_p_coluna_perfil_ponto_metro <- function(dt, col) {`
+- L2781: `monitora_publicacao_p_resolver_coluna_por_alias_e_perfil <- function(dt, aliases, incluir_regex = character(), excluir_regex = character(), perfil_fun = NULL, p`
+- L2797: `  if (!is.null(perfil_fun) && nrow(dt)) {`
+- L2798: `    bons <- idx[vapply(nms[idx], function(cc) isTRUE(perfil_fun(dt, cc)), logical(1))]`
+- L2803: `  if (!nrow(dt) && isTRUE(permitir_sem_perfil_se_vazio)) return(nms[idx[1L]])`
+- L2820: `    perfil_fun = monitora_publicacao_p_coluna_perfil_ponto_amostral`
+- L2836: `    perfil_fun = monitora_publicacao_p_coluna_perfil_ponto_metro`
+- L2859: `  add("ponto_amostral", ch$ponto_amostral, !is.na(ch$ponto_amostral) && ch$ponto_amostral %in% nms && monitora_publicacao_p_coluna_perfil_ponto_amostral(dt, ch$`
+- L2860: `  add("ponto_metro", ch$ponto_metro, !is.na(ch$ponto_metro) && ch$ponto_metro %in% nms && monitora_publicacao_p_coluna_perfil_ponto_metro(dt, ch$ponto_metro), "`
+- L6372: `  if (exists("monitora_perfil_painel_edicao_operacional_contrato_unico", mode = "function")) {`
+- L6373: `    perfil_oper <- tryCatch(`
+- L6374: `      monitora_perfil_painel_edicao_operacional_contrato_unico(out$atributo_coluna_registros_corrig),`
+- L6377: `    if (nrow(perfil_oper)) {`
+- L6384: `      ), names(perfil_oper))`
+- L6388: `      out <- merge(out, perfil_oper[, ..cols_oper], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)`
+- L10420: `      data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo_escopo_contrato_unico, "fora do esco`
+- L10421: `      paste0(motivo_bloqueio_edicao, "; ", data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo`
+- L17311: `### definida perto de monitora_validacao_regras_por_perfil_contrato_unico),`
+- L19672: `          if (isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))) shiny::tabPanel(`
+- L19675: `            shiny::helpText("Tabela somente leitura em memória, via monitora_perfil_painel_edicao_contrato_unico()/monitora_contrato_unico_indices(). Não altera`
+- L19676: `            monitora_painel_dt_output("auditoria_perfil_painel_contrato_unico")`
+- L19991: `              monitora_painel_notificar(paste0(n_escopo, " ação(ões) bloqueada(s): escopo incompatível com o perfil_painel_edicao do contrato único.", detalhe_e`
+- L21874: `    ### monitora_perfil_painel_edicao_contrato_unico() (03.5R-C/03.5R-C2);`
+- L21877: `    ### MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO está ligada (o`
+- L21880: `    output$auditoria_perfil_painel_contrato_unico <- DT::renderDT({`
+- L21881: `      if (!isTRUE(monitora_cfg_env_bool("MONITORA_AUDITORIA_PERFIL_PAINEL_CONTRATO_UNICO", FALSE))) {`
+- L21884: `      perfil_auditoria_painel <- monitora_perfil_painel_edicao_contrato_unico()`
+- L21885: `      if (!data.table::is.data.table(perfil_auditoria_painel) || !nrow(perfil_auditoria_painel)) {`
+- L21888: `      DT::datatable(perfil_auditoria_painel, selection = "none", options = monitora_painel_dt_options(), rownames = FALSE)`
+- L24023: `monitora_log_registrar_evento("configuracao_execucao", "INFO", NA_character_, paste0("modo_execucao=", MONITORA_MODO_EXECUCAO, "; perfil=", MONITORA_PERFIL_EXEC`
+- L24191: `    if (identical(MONITORA_PERFIL_EXECUCAO, "rapido")) return("rapido")`
+- L24192: `    if (identical(MONITORA_PERFIL_EXECUCAO, "economico")) return("economico")`
+- L24286: `    motivo <- paste0("objeto_mb=", objeto_mb, "; perfil=", MONITORA_PERFIL_EXECUCAO)`
+- L33242: `    uas_duplicadas_mesmo_ano = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33243: `    ponto_sem_interceptacao = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33244: `    nativa_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33245: `    exotica_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33246: `    seca_morta_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33247: `    outra_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33248: `    forma_vida_desconhecida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33249: `    forma_vida_exotica_sem_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),`
+- L33250: `    forma_vida_exotica_com_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),`
+- L33251: `    solo_nu_com_outra_categoria = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33252: `    habito_obrigatorio_ausente = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33253: `    campo_obrigatorio_relevante_vazio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33254: `    valor_fora_dominio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33255: `    formato_final_invalido = "perfil_export_registros_validados",`
+- L33256: `    pipe_residual_estruturado = c("perfil_importacao", "perfil_pre_painel", "perfil_pos_painel_corrig")`
+- L33356: `      "perfil_importacao", "perfil_pre_painel", "perfil_painel_edicao",`
+- L33357: `      "perfil_pos_painel_corrig", "perfil_export_registros_validados",`
+- L33358: `      "perfil_estatisticas_graficos"`
+- L33484: `  perfil_importacao <- merge(`
+- L33493: `  perfil_importacao[, aliases_conhecidos := lapply(aliases_conhecidos, function(a) {`
+- L33498: `  perfil_pre_painel <- atributos[atributo_canonico_2025 %in% atributos_pre_painel, .(`
+- L33502: `  perfil_pre_painel[, bloqueia_registros_validados := cardinalidade_operacional == "ambiguo_indeterminado" | status_confianca == "baixa_ambiguo"]`
+- L33505: `  perfil_painel_edicao <- atributos[!(cardinalidade_operacional %in% c("ambiguo_indeterminado", "tecnico_midia")), .(`
+- L33509: `  perfil_painel_edicao <- merge(perfil_painel_edicao, choices_por_list_name, by = "list_name", all.x = TRUE)`
+- L33511: `  perfil_pos_painel_corrig <- atributos[cardinalidade_operacional != "ambiguo_indeterminado", .(`
+- L33536: `  perfil_export_registros_validados <- list(`

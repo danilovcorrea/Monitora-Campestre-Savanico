@@ -1,0 +1,100 @@
+# 05_MAPA_REGISTROS_VALIDADOS_EXPORT
+
+## perfil_export_registros_validados
+- L33242: `    uas_duplicadas_mesmo_ano = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33243: `    ponto_sem_interceptacao = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33244: `    nativa_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33245: `    exotica_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33246: `    seca_morta_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33247: `    outra_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33248: `    forma_vida_desconhecida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33251: `    solo_nu_com_outra_categoria = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33252: `    habito_obrigatorio_ausente = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33253: `    campo_obrigatorio_relevante_vazio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33254: `    valor_fora_dominio = c("perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33255: `    formato_final_invalido = "perfil_export_registros_validados",`
+- L33357: `      "perfil_pos_painel_corrig", "perfil_export_registros_validados",`
+- L33536: `  perfil_export_registros_validados <- list(`
+- L33552: `    perfil_export_registros_validados = perfil_export_registros_validados,`
+
+## registros_validados.csv
+- L33: `###   - output/registros_validados.csv: produto opcional compatível com o contrato`
+- L43: `###   registros_corrig.csv, registros_validados.csv e arquivos de correções, podem`
+- L223: `### para gerar registros_validados.csv. Padrão desligado: "N", zero efeito`
+- L229: `### registros_validados.csv. Ver`
+- L879: `      "Gera registros_validados.csv na estrutura contratual quando habilitado e sem bloqueios impeditivos."`
+- L967: `      "output/01_produtos_dados/registros_validados.csv, auditorias XLSForm e estatísticas",`
+- L1147: `    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "regist`
+- L1159: `    registros_validados.csv = c(file.path(output_dir, "registros_validados.csv"), file.path(output_dir, "01_produtos_dados", "registros_validados.csv"))`
+- L1375: `    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura d`
+- L1388: `    produto = c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "regist`
+- L1428: `    "## Relação entre os produtos", "", "´registros_importados_bruto.csv´ documenta a leitura/montagem da entrada. ´registros_importados.csv´ documenta a entrad`
+- L1431: `    "# Conferência final", "", "Após uma execução com painel, conferir ´output/01_produtos_dados/registros_corrig.csv´, relatórios pós-painel em ´output/correco`
+- L1506: `    "# Descrição detalhada das modificações", "", "Esta seção registra a cadeia de modificação desde os arquivos de input até ´registros_corrig.csv´ e, quando h`
+- L1511: `    "# Conclusão técnica", "", "Este relatório consolida autoria, horários, descrição dos arquivos de entrada, inventário de ZIPs, produtos de dados, operações `
+- L1775: `### registros_validados.csv podem conter dados reais da execução. Esses produtos`
+- L7857: `### registros_corrig.csv e registros_validados.csv.`
+- L8340: `### vazio, enquanto registros_validados.csv continua exportando vazios efetivos.`
+- L8842: `### Esta função é destinada a registros_corrig.csv e registros_validados.csv.`
+- L17241: `### O bloqueio final em registros_validados.csv continua em`
+- L17266: `### registros_validados.csv -- tarde demais para revisão assistida no painel.`
+- L17538: `  rels[["outra_forma_vida"]] <- add_rows("outra_forma_vida", idx = idx_outra, token = "outra_forma_vida/outra/outros", campo_forma = paste(cols_outra_hit, colla`
+- L17543: `  ### registros_validados.csv e permitir substituição assistida no painel.`
+- L17597: `  ### hoje só bloqueiam no fechamento de registros_validados.csv via`
+- L19450: `        shiny::helpText("Enquanto houver ocorrência impeditiva, registros_corrig.csv poderá ser salvo apenas como checkpoint de trabalho marcado com pendências;`
+- L23764: `            "O arquivo registros_corrig.csv poderá ser salvo apenas como checkpoint de trabalho marcado com pendências. registros_validados.csv e produtos finai`
+- L23803: `        monitora_correcao_console_msg("ALERTA CONFIRMADO PELO USUÁRIO: pendências na abertura do painel (", txt_imp_pre, "); estimativa após operações pendentes`
+- L23865: `        monitora_correcao_console_msg("ALERTA CONFIRMADO PELO USUÁRIO: painel fechado sem salvar novas correções, com ocorrências impeditivas pré-painel/pendent`
+- L25411: `      descricao = "Produto saneado de entrada, com cabeçalhos canônicos/legíveis e comparável a registros_corrig.csv e registros_validados.csv por COLETA e dema`
+- L25752: `    if (bn %in% c("registros_importados_bruto.csv", "registros_importados.csv", "registros_importados_operacional_pre_painel.csv", "registros_corrig.csv", "regi`
+- L25857: `      registros_validados = file.path(output_dir, "registros_validados.csv")`
+- L27778: `### Sanitização contratual obrigatória antes de registros_validados.csv.`
+- L27863: `      mensagem = "Campo atual forma_vida_outros sanitizado antes de registros_validados.csv: preserva apenas tokens atuais 21FEV25 e remove/converte resíduos le`
+- L28148: `### Exportação opcional: registros_validados.csv ---------------------------`
+- L28151: `### de registros_validados.csv continua opcional e só ocorre quando`
+- L29462: `  ## do contrato final de registros_validados.csv. Portanto, valores como`
+- L29507: `    orientacao = "Aplicar a rotina de sanitização/triagem de outra forma de vida em registros_corrig antes de gerar registros_validados.csv; não converter texto`
+- L29565: `    ## v2.6.0: registros_validados.csv não herda diretamente campos históricos`
+- L29670: `### alimentam registros_validados.csv. Ela reaproveita as interpretações,`
+- L29672: `### nível do produto de origem para deixar explícito que registros_validados.csv é`
+- L29697: `### Governança de bloqueios de registros_validados.csv. Bloqueios contratuais`
+- L29699: `### registros_corrig.csv; eles apenas bloqueiam registros_validados.csv e geram`
+- L29729: `      produto = "registros_validados.csv", status = "bloqueado",`
+- L29745: `    exec_id = as.character(exec_id), contexto = as.character(contexto)[1L], produto = "registros_validados.csv",`
+- L29754: `    resumo_dt[, ´:=´(produto = "registros_validados.csv", status_validacao = ifelse(any(suppressWarnings(as.integer(n_bloqueios)) > 0L, na.rm = TRUE), "bloquead`
+- L29770: `    monitora_publicacao_g_log("registros_validados.csv bloqueado sem bloquear registros_corrig.csv [", contexto, "]: ", nrow(bloq), " linha(s) de auditoria de b`
+- L29966: `  if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório para registros_validados.csv.", call. = FALSE)`
+- L29981: `      monitora_publicacao_g_log("registros_validados.csv não será criado: registros_corrig.csv ainda contém pendências impeditivas sinalizadas.")`
+- L29987: `  ### XLSForm21 antes da materialização, registros_validados.csv deve herdar a`
+- L30002: `      monitora_produtos_path_canonico("registros_validados.csv", output_dir)`
+- L30004: `      file.path(output_dir, "01_produtos_dados", "registros_validados.csv")`
+- L30010: `      stop("Cabeçalho de registros_validados.csv difere do schema SISMONITORA embutido; exportação bloqueada.", call. = FALSE)`
+- L30015: `      monitora_log_registrar_evento("registros_validados_exportado", "INFO", caminho_saida, paste0("registros_validados.csv gerado por herança de registros_corr`
+- L30028: `    if (isTRUE(abortar)) stop("registros_validados.csv bloqueado: registros_corrig não possui pré-sanitização/selo aprovado; resolva pendências no painel.", cal`
+- L30182: `  ### validados_resumo.csv), fora do schema de registros_validados.csv.`
+- L30226: `    exec_id = as.character(exec_id), produto = "registros_validados.csv",`
+- L30262: `  ### o exportador monta a mesma matriz que alimentará registros_validados.csv,`
+- L30269: `        " problema(s) bloqueante(s) nos atributos que alimentam registros_validados.csv após sanitização pós-painel e regras XLSForm 21FEV25. ",`
+- L30315: `      "registros_validados.csv bloqueado: ", n_bloq,`
+- L30344: `      monitora_produtos_path_canonico("registros_validados.csv", output_dir)`
+- L30346: `      file.path(output_dir, "01_produtos_dados", "registros_validados.csv")`
+- L30352: `    stop("Cabeçalho de registros_validados.csv difere do schema SISMONITORA embutido; exportação bloqueada.", call. = FALSE)`
+- L30357: `    monitora_log_registrar_evento("registros_validados_exportado", "INFO", caminho_saida, paste0("registros_validados.csv gerado com ", nrow(out), " linhas e ",`
+- L30363: `### Fim da exportação opcional: registros_validados.csv ---------------------`
+- L30369: `### pendências impeditivas. Essas pendências bloqueiam registros_validados.csv e`
+- L30377: `### - registros_validados.csv e produtos finais contratuais não são liberados;`
+- L30620: `### registros_validados.csv.`
+- L30838: `### contrato XLSForm21 nos atributos que alimentam registros_validados.csv e só`
+- L30839: `### então libera a gravação do CSV corrigido. registros_validados.csv passa a`
+- L30881: `  ### registros_validados.csv é decidida pelo bloco contratual XLSForm21 próprio.`
+- L30996: `      monitora_publicacao_g_log("registros_corrig.csv liberado para materialização; registros_validados.csv bloqueado por ", n_bloq_val, " problema(s) contratua`
+- L31017: `### Estado final canônico de registros_validados.csv. Evita falso aviso de`
+- L31025: `    if (exists("monitora_produtos_path_canonico", mode = "function")) tryCatch(monitora_produtos_path_canonico("registros_validados.csv", output_dir), error = f`
+- L31026: `    if (exists("monitora_produtos_path_raiz", mode = "function")) tryCatch(monitora_produtos_path_raiz("registros_validados.csv", output_dir), error = function(`
+- L31027: `    file.path(output_dir, "01_produtos_dados", "registros_validados.csv"),`
+- L31028: `    file.path(output_dir, "registros_validados.csv")`
+- L31081: `  ### warning sobre registros_validados.csv. A geração/bloqueio real de`
+- L31084: `  ### falso positivo no final da execução, mesmo com registros_validados.csv`
+- L31092: `               "; status de registros_validados.csv será determinado apenas pelo bloco contratual XLSForm21 próprio."),`
+- L31136: `      monitora_log_registrar_evento("registros_corrig_exportado_checkpoint_pendente", "AVISO", caminho_saida, paste0("registros_corrig.csv materializado como ch`
+- L31138: `      monitora_log_registrar_evento("registros_corrig_exportado_aprovado", "INFO", caminho_saida, paste0("registros_corrig.csv materializado após contrato aprov`

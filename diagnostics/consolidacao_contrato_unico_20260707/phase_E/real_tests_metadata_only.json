@@ -1,0 +1,9 @@
+{
+  "mode": "metadata-only",
+  "file_count": 12,
+  "suffix_counts": {
+    ".py": 1,
+    ".csv": 9,
+    ".md": 2
+  }
+}

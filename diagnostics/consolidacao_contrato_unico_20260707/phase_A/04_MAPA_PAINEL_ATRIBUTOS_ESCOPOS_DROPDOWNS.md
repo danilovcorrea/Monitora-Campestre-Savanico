@@ -1,0 +1,209 @@
+# 04_MAPA_PAINEL_ATRIBUTOS_ESCOPOS_DROPDOWNS
+
+## perfil_painel_edicao
+- L6372: `  if (exists("monitora_perfil_painel_edicao_operacional_contrato_unico", mode = "function")) {`
+- L6374: `      monitora_perfil_painel_edicao_operacional_contrato_unico(out$atributo_coluna_registros_corrig),`
+- L10420: `      data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo_escopo_contrato_unico, "fora do esco`
+- L10421: `      paste0(motivo_bloqueio_edicao, "; ", data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo`
+- L19675: `            shiny::helpText("Tabela somente leitura em memória, via monitora_perfil_painel_edicao_contrato_unico()/monitora_contrato_unico_indices(). Não altera`
+- L19991: `              monitora_painel_notificar(paste0(n_escopo, " ação(ões) bloqueada(s): escopo incompatível com o perfil_painel_edicao do contrato único.", detalhe_e`
+- L21874: `    ### monitora_perfil_painel_edicao_contrato_unico() (03.5R-C/03.5R-C2);`
+- L21884: `      perfil_auditoria_painel <- monitora_perfil_painel_edicao_contrato_unico()`
+- L33242: `    uas_duplicadas_mesmo_ano = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33243: `    ponto_sem_interceptacao = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33244: `    nativa_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33245: `    exotica_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33246: `    seca_morta_sem_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33247: `    outra_forma_vida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33248: `    forma_vida_desconhecida = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33249: `    forma_vida_exotica_sem_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),`
+- L33250: `    forma_vida_exotica_com_especie = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig"),`
+- L33251: `    solo_nu_com_outra_categoria = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33252: `    habito_obrigatorio_ausente = c("perfil_pre_painel", "perfil_painel_edicao", "perfil_pos_painel_corrig", "perfil_export_registros_validados"),`
+- L33356: `      "perfil_importacao", "perfil_pre_painel", "perfil_painel_edicao",`
+- L33505: `  perfil_painel_edicao <- atributos[!(cardinalidade_operacional %in% c("ambiguo_indeterminado", "tecnico_midia")), .(`
+- L33509: `  perfil_painel_edicao <- merge(perfil_painel_edicao, choices_por_list_name, by = "list_name", all.x = TRUE)`
+- L33550: `    perfil_painel_edicao = perfil_painel_edicao[],`
+- L33579: `### sem isto, monitora_perfil_painel_edicao_operacional_contrato_unico() e os`
+- L33707: `### reaproveita $perfis$perfil_painel_edicao (já existente ali) e o enriquece`
+- L33720: `monitora_perfil_painel_edicao_contrato_unico <- function(contrato_indices = NULL, ocorrencias_painel = NULL) {`
+- L33727: `    perfil_base <- contrato_indices$perfis$perfil_painel_edicao`
+- L33765: `### Projeta o perfil_painel_edicao do contrato unico para o painel operacional.`
+- L33769: `monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_observadas = NULL,`
+- L33774: `  perfil <- if (!is.null(contrato_indices) && !is.null(contrato_indices$perfis$perfil_painel_edicao)) {`
+- L33775: `    data.table::copy(data.table::as.data.table(contrato_indices$perfis$perfil_painel_edicao))`
+- L33865: `    default = "fora_do_perfil_painel_edicao"`
+- L33873: `    escopo_operacional_contrato_unico == "protegido", "atributo protegido ou fora da edicao generica do perfil_painel_edicao",`
+- L33874: `    escopo_operacional_contrato_unico == "ponto", "atributo de registro/ponto ou condicional pelo perfil_painel_edicao",`
+- L33875: `    escopo_operacional_contrato_unico == "coleta_inteira", "atributo superior/herdavel pelo perfil_painel_edicao",`
+- L33876: `    default = "atributo nao resolvido no perfil_painel_edicao"`
+- L33893: `    info <- monitora_perfil_painel_edicao_operacional_contrato_unico(atributo)`
+- L33896: `    return(list(ok = FALSE, status = "bloqueada_escopo_contrato_ausente", mensagem = paste0("Atributo sem perfil_painel_edicao no contrato unico: ", atributo)))`
+- L33905: `    return(list(ok = FALSE, status = "bloqueada_escopo_incompativel_contrato_unico", mensagem = paste0("Escopo '", escopo, "' incompatível com '", atributo, "' `
+- L33907: `  list(ok = TRUE, status = "ok", mensagem = "escopo compatível com perfil_painel_edicao")`
+
+## choices
+- L10302: `monitora_correcao_choices_xlsform <- function(list_name, meta_xls = NULL, preferir_ultima = TRUE) {`
+- L10319: `  choices <- unique(as.character(op$name))`
+- L10320: `  choices <- choices[!is.na(choices) & nzchar(trimws(choices))]`
+- L10321: `  if (length(choices) <= 2L && all(choices %in% c("num_key", "label"))) return(character(0))`
+- L10322: `  choices`
+- L10715: `    escolhas <- monitora_correcao_choices_xlsform(list_name, meta_xls)`
+- L16699: `        shiny::selectizeInput("esp_filtro_status", "Status espacial", choices = NULL, multiple = TRUE),`
+- L16700: `        shiny::selectizeInput("esp_filtro_ua", "UA", choices = NULL, multiple = TRUE),`
+- L16701: `        shiny::selectizeInput("esp_filtro_ano", "ANO", choices = NULL, multiple = TRUE),`
+- L16705: `        shiny::selectInput("esp_tipo_operacao", "Tipo", choices = c(`
+- L17841: `  monitora_painel_choices <- function(rotulo_todos, vals) {`
+- L17846: `  monitora_painel_choices_obrigatorio <- function(rotulo_vazio, vals) {`
+- L17882: `  monitora_painel_choices_dominio_xlsform <- function(list_name, meta_xls = NULL, fallback = character(0)) {`
+- L17908: `  monitora_painel_choices_atributos_template <- function(d) {`
+- L17934: `  escolhas_atributos_painel <- monitora_painel_choices_atributos_template(dict)`
+- L17944: `  monitora_painel_choices_valor_atributo <- function(atributo, acao = NULL, incluir_observados = FALSE) {`
+- L17954: `    monitora_painel_choices_dominio_xlsform(info$list_name, meta_xls, fallback = fallback)`
+- L17977: `    aud[, n_opcoes_xlsform := vapply(xlsform_list_name, function(ll) length(monitora_correcao_choices_xlsform(ll, meta_xls)), integer(1))]`
+- L18065: `  MONITORA_TRIAGEM_HABITO_CHOICES <- c("(não informado)" = "", "terrestre" = "terrestre", "epifita" = "epifita", "rupicola" = "rupicola")`
+- L18066: `  MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES <- c("(não se aplica a esta forma de vida)" = "")`
+- L18104: `  monitora_painel_formas_validas_choices_categoria <- function(categoria) {`
+- L18165: `    nativa = monitora_painel_formas_validas_choices_categoria("nativa"),`
+- L18166: `    exotica = monitora_painel_formas_validas_choices_categoria("exotica"),`
+- L18167: `    seca_morta = monitora_painel_formas_validas_choices_categoria("seca_morta")`
+- L18175: `    escolhas <- monitora_correcao_choices_xlsform(info$xlsform_list_name, meta_xls)`
+- L18238: `      if (!habito_val %in% unname(MONITORA_TRIAGEM_HABITO_CHOICES) || !nzchar(habito_val)) {`
+- L18300: `  monitora_painel_montar_choices_formas_mv <- function() {`
+- L18441: `    choices <- stats::setNames(`
+- L18453: `    list(choices = choices, tokens_historicos = tokens_historicos, token_para_representativo = token_para_representativo)`
+- L18456: `  formas_mv_choices_info <- monitora_painel_montar_choices_formas_mv()`
+- L18457: `  formas_mv_choices <- formas_mv_choices_info$choices`
+- L18458: `  formas_mv_tokens_historicos <- formas_mv_choices_info$tokens_historicos`
+- L18459: `  formas_mv_token_para_representativo <- formas_mv_choices_info$token_para_representativo`
+- L18478: `  monitora_painel_mv_choices_com_token <- function(token) {`
+- L18480: `    choices <- formas_mv_choices`
+- L18482: `    if (nzchar(token_rep) && !(token_rep %in% unname(choices))) {`
+- L18483: `      choices <- c(choices, stats::setNames(token_rep, token_rep))`
+- L18485: `    choices`
+- L18982: `  monitora_painel_choices_triagem_coleta <- function(vals_base = NULL, coletas_por_tipo_base = NULL) {`
+- L19033: `  choices_triagem_coleta <- monitora_painel_choices_triagem_coleta(valores_coleta)`
+- L19379: `          choices = valores_uc,`
+- L19387: `          choices = valores_ea,`
+- L19395: `          choices = valores_ano,`
+- L19403: `          choices = valores_ciclo,`
+- L19411: `          choices = valores_campanha,`
+- L19419: `          choices = valores_ua,`
+- L19435: `            choices = choices_triagem_coleta$impeditivas,`
+- L19445: `            choices = choices_triagem_coleta$outras,`
+- L19456: `          choices = monitora_painel_choices("(nenhuma coleta selecionada; escolha manualmente para carregar a prévia)", valores_coleta),`
+- L19468: `          choices = c("Coleta individual" = "coleta_individual", "Coletas do lote" = "coletas_do_lote"),`
+- L19474: `          choices = valores_coleta,`
+- L19485: `        shiny::selectizeInput("atributo", "Atributo a corrigir", choices = escolhas_atributos_painel, selected = unname(escolhas_atributos_painel)[1], options =`
+- L19487: `        shiny::radioButtons("escopo", "Escopo da aplicação", choices = c("Aplicar aos 101 registros da coleta" = "coleta_inteira", "Aplicar apenas ao ponto sele`
+- L19488: `        shiny::selectInput("acao", "Ação", choices = monitora_painel_acoes_atributo(unname(escolhas_atributos_painel)[1L])),`
+- L19510: `        shiny::selectInput("mv_forma", "Forma de vida", choices = formas_mv_choices, selected = if ("arbusto_acima" %in% unname(formas_mv_choices)) "arbusto_aci`
+- L19511: `        shiny::selectInput("mv_origem", "Origem", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),`
+- L19512: `        shiny::selectInput("mv_destino", "Destino", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),`
+- L19513: `        shiny::selectInput("mv_habito", "Hábito, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = ""),`
+- L19518: `        shiny::selectInput("mv_lote_origem", "Origem do lote", choices = c("nativa", "exotica", "seca_morta"), selected = "exotica"),`
+- L19522: `          choices = c("Todas as formas encontradas na origem" = "__todas__", "Forma de vida desconhecida" = "desconhecida", "Outras plantas terrestres, líquens `
+- L19527: `        shiny::selectInput("mv_lote_habito_padrao", "Hábito padrão da origem, se aplicável", choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = ""),`
+- L19528: `        shiny::selectInput("mv_lote_destino", "Destino do lote", choices = c("nativa", "exotica", "seca_morta"), selected = "nativa"),`
+- L19532: `          choices = formas_mv_choices,`
+- L19533: `          selected = if ("samambaia" %in% unname(formas_mv_choices)) "samambaia" else unname(formas_mv_choices)[1],`
+- L19537: `        shiny::selectInput("mv_lote_habito_destino", "Hábito padrão do destino, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_CHOICES, selected = ""),`
+- L19561: `            shiny::selectInput("triagem_destino_desconhecida", "Destino da forma desconhecida", choices = c("nativa", "exotica", "seca_morta"), selected = "nati`
+- L19562: `            shiny::selectizeInput("triagem_forma_valida", "Forma de vida válida", choices = formas_validas_por_categoria$nativa, selected = if (length(formas_va`
+- L19563: `            shiny::selectInput("triagem_habito", "Hábito, quando obrigatório", choices = MONITORA_TRIAGEM_HABITO_NAO_APLICA_CHOICES, selected = ""),`
+- L19592: `            shiny::column(4, shiny::selectizeInput("esp_filtro_status", "Status espacial", choices = escolhas_esp_status_ui, selected = character(0), multiple =`
+- L19593: `            shiny::column(4, shiny::selectizeInput("esp_filtro_ua", "UA", choices = escolhas_esp_ua, selected = character(0), multiple = TRUE, options = list(pl`
+- L19594: `            shiny::column(4, shiny::selectizeInput("esp_filtro_ano", "ANO", choices = escolhas_esp_ano, selected = character(0), multiple = TRUE, options = list`
+- L19601: `            shiny::column(3, shiny::selectInput("esp_tipo_operacao", "Operação espacial", choices = c(`
+- L19611: `            shiny::column(3, shiny::selectInput("esp_tipo_origem", "Origem da coordenada", choices = c(`
+- L19618: `            shiny::column(3, shiny::selectInput("esp_escopo_destino", "Destino da correção", choices = c(`
+- L19627: `            shiny::column(3, shiny::selectizeInput("esp_coleta_alvo", "COLETA destino/alvo", choices = character(0), selected = character(0), multiple = FALSE))`
+- L19628: `            shiny::column(3, shiny::selectizeInput("esp_coleta_fonte", "COLETA fonte", choices = character(0), selected = character(0), multiple = FALSE)),`
+- L19629: `            shiny::column(3, shiny::selectizeInput("esp_ano_fonte", "ANO fonte", choices = escolhas_esp_ano, selected = character(0), multiple = FALSE)),`
+- L19630: `            shiny::column(3, shiny::selectizeInput("esp_ano_destino", "ANO(s) destino", choices = escolhas_esp_ano, selected = character(0), multiple = TRUE, op`
+- L19633: `            shiny::column(9, shiny::selectizeInput("esp_coletas_destino", "COLETAS destino do lote (filtradas por Status/UA/ANO destino; fonte excluída)", choic`
+- L19640: `          shiny::selectInput("esp_origem_coordenada", "Origem da coordenada manual", choices = c("ODK/copiar de COLETA" = "odk", "QFIELD/planilha de papel" = "q`
+
+## dropdown
+
+## escopo
+- L94: `###   desse escopo e continua disponível quando a seleção principal está vazia.`
+- L857: `    escopo = character(),`
+- L866: `      escopo = "do input bruto aos produtos corrigidos/validados, conforme arquivo de auditoria",`
+- L881: `    escopo = c("arquivos de input", "registros_importados/registros_corrig", "registros_corrig", "registros_corrig", "registros_validados"),`
+- L1149: `    escopo = c("entrada bruta da execução", "entrada saneada pré-correção", "camada operacional pós-tokenização/pré-painel", "base corrigida e auditável", "prod`
+- L1328: `      "Selecionar a coleta/linha indicada, mover desconhecida para a categoria e forma tecnicamente correta ou aplicar operação em lote quando a decisão for com`
+- L1390: `    escopo = c("Entrada bruta da execução e montagem técnica.", "Entrada saneada pré-correção final.", "Camada operacional pós-tokenização/pré-painel.", "Base c`
+- L1398: `    funcao = c("Identifica a pessoa responsável pela sessão de curadoria.", "Restringem o universo de linhas analisadas e editadas.", "Define foco de diagnóstic`
+- L1399: `    quando_usar = c("Sempre antes de salvar operações.", "Antes de qualquer operação que possa afetar mais de uma linha.", "Quando a curadoria for por coleta ou`
+- L1400: `    auditoria_efeito = c("Valor resgatado no relatório consolidado.", "Escopo fica registrado nas operações e reduz risco de alteração indevida.", "Opera sobre `
+- L1426: `    "# Reaplicação de correções anteriores", "", "´correcoes_campos.csv´ é o arquivo operacional produzido pelo painel. A partir da v2.6.0, o script também grav`
+- L1427: `    "# Produtos de dados", "", "Os cinco produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada `
+- L1429: `    "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atribu`
+- L1506: `    "# Descrição detalhada das modificações", "", "Esta seção registra a cadeia de modificação desde os arquivos de input até ´registros_corrig.csv´ e, quando h`
+- L6308: `  out[, escopo_sugerido := "ponto"]`
+- L6310: `  out[atributo_coluna_registros_corrig %in% cols_coleta, escopo_sugerido := "coleta_inteira"]`
+- L6311: `  out[grepl("form_veg|campanha|ciclo|^UC$|^EA$|^UA$|estrato|[aá]rea.*eleg[ií]vel|data_hora/data|data_hora/hora|num_placa|coordenada|protocolo", atributo_coluna_`
+- L6312: `  out[grepl("ponto|registro|forma_vida|esp[eé]cie|ex[oó]tica|nativa|seca|morta", atributo_coluna_registros_corrig, ignore.case = TRUE), escopo_sugerido := "pont`
+- L6315: `  out[grepl("form_veg|campanha|ciclo|^UC$|^EA$|^UA$|estrato|[aá]rea.*eleg[ií]vel|data_hora|data \\(data_hora\\)|hor[aá]rio \\(data_hora\\)|data_do_registro|^dat`
+- L6382: `        "escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico",`
+- L6383: `        "motivo_escopo_contrato_unico"`
+- L6389: `      out[escopo_operacional_contrato_unico %in% c("ponto"), escopo_sugerido := "ponto"]`
+- L6390: `      out[escopo_operacional_contrato_unico %in% c("coleta_inteira"), escopo_sugerido := "coleta_inteira"]`
+- L6403: `    escopo_aplicacao = character(),`
+- L6495: `  ### contratuais derivadas podem voltar para o escopo da COLETA inteira.`
+- L6627: `      escopo_aplicacao = "ponto"`
+- L7010: `    ### reclassificação de uma operação que, no seu próprio escopo, já havia`
+- L7202: `    "tipo_correcao", "escopo_aplicacao", "tipo_triagem", "escopo_diagnostico_mvlote",`
+- L7238: `  if (!nrow(ops)) return(data.table::data.table(escopo = character(), solucao = character(), completa = character()))`
+- L7240: `    "tipo_correcao", "tipo_triagem", "escopo_diagnostico_mvlote", "categoria_base_diagnostica",`
+- L7270: `  tipo[!nzchar(tipo)] <- canon_txt(ops$escopo_diagnostico_mvlote)[!nzchar(tipo)]`
+- L7274: `  escopo <- paste(tipo, cat_base, canon_txt(ops$categoria_origem), token_sig, linhas_sig, sep = "\r")`
+- L7276: `  data.table::data.table(escopo = escopo, solucao = solucao, completa = paste(escopo, solucao, sep = "\r"))`
+- L7311: `  tmp <- data.table::data.table(row_id = idx, ordem_norm = seq_along(idx), escopo = sig$escopo, solucao = sig$solucao, completa = sig$completa)`
+- L7312: `  tmp <- tmp[nzchar(escopo)]`
+- L7317: `  tmp[, n_escopo := .N, by = escopo]`
+- L7318: `  repet <- tmp[n_escopo > 1L]`
+- L7323: `  keep <- repet[, .SD[which.max(ordem_norm)], by = escopo]$row_id`
+- L7331: `        mensagem = paste0("MVLOTE ", contexto, ": operação anterior substituída por operação posterior com o mesmo escopo diagnóstico de linhas."),`
+- L7384: `  escopo <- tolower(trimws(as.character(corr$escopo_aplicacao[1])))`
+- L7385: `  if (is.na(escopo) || !nzchar(escopo)) escopo <- "ponto"`
+- L7411: `    if (escopo %in% c("ponto", "coleta_ponto", "uuid_registro")) linhas <- filtrar_contexto_ponto(linhas)`
+- L7844: `###   fora do escopo alterado ou quando a execução não for incremental;`
+- L8039: `    return(list(linhas = seq_len(n), escopo = "global_execucao_completa", motivo = "modo_nao_incremental"))`
+- L8042: `  ### Checagem global barata: se ainda houver pendência contratual fora do escopo`
+- L8044: `  inv_global <- monitora_publicacao_g_checar_invariantes_contrato(dt, linhas = NULL, contexto = paste0(contexto, "_pre_escopo_global"))`
+- L8048: `    return(list(linhas = seq_len(n), escopo = "global_invariantes_pendentes", motivo = paste0("pendencias_globais=", pend), invariantes = inv_global))`
+- L8052: `    return(list(linhas = linhas_inc, escopo = "incremental_linhas_afetadas", motivo = paste0("linhas_afetadas=", length(linhas_inc)), invariantes = inv_global))`
+- L8056: `  list(linhas = integer(), escopo = "incremental_sem_linhas_e_sem_pendencias", motivo = "nada_a_normalizar", invariantes = inv_global)`
+- L8148: `    escopo = if (length(linhas) == nrow(dt)) "global" else "incremental",`
+- L8252: `### contrato nem substitui auditorias semânticas; apenas registra escopos sujos`
+- L8818: `monitora_publicacao_g_gravar_selo_contrato <- function(dt, contexto, escopo, linhas_avaliadas, invariantes = NULL) {`
+- L8823: `    escopo = escopo,`
+- L8850: `    esc$linhas <- seq_len(nrow(dt)); esc$escopo <- "global_forcado"; esc$motivo <- "forcar_global=TRUE"`
+- L8853: `  monitora_publicacao_g_log("fechamento contratual ", contexto, ": escopo=", esc$escopo, "; ", esc$motivo, "; linhas=", length(linhas_norm))`
+- L8876: `  monitora_publicacao_g_gravar_selo_contrato(dt, contexto, esc$escopo, length(linhas_norm), inv_pos)`
+- L8881: `  monitora_publicacao_g_log("fechamento contratual ", contexto, " concluído em ", sprintf("%.3f", elapsed), "s; pendências no escopo=", pend_pos)`
+- L8886: `    stop("Contrato final não resolvido no escopo de exportação; ver auditoria_invariantes_contrato_resumo.csv.", call. = FALSE)`
+- L9269: `  cols_need <- c("tipo_correcao", "id_correcao", "escopo_aplicacao", "coleta", "coleta_uuid", "uuid_registro", "ponto_amostral", "token_pai", "categoria_origem"`
+- L9278: `    escopo_aplicacao,`
+- L9611: `  esc <- if ("escopo_aplicacao" %in% names(linha_corr)) tolower(trimws(as.character(linha_corr$escopo_aplicacao[1L]))) else ""`
+- L9719: `    ### Escopo vazio pode ocorrer quando as COLETAS-alvo foram quarentenadas,`
+- L9919: `  esc <- if ("escopo_contextual_painel" %in% names(corr)) tolower(trimws(as.character(corr$escopo_contextual_painel))) else rep("", nrow(corr))`
+- L9955: `  ### preferidas ao escopo amplo de COLETAS. COLETA é apenas fallback legado.`
+- L10058: `monitora_correcao_linhas_escopo_operacao_outras_estado_corrente <- function(dt, grupo, chaves = monitora_correcao_colunas_chave(dt), indice = NULL) {`
+- L10149: `    linhas_escopo <- monitora_correcao_linhas_escopo_operacao_outras_estado_corrente(dt, grupo, chaves, indice)`
+- L10150: `    linhas_residuo <- monitora_correcao_linhas_residuo_outras_formas(dt, linhas_escopo, cols_info)`
+- L10151: `    if (!isTRUE(silencioso) && exists("monitora_correcao_console_msg", mode = "function")) monitora_correcao_console_msg("Aplicando operação semântica TRIOUT ",`
+- L10153: `      audit <- data.table::rbindlist(list(audit, data.table::data.table(id_correcao = id_cor, ordem_operacao = NA_character_, status = "ok_sem_residuo_no_estado`
+- L10160: `    linhas_residuo_pos <- monitora_correcao_linhas_residuo_outras_formas(dt, linhas_escopo, monitora_correcao_colunas_limpeza_outras_formas(dt, dicionario))`
+- L10207: `    n_linhas_escopo = length(linhas),`
+- L10219: `    "Persistência limpeza outras formas [", contexto, "]: linhas_escopo=", length(linhas),`
+- L10236: `      resumo$linhas_com_residuo_total[1L], " linha(s) ainda com resíduo no escopo limpo. Ver ", arq_ult`
+- L10415: `  if (!("motivo_escopo_contrato_unico" %in% names(d))) d[, motivo_escopo_contrato_unico := ""]`
+- L10416: `  if (all(c("escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico") %in% names(d))) {`
+- L10417: `    d[is.na(escopos_permitidos_contrato_unico), escopos_permitidos_contrato_unico := ""]`
+- L10418: `    d[!nzchar(as.character(escopos_permitidos_contrato_unico)), motivo_bloqueio_edicao := data.table::fifelse(`
+- L10420: `      data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo_escopo_contrato_unico, "fora do esco`
+- L10421: `      paste0(motivo_bloqueio_edicao, "; ", data.table::fifelse(!is.na(motivo_escopo_contrato_unico) & nzchar(as.character(motivo_escopo_contrato_unico)), motivo`
+- L10423: `    d[!nzchar(as.character(escopos_permitidos_contrato_unico)), acoes_permitidas := ""]`

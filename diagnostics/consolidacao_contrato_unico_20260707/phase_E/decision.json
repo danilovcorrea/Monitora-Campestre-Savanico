@@ -1,0 +1,25 @@
+{
+  "phase_id": "phase_E",
+  "status": "passed",
+  "can_continue": true,
+  "action_required": false,
+  "reason": "testes finais passaram",
+  "files_changed": [
+    "monitora_campsav_alvo_global_v2.6.0.R"
+  ],
+  "tests_run": [
+    "parse",
+    "synthetic",
+    "real metadata-only",
+    "git diff --check",
+    "performance"
+  ],
+  "tests_passed": true,
+  "auto_fix_attempts": 0,
+  "data_real_touched": true,
+  "data_real_saved": false,
+  "data_real_versionable_detected": false,
+  "performance_checked": true,
+  "performance_regression": false,
+  "commit_push_allowed": true
+}
