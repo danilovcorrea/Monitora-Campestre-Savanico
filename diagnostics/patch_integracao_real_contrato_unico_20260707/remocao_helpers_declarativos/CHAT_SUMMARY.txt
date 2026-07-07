@@ -1,0 +1,11 @@
+status: ready_for_commit_push_gate
+HEAD: aa1c57a4ef2a03a57bf6f5c1922663ce92cdd4e6
+branch: dev-v2.6.2-h2r-cadeia-produtos
+hash_novo_script: 4416b1dd30a43422e1e03113ce967a7912f81f916552fc49a1b94353bdd21559
+helpers_removidos: monitora_cu_choice_20260707, monitora_cu_legado_outra_forma_vida_20260707, monitora_cu_resumo_ocorr_20260707, monitora_cu_export_ok_20260707, monitora_cu_metadata_produto_20260707, monitora_cu_normalizar_ocorr_20260707, monitora_cu_matriz_ocorr_20260707
+helpers_restantes: monitora_cu_20260707, monitora_cu_tokens_20260707, monitora_cu_forma_valida_20260707, monitora_cu_ocorr_campos_20260707
+helpers_restantes_com_chamada_operacional_real: monitora_cu_20260707, monitora_cu_tokens_20260707, monitora_cu_forma_valida_20260707, monitora_cu_ocorr_campos_20260707
+testes_executados: parse PASS; git diff --check PASS; sintético integração PASS; scanner helpers PASS; shiny harness sintético PASS; checagem dado real versionável PASS
+dado_real_versionavel: False
+ready_for_commit_push: True
+precisa_approval_commit_push: True

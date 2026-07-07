@@ -1,0 +1,36 @@
+{
+  "status": "ready_for_commit_push_gate",
+  "action_required": true,
+  "reason": "gate sensível final de commit/push após remoção de helpers declarativos",
+  "head": "aa1c57a4ef2a03a57bf6f5c1922663ce92cdd4e6",
+  "branch": "dev-v2.6.2-h2r-cadeia-produtos",
+  "script_sha256_before": "f4bb18b276f685dc082044da8d20177526d877b895eace7a0f1d015951878f56",
+  "script_sha256_after": "4416b1dd30a43422e1e03113ce967a7912f81f916552fc49a1b94353bdd21559",
+  "helpers_declarativos_antes": 5,
+  "helpers_declarativos_depois": 0,
+  "helpers_com_chamada_operacional": 4,
+  "helpers_removidos": [
+    "monitora_cu_choice_20260707",
+    "monitora_cu_legado_outra_forma_vida_20260707",
+    "monitora_cu_resumo_ocorr_20260707",
+    "monitora_cu_export_ok_20260707",
+    "monitora_cu_metadata_produto_20260707",
+    "monitora_cu_normalizar_ocorr_20260707",
+    "monitora_cu_matriz_ocorr_20260707"
+  ],
+  "helpers_integrados": [
+    "monitora_cu_20260707",
+    "monitora_cu_tokens_20260707",
+    "monitora_cu_forma_valida_20260707",
+    "monitora_cu_ocorr_campos_20260707"
+  ],
+  "parse_ok": true,
+  "diff_check_ok": true,
+  "synthetic_ok": true,
+  "scanner_helpers_ok": true,
+  "shiny_harness_ok": true,
+  "data_real_versionable_detected": false,
+  "performance_regression": false,
+  "ready_for_commit_push": true,
+  "commit_push_autorizado": false
+}

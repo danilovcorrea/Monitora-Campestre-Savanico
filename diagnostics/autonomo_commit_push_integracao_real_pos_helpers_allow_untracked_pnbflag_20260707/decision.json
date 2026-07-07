@@ -1,0 +1,24 @@
+{
+  "status": "staged_selective_ok",
+  "action_required": false,
+  "commit_push_autorizado": true,
+  "pnbflag_untracked_allowed": true,
+  "pnbflag_status": "?? monitora_campsav_alvo_global_v2.6.0_03.5L-C_PNB_FLAG_OFF.R",
+  "pnbflag_staged_detected": false,
+  "forbidden_staged_detected": false,
+  "staged_selective_ok": true,
+  "staged_files": [
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/00_PREFLIGHT.md",
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/01_VALIDACOES_FINAIS.md",
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/02_STAGED_FILES.md",
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/03_FORBIDDEN_CHECK.md",
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/READOUT_FOR_CHAT.txt",
+    "diagnostics/autonomo_commit_push_integracao_real_pos_helpers_allow_untracked_pnbflag_20260707/decision.json",
+    "diagnostics/patch_integracao_real_contrato_unico_20260707/remocao_helpers_declarativos/04_TESTES_POS_REMOCAO.md",
+    "diagnostics/patch_integracao_real_contrato_unico_20260707/remocao_helpers_declarativos/CHAT_SUMMARY.txt",
+    "diagnostics/patch_integracao_real_contrato_unico_20260707/remocao_helpers_declarativos/decision.json",
+    "diagnostics/patch_integracao_real_contrato_unico_20260707/remocao_helpers_declarativos/helpers_scan_after.json",
+    "diagnostics/patch_integracao_real_contrato_unico_20260707/remocao_helpers_declarativos/tests/test_integracao_operacional_sintetica_pos_remocao.R",
+    "monitora_campsav_alvo_global_v2.6.0.R"
+  ]
+}

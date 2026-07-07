@@ -1,0 +1,100 @@
+{
+  "rows": [
+    {
+      "helper": "monitora_cu_20260707",
+      "definitions": [
+        3
+      ],
+      "calls": [
+        49203,
+        49223
+      ],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_choice_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_tokens_20260707",
+      "definitions": [
+        4,
+        49199
+      ],
+      "calls": [
+        49241
+      ],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_forma_valida_20260707",
+      "definitions": [
+        5,
+        49200
+      ],
+      "calls": [
+        49250
+      ],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_legado_outra_forma_vida_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_ocorr_campos_20260707",
+      "definitions": [
+        6,
+        49201
+      ],
+      "calls": [
+        49256
+      ],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_matriz_ocorr_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_normalizar_ocorr_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_resumo_ocorr_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_export_ok_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    },
+    {
+      "helper": "monitora_cu_metadata_produto_20260707",
+      "definitions": [],
+      "calls": [],
+      "declarative": false
+    }
+  ],
+  "remaining_declarative": [],
+  "removed": [
+    "monitora_cu_choice_20260707",
+    "monitora_cu_legado_outra_forma_vida_20260707",
+    "monitora_cu_resumo_ocorr_20260707",
+    "monitora_cu_export_ok_20260707",
+    "monitora_cu_metadata_produto_20260707",
+    "monitora_cu_normalizar_ocorr_20260707",
+    "monitora_cu_matriz_ocorr_20260707"
+  ]
+}

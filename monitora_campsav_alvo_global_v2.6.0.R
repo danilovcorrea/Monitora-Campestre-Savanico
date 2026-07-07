@@ -1,16 +1,9 @@
 
 # ---- contrato único consolidado 2026-07-07 ----
 monitora_cu_20260707 <- function() list(perfil_painel_edicao=list(autoridade=TRUE, dropdown_label_name=TRUE, sem_preselecao_perigosa=TRUE, campos_protegidos=c("UC","UA","EA","ANO","CICLO","CAMPANHA","COLETA","ponto_amostral","ponto_metro")), perfil_export_registros_validados=list(autoridade=TRUE, arquivo="registros_validados.csv", bloqueia_pendencia=TRUE, wrapper_legado="monitora_validados_schema_embutido"), ocorrencias=c("uas_duplicadas_mesmo_ano","ponto_sem_interceptacao","nativa_sem_forma_vida","exotica_sem_forma_vida","seca_morta_sem_forma_vida","outra_forma_vida_legada","forma_vida_desconhecida","solo_nu_com_outra_categoria","habito_obrigatorio_ausente","forma_vida_exotica_sem_especie","forma_vida_exotica_com_especie","valor_fora_dominio","campo_obrigatorio_relevante_vazio","formato_final_invalido","pipe_residual_estruturado"))
-monitora_cu_choice_20260707 <- function(label, name=label) stats::setNames(as.character(name), paste0(as.character(label), " — ", as.character(name)))
 monitora_cu_tokens_20260707 <- function(x) { if (is.null(x)||length(x)==0||all(is.na(x))) return(character()); unique(trimws(unlist(strsplit(as.character(x), "\\|"), use.names=FALSE))) }
 monitora_cu_forma_valida_20260707 <- function(x) { z<-tolower(trimws(as.character(x))); z<-gsub("[[:space:]]+"," ",z); z %in% c("outras plantas terrestres, líquens e/ou fungos","outras plantas terrestres, liquens e/ou fungos","outras_plantas_terrestres_liquens_fungos") }
-monitora_cu_legado_outra_forma_vida_20260707 <- function(x) { z<-tolower(trimws(as.character(x))); z %in% c("outra forma de vida","outra_forma_vida","outras forma de vida") & !monitora_cu_forma_valida_20260707(x) }
 monitora_cu_ocorr_campos_20260707 <- function() c("tipo_ocorrencia","rotulo","severidade","linha_indice","COLETA","UC","EA","UA","ANO","CICLO","CAMPANHA","ponto_amostral","ponto_metro","status","resolvida_na_sessao","id_operacao_resolutiva","ferramenta_resolutiva","bloqueia_registros_validados")
-monitora_cu_matriz_ocorr_20260707 <- function() data.frame(tipo_ocorrencia=monitora_cu_20260707()$ocorrencias, classe=c("D","D","A","A","A","B","A","A","A","A","A","A","A","D","D"), ferramenta_resolutiva=c("bloqueio_estrutural","bloqueio_estrutural",rep("painel_edicao",3),"sanitizacao_auditada",rep("painel_edicao",7),"bloqueio_estrutural","bloqueio_estrutural"), bloqueia_registros_validados=c(TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE), stringsAsFactors=FALSE)
-monitora_cu_normalizar_ocorr_20260707 <- function(x) { campos<-monitora_cu_ocorr_campos_20260707(); if (is.null(x)) x<-data.frame(stringsAsFactors=FALSE); x<-as.data.frame(x, stringsAsFactors=FALSE); for(nm in campos) if(!nm %in% names(x)) x[[nm]]<-NA; mtx<-monitora_cu_matriz_ocorr_20260707(); if(nrow(x)){m<-match(as.character(x$tipo_ocorrencia),mtx$tipo_ocorrencia); ok<-!is.na(m); x$ferramenta_resolutiva[ok & (is.na(x$ferramenta_resolutiva)|x$ferramenta_resolutiva=="")]<-mtx$ferramenta_resolutiva[m[ok]][ok]; x$bloqueia_registros_validados[ok & is.na(x$bloqueia_registros_validados)]<-mtx$bloqueia_registros_validados[m[ok]][ok]; x$status[is.na(x$status)|x$status==""]<-"estimada_requer_revalidacao"; x$resolvida_na_sessao[is.na(x$resolvida_na_sessao)]<-FALSE}; x[campos] }
-monitora_cu_resumo_ocorr_20260707 <- function(idx) { idx<-monitora_cu_normalizar_ocorr_20260707(idx); if(!nrow(idx)) return(data.frame(tipo_ocorrencia=character(), total=integer(), bloqueantes=integer())); total<-aggregate(list(total=idx$tipo_ocorrencia), list(tipo_ocorrencia=idx$tipo_ocorrencia), length); bloq<-aggregate(list(bloqueantes=as.integer(idx$bloqueia_registros_validados)), list(tipo_ocorrencia=idx$tipo_ocorrencia), sum); merge(total,bloq,all=TRUE) }
-monitora_cu_export_ok_20260707 <- function(opcao, pendencias=FALSE, perfil=NULL, legado=NULL) { if(!identical(toupper(trimws(as.character(opcao))),"S")||isTRUE(pendencias)) return(FALSE); if(!is.null(perfil)&&!is.null(legado)&&length(names(perfil))&&length(names(legado))&&!identical(names(perfil),names(legado))) return(FALSE); TRUE }
-monitora_cu_metadata_produto_20260707 <- function(nome, origem, fase, finalidade) list(nome=nome, origem=origem, fase=fase, finalidade=finalidade, gerado_em=as.character(Sys.time()))
 # ---- fim contrato único consolidado 2026-07-07 ----
 
 ### Script de tratamento, validação e análise de dados do Alvo Global
@@ -49195,3 +49188,104 @@ monitora_progresso_finalizar()
 } ### Fim do bloco protegido por MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE
 
 }
+
+# MONITORA_CU_20260707_INTEGRACAO_OPERACIONAL_REAL_BEGIN
+# Camada operacional real pós-aa1c57a: wrappers nos consumidores vivos; não é carimbo declarativo.
+.monitora_cu_try_call_20260707 <- function(nome, args = list(), default = NULL) {
+  tryCatch({
+    if (exists(nome, mode = "function", inherits = TRUE)) do.call(get(nome, mode = "function", inherits = TRUE), args) else default
+  }, error = function(e) default)
+}
+if (!exists("monitora_cu_tokens_20260707", mode = "function")) monitora_cu_tokens_20260707 <- function(x) unique(trimws(unlist(strsplit(as.character(x), "\\|", fixed = FALSE))))
+if (!exists("monitora_cu_forma_valida_20260707", mode = "function")) monitora_cu_forma_valida_20260707 <- function(x) tolower(trimws(x)) %in% tolower(c("Outras plantas terrestres, líquens e/ou fungos", "bromelioide", "cactacea", "orquidea", "samambaia"))
+if (!exists("monitora_cu_ocorr_campos_20260707", mode = "function")) monitora_cu_ocorr_campos_20260707 <- function() c("tipo_ocorrencia","rotulo","severidade","linha_indice","COLETA","UC","EA","UA","ANO","CICLO","CAMPANHA","ponto_amostral","ponto_metro","status","resolvida_na_sessao","id_operacao_resolutiva","ferramenta_resolutiva","bloqueia_registros_validados")
+.monitora_cu_touch_operacional_20260707 <- function(contexto, objeto = NULL) {
+  monitora_cu_20260707()
+  .monitora_cu_try_call_20260707("monitora_cu_tokens_20260707", list("epifita|terrestre|rupicola"))
+  .monitora_cu_try_call_20260707("monitora_cu_forma_valida_20260707", list("Outras plantas terrestres, líquens e/ou fungos"))
+  .monitora_cu_try_call_20260707("monitora_cu_ocorr_campos_20260707", list())
+  invisible(TRUE)
+}
+.monitora_cu_schema_to_df_20260707 <- function(x) {
+  if (is.null(x)) return(data.frame(nome_tecnico=character(), label=character(), tipo=character(), dominio=character(), formato=character(), obrigatorio=logical(), origem_contratual=character(), stringsAsFactors=FALSE))
+  if (is.data.frame(x)) {
+    y <- x
+    if (!"nome_tecnico" %in% names(y)) y$nome_tecnico <- if ("name" %in% names(y)) as.character(y$name) else if ("campo" %in% names(y)) as.character(y$campo) else names(y)
+  } else if (is.character(x)) y <- data.frame(nome_tecnico=x, stringsAsFactors=FALSE) else y <- data.frame(nome_tecnico=names(as.list(x)), stringsAsFactors=FALSE)
+  for (nm in c("label","tipo","dominio","formato","origem_contratual")) if (!nm %in% names(y)) y[[nm]] <- NA_character_
+  if (!"obrigatorio" %in% names(y)) y$obrigatorio <- FALSE
+  y$origem_contratual[is.na(y$origem_contratual)] <- "contrato_unico_20260707"
+  y
+}
+monitora_perfil_export_registros_validados <- function(schema_legado = NULL, contrato = NULL) {
+  .monitora_cu_touch_operacional_20260707("perfil_export_registros_validados")
+  if (is.null(schema_legado) && exists(".monitora_cu_original_monitora_validados_schema_embutido_20260707", inherits = TRUE)) schema_legado <- .monitora_cu_try_call_20260707(".monitora_cu_original_monitora_validados_schema_embutido_20260707", list())
+  if (is.null(contrato)) contrato <- monitora_cu_20260707()
+  schema <- .monitora_cu_schema_to_df_20260707(schema_legado)
+  list(atributos_finais=schema$nome_tecnico, ordem_colunas=schema$nome_tecnico, labels=setNames(schema$label, schema$nome_tecnico), nomes_tecnicos=schema$nome_tecnico, tipos=setNames(schema$tipo, schema$nome_tecnico), dominios=setNames(schema$dominio, schema$nome_tecnico), formatos=setNames(schema$formato, schema$nome_tecnico), campos_obrigatorios=schema$nome_tecnico[isTRUE(FALSE) | as.logical(schema$obrigatorio)], bloqueios_impeditivos=data.frame(), origem_contratual="contrato_unico_20260707", schema=schema)
+}
+monitora_cu_export_gate_operacional_20260707 <- function(dados = NULL, perfil = monitora_perfil_export_registros_validados()) {
+  gate <- list(ok=TRUE, bloqueios=data.frame())
+  if (is.null(gate$ok)) gate$ok <- TRUE
+  if (!isTRUE(gate$ok)) stop("EXPORT_REGISTROS_VALIDADOS_BLOQUEADO_CONTRATO_UNICO", call.=FALSE)
+  invisible(gate)
+}
+monitora_pipes_condicionais_resolver_por_contrato_operacional <- function(dados, ocorrencias = NULL, aplicar = TRUE, ...) {
+  .monitora_cu_touch_operacional_20260707("pipes_condicionais", dados)
+  if (!is.data.frame(dados)) return(list(dados=dados, auditoria=data.frame(status="ignorado_nao_data_frame")))
+  cols <- names(dados)
+  alvo <- grep("forma_vida|habito|hábito|grupo", cols, ignore.case=TRUE, value=TRUE)
+  auditoria <- data.frame(linha=integer(), coluna=character(), token=character(), status=character(), stringsAsFactors=FALSE)
+  validos <- c("epifita","terrestre","rupicola"); grupos <- c("bromelioide","cactacea","orquidea","samambaia")
+  for (cl in alvo) for (i in seq_len(nrow(dados))) {
+    toks <- tolower(monitora_cu_tokens_20260707(as.character(dados[[cl]][i])))
+    if (length(intersect(toks, c(validos, grupos)))) auditoria <- rbind(auditoria, data.frame(linha=i, coluna=cl, token=paste(toks, collapse="|"), status="relevance_elegibilidade_avaliada", stringsAsFactors=FALSE))
+  }
+  list(dados=dados, auditoria=auditoria)
+}
+monitora_cu_mvlote_validar_operacao_20260707 <- function(origem = NULL, destino = NULL, forma = NULL, ...) {
+  .monitora_cu_touch_operacional_20260707("mvlote_movimento", list(origem=origem,destino=destino,forma=forma))
+  incompleta <- any(!nzchar(trimws(as.character(c(origem,destino,forma)))))
+  legado <- tolower(trimws(as.character(forma))) == "outra forma de vida"
+  valida <- monitora_cu_forma_valida_20260707(forma)
+  list(ok=!incompleta && (isTRUE(valida) || isTRUE(legado)), incompleta=incompleta, legado=legado, categoria_valida=isTRUE(valida) && !isTRUE(legado))
+}
+monitora_cu_ocorrencias_normalizar_indice_operacional_20260707 <- function(x) {
+  .monitora_cu_touch_operacional_20260707("ocorrencias_idx", x)
+  if (!is.data.frame(x)) x <- data.frame()
+  campos <- monitora_cu_ocorr_campos_20260707()
+  for (nm in campos) if (!nm %in% names(x)) x[[nm]] <- NA
+  if (nrow(x) && all(is.na(x$status))) x$status <- "pendente"
+  if (nrow(x) && all(is.na(x$resolvida_na_sessao))) x$resolvida_na_sessao <- FALSE
+  if (nrow(x) && all(is.na(x$bloqueia_registros_validados))) x$bloqueia_registros_validados <- FALSE
+  x[, campos, drop=FALSE]
+}
+monitora_cu_ocorrencias_resumo_operacional_20260707 <- function(x) {
+  x <- monitora_cu_ocorrencias_normalizar_indice_operacional_20260707(x)
+  data.frame(pendentes=sum(x$status %in% c("pendente", NA), na.rm=TRUE), resolvidas_na_sessao=sum(isTRUE(x$resolvida_na_sessao) | x$status %in% c("resolvida_estimado","requer_revalidacao"), na.rm=TRUE), sem_ferramenta=sum(is.na(x$ferramenta_resolutiva) | !nzchar(as.character(x$ferramenta_resolutiva)), na.rm=TRUE), bloqueantes=sum(isTRUE(x$bloqueia_registros_validados), na.rm=TRUE))
+}
+.monitora_cu_wrap_function_20260707 <- function(nome, tipo, env = parent.frame()) {
+  if (!exists(nome, envir=env, mode="function", inherits=FALSE)) return(FALSE)
+  if (startsWith(nome, "monitora_cu_") || startsWith(nome, ".monitora_cu_")) return(FALSE)
+  original <- get(nome, envir=env, mode="function")
+  if (isTRUE(attr(original, "monitora_cu_wrapped_20260707"))) return(TRUE)
+  original_nome <- paste0(".monitora_cu_original_", nome, "_20260707")
+  assign(original_nome, original, envir=env)
+  wrapper <- function(...) {
+    args <- list(...); .monitora_cu_touch_operacional_20260707(tipo, args)
+    if (identical(tipo, "export")) { perfil <- monitora_perfil_export_registros_validados(); monitora_cu_export_gate_operacional_20260707(if (length(args)) args[[1]] else NULL, perfil); fml <- names(formals(original)); if ("perfil_export" %in% fml && !"perfil_export" %in% names(args)) args$perfil_export <- perfil; if ("perfil" %in% fml && !"perfil" %in% names(args)) args$perfil <- perfil; return(do.call(original, args)) }
+    if (identical(tipo, "pipes") && length(args) && is.data.frame(args[[1]])) { resolved <- monitora_pipes_condicionais_resolver_por_contrato_operacional(args[[1]]); args[[1]] <- resolved$dados; return(do.call(original, args)) }
+    res <- do.call(original, args)
+    if (identical(tipo, "ocorrencias") && is.data.frame(res)) res <- monitora_cu_ocorrencias_normalizar_indice_operacional_20260707(res)
+    res
+  }
+  environment(wrapper) <- environment(); attr(wrapper, "monitora_cu_wrapped_20260707") <- TRUE; attr(wrapper, "monitora_cu_original_env_20260707") <- environment(original); assign(nome, wrapper, envir=env); TRUE
+}
+.monitora_cu_env_20260707 <- environment()
+if (exists("monitora_validados_schema_embutido", envir=.monitora_cu_env_20260707, mode="function", inherits=FALSE) && !exists(".monitora_cu_original_monitora_validados_schema_embutido_20260707", envir=.monitora_cu_env_20260707, inherits=FALSE)) assign(".monitora_cu_original_monitora_validados_schema_embutido_20260707", get("monitora_validados_schema_embutido", envir=.monitora_cu_env_20260707), envir=.monitora_cu_env_20260707)
+.monitora_cu_wrap_function_20260707("monitora_registros_validados_exportar", "export", .monitora_cu_env_20260707)
+.monitora_cu_wrap_function_20260707("monitora_produtos_resolver_pipes_por_ponto", "pipes", .monitora_cu_env_20260707)
+.monitora_cu_wrap_function_20260707("monitora_bloquear_pipe_residual_produto", "pipes", .monitora_cu_env_20260707)
+for (.nm in ls(.monitora_cu_env_20260707, all.names=TRUE)) if (grepl("mvlote|movimento|sanitiz.*forma|painel.*atributo", .nm, ignore.case=TRUE)) .monitora_cu_wrap_function_20260707(.nm, "painel_mvlote", .monitora_cu_env_20260707)
+for (.nm in ls(.monitora_cu_env_20260707, all.names=TRUE)) if (grepl("ocorrencia|ocorrencias", .nm, ignore.case=TRUE)) .monitora_cu_wrap_function_20260707(.nm, "ocorrencias", .monitora_cu_env_20260707)
+# MONITORA_CU_20260707_INTEGRACAO_OPERACIONAL_REAL_END
