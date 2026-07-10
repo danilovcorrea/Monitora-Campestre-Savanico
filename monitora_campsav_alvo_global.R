@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.6.3
-### Versão pública: v2.6.3
+### Versão do script: 2.6.4
+### Versão pública: v2.6.4
 ###
 ### Finalidade
 ###   Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -6381,6 +6381,108 @@ monitora_correcao_unificar_dependencias <- function(dep_xlsform) {
   unique(data.table::rbindlist(list(dep_xlsform[, ..cols], dep_padrao[, ..cols]), fill = TRUE, use.names = TRUE))
 }
 
+### JOB6B-EMERG: perfil emergencial declarativo e centralizado, exclusivamente
+### para colunas de espécie/nome popular (`papel_coluna == "especie_nome_popular"`)
+### cujo rótulo histórico de `registros_corrig` não contém nenhum token de
+### forma de vida reconhecido por `monitora_correcao_mapa_colunas_canonicas()`
+### (ex.: "Erva-de-passarinho" no lugar de "ervas_de_passarinho";
+### descrições de altura/diâmetro no lugar de "abaixo"/"acima"). Cada linha
+### abaixo foi verificada contra o rótulo REAL observado em `registros_corrig`
+### (run_02 pública) e contra o `caminho_registro` REAL do contrato único
+### embutido (`monitora_contrato_unico_embutido()$atributos`) antes de ser
+### incluída -- não é uma lista de liberação por nome de atributo, é uma
+### tabela de correspondência rótulo->token, com o caminho final ainda
+### resolvido pelo mesmo resolvedor contratual usado para todo o resto
+### (`monitora_perfil_painel_edicao_operacional_contrato_unico()`).
+###
+### Dívida técnica registrada: o ideal é `monitora_correcao_mapa_colunas_canonicas()`
+### reconhecer esses sinônimos nativamente (JOB6C), o que beneficiaria todos
+### os consumidores de `token_associado_coluna`, não só o dicionário do
+### painel. Esta tabela é o atalho emergencial documentado, central e
+### auditável (ver diagnostics/job6b_restaurar_atributos_painel_v263/).
+monitora_perfil_painel_edicao_emergencial_v263 <- function() {
+  data.table::data.table(
+    label_historico_registros_corrig = c(
+      "Espécie ou nome popular (Arbusto tocando a vareta a uma altura inferior a 50cm) (amostragem/registro)",
+      "Espécie ou nome popular (Arbusto tocando a vareta a uma altura igual ou superior a 50cm) (amostragem/registro)",
+      "Espécie ou nome popular (Árvore com diâmetro do tronco menor que 5cm a 30cm do solo (D30)) (amostragem/registro)",
+      "Espécie ou nome popular (Árvore com diâmetro do tronco igual ou maior que 5cm a 30cm do solo (D30)) (amostragem/registro)",
+      "Espécie ou nome popular (Erva-de-passarinho) (amostragem/registro)",
+      "Espécie ou nome popular (Velósia) (amostragem/registro)"
+    ),
+    token_associado = c(
+      "arbusto_abaixo", "arbusto_acima", "arvore_abaixo", "arvore_acima",
+      "ervas_de_passarinho", "canela_de_ema"
+    ),
+    categoria = c("nativa", "nativa", "nativa", "nativa", "nativa", "nativa"),
+    caminho_registro_canonico = c(
+      "amostragem/registro/forma_vida_nativa_arbusto_abaixo",
+      "amostragem/registro/forma_vida_nativa_arbusto_acima",
+      "amostragem/registro/forma_vida_nativa_arvore_abaixo",
+      "amostragem/registro/forma_vida_nativa_arvore_acima",
+      "amostragem/registro/forma_vida_nativa_ervas_de_passarinho",
+      "amostragem/registro/forma_vida_nativa_canela_de_ema"
+    ),
+    motivo = "rótulo histórico de registros_corrig sem token de forma de vida reconhecido por monitora_correcao_mapa_colunas_canonicas(); caminho_registro_canonico confirmado contra monitora_contrato_unico_embutido() real (JOB6B-EMERG)"
+  )
+}
+
+### JOB6C: perfil emergencial declarativo e centralizado para os 6 atributos
+### cuja editabilidade foi decidida explicitamente pelo usuário (CICLO,
+### CAMPANHA, Data (data_hora), Horário (data_hora), Coordenada inicial e
+### final da amostragem). Causa raiz confirmada por atributo:
+### - Data/Horário: EXISTEM em monitora_contrato_unico_embutido()$atributos
+###   com caminho_registro real ("amostragem/registro/data",
+###   "amostragem/registro/hora"), mas cardinalidade_operacional =
+###   "ambiguo_indeterminado" -- excluídas do perfil_painel_edicao por
+###   monitora_contrato_unico_indices() (filtro
+###   `!(cardinalidade_operacional %in% c("ambiguo_indeterminado","tecnico_midia"))`).
+### - Coordenadas: EXISTEM com caminho_registro real
+###   ("amostragem/registro/ponto_inicio_transecto"/"..._fim_transecto"),
+###   mas cardinalidade_operacional = "tecnico_midia" (mesma exclusão).
+### - CICLO/CAMPANHA: são metadados administrativos de amostragem SEM
+###   pergunta correspondente na survey do XLSForm (confirmado: nenhuma
+###   linha em monitora_contrato_unico_embutido()$atributos para eles) --
+###   não há caminho XLSForm para aliasar; o "canônico" é o próprio nome
+###   administrativo, documentado como tal.
+### Reclassificar cardinalidade_operacional de forma ampla em
+### monitora_contrato_unico_embutido()/monitora_contrato_unico_indices()
+### afetaria todos os consumidores desses tipos em todo o script (risco e
+### escopo maiores que o autorizado para este hotfix); esta tabela é o
+### atalho declarativo e auditável, aplicado só como override pontual
+### quando o resolvedor contratual padrão deixa esses 6 atributos
+### específicos fora do perfil -- dívida técnica registrada para
+### reclassificar cardinalidade_operacional de date/time/geopoint no
+### contrato único em um hotfix futuro dedicado.
+monitora_perfil_painel_edicao_emergencial_administrativo_temporal_v263 <- function() {
+  data.table::data.table(
+    atributo_alvo = c(
+      "CICLO", "CAMPANHA", "Data (data_hora)", "Horário (data_hora)",
+      "Coordenada inicial da amostragem (amostragem)", "Coordenada final da amostragem (amostragem)"
+    ),
+    atributo_canonico_2025 = c(
+      "CICLO", "CAMPANHA", "amostragem/registro/data", "amostragem/registro/hora",
+      "amostragem/registro/ponto_inicio_transecto", "amostragem/registro/ponto_fim_transecto"
+    ),
+    caminho_registro = c(
+      "CICLO", "CAMPANHA", "amostragem/registro/data", "amostragem/registro/hora",
+      "amostragem/registro/ponto_inicio_transecto", "amostragem/registro/ponto_fim_transecto"
+    ),
+    name_curto = c("CICLO", "CAMPANHA", "data", "hora", "ponto_inicio_transecto", "ponto_fim_transecto"),
+    tipo_base_contrato_unico = c("text", "text", "date", "time", "geopoint", "geopoint"),
+    escopo_operacional_contrato_unico = rep("coleta_inteira", 6L),
+    escopos_permitidos_contrato_unico = rep("coleta_inteira", 6L),
+    motivo_escopo_contrato_unico = c(
+      "metadado administrativo de amostragem (sem pergunta correspondente na survey do XLSForm); decisão operacional JOB6C: editável em escopo coleta_inteira",
+      "metadado administrativo de amostragem (sem pergunta correspondente na survey do XLSForm); decisão operacional JOB6C: editável em escopo coleta_inteira",
+      "campo XLSForm real (amostragem/registro/data), cardinalidade_operacional=ambiguo_indeterminado excluía do perfil_painel_edicao; decisão operacional JOB6C: editável em escopo coleta_inteira",
+      "campo XLSForm real (amostragem/registro/hora), cardinalidade_operacional=ambiguo_indeterminado excluía do perfil_painel_edicao; decisão operacional JOB6C: editável em escopo coleta_inteira",
+      "campo XLSForm real geopoint (amostragem/registro/ponto_inicio_transecto), cardinalidade_operacional=tecnico_midia excluía do perfil_painel_edicao; decisão operacional JOB6C: editável em escopo coleta_inteira",
+      "campo XLSForm real geopoint (amostragem/registro/ponto_fim_transecto), cardinalidade_operacional=tecnico_midia excluía do perfil_painel_edicao; decisão operacional JOB6C: editável em escopo coleta_inteira"
+    )
+  )
+}
+
 monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
   dt <- data.table::as.data.table(dt)
   chaves <- monitora_correcao_colunas_chave(dt)
@@ -6400,11 +6502,25 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
   ### Campos superiores/estruturais de coleta devem sobrescrever regras genéricas
   ### posteriores, inclusive nomes legados como "Data (data_hora)".
   out[grepl("form_veg|campanha|ciclo|^UC$|^EA$|^UA$|estrato|[aá]rea.*eleg[ií]vel|data_hora|data \\(data_hora\\)|hor[aá]rio \\(data_hora\\)|data_do_registro|^data$|^hora$|num_placa|coordenada|protocolo", atributo_coluna_registros_corrig, ignore.case = TRUE), escopo_sugerido := "coleta_inteira"]
+  ### JOB6C: "Horário (data_hora)" contém a substring "data" (do próprio
+  ### qualificador de grupo "(data_hora)"), então o antigo grepl("data", ...)
+  ### genérico classificava HORÁRIO como "data/texto" -- confirmado
+  ### reproduzindo o bug (validação de contrato recomputava tipo_base_edicao
+  ### como "date" para Horário, rejeitando um valor de hora válido como
+  ### "data inválida"). Checar o padrão de hora ANCORADO no início da string
+  ### primeiro resolve genericamente (não é uma exceção só para "Horário":
+  ### qualquer atributo cujo nome comece com "hora"/"horário" passa a ser
+  ### classificado corretamente antes do teste genérico de "data").
+  ### JOB6C: "coordenada" também não tinha inferência de tipo dedicada
+  ### (caía em "texto", pulando a validação de faixa lat/lon já existente em
+  ### monitora_correcao_validar_formato_valor() para tipo_base "geopoint").
+  ### Padrão genérico por nome, mesmo estilo dos demais casos desta cadeia.
   out[, tipo_valor_inferido := fifelse(grepl("uuid", atributo_coluna_registros_corrig, ignore.case = TRUE), "uuid",
+                                fifelse(grepl("^hor[aá]rio|^hora($|[^a-zA-Z])", atributo_coluna_registros_corrig, ignore.case = TRUE), "hora/texto",
                                 fifelse(grepl("data", atributo_coluna_registros_corrig, ignore.case = TRUE), "data/texto",
-                                fifelse(grepl("hora", atributo_coluna_registros_corrig, ignore.case = TRUE), "hora/texto",
+                                fifelse(grepl("coordenada", atributo_coluna_registros_corrig, ignore.case = TRUE), "geopoint/texto",
                                 fifelse(grepl("forma_vida|esp[eé]cies|tipo_forma", atributo_coluna_registros_corrig, ignore.case = TRUE), "select_multiple/texto",
-                                fifelse(grepl("ponto_metro", atributo_coluna_registros_corrig, ignore.case = TRUE), "decimal", "texto")))))]
+                                fifelse(grepl("ponto_metro", atributo_coluna_registros_corrig, ignore.case = TRUE), "decimal", "texto"))))))]
   if (nrow(campos) > 0) {
     out[, xlsform_name := NA_character_]
     out[, xlsform_label := NA_character_]
@@ -6413,13 +6529,60 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
     out[, xlsform_list_name := NA_character_]
     out[, xlsform_required := NA_character_]
     out[, xlsform_relevant := NA_character_]
+    ### Precedência contratual do XLSForm (hotfix JOB6/v2.6.3): quando o mesmo
+    ### name/caminho_registro/label existe em mais de um XLSForm embutido (ex.
+    ### versões históricas 03MAI24/05MAI23/ago2022 reutilizando um "name" que a
+    ### publicação vigente redefiniu), o candidato do XLSForm 21FEV25/publicação
+    ### atual deve sempre vencer; XLSForms históricos só servem de fallback
+    ### quando não há candidato vigente. Sem isso, o primeiro hit por ordem de
+    ### rbind (arbitrária) podia rebaixar campos select_one/select_multiple do
+    ### contrato vigente para "text" com rótulo histórico (ex.: samambaia nativa).
+    campos_pri <- data.table::copy(campos)
+    if (!("arquivo_21fev25_publicacao_ae" %in% names(campos_pri))) {
+      campos_pri[, arquivo_21fev25_publicacao_ae := grepl("21FEV25", arquivo_xlsform, ignore.case = TRUE)]
+    }
+    campos_pri[, arquivo_21fev25_publicacao_ae := fifelse(is.na(arquivo_21fev25_publicacao_ae), FALSE, arquivo_21fev25_publicacao_ae)]
+    ### JOB6E (EIXO B, causa raiz de 13/14 "bloqueado_sem_dominio_xlsform"):
+    ### colunas de registros_corrig que nunca ganharam um `name` curto
+    ### canônico ficam com o rótulo histórico bruto + sufixo de escopo como
+    ### nome de coluna (ex.: "**Espécies** de <span style=""color:red"">
+    ### graminóides exóticas:</span> (amostragem/registro)"). Esse rótulo bruto
+    ### tem aspas duplicadas (herdadas de um nível de escaping do atributo HTML
+    ### `style="..."` ao virar cabeçalho de coluna) e o sufixo de escopo, então
+    ### nunca bate contra `campos$label` (que preserva aspas simples e não tem
+    ### o sufixo) nos dois testes acima -- xlsform_tipo/xlsform_list_name
+    ### ficavam NA, n_opcoes_xlsform virava 0 e o atributo era bloqueado por
+    ### "falta de domínio" mesmo quando o list_name do XLSForm existe e tem
+    ### opções reais (confirmado: list_name "especies_exotica_graminoide" tem
+    ### opções no XLSForm; só a resolução por nome falhava). Pré-computado uma
+    ### única vez fora do loop por atributo (custo por linha de registros_corrig,
+    ### não por candidato do XLSForm). O nível de duplicação de aspas observado
+    ### varia por execução/estágio (2 ou 4 aspas seguidas conforme o dado já
+    ### passou por 1 ou 2 ciclos de escaping upstream); nenhum rótulo XLSForm
+    ### legítimo usa aspas consecutivas, então colapsar QUALQUER sequência de
+    ### aspas para uma única aspa é seguro e cobre os dois casos sem depender
+    ### de contar pares.
+    normalizar_rotulo_alias_coluna <- function(x) {
+      x <- as.character(x)
+      x[is.na(x)] <- ""
+      x <- sub(" \\(amostragem/registro\\)$", "", x, perl = TRUE)
+      x <- gsub("\"+", "\"", x, perl = TRUE)
+      trimws(x)
+    }
+    campos_pri[, label_norm_alias := normalizar_rotulo_alias_coluna(label)]
     for (ii in seq_len(nrow(out))) {
       cc <- out$atributo_coluna_registros_corrig[ii]
-      hit <- campos[name == cc | caminho_registro == cc | label == cc]
+      hit <- campos_pri[name == cc | caminho_registro == cc | label == cc]
       if (nrow(hit) == 0) {
-        hit <- campos[grepl(paste0("(^|/)", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", cc, perl = TRUE), "$"), caminho_registro, ignore.case = TRUE)]
+        hit <- campos_pri[grepl(paste0("(^|/)", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", cc, perl = TRUE), "$"), caminho_registro, ignore.case = TRUE)]
+      }
+      if (nrow(hit) == 0) {
+        cc_norm <- normalizar_rotulo_alias_coluna(cc)
+        if (nzchar(cc_norm)) hit <- campos_pri[label_norm_alias == cc_norm]
       }
       if (nrow(hit) > 0) {
+        hit[, match_caminho_exato := caminho_registro == cc]
+        data.table::setorderv(hit, c("arquivo_21fev25_publicacao_ae", "match_caminho_exato"), order = c(-1L, -1L))
         tipo_hit <- monitora_correcao_tipo_xlsform(hit$type[1])
         data.table::set(out, i = ii, j = "xlsform_name", value = hit$name[1])
         data.table::set(out, i = ii, j = "xlsform_label", value = hit$label[1])
@@ -6456,12 +6619,103 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
   } else if (exists("monitora_correcao_anotar_contrato_template_sismonitora", mode = "function")) {
     out <- monitora_correcao_anotar_contrato_template_sismonitora(out, dt)
   }
+
+  ### JOB6B-EMERG: resolvedor derivado do contrato único para campos de
+  ### espécie/nome popular (papel_coluna == "especie_nome_popular"). O
+  ### rótulo histórico de registros_corrig para a variante NATIVA omite o
+  ### qualificador de categoria (ex.: "Espécie ou nome popular (Erva
+  ### bromelioide)"), enquanto o rótulo canônico do XLSForm 21FEV25 sempre o
+  ### inclui (ex.: "Espécie ou nome popular (Erva bromelioide nativa)").
+  ### Verificado contra os 15 campos reais dessa família no contrato
+  ### embutido: toda variante exótica/seca-morta se autoidentifica no
+  ### próprio rótulo ("exótic..."/"seca"/"morta"); a ausência desses
+  ### marcadores só ocorre na variante nativa -- por isso o default é seguro
+  ### (não é uma adivinhação por atributo, é um fato já verificado do
+  ### próprio contrato). O caminho canônico é então localizado por
+  ### categoria+token (não por nome de atributo) contra os índices já
+  ### existentes do contrato único, testando as duas convenções de
+  ### nomenclatura realmente usadas (com e sem sufixo "_sp", e a forma
+  ### exótica "especies_exotica_<token>"/"exotica_<token>_outra_sp"),
+  ### mantendo a precedência: candidato cujo tipo_base bate com o tipo já
+  ### inferido para a coluna observada vence. Precisa rodar DEPOIS do merge
+  ### de contrato_edicao acima, pois depende de tipo_base_edicao.
+  idx_emerg_esp <- which(
+    out$papel_coluna == "especie_nome_popular" &
+      (is.na(out$token_associado_coluna) | !nzchar(out$token_associado_coluna))
+  )
+  if (length(idx_emerg_esp)) {
+    perfil_emerg_esp <- monitora_perfil_painel_edicao_emergencial_v263()
+    m_emerg <- match(out$atributo_coluna_registros_corrig[idx_emerg_esp], perfil_emerg_esp$label_historico_registros_corrig)
+    achou_emerg <- !is.na(m_emerg)
+    if (any(achou_emerg)) {
+      data.table::set(out, i = idx_emerg_esp[achou_emerg], j = "token_associado_coluna", value = perfil_emerg_esp$token_associado[m_emerg[achou_emerg]])
+      data.table::set(out, i = idx_emerg_esp[achou_emerg], j = "categoria_coluna", value = perfil_emerg_esp$categoria[m_emerg[achou_emerg]])
+    }
+  }
+  out[
+    papel_coluna == "especie_nome_popular" & (is.na(categoria_coluna) | !nzchar(categoria_coluna)),
+    categoria_coluna := "nativa"
+  ]
+  out[, caminho_candidato_especie := NA_character_]
+  if ("tipo_base_edicao" %in% names(out) &&
+      any(out$papel_coluna == "especie_nome_popular" & !is.na(out$token_associado_coluna) & nzchar(out$token_associado_coluna), na.rm = TRUE)) {
+    idx_esp <- which(out$papel_coluna == "especie_nome_popular" & !is.na(out$token_associado_coluna) & nzchar(out$token_associado_coluna))
+    contrato_idx_esp <- tryCatch(monitora_contrato_unico_indices_cache(), error = function(e) NULL)
+    at_esp <- if (!is.null(contrato_idx_esp) && !is.null(contrato_idx_esp$indices$por_caminho_registro)) {
+      data.table::as.data.table(contrato_idx_esp$indices$por_caminho_registro)
+    } else {
+      data.table::data.table(caminho_registro = character(), tipo_base = character())
+    }
+    caminhos_validos <- if (nrow(at_esp)) unique(at_esp$caminho_registro) else character(0)
+    tipo_por_caminho <- if (nrow(at_esp)) stats::setNames(at_esp$tipo_base, at_esp$caminho_registro) else character(0)
+    for (ii_esp in idx_esp) {
+      cat_esp <- out$categoria_coluna[ii_esp]
+      tok_esp <- out$token_associado_coluna[ii_esp]
+      tipo_alvo <- out$tipo_base_edicao[ii_esp]
+      candidatos <- if (identical(cat_esp, "exotica")) {
+        c(
+          paste0("amostragem/registro/especies_exotica_", tok_esp),
+          paste0("amostragem/registro/exotica_", tok_esp, "_outra_sp")
+        )
+      } else {
+        c(
+          paste0("amostragem/registro/forma_vida_", cat_esp, "_", tok_esp, "_sp"),
+          paste0("amostragem/registro/forma_vida_", cat_esp, "_", tok_esp)
+        )
+      }
+      candidatos <- candidatos[candidatos %in% caminhos_validos]
+      if (!length(candidatos)) next
+      if (!is.na(tipo_alvo) && nzchar(tipo_alvo)) {
+        bate_tipo <- candidatos[tipo_por_caminho[candidatos] == tipo_alvo]
+        if (length(bate_tipo)) candidatos <- bate_tipo
+      }
+      data.table::set(out, i = ii_esp, j = "caminho_candidato_especie", value = candidatos[1L])
+    }
+  }
+
   if (exists("monitora_perfil_painel_edicao_operacional_contrato_unico", mode = "function")) {
+    ### JOB6B-EMERG: consulta o resolvedor pelo caminho candidato derivado
+    ### acima (categoria+token) quando existir, em vez do nome de coluna
+    ### bruto -- só para os "especie_nome_popular" cujo rótulo histórico não
+    ### bate contra o rótulo canônico 2025. Nos demais casos, comportamento
+    ### idêntico ao anterior (consulta pelo próprio nome observado).
+    chave_consulta_perfil <- fifelse(
+      !is.na(out$caminho_candidato_especie) & nzchar(out$caminho_candidato_especie),
+      out$caminho_candidato_especie,
+      out$atributo_coluna_registros_corrig
+    )
     perfil_oper <- tryCatch(
-      monitora_perfil_painel_edicao_operacional_contrato_unico(out$atributo_coluna_registros_corrig),
+      monitora_perfil_painel_edicao_operacional_contrato_unico(chave_consulta_perfil),
       error = function(e) data.table::data.table()
     )
     if (nrow(perfil_oper)) {
+      data.table::setnames(perfil_oper, "atributo_coluna_registros_corrig", "chave_consulta_perfil", skip_absent = TRUE)
+      mapa_chave <- data.table::data.table(
+        atributo_coluna_registros_corrig = out$atributo_coluna_registros_corrig,
+        chave_consulta_perfil = chave_consulta_perfil
+      )
+      perfil_oper <- merge(mapa_chave, perfil_oper, by = "chave_consulta_perfil", all.x = TRUE, sort = FALSE)
+      perfil_oper[, chave_consulta_perfil := NULL]
       cols_oper <- intersect(c(
         "atributo_coluna_registros_corrig", "atributo_canonico_2025", "caminho_registro",
         "name_curto", "tipo_base_contrato_unico", "cardinalidade_operacional_contrato_unico",
@@ -6475,8 +6729,70 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
       out <- merge(out, perfil_oper[, ..cols_oper], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
       out[escopo_operacional_contrato_unico %in% c("ponto"), escopo_sugerido := "ponto"]
       out[escopo_operacional_contrato_unico %in% c("coleta_inteira"), escopo_sugerido := "coleta_inteira"]
+
+      ### JOB6C: override declarativo para CICLO/CAMPANHA/Data/Horário/
+      ### Coordenadas (ver monitora_perfil_painel_edicao_emergencial_administrativo_temporal_v263()
+      ### para a causa raiz de cada um). Só aplica quando o resolvedor
+      ### contratual padrão deixou o atributo fora do perfil -- se algum
+      ### dia o contrato único resolver esses 6 nativamente (ex.: reclassificação
+      ### de cardinalidade_operacional), o override deixa de ter efeito
+      ### (idx_job6c ficará vazio) sem precisar remover este bloco.
+      perfil_emerg_admin <- monitora_perfil_painel_edicao_emergencial_administrativo_temporal_v263()
+      m_job6c <- match(out$atributo_coluna_registros_corrig, perfil_emerg_admin$atributo_alvo)
+      idx_job6c <- which(
+        !is.na(m_job6c) &
+          (is.na(out$escopo_operacional_contrato_unico) |
+             out$escopo_operacional_contrato_unico %in% c("fora_do_perfil_painel_edicao", "protegido"))
+      )
+      if (length(idx_job6c)) {
+        mm <- m_job6c[idx_job6c]
+        data.table::set(out, i = idx_job6c, j = "atributo_canonico_2025", value = perfil_emerg_admin$atributo_canonico_2025[mm])
+        data.table::set(out, i = idx_job6c, j = "caminho_registro", value = perfil_emerg_admin$caminho_registro[mm])
+        data.table::set(out, i = idx_job6c, j = "name_curto", value = perfil_emerg_admin$name_curto[mm])
+        if ("tipo_base_contrato_unico" %in% names(out)) {
+          data.table::set(out, i = idx_job6c, j = "tipo_base_contrato_unico", value = perfil_emerg_admin$tipo_base_contrato_unico[mm])
+        }
+        data.table::set(out, i = idx_job6c, j = "escopo_operacional_contrato_unico", value = perfil_emerg_admin$escopo_operacional_contrato_unico[mm])
+        data.table::set(out, i = idx_job6c, j = "escopos_permitidos_contrato_unico", value = perfil_emerg_admin$escopos_permitidos_contrato_unico[mm])
+        data.table::set(out, i = idx_job6c, j = "motivo_escopo_contrato_unico", value = perfil_emerg_admin$motivo_escopo_contrato_unico[mm])
+        data.table::set(out, i = idx_job6c, j = "escopo_sugerido", value = "coleta_inteira")
+        data.table::set(out, i = idx_job6c, j = "tipo_base_edicao", value = perfil_emerg_admin$tipo_base_contrato_unico[mm])
+        data.table::set(out, i = idx_job6c, j = "painel_editavel", value = TRUE)
+        data.table::set(out, i = idx_job6c, j = "acoes_permitidas", value = "update;clear")
+        if (!("painel_motivo_bloqueio" %in% names(out))) out[, painel_motivo_bloqueio := NA_character_]
+        data.table::set(out, i = idx_job6c, j = "painel_motivo_bloqueio", value = NA_character_)
+      }
+
+      ### JOB6/hotfix v2.6.3: reconciliação obrigatória pós-merge do
+      ### perfil_painel_edicao. Nenhum atributo pode terminar com
+      ### painel_editavel=TRUE quando o contrato único o classifica como
+      ### "fora_do_perfil_painel_edicao" ou "protegido" -- isto mascarava,
+      ### no painel, atributos que só falhavam na hora de ADICIONAR a
+      ### correção (ex.: UA antes da resolução de alias acima). Esta é uma
+      ### rede de segurança genérica (não uma lista por nome de atributo):
+      ### qualquer atributo futuro nesta mesma contradição já nasce
+      ### bloqueado e com motivo visível antes do preenchimento.
+      if ("painel_editavel" %in% names(out)) {
+        idx_contra <- which(
+          !is.na(out$escopo_operacional_contrato_unico) &
+            out$escopo_operacional_contrato_unico %in% c("fora_do_perfil_painel_edicao", "protegido") &
+            out$painel_editavel %in% TRUE
+        )
+        if (length(idx_contra)) {
+          data.table::set(out, i = idx_contra, j = "painel_editavel", value = FALSE)
+          data.table::set(out, i = idx_contra, j = "acoes_permitidas", value = "")
+          if (!("painel_motivo_bloqueio" %in% names(out))) out[, painel_motivo_bloqueio := NA_character_]
+          data.table::set(
+            out, i = idx_contra, j = "painel_motivo_bloqueio",
+            value = paste0(
+              "reconciliado pelo contrato unico: ", out$motivo_escopo_contrato_unico[idx_contra]
+            )
+          )
+        }
+      }
     }
   }
+  if ("caminho_candidato_especie" %in% names(out)) out[, caminho_candidato_especie := NULL]
   out[]
 }
 
@@ -6737,19 +7053,40 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     }
   }
 
+  ### JOB6/hotfix v2.6.3: relocalização por chave estável pós-EXCCOL. A auditoria
+  ### não pode mais (a) descartar silenciosamente correções cujo alvo foi
+  ### removido por EXCCOL, nem (b) deixar de distinguir "linha_indice cru
+  ### deslocado, mas relocalizado corretamente por chave estável" de uma falha
+  ### real de persistência. `categoria_persistencia_chave_estavel` é uma coluna
+  ### aditiva (não substitui `status_persistencia`, mantendo replay_semantico_v1
+  ### e consumidores existentes intactos).
+  chave_vazia <- function(x) monitora_correcao_vazio(x)
   status_aplicados <- c("aplicada", "aplicada_atomica")
   rows <- which(as.character(audit$status) %in% status_aplicados)
   if (length(rows) > 0L) {
     for (ii in rows) {
       attr <- as.character(audit$atributo[ii])
       co <- as.character(audit$COLETA[ii])
-      if (!is.na(co) && nzchar(trimws(co)) && co %chin% coletas_excluidas) next
+      if (!is.na(co) && nzchar(trimws(co)) && co %chin% coletas_excluidas) {
+        kk <- kk + 1L
+        out[[kk]] <- data.table::data.table(
+          contexto = contexto, id_correcao = as.character(audit$id_correcao[ii]), status_persistencia = "erro_registro_removido_por_EXCCOL",
+          categoria_persistencia_chave_estavel = "erro_registro_removido_por_EXCCOL",
+          mensagem = paste0("Correção referenciava COLETA ", co, ", removida por EXCCOL nesta mesma sessão; não há registro-alvo a auditar"),
+          atributo = attr, atributo_resolvido = NA_character_, COLETA = co,
+          linha_indice_auditoria = suppressWarnings(as.integer(audit$linha_indice[ii])), n_linhas_localizadas_final = 0L,
+          linhas_localizadas_final_indice = NA_character_,
+          valor_esperado = as.character(audit$valor_depois[ii]), valor_final = NA_character_
+        )
+        next
+      }
       if (is.na(attr) || !nzchar(trimws(attr)) || startsWith(attr, "__")) next
       attr_dt <- monitora_correcao_resolver_atributo_auditoria(dt, attr)
       if (is.na(attr_dt) || !nzchar(trimws(attr_dt)) || !(attr_dt %in% names(dt))) {
         kk <- kk + 1L
         out[[kk]] <- data.table::data.table(
           contexto = contexto, id_correcao = as.character(audit$id_correcao[ii]), status_persistencia = "falha_atributo_ausente",
+          categoria_persistencia_chave_estavel = "erro_valor_nao_persistiu",
           mensagem = paste0("Atributo auditado não existe no objeto final, mesmo após resolução por nome normalizado: ", attr), atributo = attr, atributo_resolvido = NA_character_, COLETA = co,
           linha_indice_auditoria = suppressWarnings(as.integer(audit$linha_indice[ii])), n_linhas_localizadas_final = 0L,
           linhas_localizadas_final_indice = NA_character_,
@@ -6758,14 +7095,63 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
         next
       }
       alvo <- localizar_aud(ii)
+      ### JOB6B-EMERG: quando o próprio atributo corrigido É uma das chaves de
+      ### contexto usadas para relocalizar (UC/EA/UA/CICLO/CAMPANHA/ANO/
+      ### Data (data_hora) -- ex.: correção de UA em escopo coleta_inteira),
+      ### o contexto capturado na fila (valor ANTIGO) deixa de bater contra o
+      ### objeto final assim que a correção é aplicada a TODAS as linhas da
+      ### coleta, e monitora_correcao_localizar_linhas() filtra as próprias
+      ### linhas corrigidas para fora -- reproduzido: uma correção de UA
+      ### coleta_inteira genuinamente persistida era classificada como
+      ### "falha_linha_nao_localizada" só porque o contexto de UA ficou
+      ### desatualizado. Correção: não usar o valor de contexto do PRÓPRIO
+      ### atributo que está sendo auditado como filtro de relocalização
+      ### (as demais chaves de contexto continuam restringindo normalmente).
+      campo_contexto_por_chave <- list(
+        uc = "UC", ea = "EA", ua = "UA", ciclo = "CICLO", campanha = "CAMPANHA",
+        ano = "ANO", data_hora = "Data (data_hora)"
+      )
+      for (nm_chave in names(campo_contexto_por_chave)) {
+        col_chave <- chaves[[nm_chave]]
+        campo_ctx <- campo_contexto_por_chave[[nm_chave]]
+        if (!is.na(col_chave) && identical(col_chave, attr_dt) && campo_ctx %in% names(alvo)) {
+          data.table::set(alvo, j = campo_ctx, value = NA_character_)
+        }
+      }
       linhas <- monitora_correcao_localizar_linhas(dt, alvo, chaves, indice)
       linhas <- unique(as.integer(linhas))
       linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+
+      ### Determina o método de relocalização efetivamente usado, apenas para
+      ### diagnóstico/categoria (não influencia a busca em si, que já prioriza
+      ### chave estável dentro de monitora_correcao_localizar_linhas()).
+      uuid_val <- as.character(audit$uuid_registro[ii])
+      coleta_uuid_val <- as.character(audit$coleta_uuid[ii])
+      li_raw <- suppressWarnings(as.integer(audit$linha_indice[ii]))
+      metodo_localizacao <- if (!chave_vazia(uuid_val) && !is.na(chaves$uuid_registro) && chaves$uuid_registro %in% names(dt)) {
+        "uuid_registro"
+      } else if (!chave_vazia(coleta_uuid_val) || (!is.na(co) && !chave_vazia(co))) {
+        "chave_composta"
+      } else {
+        "linha_indice"
+      }
+      linha_deslocada <- FALSE
+      if (!is.na(li_raw) && li_raw >= 1L && li_raw <= nrow(dt) && !is.na(chaves$coleta) && chaves$coleta %in% names(dt) && !chave_vazia(co)) {
+        coleta_no_indice_bruto <- as.character(dt[[chaves$coleta]][li_raw])
+        linha_deslocada <- !identical(coleta_no_indice_bruto, co)
+      }
+
       esperado <- as.character(audit$valor_depois[ii])
       if (!length(linhas)) {
+        categoria_falha <- if (metodo_localizacao == "linha_indice" && chave_vazia(uuid_val) && chave_vazia(coleta_uuid_val) && chave_vazia(co)) {
+          "erro_chave_ausente"
+        } else {
+          "erro_chave_ambigua"
+        }
         kk <- kk + 1L
         out[[kk]] <- data.table::data.table(
           contexto = contexto, id_correcao = as.character(audit$id_correcao[ii]), status_persistencia = "falha_linha_nao_localizada",
+          categoria_persistencia_chave_estavel = categoria_falha,
           mensagem = "Linha auditada como aplicada não foi localizada no objeto final por chaves estáveis/contexto", atributo = attr, COLETA = co,
           linha_indice_auditoria = suppressWarnings(as.integer(audit$linha_indice[ii])), n_linhas_localizadas_final = 0L,
           linhas_localizadas_final_indice = NA_character_,
@@ -6781,11 +7167,22 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
         "literal"
       )
       status <- ifelse(all(ok), "ok_aplicacao_persistiu", "falha_valor_nao_persistiu")
+      categoria_ok <- if (metodo_localizacao == "uuid_registro") {
+        "relocalizado_por_uuid"
+      } else if (linha_deslocada) {
+        "linha_indice_deslocado_relocalizado"
+      } else if (metodo_localizacao == "chave_composta") {
+        "relocalizado_por_chave_composta"
+      } else {
+        "persistiu"
+      }
+      categoria_persist <- ifelse(identical(status, "ok_aplicacao_persistiu"), categoria_ok, "erro_valor_nao_persistiu")
       kk <- kk + 1L
       out[[kk]] <- data.table::data.table(
         contexto = contexto,
         id_correcao = as.character(audit$id_correcao[ii]),
         status_persistencia = status,
+        categoria_persistencia_chave_estavel = categoria_persist,
         mensagem = ifelse(identical(status, "ok_aplicacao_persistiu"), "Valor auditado persiste no objeto final", "Valor final diverge do valor_depois auditado"),
         modo_comparacao = modo_comparacao,
         atributo = attr,
@@ -6808,7 +7205,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     ### move a mesma forma para outra categoria. Se outra operação aplicada no
     ### mesmo alvo já confere com o valor final, a divergência intermediária é
     ### marcada como sobreposição compatível, sem bloquear a execução.
-    for (cc in c("atributo_resolvido", "COLETA", "linha_indice_auditoria", "linhas_localizadas_final_indice", "status_persistencia")) {
+    for (cc in c("atributo_resolvido", "COLETA", "linha_indice_auditoria", "linhas_localizadas_final_indice", "status_persistencia", "categoria_persistencia_chave_estavel")) {
       if (!(cc %in% names(res))) data.table::set(res, j = cc, value = NA_character_)
     }
     chave_res <- paste(
@@ -6822,6 +7219,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     if (length(idx_sobreposta) > 0L) {
       data.table::set(res, i = idx_sobreposta, j = "status_persistencia", value = "ok_sobreposta_por_correcao_final_compativel")
       data.table::set(res, i = idx_sobreposta, j = "mensagem", value = "Valor intermediário auditado foi sobrescrito por outra correção aplicada no mesmo alvo; o estado final confere com auditoria posterior")
+      data.table::set(res, i = idx_sobreposta, j = "categoria_persistencia_chave_estavel", value = "persistiu")
     }
 
     ### Recalculos automáticos de campos superiores derivados do XLSForm podem
@@ -6889,6 +7287,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
           )
           if (all(ok_recalc)) {
             data.table::set(res, i = ii_recalc, j = "status_persistencia", value = "ok_recalculo_superior_estado_final_consistente")
+            data.table::set(res, i = ii_recalc, j = "categoria_persistencia_chave_estavel", value = "persistiu")
             data.table::set(res, i = ii_recalc, j = "mensagem", value = "Valor auditado intermediário divergiu, mas o campo superior final é idêntico ao recálculo oficial a partir das listas inferiores finais")
             data.table::set(res, i = ii_recalc, j = "modo_comparacao", value = "recalculo_oficial_tipo_forma_vida")
             data.table::set(res, i = ii_recalc, j = "valor_esperado", value = paste(unique(esperado_recalc), collapse = " | "))
@@ -10726,6 +11125,7 @@ monitora_correcao_tipo_campo_inferir <- function(col, papel, tipo_xls = NA_chara
     ti <- tolower(trimws(tipo_inferido))
     if (grepl("select_multiple", ti)) base <- "select_multiple"
     else if (grepl("select_one", ti)) base <- "select_one"
+    else if (grepl("geopoint", ti)) base <- "geopoint"
     else if (grepl("decimal", ti)) base <- "decimal"
     else if (grepl("inteiro|integer", ti)) base <- "integer"
     else if (grepl("hora|time", ti)) base <- "time"
@@ -10735,8 +11135,22 @@ monitora_correcao_tipo_campo_inferir <- function(col, papel, tipo_xls = NA_chara
   }
   cn <- monitora_correcao_normalizar_nome_coluna(col)
   if (!is.null(chaves) && !is.na(chaves$data_hora) && identical(col, chaves$data_hora)) base <- "date"
-  if (cn %in% c("data_data_hora", "data_hora_data") || grepl("(^|_)data(_|$).*hora|data_hora", cn)) base <- "date"
-  if (grepl("hora", cn) && !grepl("data", cn)) base <- "time"
+  ### JOB6C: "Horário (data_hora)" normaliza para algo como
+  ### "horario_data_hora" -- contém a substring "data_hora" do próprio
+  ### qualificador de grupo, então a regra abaixo (pensada para "Data
+  ### (data_hora)") forçava "date" também para HORÁRIO, e a regra seguinte
+  ### de "time" nunca disparava (exige ausência de "data" em cn, que também
+  ### falha pelo mesmo motivo). Checar o prefixo "horário"/"hora" primeiro
+  ### resolve genericamente por nome, sem depender de um atributo
+  ### específico: qualquer coluna cujo nome comece com hora/horário vira
+  ### "time" antes de qualquer regra de "data_hora" ser avaliada.
+  if (grepl("^hor[aá]rio|^hora($|_)", cn)) {
+    base <- "time"
+  } else if (cn %in% c("data_data_hora", "data_hora_data") || grepl("(^|_)data(_|$).*hora|data_hora", cn)) {
+    base <- "date"
+  } else if (grepl("hora", cn) && !grepl("data", cn)) {
+    base <- "time"
+  }
   if (identical(papel, "campo_superior_tipo_forma_vida")) base <- "select_multiple"
   if (identical(papel, "lista_principal_forma_vida")) base <- "select_multiple"
   if (identical(papel, "atributo_dependente_habito") && (is.na(list_name) || !nzchar(list_name))) base <- "select_one"
@@ -17785,6 +18199,24 @@ monitora_correcao_aliases_historicos_habito <- function(dt, col_def, meta_xls = 
   dd <- campos[name == col_def]
   if (!nrow(dd) && ("caminho_registro" %in% names(campos))) dd <- campos[caminho_registro == col_def]
   if (!nrow(dd)) return(character(0))
+  ### JOB6E (EIXO A, causa raiz 97x98): o mesmo `name` de XLSForm pode ter sido
+  ### reaproveitado por uma versão histórica para um campo de NATUREZA
+  ### diferente do hábito select_one atual (ex.: em plantas_herb_e_lenhosas_
+  ### campsav_ago2022.xlsx, o name "forma_vida_nativa_cactacea" foi usado para
+  ### o campo de texto "Espécie ou nome popular (Cactácea)", que só nas
+  ### versões seguintes passou a existir como "forma_vida_nativa_cactacea_sp").
+  ### Sem este filtro, o rótulo desse campo de texto entrava na lista de
+  ### aliases históricos do hábito e ocultava do seletor uma coluna de dados
+  ### de espécie real (não-hábito, nunca migrada por monitora_correcao_
+  ### conciliar_habito_historico_definitivo() porque seu conteúdo não está no
+  ### domínio terrestre/epifita/rupicola) -- ocultando dado genuíno e não
+  ### editável em lugar nenhum. Um alias histórico de hábito só pode vir de um
+  ### registro cujo tipo_base/type também é select_one nessa versão.
+  col_tipo <- if ("tipo_base" %in% names(dd)) as.character(dd$tipo_base) else if ("type" %in% names(dd)) as.character(dd$type) else NA_character_
+  eh_select_one <- grepl("select_one", col_tipo, ignore.case = TRUE)
+  eh_select_one[is.na(col_tipo)] <- TRUE ### sem informação de tipo: mantém comportamento anterior (conservador)
+  dd <- dd[eh_select_one]
+  if (!nrow(dd)) return(character(0))
   labels <- unique(trimws(as.character(dd$label)))
   labels <- labels[!is.na(labels) & nzchar(labels)]
   if (!length(labels)) return(character(0))
@@ -18847,6 +19279,18 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     if (nrow(op) && all(c("list_name", "name") %in% names(op)) && !is.na(list_name_alvo) && nzchar(list_name_alvo)) {
       for (cc in c("arquivo_xlsform", "list_name", "name", "label")) if (!(cc %in% names(op))) op[, (cc) := NA_character_]
       cand <- op[list_name == list_name_alvo & !is.na(name) & nzchar(as.character(name))]
+      ### JOB6E (EIXO B, causa raiz do bloqueio de "UC"): listas de choices
+      ### dinâmicas do XLSForm (search()/pulldata(), ex.: "uc") não trazem
+      ### opções embutidas -- o extrator só captura os cabeçalhos literais
+      ### "num_key"/"label" da planilha de choices como se fossem uma opção
+      ### real. monitora_correcao_choices_xlsform() já despreza esse caso (ver
+      ### linha ~11100); aqui a mesma checagem faltava, então o widget de
+      ### valor ofereceria "num_key" como única opção selecionável -- pior que
+      ### bloquear. Ao invés de expor essa opção falsa, cai no mesmo fallback
+      ### de domínio observado (dados reais já presentes em registros_corrig
+      ### para este atributo) usado quando não há list_name/opções nenhuma.
+      nomes_unicos_cand <- unique(as.character(cand$name))
+      if (length(nomes_unicos_cand) <= 2L && all(nomes_unicos_cand %in% c("num_key", "label"))) cand <- cand[0]
       if (nrow(cand)) {
         arq <- tryCatch(monitora_correcao_ultima_versao_xlsform(cand), error = function(e) NA_character_)
         if (!is.na(arq) && nzchar(arq)) {
@@ -18965,13 +19409,36 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     aud[, widget_valor := vapply(atributo_coluna_registros_corrig, function(aa) monitora_painel_widget_valor_atributo(aa, "update"), character(1))]
     aud[tipo_base_edicao == "select_multiple", widget_valor := "selectize_tokens"]
     aud[tipo_base_edicao == "select_one", widget_valor := "selectize_unico"]
+    ### JOB6E (EIXO B): quando o domínio estático do XLSForm está ausente
+    ### (lista dinâmica externa tipo search()/pulldata(), ex.: "uc" -- só
+    ### existe como itemset externo, nunca embutida no XLSForm), mas o widget
+    ### de valor (monitora_painel_choices_dominio_xlsform, já corrigido para
+    ### rejeitar o placeholder "num_key"/"label" dessas listas dinâmicas) cai
+    ### com segurança no domínio OBSERVADO -- valores reais já presentes em
+    ### registros_corrig para o próprio atributo, nunca inventados -- o
+    ### atributo continua editável de fato e não deve ser marcado como
+    ### bloqueado. Restrito a select_one: monitora_painel_choices_valor_
+    ### atributo() sempre popula esse fallback para select_one mesmo com
+    ### incluir_observados=FALSE; para select_multiple o fallback observado só
+    ### é seguro na ação remove_token, não em append/replace/valor novo
+    ### digitado, então continua exigindo domínio XLSForm estático.
+    aud[, n_opcoes_dominio_observado := 0L]
+    alvo_obs_idx <- which(aud$tipo_base_edicao == "select_one" & aud$n_opcoes_xlsform < 1L)
+    if (length(alvo_obs_idx)) {
+      aud[alvo_obs_idx, n_opcoes_dominio_observado := vapply(atributo_coluna_registros_corrig, function(aa) {
+        if (!(aa %in% names(dt))) return(0L)
+        v <- as.character(dt[[aa]])
+        length(unique(v[!is.na(v) & nzchar(trimws(v))]))
+      }, integer(1))]
+    }
     aud[, status_controle := "ok"]
     aud[tipo_base_edicao %in% c("select_one", "select_multiple") & n_opcoes_xlsform < 1L, status_controle := "bloqueado_sem_dominio_xlsform"]
+    aud[tipo_base_edicao == "select_one" & n_opcoes_xlsform < 1L & n_opcoes_dominio_observado >= 1L, status_controle := "ok"]
     aud[tipo_base_edicao == "select_multiple" & grepl("(^|;)update(;|$)|(^|;)clear(;|$)", acoes_permitidas, perl = TRUE), status_controle := "erro_lista_tokens_com_operacao_valor_total"]
     aud[, timestamp := format(Sys.time(), "%Y-%m-%d %H:%M:%S")]
     cols <- intersect(c(
       "timestamp", "atributo_coluna_registros_corrig", "ordem_template_sismonitora", "atributos_template_sismonitora",
-      "tipo_base_edicao", "xlsform_tipo", "xlsform_list_name", "n_opcoes_xlsform", "acoes_permitidas",
+      "tipo_base_edicao", "xlsform_tipo", "xlsform_list_name", "n_opcoes_xlsform", "n_opcoes_dominio_observado", "acoes_permitidas",
       "widget_valor", "status_controle", "painel_motivo_bloqueio"
     ), names(aud))
     arq <- file.path(monitora_publicacao_b_output_dir(), "auditoria_painel_controle_atributos.csv")
@@ -27348,7 +27815,7 @@ monitora_produtos_resolver_pipes_por_ponto <- function(dt,
     classe <- monitora_produtos_classificar_pipe_coluna(cc, produto)
     n_antes <- sum(hit, na.rm = TRUE)
     alterar <- isTRUE(corrigir) && classe %in% c("pipe_residual_operacional", "pipe_residual_revisar")
-    n_corr <- 0L; n_falha <- 0L
+    n_corr <- 0L; n_falha <- 0L; n_corr_dedup_seguro <- 0L
     exemplos_antes <- utils::head(unique(x0[hit]), 3L)
     if (alterar) {
       idx <- which(hit)
@@ -27363,7 +27830,28 @@ monitora_produtos_resolver_pipes_por_ponto <- function(dt,
           x1[ii] <- novo
           n_corr <- n_corr + 1L
         } else {
-          n_falha <- n_falha + 1L
+          ### JOB6E (EIXO C): resolução posicional (token[índice do ponto])
+          ### só é correta quando a célula é de fato uma lista agregada com
+          ### um token por ponto da COLETA -- não é o caso de uma célula que
+          ### é, ela mesma, o valor de UM único ponto e que só teve "|" onde
+          ### deveria ter espaço (ex.: "graminoide|graminoide" no ponto 99 de
+          ### uma COLETA com só ~101 pontos ao todo: índice 99 nunca vai
+          ### bater com uma lista de 2 tokens). Quando TODOS os tokens dessa
+          ### célula são o mesmo valor, a resolução por posição é irrelevante
+          ### -- a informação real da célula é só esse valor único, e usá-lo
+          ### não inventa nada (nenhum token é descartado que não seja
+          ### repetição exata de outro já usado). Só se aplica quando os
+          ### tokens são estritamente idênticos; qualquer divergência entre
+          ### tokens continua exigindo resolução posicional real e, se não
+          ### bater, fica residual para o gate de bloqueio decidir.
+          toks_nao_vazios <- toks[nzchar(toks)]
+          if (length(toks_nao_vazios) >= 1L && length(unique(toks_nao_vazios)) == 1L) {
+            x1[ii] <- toks_nao_vazios[1L]
+            n_corr <- n_corr + 1L
+            n_corr_dedup_seguro <- n_corr_dedup_seguro + 1L
+          } else {
+            n_falha <- n_falha + 1L
+          }
         }
       }
       data.table::set(d, j = cc, value = x1)
@@ -27374,14 +27862,16 @@ monitora_produtos_resolver_pipes_por_ponto <- function(dt,
     audit[[k]] <- data.table::data.table(
       exec_id = as.character(exec_id), produto = as.character(produto)[1L], contexto = as.character(contexto)[1L],
       coluna = cc, classificacao = classe, n_linhas_pipe_antes = as.integer(n_antes),
-      n_linhas_corrigidas_por_indice_ponto = as.integer(n_corr), n_linhas_falha_correcao = as.integer(n_falha),
+      n_linhas_corrigidas_por_indice_ponto = as.integer(n_corr), n_linhas_corrigidas_dedup_tokens_identicos = as.integer(n_corr_dedup_seguro),
+      n_linhas_falha_correcao = as.integer(n_falha),
       n_linhas_pipe_depois = as.integer(n_depois), exemplo_antes = paste(exemplos_antes, collapse = " || "),
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
   }
   aud <- if (k) data.table::rbindlist(audit[seq_len(k)], fill = TRUE, use.names = TRUE) else data.table::data.table(
     exec_id = character(), produto = character(), contexto = character(), coluna = character(), classificacao = character(),
-    n_linhas_pipe_antes = integer(), n_linhas_corrigidas_por_indice_ponto = integer(), n_linhas_falha_correcao = integer(), n_linhas_pipe_depois = integer(), exemplo_antes = character(), timestamp = character()
+    n_linhas_pipe_antes = integer(), n_linhas_corrigidas_por_indice_ponto = integer(), n_linhas_corrigidas_dedup_tokens_identicos = integer(),
+    n_linhas_falha_correcao = integer(), n_linhas_pipe_depois = integer(), exemplo_antes = character(), timestamp = character()
   )
   try({
     dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
@@ -27446,6 +27936,19 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
   ### original antes do produto final. O bloqueio efetivo (stop()) só ocorre
   ### quando `bloquear = TRUE`, reservado ao checkpoint pós-tokenização
   ### operacional (produto final de registros_importados.csv/registros_corrig.csv).
+  ### JOB6E (EIXO C): COLETA/UA/ponto identificam a linha em termos que um
+  ### usuário consegue agir (a mensagem genérica anterior só citava a coluna
+  ### e um relatório CSV à parte). Resolvidos uma única vez, fora do loop por
+  ### coluna, reaproveitando os mesmos resolvedores genéricos já usados por
+  ### monitora_produtos_resolver_pipes_por_ponto.
+  col_coleta_id <- monitora_produtos_coluna_coleta_generica(dt)
+  col_ponto_id <- monitora_produtos_coluna_ponto_generica(dt)
+  chaves_id <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
+  col_ua_id <- chaves_id$ua
+  vec_coleta <- if (!is.na(col_coleta_id) && col_coleta_id %in% names(dt)) as.character(dt[[col_coleta_id]]) else rep(NA_character_, n)
+  vec_ponto <- if (!is.na(col_ponto_id) && col_ponto_id %in% names(dt)) as.character(dt[[col_ponto_id]]) else rep(NA_character_, n)
+  vec_ua <- if (!is.null(col_ua_id) && !is.na(col_ua_id) && col_ua_id %in% names(dt)) as.character(dt[[col_ua_id]]) else rep(NA_character_, n)
+
   achados <- vector("list", length(cols_char)); k <- 0L
   achados_indet <- vector("list", length(cols_char)); ki <- 0L
   n_colunas_preservadas <- 0L; n_linhas_preservadas <- 0L
@@ -27471,8 +27974,11 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     k <- k + 1L
     achados[[k]] <- data.table::data.table(
       produto = produto_chr, coluna = cc, linha_indice = idx,
+      COLETA = vec_coleta[idx], UA = vec_ua[idx], ponto_amostral = vec_ponto[idx],
+      n_tokens = lengths(strsplit(x[idx], "|", fixed = TRUE)),
+      n_tokens_distintos = vapply(strsplit(x[idx], "|", fixed = TRUE), function(tk) length(unique(trimws(tk))), integer(1)),
       valor_residual = x[idx], classificacao = classe,
-      orientacao = "Residuo de '|' nao resolvido por indice de ponto amostral/COLETA em campo estruturado; revisar o(s) arquivo(s) de origem desta(s) linha(s) (provavel descompasso entre numero de pontos e numero de tokens) ou tratar manualmente antes de reexportar."
+      orientacao = "Residuo de '|' nao resolvido por indice de ponto amostral/COLETA em campo estruturado (provavel descompasso entre numero de pontos e numero de tokens, com mais de um token distinto na mesma celula -- nao e seguro resolver sem revisao humana); revisar o(s) arquivo(s) de origem desta(s) linha(s) ou tratar manualmente antes de reexportar."
     )
   }
 
@@ -27560,18 +28066,59 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     data.table::fwrite(achados_dt, arq_saida, na = "")
     data.table::fwrite(achados_dt, file.path(log_dir, paste0("bloqueio_pipe_residual_", sufixo, "_", exec_id, ".csv")), na = "")
   }, silent = TRUE)
+
+  ### JOB6E (EIXO C): substitui o erro genérico ("Falha ao materializar ...
+  ### apos extracao de tokens por ponto") por um diagnóstico específico e
+  ### legível por COLETA/UA/coluna -- exatamente a informação que alguém
+  ### revisando precisa para ir direto ao arquivo de origem problemático, sem
+  ### precisar abrir o CSV de auditoria primeiro. Nenhum dado novo: só
+  ### agrupamento/formatação do que já está em achados_dt (COLETA/UA/ponto já
+  ### resolvidos acima, uma vez, fora do loop por linha).
+  resumo_coleta_ua <- if (all(c("COLETA", "UA", "coluna", "ponto_amostral") %in% names(achados_dt))) {
+    ach <- data.table::as.data.table(achados_dt)
+    ach[, ponto_num := suppressWarnings(as.integer(ponto_amostral))]
+    ach[, .(
+      n_pontos_afetados = data.table::uniqueN(linha_indice),
+      pontos_min = suppressWarnings(min(ponto_num, na.rm = TRUE)),
+      pontos_max = suppressWarnings(max(ponto_num, na.rm = TRUE)),
+      n_tokens_tipico = as.integer(stats::median(n_tokens, na.rm = TRUE))
+    ), by = .(COLETA, UA, coluna)]
+  } else {
+    data.table::data.table()
+  }
+  arq_resumo_coleta_ua <- file.path(output_dir, "03_auditorias", "importacao", paste0("bloqueio_pipe_residual_resumo_coleta_ua_", sufixo, ".csv"))
+  try({
+    data.table::fwrite(resumo_coleta_ua, arq_resumo_coleta_ua, na = "")
+    data.table::fwrite(resumo_coleta_ua, file.path(log_dir, paste0("bloqueio_pipe_residual_resumo_coleta_ua_", sufixo, "_", exec_id, ".csv")), na = "")
+  }, silent = TRUE)
+
+  linhas_msg_coleta <- if (nrow(resumo_coleta_ua)) {
+    data.table::setorder(resumo_coleta_ua, COLETA, UA)
+    n_mostrar <- min(nrow(resumo_coleta_ua), 15L)
+    partes <- sprintf(
+      "COLETA %s / UA %s / coluna \"%s\": %d ponto(s) afetado(s) (pontos %s-%s, ~%d token(s)/celula)",
+      resumo_coleta_ua$COLETA[seq_len(n_mostrar)], resumo_coleta_ua$UA[seq_len(n_mostrar)], resumo_coleta_ua$coluna[seq_len(n_mostrar)],
+      resumo_coleta_ua$n_pontos_afetados[seq_len(n_mostrar)], resumo_coleta_ua$pontos_min[seq_len(n_mostrar)], resumo_coleta_ua$pontos_max[seq_len(n_mostrar)],
+      resumo_coleta_ua$n_tokens_tipico[seq_len(n_mostrar)]
+    )
+    if (nrow(resumo_coleta_ua) > n_mostrar) partes <- c(partes, sprintf("... e mais %d grupo(s) COLETA/UA/coluna (ver %s)", nrow(resumo_coleta_ua) - n_mostrar, arq_resumo_coleta_ua))
+    paste(partes, collapse = " | ")
+  } else {
+    paste0(length(colunas_afetadas), " coluna(s) estruturada(s) (", paste(colunas_afetadas, collapse = ", "), ")")
+  }
+
   if (exists("monitora_log_registrar_evento", mode = "function")) {
     try(monitora_log_registrar_evento(
       "bloqueio_pipe_residual", "ERRO", arq_saida,
-      paste0(produto_chr, " bloqueado: ", n_linhas, " linha(s) com residuo de '|' em ", length(colunas_afetadas), " coluna(s) estruturada(s): ", paste(colunas_afetadas, collapse = ", ")),
+      paste0(produto_chr, " bloqueado: ", n_linhas, " linha(s) com residuo de '|' -- ", linhas_msg_coleta),
       "ver relatorio de bloqueio de pipe residual"
     ), silent = TRUE)
   }
   stop(
-    "Exportacao de ", produto_chr, " bloqueada: ", n_linhas, " linha(s) com residuo de '|' nao resolvido em ",
-    length(colunas_afetadas), " coluna(s) estruturada(s) (", paste(colunas_afetadas, collapse = ", "), "). ",
-    "Relatorio detalhado em: ", arq_saida, ". ",
-    "Revise o(s) arquivo(s) de entrada (provavel descompasso entre numero de pontos amostrais e numero de tokens separados por '|') ou trate manualmente antes de reexportar.",
+    "ACTION_REQUIRED: descompasso token×ponto em campo estruturado. Exportacao de ", produto_chr, " bloqueada: ",
+    n_linhas, " linha(s) com residuo de '|' nao resolvido (mais de um token distinto na mesma celula, sem contagem de tokens compativel com o numero de pontos da COLETA -- nao resolvido as cegas para nao inventar dado). Detalhe por COLETA/UA/coluna: ",
+    linhas_msg_coleta, ". Relatorio linha a linha: ", arq_saida, "; relatorio resumido por COLETA/UA: ", arq_resumo_coleta_ua, ". ",
+    "Revise o(s) arquivo(s) de origem dessas COLETAs/UAs (provavel descompasso entre numero de pontos amostrais e numero de tokens separados por '|') ou trate manualmente antes de reexportar.",
     call. = FALSE
   )
 }
@@ -29064,6 +29611,106 @@ monitora_txt_canonicalizar_coluna <- function(x) {
   y
 }
 
+### JOB6E (EIXO C): repara, de forma determinística e sem perda de
+### informação, o mojibake clássico de "UTF-8 decodificado como Latin-1 e
+### regravado como UTF-8" (ex.: "exÃ³ticas" -> "exóticas"). Reinterpreta os
+### caracteres já decodificados como se fossem bytes Latin-1 (conversão
+### sem perda, pois todo caractere U+0000-U+00FF tem representação direta
+### em Latin-1) e então relê esses mesmos bytes como UTF-8. Não é heurística
+### nem adivinhação: é a operação inversa exata do erro de encoding que
+### produziu o mojibake, então uma string sem esse padrão específico
+### simplesmente não muda (a reconversão falha/ela mesma volta inalterada).
+### Usada para reconciliar nomes de coluna mojibake com seus equivalentes
+### corretos já existentes no mesmo dataset, nunca para alterar valores de
+### dados linha a linha.
+monitora_txt_reparar_mojibake_utf8_latin1 <- function(x) {
+  x <- as.character(x)
+  ok <- !is.na(x) & nzchar(x)
+  if (!any(ok)) return(x)
+  y <- x
+  reparado <- tryCatch({
+    b <- iconv(x[ok], from = "UTF-8", to = "latin1")
+    falha <- is.na(b)
+    if (any(falha)) b[falha] <- x[ok][falha]
+    Encoding(b) <- "UTF-8"
+    ### Crítico: reinterpretar bytes Latin-1 como UTF-8 só produz uma string
+    ### válida quando o texto original REALMENTE era mojibake (cada
+    ### caractere original de fato originado de uma sequência UTF-8 multi-
+    ### byte mal decodificada). Aplicado a texto já correto (ex.: "é" comum),
+    ### o mesmo procedimento gera bytes que não formam UTF-8 válido --
+    ### validEnc() é o teste determinístico que distingue os dois casos, sem
+    ### depender de listas de caracteres/idiomas. Nunca aceitar o "reparo"
+    ### quando ele não é válido evita corromper qualquer nome de coluna já
+    ### correto (confirmado reproduzindo o bug: sem esse guard, colunas como
+    ### "Horário (data_hora)" viravam "Hor�rio (data_hora)").
+    invalido <- !validEnc(b)
+    if (any(invalido)) b[invalido] <- x[ok][invalido]
+    b
+  }, error = function(e) x[ok])
+  y[ok] <- reparado
+  y
+}
+
+### JOB6E (EIXO C, causa raiz do abort da run05): colunas estruturadas cujo
+### rótulo XLSForm sofreu mojibake na exportação de origem (confirmado:
+### "Formas de vida de plantas ... exÃ³ticas:</span> (amostragem/registro)",
+### presente ao lado da coluna correta "... exóticas:</span> ...") nunca
+### entravam no alias_map fixo acima (que só cobre campos administrativos:
+### COLETA/UC/UA/CICLO/CAMPANHA/etc., nunca os rótulos de forma de vida) --
+### seguiam intocadas até o gate de bloqueio de pipe residual, carregando
+### dado real nunca migrado para a coluna canônica (confirmado com dado real
+### da run04/run05: p.ex. valor único "Alejão" preso numa coluna mojibake
+### equivalente de outro atributo). Ao invés de crescer o alias_map fixo por
+### string literal (o que só cobriria "exóticas" e exigiria uma entrada nova
+### a cada rótulo/idioma/campo futuro que sofrer o mesmo mojibake -- uma
+### whitelist solta), detecta genericamente: existe alguma coluna cujo nome,
+### após reparo de mojibake + a mesma canonicalização já usada acima, bate
+### EXATAMENTE com o nome (já canonicalizado) de outra coluna real do
+### dataset? Só produz falso-positivo se duas colunas distintas colidirem
+### por acidente após reparo -- praticamente impossível para rótulos de
+### pergunta inteiros. Mesma regra de coalesce segura do laço acima (só
+### preenche onde o alvo está vazio; nunca sobrescreve valor real já
+### presente na coluna canônica) e a coluna alias é sempre removida depois
+### de consolidada -- nunca sobrevive como duplicata residual pipeada até o
+### gate de bloqueio.
+monitora_dt_consolidar_aliases_mojibake_colunas <- function(dt) {
+  dt <- monitora_dt_referenciar(dt)
+  nomes <- names(dt)
+  if (length(nomes) < 2L) return(dt)
+  reparados <- monitora_txt_reparar_mojibake_utf8_latin1(nomes)
+  candidatos_idx <- which(reparados != nomes)
+  if (!length(candidatos_idx)) return(dt)
+  ### Nomes/alvos fixados ANTES do loop, por NOME (não por posição): à medida
+  ### que colunas alias vão sendo removidas, `names(dt)` encolhe e qualquer
+  ### índice posicional calculado uma única vez ficaria desalinhado a partir
+  ### da 1ª remoção, misturando pares errados (bug reproduzido e corrigido
+  ### nesta mesma revisão: uma versão anterior indexava `names(dt)[idx]` com
+  ### `idx` de um vetor de tamanho fixo pré-remoção).
+  alias_cols_fixo <- nomes[candidatos_idx]
+  alvo_canon_fixo <- monitora_txt_canonicalizar_coluna(reparados[candidatos_idx])
+  for (i in seq_along(alias_cols_fixo)) {
+    alias_col <- alias_cols_fixo[i]
+    if (!(alias_col %in% names(dt))) next ### já removida numa iteração anterior
+    alvo_canon <- alvo_canon_fixo[i]
+    canon_atual <- monitora_txt_canonicalizar_coluna(names(dt))
+    idx_alvo <- which(canon_atual == alvo_canon & names(dt) != alias_col)
+    if (length(idx_alvo) != 1L) next ### sem match único e seguro: não força nada
+    target <- names(dt)[idx_alvo]
+    alvo <- monitora_txt_normalizar_vazio(as.character(dt[[target]]))
+    aux <- monitora_txt_normalizar_vazio(as.character(dt[[alias_col]]))
+    fill_idx <- is.na(alvo) & !is.na(aux)
+    if (any(fill_idx)) alvo[fill_idx] <- aux[fill_idx]
+    data.table::set(dt, j = target, value = alvo)
+    dt[, (alias_col) := NULL]
+    monitora_log_registrar_evento(
+      "consolidacao_aliases_mojibake", "INFO", NA_character_,
+      paste0(target, " consolidado do alias mojibake: ", alias_col, " (", sum(fill_idx), " valor(es) preenchido(s))"),
+      "coluna alias mojibake removida apos coalesce seguro (so preencheu onde a canonica estava vazia)"
+    )
+  }
+  dt
+}
+
 monitora_dt_consolidar_aliases_colunas <- function(dt) {
   # Consolidação de aliases com menor uso de memória.
   # Evita materializar várias colunas grandes ao mesmo tempo durante a consolidação.
@@ -29129,6 +29776,12 @@ monitora_dt_consolidar_aliases_colunas <- function(dt) {
     # Recalcula nomes canônicos porque colunas podem ter sido removidas/renomeadas.
     canon <- monitora_txt_canonicalizar_coluna(names(dt))
   }
+  ### JOB6E (EIXO C): mesmo ponto de entrada usado pelos 3 chamadores
+  ### existentes desta função (importação, pós-renomeação e preparação do
+  ### produto saneado) -- aliases mojibake de rótulos XLSForm (não cobertos
+  ### pelo alias_map fixo acima, que é só administrativo) são conciliados
+  ### aqui, antes de qualquer tokenização/gate de pipe residual.
+  dt <- monitora_dt_consolidar_aliases_mojibake_colunas(dt)
   dt
 }
 
@@ -35711,6 +36364,42 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
     label_norm_035r = monitora_contrato_unico_normalizar_texto_seguro(label_2025_sem_html)
   )]
 
+  ### JOB6/hotfix v2.6.3: aliases operacionais do contrato único (ex.: UA/EA
+  ### -> unidade_amostral/estacao_amostral, já cadastrados em
+  ### monitora_contrato_unico_embutido()$aliases) nunca eram consultados
+  ### aqui -- resolver_um() só comparava contra caminho_registro/name_curto/
+  ### label do próprio perfil_painel_edicao. Isso deixava atributos com
+  ### alias explícito no contrato único "fora_do_perfil_painel_edicao" só
+  ### porque o alias curto (ex. "UA") não é igual ao name_curto canônico
+  ### (ex. "unidade_amostral") -- confirmado na run real bloqueando a edição
+  ### genérica de UA mesmo o painel a exibindo como editável. Resolução
+  ### genérica: qualquer atributo com alias cadastrado no contrato único
+  ### passa a resolver aqui, sem lista paralela por nome de atributo.
+  ###
+  ### Restrição deliberada por `origem_alias`: a tabela de aliases do
+  ### contrato único também guarda variações de LABEL histórico usadas só
+  ### para casar cabeçalho de import/normalização de valor
+  ### (origem "pipe_aliases_campos_conhecidos"/"validados_aliases"), sem
+  ### relação com permissão de edição no painel. Testado e confirmado: sem
+  ### esta restrição, campos de espécie/nome popular (ex. "Espécie ou nome
+  ### popular (Erva bromelioide) (amostragem/registro)") passavam a
+  ### resolver contra o campo `_sp` do contrato e viravam editáveis por
+  ### engano. Só as origens estruturais/administrativas explícitas
+  ### ("dt_consolidar_aliases_colunas_ref", "requisito_035h3" -- UC/UA/EA/
+  ### CICLO/CAMPANHA/COLETA/UUID/coleta_uuid/Data/Horário/Coordenadas/
+  ### ponto_amostral/ponto_metro) valem aqui.
+  alias_idx_035r <- if (!is.null(contrato_indices) && !is.null(contrato_indices$indices$por_alias_normalizado)) {
+    data.table::copy(data.table::as.data.table(contrato_indices$indices$por_alias_normalizado))
+  } else {
+    data.table::data.table()
+  }
+  if (nrow(alias_idx_035r) && "origem_alias" %in% names(alias_idx_035r)) {
+    alias_idx_035r <- alias_idx_035r[origem_alias %in% c("dt_consolidar_aliases_colunas_ref", "requisito_035h3")]
+  }
+  if (nrow(alias_idx_035r) && !("alias_normalizado" %in% names(alias_idx_035r))) {
+    alias_idx_035r[, alias_normalizado := monitora_contrato_unico_normalizar_texto_seguro(alias)]
+  }
+
   cols <- unique(as.character(colunas_observadas))
   cols <- cols[!is.na(cols) & nzchar(cols)]
   if (!length(cols)) cols <- unique(c(perfil$caminho_registro, perfil$name_curto))
@@ -35743,6 +36432,17 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
       if (nzchar(sem_grupo)) {
         hit <- perfil[caminho_registro == sem_grupo | name_curto == sem_grupo | label_2025_sem_html == sem_grupo]
         if (!nrow(hit)) hit <- perfil[caminho_norm_035r == sem_grupo_norm | name_norm_035r == sem_grupo_norm | label_norm_035r == sem_grupo_norm]
+      }
+    }
+    ### JOB6/hotfix v2.6.3: fallback por alias explícito do contrato único
+    ### (ex.: "UA"/"EA"). Só é consultado depois de esgotadas as
+    ### comparações diretas por caminho/name/label acima, preservando a
+    ### precedência do próprio schema do XLSForm 2025 sobre aliases.
+    if (!nrow(hit) && nrow(alias_idx_035r)) {
+      alias_hit <- alias_idx_035r[alias == col | alias_normalizado == norm_col]
+      if (nrow(alias_hit)) {
+        caminho_alvo <- alias_hit$caminho_registro[1L]
+        hit <- perfil[caminho_registro == caminho_alvo]
       }
     }
     if (!nrow(hit)) return(data.table::data.table())
@@ -50589,7 +51289,15 @@ if (isTRUE(MONITORA_DEVE_EXPORTAR_PNG) && (!exists("registros_corrig") || nrow(r
   }
   monitora_relatorio_gerar_textual_estatistico(file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt"))
   MONITORA_RELATORIO_TEXTUAL_GERADO <- TRUE
-  dir.create("plots_png", showWarnings = FALSE)
+  ### JOB6B-EMERG (Eixo F): diretório canônico dos gráficos finais é
+  ### output/06_graficos/ (já era o destino documentado/esperado pela
+  ### auditoria de organização de produtos -- monitora_output_classificar_arquivo_raiz(),
+  ### que já classifica .png/.jpg/.svg/.pdf como "06_graficos"). A escrita em
+  ### si, porém, usava o diretório relativo legado "plots_png" (fora de
+  ### MONITORA_OUTPUT_DIR), corrigido aqui na origem -- sem copiar/duplicar
+  ### PNGs depois.
+  MONITORA_DIR_GRAFICOS_CANONICO <- file.path(MONITORA_OUTPUT_DIR, "06_graficos")
+  dir.create(MONITORA_DIR_GRAFICOS_CANONICO, showWarnings = FALSE, recursive = TRUE)
   mapa_arquivo_png <- stats::setNames(MONITORA_INDICE_GRAFICOS$arquivo_png, MONITORA_INDICE_GRAFICOS$nome_plot)
   monitora_progresso_loop_configurar("exportacao_png", length(existing_plots), descricao = "exportação dos PNGs")
   if (length(existing_plots)) {
@@ -50599,7 +51307,7 @@ if (isTRUE(MONITORA_DEVE_EXPORTAR_PNG) && (!exists("registros_corrig") || nrow(r
       arquivo_plot <- if (plot_nm %in% names(mapa_arquivo_png)) mapa_arquivo_png[[plot_nm]] else paste0(plot_nm, ".png")
       if (isTRUE(MONITORA_SUPRIMIR_MENSAGENS_GRAFICOS)) {
         suppressMessages(monitora_ggsave_publicavel(
-          filename = file.path("plots_png", arquivo_plot),
+          filename = file.path(MONITORA_DIR_GRAFICOS_CANONICO, arquivo_plot),
           plot = plot_obj,
           width = 11,
           height = 7,
@@ -50608,7 +51316,7 @@ if (isTRUE(MONITORA_DEVE_EXPORTAR_PNG) && (!exists("registros_corrig") || nrow(r
         ))
       } else {
         monitora_ggsave_publicavel(
-          filename = file.path("plots_png", arquivo_plot),
+          filename = file.path(MONITORA_DIR_GRAFICOS_CANONICO, arquivo_plot),
           plot = plot_obj,
           width = 11,
           height = 7,
@@ -51061,7 +51769,9 @@ monitora_auditar_produtos_finais <- function() {
   if (basename(log_dir) == "log" && basename(dirname(log_dir)) == "log") {
     stop("MONITORA_LOG_DIR inválido na auditoria final: ", log_dir, call. = FALSE)
   }
-  png_dir <- file.path(out_dir, "plots_png")
+  ### JOB6B-EMERG (Eixo F): alinhado ao diretório canônico de escrita dos
+  ### PNGs (output/06_graficos/, ver bloco de exportação de gráficos acima).
+  png_dir <- file.path(out_dir, "06_graficos")
 
   ### v2.6.2 - ajuste 035N-A -----------------------------------------------
   ### Auditoria final estritamente observacional para produtos centrais.
