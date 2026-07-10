@@ -25,24 +25,29 @@ Também pode abrir painel Shiny para correções assistidas, validar espacialmen
 
 ## Padrões públicos seguros
 
-A execução pública permanece segura por padrão:
+A execução pública permanece segura por padrão e já está configurada para gerar os produtos finais quando a base não tiver pendências impeditivas:
 
 ```r
 MONITORA_MODO_EXECUCAO <- "completo"
-MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
-MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "N"
-MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
-MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "S"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
 MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- "N"
 ```
 
-Para curadoria assistida por bolsistas, use:
+Para curadoria assistida, use:
 
 ```r
 MONITORA_MODO_EXECUCAO <- "painel_e_parar"
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "S"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
+MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- "S"
 ```
 
-Os modos orientados a painel forçam internamente a abertura do Shiny mesmo que o padrão público seja painel desligado.
+Os modos orientados a painel forçam internamente a abertura do Shiny. Quando `MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"`, a aba de validação espacial também é ativada internamente.
 
 ## Uso básico
 
