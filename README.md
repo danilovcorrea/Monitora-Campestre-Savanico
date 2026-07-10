@@ -25,14 +25,14 @@ Também pode abrir painel Shiny para correções assistidas, validar espacialmen
 
 ## Padrões públicos seguros
 
-A execução pública permanece segura por padrão e já está configurada para gerar os produtos finais quando a base não tiver pendências impeditivas:
+A execução pública permanece segura por padrão e já está configurada para gerar `registros_validados.csv` quando a base não tiver pendências impeditivas:
 
 ```r
 MONITORA_MODO_EXECUCAO <- "completo"
-MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
+MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
-MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "S"
-MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "S"
+MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- "N"
+MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS <- "N"
 MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES <- "N"
 ```
 
