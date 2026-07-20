@@ -1,7 +1,7 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.7.1
+### Versão do script: 2.7.2
 ### Base pública preservada: v2.7.0
 ###
 ### Finalidade
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.7.1"
-MONITORA_SCRIPT_BUILD_ID <- "v2.7.1-20260720"
+MONITORA_SCRIPT_VERSAO <- "2.7.2"
+MONITORA_SCRIPT_BUILD_ID <- "v2.7.2-20260720"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -10426,6 +10426,125 @@ monitora_publicacao_c_canonicalizar_alias_bromelioide <- function(dt,
   invisible(aud)
 }
 
+monitora_publicacao_c_canonicalizar_rotulos_listas_forma_vida <- function(
+  dt,
+  linhas = NULL,
+  contexto = "rotulos_listas_forma_vida_contrato",
+  gravar_auditoria = TRUE,
+  modo_simulacao = FALSE
+) {
+  dt <- monitora_dt_referenciar(dt)
+  if (is.null(linhas)) linhas <- seq_len(nrow(dt))
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  if (!length(linhas)) return(invisible(data.table::data.table()))
+  if (!requireNamespace("stringi", quietly = TRUE)) {
+    stop("O pacote stringi é necessário para reconciliar rótulos multiversão.", call. = FALSE)
+  }
+
+  meta <- tryCatch(monitora_correcao_xlsform_meta_atual(), error = function(e) NULL)
+  opcoes <- if (!is.null(meta) && !is.null(meta$opcoes)) data.table::as.data.table(meta$opcoes) else data.table::data.table()
+  for (cc in c("list_name", "name", "label")) {
+    if (!(cc %in% names(opcoes))) opcoes[, (cc) := NA_character_]
+  }
+
+  auditoria <- vector("list", 3L)
+  categorias <- c("nativa", "exotica", "seca_morta")
+  for (ii in seq_along(categorias)) {
+    categoria <- categorias[[ii]]
+    lista <- paste0("forma_vida_", categoria)
+    coluna <- tryCatch(monitora_correcao_coluna_forma_vida(dt, categoria), error = function(e) NA_character_)
+    if (is.na(coluna) || !(coluna %in% names(dt))) next
+
+    mapa <- unique(opcoes[
+      as.character(list_name) == lista &
+        !is.na(name) & nzchar(trimws(as.character(name))) &
+        !is.na(label) & nzchar(trimws(as.character(label))),
+      .(
+        token = trimws(as.character(name)),
+        rotulo = stringi::stri_trans_nfc(trimws(as.character(label)))
+      )
+    ])
+    if (nrow(mapa)) {
+      ### Alguns exportadores históricos suprimem o substantivo genérico no
+      ### início do rótulo (por exemplo, preservam o restante integral da
+      ### opção). As variantes abaixo continuam derivadas do próprio XLSForm:
+      ### não há lista de valores observados, coletas ou UCs. A variante só é
+      ### admitida quando permanece unívoca para um único `name` contratual.
+      variantes_sem_prefixo <- data.table::copy(mapa)
+      variantes_sem_prefixo[, rotulo_original := rotulo]
+      variantes_sem_prefixo[, rotulo := trimws(sub(
+        "^(erva|planta)\\s+", "", rotulo,
+        ignore.case = TRUE, perl = TRUE
+      ))]
+      variantes_sem_prefixo <- variantes_sem_prefixo[
+        nzchar(rotulo) & tolower(rotulo) != tolower(rotulo_original),
+        .(token, rotulo)
+      ]
+      if (nrow(variantes_sem_prefixo)) {
+        mapa <- unique(data.table::rbindlist(
+          list(mapa, variantes_sem_prefixo),
+          use.names = TRUE, fill = TRUE
+        ))
+      }
+      mapa[, rotulo_chave := tolower(rotulo)]
+      seguros <- mapa[, .(n_tokens = data.table::uniqueN(token)), by = rotulo_chave][n_tokens == 1L, rotulo_chave]
+      mapa <- unique(mapa[rotulo_chave %chin% seguros], by = "rotulo_chave")
+      mapa <- mapa[order(-nchar(rotulo))]
+    }
+
+    antes <- as.character(dt[[coluna]][linhas])
+    depois <- stringi::stri_trans_nfc(antes)
+    valores <- unique(depois[!is.na(depois) & nzchar(trimws(depois))])
+    if (length(valores)) {
+      valores_depois <- valores
+      if (nrow(mapa)) {
+        valores_depois <- stringi::stri_replace_all_fixed(
+          valores_depois,
+          mapa$rotulo,
+          mapa$token,
+          vectorize_all = FALSE,
+          opts_fixed = stringi::stri_opts_fixed(case_insensitive = TRUE)
+        )
+      }
+      valores_depois <- trimws(gsub("[,;|]+|\\s+", " ", valores_depois, perl = TRUE))
+      valores_depois <- vapply(strsplit(valores_depois, " ", fixed = TRUE), function(tokens) {
+        tokens <- tokens[nzchar(tokens)]
+        paste(tokens[!duplicated(tokens)], collapse = " ")
+      }, character(1L), USE.NAMES = FALSE)
+      mapa_valores <- stats::setNames(valores_depois, valores)
+      hit <- !is.na(depois) & nzchar(trimws(depois))
+      depois[hit] <- unname(mapa_valores[depois[hit]])
+    }
+    mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+    if (any(mudou, na.rm = TRUE)) data.table::set(dt, i = linhas[mudou], j = coluna, value = depois[mudou])
+    auditoria[[ii]] <- data.table::data.table(
+      contexto = contexto,
+      categoria = categoria,
+      atributo = coluna,
+      n_linhas_avaliadas = length(linhas),
+      n_linhas_alteradas = sum(mudou, na.rm = TRUE),
+      n_rotulos_contratuais_mapeados = nrow(mapa),
+      origem_mapa = "opcoes_xlsform_2022_2023_2024_2025",
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+  }
+
+  aud <- data.table::rbindlist(auditoria, fill = TRUE, use.names = TRUE)
+  gravar <- isTRUE(gravar_auditoria) && !isTRUE(modo_simulacao) &&
+    !isTRUE(get0("MONITORA_PUBLICACAO_G_MODO_SIMULACAO_CONTRATO", ifnotfound = FALSE, inherits = TRUE))
+  if (gravar && nrow(aud)) {
+    out_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path("output", "correcoes_campos"), inherits = TRUE)
+    log_dir <- get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE)
+    exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+    monitora_fwrite(aud, file.path(out_dir, "auditoria_canonicalizacao_rotulos_listas_forma_vida.csv"), na = "")
+    monitora_fwrite(aud, file.path(log_dir, paste0("auditoria_canonicalizacao_rotulos_listas_forma_vida_", exec_id, ".csv")), na = "")
+  }
+  invisible(aud)
+}
+
 ### Ponto único de reconciliação contratual das listas de forma de vida. É
 ### chamado no objeto operacional pré-painel e novamente no checkpoint final;
 ### a segunda passagem é idempotente e captura somente mutações da sessão.
@@ -10439,8 +10558,12 @@ monitora_publicacao_c_reconciliar_formas_vida_contrato <- function(dt,
   if (is.null(linhas)) linhas <- seq_len(nrow(dt))
   linhas <- unique(as.integer(linhas))
   linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
-  if (!length(linhas)) return(invisible(list(dt = dt, alias = data.table::data.table(), materiais = data.table::data.table(), encostam = data.table::data.table())))
+  if (!length(linhas)) return(invisible(list(dt = dt, rotulos_multiversao = data.table::data.table(), alias = data.table::data.table(), materiais = data.table::data.table(), encostam = data.table::data.table())))
 
+  aud_rotulos <- monitora_publicacao_c_canonicalizar_rotulos_listas_forma_vida(
+    dt, linhas = linhas, contexto = paste0(contexto, "_rotulos_multiversao"),
+    gravar_auditoria = gravar_auditoria, modo_simulacao = modo_simulacao
+  )
   aud_alias <- monitora_publicacao_c_canonicalizar_alias_bromelioide(
     dt, linhas = linhas, contexto = paste0(contexto, "_alias_bromelioide"),
     gravar_auditoria = gravar_auditoria, modo_simulacao = modo_simulacao
@@ -10476,7 +10599,7 @@ monitora_publicacao_c_reconciliar_formas_vida_contrato <- function(dt,
       file.path(out_dir, "auditoria_encostam_final_contrato_resumo.csv")
     )
   }
-  invisible(list(dt = dt, alias = aud_alias, materiais = aud_materiais, encostam = aud_encostam))
+  invisible(list(dt = dt, rotulos_multiversao = aud_rotulos, alias = aud_alias, materiais = aud_materiais, encostam = aud_encostam))
 }
 
 
@@ -22446,13 +22569,16 @@ monitora_correcao_aliases_historicos_habito <- function(dt, col_def, meta_xls = 
   nms <- names(dt)
   coletar_colunas <- function(labs) {
     achados <- character(0)
+    normalizar_aspas_html <- function(x) gsub('"{2,}', '"', as.character(x), perl = TRUE)
+    nms_html <- normalizar_aspas_html(nms)
     for (lab in labs) {
       base_cand <- paste0(lab, " (amostragem/registro)")
-      achados <- c(achados, nms[nms == base_cand])
-      pref <- paste0(base_cand, ".")
-      tem_pref <- startsWith(nms, pref)
+      base_html <- normalizar_aspas_html(base_cand)
+      achados <- c(achados, nms[nms_html == base_html])
+      pref <- paste0(base_html, ".")
+      tem_pref <- startsWith(nms_html, pref)
       if (any(tem_pref)) {
-        sufixo <- substring(nms[tem_pref], nchar(pref) + 1L)
+        sufixo <- substring(nms_html[tem_pref], nchar(pref) + 1L)
         achados <- c(achados, nms[tem_pref][grepl("^[0-9]+$", sufixo)])
       }
     }
@@ -22489,6 +22615,17 @@ monitora_correcao_conciliar_habito_historico_definitivo <- function(dt, meta_xls
   }
   meta_xls <- tryCatch(monitora_correcao_xlsform_meta_atual(meta_xls), error = function(e) meta_xls)
   habitos_validos <- c("terrestre", "epifita", "rupicola")
+  normalizar_alias_habito <- function(x) {
+    x <- tolower(trimws(as.character(x)))
+    vapply(x, function(valor) {
+      if (is.na(valor) || !nzchar(valor)) return(NA_character_)
+      tokens <- trimws(strsplit(valor, "|", fixed = TRUE)[[1L]])
+      tokens <- tokens[nzchar(tokens)]
+      unicos <- unique(tokens)
+      if (length(unicos) == 1L && unicos %in% habitos_validos) return(unicos)
+      valor
+    }, character(1L), USE.NAMES = FALSE)
+  }
   formas <- tryCatch(monitora_correcao_tokens_formas_exigem_habito(), error = function(e) character(0))
   chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
   get_col <- function(nm) {
@@ -22544,25 +22681,27 @@ monitora_correcao_conciliar_habito_historico_definitivo <- function(dt, meta_xls
       identidade_canonica <- if (nrow(regra_forma) == 1L) as.character(regra_forma$atributo_canonico[1L]) else paste0("amostragem/registro/forma_vida_", categoria, "_", monitora_correcao_normalizar_forma_habito(forma))
       idx <- which(hit)
       if (!length(idx)) next
- ### quando o caminho canônico foi preservado antes da troca de
- ### rótulos, ele é a fonte soberana. Um vazio nessa fonte é pendência
- ### real; buscar um alias físico compartilhado poderia copiar o hábito
- ### de outra categoria (caso 6173/90). A marca técnica persiste nos modos
- ### incrementais, então o comportamento não depende da memória da run.
+ ### Quando o caminho canônico preservado já contém valor, ele é soberano.
+ ### Quando está vazio, ainda é necessário consultar os aliases históricos
+ ### seguros da versão da linha. A proteção contra propagação entre categorias
+ ### permanece no teste `hit_outras_categorias` abaixo; descartar toda linha
+ ### canônica vazia aqui produziria falso positivo e divergência física depois
+ ### de SANHAB em exportações históricas que guardam o fato apenas no rótulo.
       linhas_preservadas <- canonico_preservado_na_linha(idx, identidade_canonica)
       if (any(linhas_preservadas)) {
         idx_pres <- idx[linhas_preservadas]
         def_pres <- tolower(trimws(as.character(dt[[col_def]][idx_pres])))
-        for (kk in seq_along(idx_pres)) {
-          ii <- idx_pres[kk]
+        preenchido_pres <- !is.na(def_pres) & nzchar(def_pres)
+        for (kk in which(preenchido_pres)) {
+          ii <- idx_pres[[kk]]
           registros_audit[[length(registros_audit) + 1L]] <- data.table::data.table(
             linha_indice = ii, COLETA = coleta[ii], UC = uc[ii], EA = ea[ii], UA = ua[ii],
             ponto_amostral = ponto[ii], ponto_metro = ponto_metro[ii], categoria = categoria, forma = forma,
             atributo_definitivo = col_def, alias_origem = NA_character_, valor_migrado = NA_character_,
-            status = ifelse(!is.na(def_pres[kk]) && nzchar(def_pres[kk]), "ja_preenchido_fonte_canonica", "fonte_canonica_preservada_vazia")
+            status = "ja_preenchido_fonte_canonica"
           )
         }
-        idx <- idx[!linhas_preservadas]
+        idx <- setdiff(idx, idx_pres[preenchido_pres])
         if (!length(idx)) next
       }
  ### A descoberta histórica usa a identidade do contrato (path/name),
@@ -22633,13 +22772,16 @@ monitora_correcao_conciliar_habito_historico_definitivo <- function(dt, meta_xls
           aliases_linha_ambiguos <- character(0)
         }
         vals_alias <- if (length(aliases_linha_seguros)) {
-          v <- vapply(aliases_linha_seguros, function(cc) tolower(trimws(as.character(dt[[cc]][ii]))), character(1)); names(v) <- aliases_linha_seguros; v
+          v <- vapply(aliases_linha_seguros, function(cc) normalizar_alias_habito(dt[[cc]][ii]), character(1)); names(v) <- aliases_linha_seguros; v
         } else character(0)
         preenchidos <- vals_alias[!is.na(vals_alias) & nzchar(vals_alias)]
         validos <- preenchidos[preenchidos %in% habitos_validos]
         if (length(validos) && length(unique(validos)) == 1L) {
           status <- "migrado"; alias_origem <- paste(names(validos), collapse = " | "); valor_migrado <- unique(validos)[1L]
           data.table::set(dt, i = ii, j = col_def, value = valor_migrado)
+          for (alias_col in unique(names(validos))) {
+            data.table::set(dt, i = ii, j = alias_col, value = valor_migrado)
+          }
         } else if (length(validos) > 1L) {
           status <- "conflito"; alias_origem <- paste(names(validos), collapse = " | "); valor_migrado <- paste(unique(validos), collapse = " | ")
         } else if (length(preenchidos)) {
@@ -38483,7 +38625,13 @@ monitora_validados_validar_dominios_xlsform21 <- function(out, schema, meta = NU
       toks <- unique(unlist(strsplit(vals, "\\s+", perl = TRUE), use.names = FALSE))
       toks <- toks[nzchar(toks)]
       invalid <- setdiff(toks, choices)
-      exemplos_invalidos <- vals[grepl(paste(invalid, collapse = "|"), vals, perl = TRUE)]
+      exemplos_invalidos <- if (length(invalid)) {
+        vals[vapply(
+          strsplit(vals, "\\s+", perl = TRUE),
+          function(tokens_valor) any(tokens_valor %in% invalid),
+          logical(1L)
+        )]
+      } else character(0)
     }
     if (length(invalid)) {
       k <- k + 1L
@@ -39437,6 +39585,8 @@ monitora_publicacao_aa_materializar_regras_xlsform21_corrig <- function(registro
     y[is.na(y)] <- ""
     y
   }
+  cache_aliases_habito <- new.env(parent = emptyenv())
+  arquivos_xlsform_por_linha <- NULL
 
   for (ii in seq_along(atributos)) {
     att <- atributos[ii]
@@ -39445,33 +39595,91 @@ monitora_publicacao_aa_materializar_regras_xlsform21_corrig <- function(registro
     idx <- which(va != vd)
     candidatos <- monitora_validados_colunas_presentes(dt, att)
 
- ### Hábitos usam exclusivamente o atributo interno curto preservado antes
- ### dos rótulos. Isso impede que um label compartilhado entre categorias
- ### seja gravado como se pertencesse a ambas.
-    if (grepl("^amostragem/registro/forma_vida_(nativa|exotica|seca_morta)_(bromelioide|cactacea|orquidea|samambaia)$", att, perl = TRUE)) {
+ ### Hábitos priorizam o atributo interno curto preservado antes dos rótulos.
+ ### Aliases históricos só podem ser materializados quando o resolvedor por
+ ### versão/linha os classificar como seguros; um rótulo compartilhado com
+ ### outra categoria permanece bloqueado se essa categoria também reivindicar
+ ### a mesma forma na linha.
+    eh_habito <- grepl("^amostragem/registro/forma_vida_(nativa|exotica|seca_morta)_(bromelioide|cactacea|orquidea|samambaia)$", att, perl = TRUE)
+    categoria_habito <- NA_character_
+    forma_habito <- NA_character_
+    outra_categoria_reivindica <- rep(FALSE, nrow(dt))
+    if (eh_habito) {
       curto <- sub("^.*/", "", att)
       candidatos <- if (curto %in% names(dt)) curto else intersect(att, names(dt))
+      categoria_habito <- sub(
+        "^amostragem/registro/forma_vida_(nativa|exotica|seca_morta)_.+$",
+        "\\1", att
+      )
+      forma_habito <- sub(
+        "^amostragem/registro/forma_vida_(nativa|exotica|seca_morta)_",
+        "", att
+      )
+      for (outra_cat in setdiff(c("nativa", "exotica", "seca_morta"), categoria_habito)) {
+        lista_outra <- tryCatch(monitora_correcao_coluna_forma_vida(dt, outra_cat), error = function(e) NA_character_)
+        if (is.na(lista_outra) || !(lista_outra %in% names(dt))) next
+        hit_outra <- tryCatch(
+          monitora_correcao_contem_qualquer_token_vec(dt[[lista_outra]], forma_habito),
+          error = function(e) rep(FALSE, nrow(dt))
+        )
+        hit_outra[is.na(hit_outra)] <- FALSE
+        outra_categoria_reivindica <- outra_categoria_reivindica | hit_outra
+      }
+      if (is.null(arquivos_xlsform_por_linha)) {
+        arquivos_xlsform_por_linha <- tryCatch(
+          monitora_correcao_xlsform_por_linha(dt),
+          error = function(e) rep(NA_character_, nrow(dt))
+        )
+      }
     }
 
     n_materializado <- 0L
     sem_origem <- integer()
     if (length(idx)) {
-      if (!length(candidatos)) {
+      if (!length(candidatos) && !eh_habito) {
         sem_origem <- idx
       } else {
         for (cc in candidatos) {
           if (!is.character(dt[[cc]])) data.table::set(dt, j = cc, value = as.character(dt[[cc]]))
         }
-        valores_fisicos <- lapply(candidatos, function(cc) limpar(dt[[cc]]))
  ### Calcula por linha para preservar todos os aliases contribuintes.
         for (rr in idx) {
-          contrib <- candidatos[vapply(valores_fisicos, function(v) nzchar(v[rr]), logical(1L))]
+          candidatos_rr <- candidatos
+          if (eh_habito && exists("monitora_correcao_aliases_historicos_habito", mode = "function")) {
+            versao_rr <- if (length(arquivos_xlsform_por_linha) >= rr) arquivos_xlsform_por_linha[[rr]] else NA_character_
+            chave_cache <- paste(att, ifelse(is.na(versao_rr), "<NA>", versao_rr), sep = "\r")
+            if (exists(chave_cache, envir = cache_aliases_habito, inherits = FALSE)) {
+              aliases_rr <- get(chave_cache, envir = cache_aliases_habito, inherits = FALSE)
+            } else {
+              aliases_rr <- tryCatch(
+                monitora_correcao_aliases_historicos_habito(dt, att, linha = rr),
+                error = function(e) character(0)
+              )
+              assign(chave_cache, aliases_rr, envir = cache_aliases_habito)
+            }
+            seguros_rr <- aliases_rr[aliases_rr %in% names(dt)]
+            ambiguos_rr <- attr(aliases_rr, "ambiguos")
+            if (is.null(ambiguos_rr)) ambiguos_rr <- character(0)
+            ambiguos_rr <- ambiguos_rr[ambiguos_rr %in% names(dt)]
+
+            if (!isTRUE(outra_categoria_reivindica[[rr]])) seguros_rr <- unique(c(seguros_rr, ambiguos_rr))
+            candidatos_rr <- unique(c(candidatos_rr, seguros_rr))
+            for (cc in candidatos_rr) {
+              if (!is.character(dt[[cc]])) data.table::set(dt, j = cc, value = as.character(dt[[cc]]))
+            }
+          }
+
+          contrib <- candidatos_rr[vapply(candidatos_rr, function(cc) nzchar(limpar(dt[[cc]][rr])), logical(1L))]
           if (length(contrib)) {
             for (cc in contrib) data.table::set(dt, i = rr, j = cc, value = vd[rr])
             n_materializado <- n_materializado + 1L
           } else if (nzchar(vd[rr])) {
-            data.table::set(dt, i = rr, j = candidatos[1L], value = vd[rr])
-            n_materializado <- n_materializado + 1L
+            if (length(candidatos_rr)) {
+              data.table::set(dt, i = rr, j = candidatos_rr[1L], value = vd[rr])
+              n_materializado <- n_materializado + 1L
+            } else {
+              sem_origem <- c(sem_origem, rr)
+            }
           }
         }
       }
