@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.7.3
-### Release pública: v2.7.3
+### Versão do script: 2.7.4
+### Release pública: v2.7.4
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.7.3"
-MONITORA_SCRIPT_BUILD_ID <- "v2.7.3-20260721"
+MONITORA_SCRIPT_VERSAO <- "2.7.4"
+MONITORA_SCRIPT_BUILD_ID <- "v2.7.4-20260721"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -174,16 +174,19 @@ MONITORA_ARQUIVO_METADADOS_SESSAO_PAINEL <- ""
 ### REPLAY SEMÂNTICO versus CURADORIA CONTINUADA -----------------------------
 ### São fluxos diferentes e mutuamente exclusivos.
 ###
-### (A) REPLAY SEMÂNTICO: reconstrói decisões antigas sobre os mesmos arquivos
-### ORIGINAIS/brutos, normalmente ao testar uma nova versão do script.
-### input/ deve conter os arquivos originais e um ledger semântico. Não use
-### registros_corrig.csv. Configure REAPLICAR="S". O script procura, nesta
-### ordem, input/linhagem/correcoes_semanticas_consolidada.csv,
-### input/correcoes_semanticas_consolidada.csv,
-### input/correcoes_semanticas.csv e input/correcoes_campos.csv. Se um
-### caminho explícito for informado e não existir, ou se nenhum ledger for
-### encontrado, a execução ABORTA antes do processamento: replay solicitado
-### nunca pode ser silenciosamente ignorado.
+### (A) REPLAY SEMÂNTICO: reconstrói decisões antigas sobre uma cópia idêntica
+### dos mesmos arquivos ORIGINAIS/brutos, normalmente ao testar uma nova versão
+### do script. Em input/, mantenha somente os arquivos brutos e o ledger
+### input/linhagem/correcoes_semanticas_consolidada.csv. Não inclua
+### registros_corrig.csv nem os demais sidecars de uma continuidade incremental.
+### Configure REAPLICAR="S" e use um destes modos: completo, sem_png,
+### estatisticas_sem_graficos, ate_registros_corrig ou painel_e_parar. O script
+### também reconhece os nomes legados input/correcoes_semanticas_consolidada.csv,
+### input/correcoes_semanticas.csv e input/correcoes_campos.csv para migrações,
+### mas o ledger consolidado em input/linhagem/ é o formato recomendado.
+### Se o ledger não existir, estiver vazio, o modo for incompatível ou a
+### validação semântica falhar, a execução ABORTA: replay solicitado nunca
+### pode ser silenciosamente ignorado.
 ###
 ### (B) CURADORIA CONTINUADA: retoma o estado já materializado. Use um modo
 ### painel_incremental_* com exatamente um input/registros_corrig*.csv e
@@ -207,20 +210,23 @@ MONITORA_REPLAY_CONTRATO_SEMANTICO_VERSAO <- "replay_semantico_v2"
 ### antigo sem ledger/manifesto; a dispensa não reconstrói o histórico ausente.
 MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA <- "N"
 
-### Auditoria não bloqueante do replay semântico ---------------------------
-### Use "S" para manter o painel acessível mesmo quando a auditoria do replay
-### encontrar divergência. As divergências são gravadas para comparação com a
-### run-oráculo; use abortar divergência somente em validações finais.
-MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- "S"
+### Auditoria do replay semântico ------------------------------------------
+### Padrão seguro: "N". Assim, operação inválida, ambígua ou inaplicável
+### interrompe o replay. Use "S" apenas em diagnóstico deliberado, sem promover
+### os produtos resultantes como equivalentes à run anterior.
+MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- "N"
 
 ### Oráculo de replay semântico ----------------------------------------------
 ### Padrão público seguro: "N". Use "S" quando houver uma run anterior considerada
 ### correta, especialmente em transições de versão do script. O script NÃO usa o
 ### registros_corrig.csv da run-oráculo como entrada operacional. Ele usa a run
 ### apenas para auditar se o replay semântico sobre o input bruto chegou ao mesmo
-### estado esperado. Pasta recomendada: input/oraculo_replay/ contendo produtos
-### copiados da run correta, especialmente output_01_produtos_dados/registros_corrig.csv
-### e output_02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/resumo_*.csv.
+### estado FINAL, depois das mesmas reconciliações contratuais e imediatamente
+### antes da exportação. Pasta recomendada: input/oraculo_replay/ contendo os
+### produtos copiados da run correta, especialmente
+### output/01_produtos_dados/registros_corrig.csv. Para um gate estrito de
+### validação, use COMPARAR="S" e ABORTAR_DIVERGENCIA="S"; oráculo ausente,
+### identidade não única ou qualquer divergência impedirão a exportação.
 MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO <- "N"
 MONITORA_DIR_RUN_ORACULO <- "input/oraculo_replay"
 MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- "N"
@@ -1042,9 +1048,9 @@ monitora_doc_replay_contrato_dt <- function() {
       monitora_doc_chr(get0("MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = "N", inherits = TRUE), "N"),
       monitora_doc_chr(get0("MONITORA_DIR_RUN_ORACULO", ifnotfound = "input/oraculo_replay", inherits = TRUE), "input/oraculo_replay"),
       monitora_doc_chr(get0("MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = "N", inherits = TRUE), "N"),
-      monitora_doc_chr(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "S", inherits = TRUE), "S"),
+      monitora_doc_chr(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "N", inherits = TRUE), "N"),
       paste(as.character(get0("MONITORA_ORACULO_COLUNAS_IGNORAR", ifnotfound = character(), inherits = TRUE)), collapse = "; "),
-      "O arquivo correcoes_semanticas.csv é tratado como trilha mestre de roll-forward: reaplica intenções sobre o input bruto; não é rollback inverso. Mudanças futuras no script devem preservar compatibilidade ou registrar incompatibilidade explícita."
+      "O arquivo correcoes_semanticas_consolidada.csv é tratado como trilha mestre de roll-forward: reaplica intenções sobre o input bruto; não é rollback inverso. Mudanças futuras no script devem preservar compatibilidade ou registrar incompatibilidade explícita."
     )
   )
 }
@@ -1571,7 +1577,7 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "docs") {
       monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Relatórios de outras formas de vida"),
       monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pre_painel/", "Relatório de exóticas pré-painel"),
       monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pre_painel/", "Relatório de exóticas com espécie vinculada"),
-      monitora_doc_link_relativo("input/correcoes_semanticas.csv", "Arquivo de intenções semânticas reaplicadas"),
+      monitora_doc_link_relativo("input/linhagem/correcoes_semanticas_consolidada.csv", "Ledger semântico consolidado reaplicado"),
       monitora_doc_link_relativo("output/03_auditorias/replay_semantico/", "Diagnóstico de convergência com oráculo")
     ),
     operacao_no_painel = c(
@@ -1596,7 +1602,7 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "docs") {
       monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pos_painel/", "Relatório de exóticas pós-correções"),
       monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pos_painel/", "Relatório de exóticas pós-correções"),
       monitora_doc_link_relativo("output/02_painel_correcoes/auditorias_operacionais/auditoria_reaplicacao_correcoes_anteriores_ultima_execucao.csv", "Auditoria de reaplicação"),
-      monitora_doc_link_relativo("output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_pre_sanitizacao.csv", "Selo de convergência com oráculo")
+      monitora_doc_link_relativo("output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv", "Selo final de convergência com oráculo")
     ),
     criterio_sucesso = c(
       "contador de forma de vida desconhecida = 0 e ausência de bloqueio em registros_corrig/registros_validados",
@@ -1608,7 +1614,7 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "docs") {
       "lista revisada; pendência não impeditiva documentada ou espécie preenchida quando houver evidência",
       "lista revisada; vínculo forma/espécie coerente",
       "operações anteriores aparecem em auditoria e os contadores impeditivos esperados não reaparecem",
-      "replay_equivalente_ao_oraculo = SIM ou divergências explicitamente justificadas"
+      "em validação estrita, replay_equivalente_ao_oraculo = SIM; qualquer divergência bloqueia a promoção"
     )
   )
 }
@@ -1677,7 +1683,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     monitora_doc_rmd_table_chunk(arq_modos, "manual-modos", 100L, c("modo", "finalidade", "entrada_principal", "painel", "saida_esperada"), 40L), "",
     "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
     "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
-    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta dos arquivos brutos/originais, leve `correcoes_semanticas_consolidada.csv` para `input/linhagem/` (preferencial) ou `input/`, mantenha `registros_corrig.csv` fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. O replay ocorre antes dos relatórios e do painel. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`: isso reaplicaria sobre um estado já corrigido. O script bloqueia essa combinação antes de alterar dados. Se um caminho explícito for informado e não existir, ou se replay estiver ligado sem ledger, a execução também falha com orientação clara; não há continuação silenciosa. Todo arquivo dentro de `input/linhagem/` é tratado exclusivamente como sidecar e jamais entra na concatenação de registros do SISMONITORA.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
+    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade canônica não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/auditorias_operacionais/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
     "# Produtos de dados", "", "Os cinco produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
     "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_importados_operacional_pre_painel.csv` documenta a camada operacional pós-tokenização/pré-painel e não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
     "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atributo, valor novo e justificativa. Ao salvar, o script aplica as operações, recalcula campos superiores quando necessário, atualiza diagnósticos e materializa os produtos pós-painel.", "", monitora_doc_rmd_table_chunk(arq_painel, "manual-painel", 100L, c("controle", "funcao", "quando_usar", "auditoria_efeito"), 40L), "",
@@ -1740,7 +1746,8 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   arq_replay_contrato <- file.path(data_dir, paste0("contrato_rollforward_semantico_", exec_id, ".csv")); monitora_doc_fwrite(replay_contrato, arq_replay_contrato)
   arq_linhagem <- file.path(data_dir, paste0("resumo_linhagem_correcoes_", exec_id, ".csv")); monitora_doc_fwrite(linhagem_resumo, arq_linhagem)
   arq_refs <- file.path(data_dir, paste0("referencias_relatorios_especificos_", exec_id, ".csv")); monitora_doc_fwrite(relatorios_ref, arq_refs)
-  dir_oraculo <- file.path(output_dir, "correcoes_campos", "diagnostico_oraculo_replay")
+  dir_oraculo <- file.path(output_dir, "03_auditorias", "replay_semantico")
+  if (!dir.exists(dir_oraculo)) dir_oraculo <- file.path(output_dir, "correcoes_campos", "diagnostico_oraculo_replay")
   if (!dir.exists(dir_oraculo)) dir_oraculo <- file.path(output_dir, "02_painel_correcoes", "diagnostico_oraculo_replay")
   oraculo_files <- if (dir.exists(dir_oraculo)) list.files(dir_oraculo, recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
   oraculo_info <- monitora_doc_info_arquivos(oraculo_files, base_dir = getwd())
@@ -2271,12 +2278,16 @@ if (!MONITORA_ARQUIVO_CORRECOES_ANTERIORES_EXPLICITO) {
   MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- if (length(candidatos_replay)) candidatos_replay[1] else ""
 }
 if (isTRUE(MONITORA_REAPLICAR_CORRECOES_ANTERIORES)) {
-  modo_incompativel_replay <- isTRUE(get0("MONITORA_MODO_USA_REGISTROS_CORRIG_ENTRADA", ifnotfound = FALSE, inherits = TRUE)) ||
-    grepl("incremental", MONITORA_MODO_EXECUCAO, fixed = TRUE) ||
-    startsWith(MONITORA_MODO_EXECUCAO, "registros_corrig_")
+  MONITORA_MODOS_REPLAY_SEMANTICO <- c(
+    "completo", "sem_png", "estatisticas_sem_graficos",
+    "ate_registros_corrig", "painel_e_parar"
+  )
+  modo_incompativel_replay <- !(MONITORA_MODO_EXECUCAO %in% MONITORA_MODOS_REPLAY_SEMANTICO)
   if (isTRUE(modo_incompativel_replay)) {
     stop(
-      "Configuração incompatível: replay semântico exige input original e não pode ser combinado com modo baseado em registros_corrig/painel_incremental. Para curadoria continuada, use REAPLICAR_CORRECOES_ANTERIORES='N' e leve registros_corrig.csv + input/linhagem/.",
+      "Configuração incompatível: replay semântico exige input original e um destes modos: ",
+      paste(MONITORA_MODOS_REPLAY_SEMANTICO, collapse = ", "),
+      ". Não use abrir_painel_cache nem modos baseados em registros_corrig/painel_incremental. Para curadoria continuada, use REAPLICAR_CORRECOES_ANTERIORES='N' e leve registros_corrig.csv + input/linhagem/.",
       call. = FALSE
     )
   }
@@ -2306,7 +2317,7 @@ MONITORA_GRAVAR_TRILHA_SEMANTICA_CORRECOES <- identical(MONITORA_OPCAO_GRAVAR_TR
 
 MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- Sys.getenv(
   "MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR",
-  unset = as.character(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "S", inherits = TRUE))[1]
+  unset = as.character(get0("MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR", ifnotfound = "N", inherits = TRUE))[1]
 )
 MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR <- toupper(trimws(as.character(MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR)[1]))
 if (!(MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR %in% c("S", "N"))) {
@@ -2338,6 +2349,12 @@ if (!(MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA deve ser 'S' ou 'N'.", call. = FALSE)
 }
 MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA <- identical(MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA, "S")
+if (isTRUE(MONITORA_COMPARAR_REPLAY_COM_ORACULO) && !isTRUE(MONITORA_REAPLICAR_CORRECOES_ANTERIORES)) {
+  stop(
+    "Configuração incompatível: a comparação com oráculo exige replay semântico ativo (MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES='S').",
+    call. = FALSE
+  )
+}
 
 if (!exists("MONITORA_EXEC_ID", inherits = TRUE) || !nzchar(as.character(MONITORA_EXEC_ID)[1L])) {
   MONITORA_EXEC_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -19930,21 +19947,99 @@ monitora_oraculo_localizar <- function(subcaminhos) {
   if (length(candidatos)) normalizePath(candidatos[1], winslash = "/", mustWork = FALSE) else ""
 }
 
-monitora_oraculo_key <- function(dt, preferir_uuid = TRUE) {
-  if (!is.data.table(dt)) dt <- data.table::as.data.table(dt)
-  candidatos <- c("COLETA", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Data (data_hora)", "ponto_amostral", "ponto_metro")
-  if (isTRUE(preferir_uuid)) candidatos <- c(candidatos, "uuid_registro")
-  cols <- candidatos[candidatos %in% names(dt)]
-  if (!length(cols)) return(sprintf("linha_%08d", seq_len(nrow(dt))))
-  vals <- lapply(cols, function(cc) {
-    x <- as.character(dt[[cc]])
-    x[is.na(x)] <- ""
-    trimws(x)
-  })
-  do.call(paste, c(vals, sep = "||"))
+monitora_oraculo_output_dir <- function() {
+  file.path(
+    get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+    "03_auditorias", "replay_semantico"
+  )
 }
 
-monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_replay_pre_painel") {
+monitora_oraculo_identidade <- function(dt) {
+  if (!is.data.table(dt)) dt <- data.table::as.data.table(dt)
+  candidatos <- c(
+    "MONITORA_UUID_REGISTRO_CANONICO",
+    "uuid (amostragem/registro)",
+    "amostragem/registro/uuid",
+    "uuid_registro"
+  )
+  diagnosticos <- lapply(candidatos, function(cc) {
+    existe <- cc %in% names(dt)
+    chave <- if (existe) trimws(as.character(dt[[cc]])) else character()
+    if (length(chave)) chave[is.na(chave)] <- ""
+    n_vazios <- if (existe) sum(!nzchar(chave)) else NA_integer_
+    duplicadas <- if (existe && length(chave)) unique(chave[nzchar(chave) & duplicated(chave)]) else character()
+    data.table::data.table(
+      coluna = cc,
+      existe = existe,
+      n_linhas = nrow(dt),
+      n_vazios = n_vazios,
+      n_chaves_unicas = if (existe) data.table::uniqueN(chave[nzchar(chave)]) else NA_integer_,
+      n_grupos_duplicados = if (existe) length(duplicadas) else NA_integer_,
+      identidade_valida = existe && nrow(dt) > 0L && n_vazios == 0L && length(duplicadas) == 0L
+    )
+  })
+  diagnostico <- data.table::rbindlist(diagnosticos, fill = TRUE)
+  escolhida <- diagnostico[identidade_valida %in% TRUE, coluna][1L]
+  if (!length(escolhida) || is.na(escolhida) || !nzchar(escolhida)) {
+    return(list(
+      chave = sprintf("identidade_invalida_linha_%08d", seq_len(nrow(dt))),
+      coluna = NA_character_,
+      tipo = "identidade_unica_indisponivel",
+      valida = FALSE,
+      diagnostico = diagnostico
+    ))
+  }
+  chave <- trimws(as.character(dt[[escolhida]]))
+  chave[is.na(chave)] <- ""
+  list(
+    chave = chave,
+    coluna = escolhida,
+    tipo = if (identical(escolhida, "MONITORA_UUID_REGISTRO_CANONICO")) "uuid_registro_canonico" else "uuid_registro_compativel",
+    valida = TRUE,
+    diagnostico = diagnostico
+  )
+}
+
+monitora_oraculo_key <- function(dt, preferir_uuid = TRUE) {
+  identidade <- monitora_oraculo_identidade(dt)
+  chave <- identidade$chave
+  attr(chave, "coluna_identidade") <- identidade$coluna
+  attr(chave, "identidade_valida") <- identidade$valida
+  chave
+}
+
+monitora_oraculo_reconciliar_colunas <- function(ref, cur) {
+  ref <- data.table::as.data.table(data.table::copy(ref))
+  cur <- data.table::as.data.table(cur)
+  somente_ref <- setdiff(names(ref), names(cur))
+  somente_cur <- setdiff(names(cur), names(ref))
+  if (!length(somente_ref) || !length(somente_cur) ||
+      !exists("monitora_correcao_normalizar_nome_coluna", mode = "function", inherits = TRUE)) {
+    return(list(ref = ref, mapa = data.table::data.table(), ambiguidades = data.table::data.table()))
+  }
+  mapa_ref <- data.table::data.table(
+    coluna_oraculo = somente_ref,
+    identidade_semantica = monitora_correcao_normalizar_nome_coluna(somente_ref)
+  )
+  mapa_cur <- data.table::data.table(
+    coluna_atual = somente_cur,
+    identidade_semantica = monitora_correcao_normalizar_nome_coluna(somente_cur)
+  )
+  cont_ref <- mapa_ref[, .(n_oraculo = .N), by = identidade_semantica]
+  cont_cur <- mapa_cur[, .(n_atual = .N), by = identidade_semantica]
+  mapa <- merge(mapa_ref, mapa_cur, by = "identidade_semantica", all = FALSE, allow.cartesian = TRUE)
+  mapa <- merge(mapa, cont_ref, by = "identidade_semantica", all.x = TRUE)
+  mapa <- merge(mapa, cont_cur, by = "identidade_semantica", all.x = TRUE)
+  mapa[, pareamento_unico := nzchar(identidade_semantica) & n_oraculo == 1L & n_atual == 1L]
+  ambiguidades <- mapa[pareamento_unico %in% FALSE]
+  mapa_unico <- mapa[pareamento_unico %in% TRUE]
+  if (nrow(mapa_unico)) {
+    data.table::setnames(ref, old = mapa_unico$coluna_oraculo, new = mapa_unico$coluna_atual, skip_absent = FALSE)
+  }
+  list(ref = ref, mapa = mapa_unico[], ambiguidades = ambiguidades[])
+}
+
+monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_replay_final_reconciliado") {
   if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return(invisible(NULL))
   arq_ref <- monitora_oraculo_localizar(c(
     "output_01_produtos_dados/registros_corrig.csv",
@@ -19952,7 +20047,7 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     "01_produtos_dados/registros_corrig.csv",
     "registros_corrig.csv"
   ))
-  out_dir <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes"), inherits = TRUE), "diagnostico_oraculo_replay")
+  out_dir <- monitora_oraculo_output_dir()
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
   resumo_base <- data.table::data.table(
@@ -19964,13 +20059,47 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     status = if (nzchar(arq_ref)) "oraculo_encontrado" else "oraculo_nao_encontrado"
   )
   if (!nzchar(arq_ref)) {
-    monitora_oraculo_fwrite(resumo_base, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")))
-    return(invisible(resumo_base))
+    resumo_base[, `:=`(
+      status_convergencia = "oraculo_nao_encontrado",
+      replay_equivalente_ao_oraculo = "NAO",
+      interpretacao = "A comparação foi solicitada, mas registros_corrig.csv não foi encontrado na pasta-oráculo."
+    )]
+    arq_resumo_ausente <- file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv"))
+    monitora_oraculo_fwrite(resumo_base, arq_resumo_ausente)
+    monitora_oraculo_fwrite(resumo_base, file.path(out_dir, paste0("oraculo_replay_selo_convergencia_", fase, ".csv")))
+    msg_ausente <- paste0("Comparação de replay solicitada, mas o registros_corrig.csv da run-oráculo não foi encontrado. Ver ", arq_resumo_ausente, ".")
+    if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE))) {
+      stop(msg_ausente, call. = FALSE)
+    }
+    warning(msg_ausente, call. = FALSE)
+    return(invisible(resumo_base[]))
   }
   ref <- monitora_oraculo_ler_csv(arq_ref)
   cur <- data.table::as.data.table(data.table::copy(dt_atual))
-  for (cc in names(ref)) ref[[cc]] <- as.character(ref[[cc]])
-  for (cc in names(cur)) cur[[cc]] <- as.character(cur[[cc]])
+  if (!nrow(ref) || ".erro_leitura" %in% names(ref)) {
+    erro_ref <- if (".erro_leitura" %in% names(ref)) as.character(ref$.erro_leitura[1L]) else "arquivo sem registros"
+    resumo_base[, `:=`(
+      status = "oraculo_invalido",
+      status_convergencia = "oraculo_invalido",
+      replay_equivalente_ao_oraculo = "NAO",
+      interpretacao = paste0("O registros_corrig.csv da run-oráculo não pôde ser validado: ", erro_ref)
+    )]
+    arq_resumo_invalido <- file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv"))
+    monitora_oraculo_fwrite(resumo_base, arq_resumo_invalido)
+    monitora_oraculo_fwrite(resumo_base, file.path(out_dir, paste0("oraculo_replay_selo_convergencia_", fase, ".csv")))
+    msg_invalido <- paste0("O registros_corrig.csv da run-oráculo é inválido: ", erro_ref, ". Ver ", arq_resumo_invalido, ".")
+    if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE))) {
+      stop(msg_invalido, call. = FALSE)
+    }
+    warning(msg_invalido, call. = FALSE)
+    return(invisible(resumo_base[]))
+  }
+  reconc_colunas <- monitora_oraculo_reconciliar_colunas(ref, cur)
+  ref <- reconc_colunas$ref
+  monitora_oraculo_fwrite(reconc_colunas$mapa, file.path(out_dir, paste0("oraculo_registros_corrig_reconciliacao_colunas_", fase, ".csv")))
+  monitora_oraculo_fwrite(reconc_colunas$ambiguidades, file.path(out_dir, paste0("oraculo_registros_corrig_reconciliacao_colunas_ambiguas_", fase, ".csv")))
+  for (cc in names(ref)) data.table::set(ref, j = cc, value = as.character(ref[[cc]]))
+  for (cc in names(cur)) data.table::set(cur, j = cc, value = as.character(cur[[cc]]))
   col_ref <- names(ref); col_cur <- names(cur); col_comuns <- intersect(col_ref, col_cur)
   resumo <- data.table::copy(resumo_base)
   resumo[, `:=`(
@@ -19979,6 +20108,8 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     n_colunas_oraculo = length(col_ref),
     n_colunas_atual = length(col_cur),
     n_colunas_comuns = length(col_comuns),
+    n_colunas_reconciliadas_por_alias = nrow(reconc_colunas$mapa),
+    n_pareamentos_coluna_ambiguos = nrow(reconc_colunas$ambiguidades),
     n_colunas_so_oraculo = length(setdiff(col_ref, col_cur)),
     n_colunas_so_atual = length(setdiff(col_cur, col_ref))
   )]
@@ -19988,9 +20119,18 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     data.table::data.table(tipo = "coluna_comum", coluna = col_comuns)
   ), fill = TRUE)
   monitora_oraculo_fwrite(diagnostico_colunas, file.path(out_dir, paste0("oraculo_registros_corrig_colunas_", fase, ".csv")))
-  key_ref <- monitora_oraculo_key(ref); key_cur <- monitora_oraculo_key(cur)
-  ref[, .chave_oraculo_replay := key_ref]
-  cur[, .chave_oraculo_replay := key_cur]
+  identidade_ref <- monitora_oraculo_identidade(ref)
+  identidade_cur <- monitora_oraculo_identidade(cur)
+  diagnostico_identidade <- data.table::rbindlist(list(
+    data.table::copy(identidade_ref$diagnostico)[, origem := "oraculo"],
+    data.table::copy(identidade_cur$diagnostico)[, origem := "atual"]
+  ), fill = TRUE, use.names = TRUE)
+  data.table::setcolorder(diagnostico_identidade, c("origem", setdiff(names(diagnostico_identidade), "origem")))
+  monitora_oraculo_fwrite(diagnostico_identidade, file.path(out_dir, paste0("oraculo_registros_corrig_identidade_", fase, ".csv")))
+  identidade_compativel <- isTRUE(identidade_ref$valida) && isTRUE(identidade_cur$valida) &&
+    identical(as.character(identidade_ref$coluna), as.character(identidade_cur$coluna))
+  data.table::set(ref, j = ".chave_oraculo_replay", value = identidade_ref$chave)
+  data.table::set(cur, j = ".chave_oraculo_replay", value = identidade_cur$chave)
   dup_ref <- ref[, .N, by = .chave_oraculo_replay][N > 1]
   dup_cur <- cur[, .N, by = .chave_oraculo_replay][N > 1]
   keys_ref <- unique(ref$.chave_oraculo_replay); keys_cur <- unique(cur$.chave_oraculo_replay)
@@ -19998,6 +20138,13 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
   somente_cur <- setdiff(keys_cur, keys_ref)
   comum <- intersect(keys_ref, keys_cur)
   resumo[, `:=`(
+    identidade_coluna_oraculo = as.character(identidade_ref$coluna),
+    identidade_coluna_atual = as.character(identidade_cur$coluna),
+    identidade_tipo_oraculo = as.character(identidade_ref$tipo),
+    identidade_tipo_atual = as.character(identidade_cur$tipo),
+    identidade_unica_oraculo = isTRUE(identidade_ref$valida),
+    identidade_unica_atual = isTRUE(identidade_cur$valida),
+    identidade_compativel = identidade_compativel,
     n_chaves_oraculo = length(keys_ref),
     n_chaves_atual = length(keys_cur),
     n_chaves_comuns = length(comum),
@@ -20016,15 +20163,16 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
   cols_ignorar_config <- cols_ignorar_config[!is.na(cols_ignorar_config) & nzchar(cols_ignorar_config)]
   cols_ignorar <- unique(c(cols_ignorar_padrao, intersect(cols_ignorar_config, col_comuns)))
   cols_cmp <- setdiff(col_comuns, cols_ignorar)
-  ref_u <- ref[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum]
-  cur_u <- cur[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum]
+  comum_comparavel <- if (isTRUE(identidade_compativel)) comum else character()
+  ref_u <- ref[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum_comparavel]
+  cur_u <- cur[!duplicated(.chave_oraculo_replay) & .chave_oraculo_replay %in% comum_comparavel]
   data.table::setkey(ref_u, .chave_oraculo_replay)
   data.table::setkey(cur_u, .chave_oraculo_replay)
-  ref_u <- ref_u[comum]
-  cur_u <- cur_u[comum]
+  ref_u <- ref_u[comum_comparavel]
+  cur_u <- cur_u[comum_comparavel]
   dif_cols <- data.table::data.table()
   dif_cells <- data.table::data.table()
-  if (length(cols_cmp) && length(comum)) {
+  if (length(cols_cmp) && length(comum_comparavel)) {
     dif_list <- vector("list", length(cols_cmp))
     names(dif_list) <- cols_cmp
     sample_list <- list(); si <- 0L
@@ -20032,7 +20180,7 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
       a <- ref_u[[cc]]; b <- cur_u[[cc]]
       a[is.na(a)] <- ""; b[is.na(b)] <- ""
       idx <- which(a != b)
-      dif_list[[cc]] <- data.table::data.table(coluna = cc, n_diferencas = length(idx), n_chaves_comparadas = length(comum))
+      dif_list[[cc]] <- data.table::data.table(coluna = cc, n_diferencas = length(idx), n_chaves_comparadas = length(comum_comparavel))
       if (length(idx) && si < 5000L) {
         take <- head(idx, min(length(idx), 5000L - si))
         sample_list[[length(sample_list) + 1L]] <- data.table::data.table(
@@ -20046,23 +20194,30 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     dif_cells <- if (length(sample_list)) data.table::rbindlist(sample_list, fill = TRUE) else data.table::data.table()
   }
   resumo[, n_colunas_com_diferencas_valor := if (nrow(dif_cols)) sum(dif_cols$n_diferencas > 0, na.rm = TRUE) else 0L]
+  resumo[, n_celulas_diferentes := if (nrow(dif_cols)) sum(dif_cols$n_diferencas, na.rm = TRUE) else 0L]
   resumo[, n_celulas_diferentes_amostradas := nrow(dif_cells)]
   resumo[, colunas_ignoradas_na_comparacao := paste(cols_ignorar, collapse = " | ")]
   resumo[, status_convergencia := ifelse(
-    n_chaves_so_oraculo == 0 & n_chaves_so_atual == 0 & n_colunas_so_oraculo == 0 & n_colunas_so_atual == 0 & n_colunas_com_diferencas_valor == 0,
+    identidade_compativel %in% TRUE & n_linhas_oraculo == n_linhas_atual &
+      n_chaves_duplicadas_oraculo == 0 & n_chaves_duplicadas_atual == 0 &
+      n_chaves_so_oraculo == 0 & n_chaves_so_atual == 0 &
+      n_colunas_so_oraculo == 0 & n_colunas_so_atual == 0 &
+      n_colunas_com_diferencas_valor == 0,
     "convergente_com_oraculo", "divergente_do_oraculo"
   )]
   resumo[, replay_equivalente_ao_oraculo := ifelse(status_convergencia == "convergente_com_oraculo", "SIM", "NAO")]
   resumo[, interpretacao := ifelse(
     replay_equivalente_ao_oraculo == "SIM",
     "O input bruto somado à trilha semântica reproduziu o registros_corrig da run-oráculo; diferenças de caminho local foram ignoradas quando configuradas.",
-    "O replay semântico ainda diverge do oráculo; consultar chaves, colunas e amostras de células divergentes."
+    "O replay semântico ainda diverge do oráculo, ou não há identidade única compatível; consultar identidade, chaves, colunas e amostras de células divergentes."
   )]
   selo_oraculo <- resumo[, .(
     data_hora, exec_id, fase, replay_equivalente_ao_oraculo, status_convergencia,
-    n_linhas_oraculo, n_linhas_atual, n_chaves_so_oraculo, n_chaves_so_atual,
+    n_linhas_oraculo, n_linhas_atual, identidade_coluna_oraculo,
+    identidade_coluna_atual, identidade_compativel,
+    n_chaves_so_oraculo, n_chaves_so_atual,
     n_colunas_so_oraculo, n_colunas_so_atual, n_colunas_com_diferencas_valor,
-    colunas_ignoradas_na_comparacao, interpretacao
+    n_celulas_diferentes, colunas_ignoradas_na_comparacao, interpretacao
   )]
   monitora_oraculo_fwrite(resumo, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")))
   monitora_oraculo_fwrite(selo_oraculo, file.path(out_dir, paste0("oraculo_replay_selo_convergencia_", fase, ".csv")))
@@ -20073,9 +20228,38 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     monitora_log_registrar_evento("oraculo_replay", nivel, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")), paste0("Comparação do registros_corrig pós-replay com oráculo: ", resumo$status_convergencia[1]), "não usa o oráculo como entrada; apenas audita a convergência")
   }
   if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE)) && !identical(resumo$status_convergencia[1], "convergente_com_oraculo")) {
-    stop("Replay semântico divergiu do oráculo em registros_corrig. Ver output/02_painel_correcoes/diagnostico_oraculo_replay/.", call. = FALSE)
+    stop("Replay semântico divergiu do oráculo em registros_corrig final. Ver output/03_auditorias/replay_semantico/.", call. = FALSE)
   }
   invisible(resumo[])
+}
+
+monitora_replay_oraculo_validar_final <- function(dt_final, contexto = "pre_export_registros_corrig") {
+  if (!isTRUE(get0("MONITORA_REAPLICAR_CORRECOES_ANTERIORES", ifnotfound = FALSE, inherits = TRUE)) ||
+      !isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) {
+    return(invisible(NULL))
+  }
+  if (isTRUE(get0("MONITORA_REPLAY_ORACULO_VALIDADO_FINAL", ifnotfound = FALSE, inherits = TRUE))) {
+    return(invisible(get0("MONITORA_REPLAY_ORACULO_RESULTADO_FINAL", ifnotfound = NULL, inherits = TRUE)))
+  }
+  fase <- "pos_replay_final_reconciliado"
+  executar <- function() monitora_oraculo_comparar_registros_corrig(dt_final, fase = fase)
+  resultado <- if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE))) {
+    executar()
+  } else {
+    tryCatch(executar(), error = function(e) {
+      warning("Falha na auditoria opcional do oráculo de replay: ", conditionMessage(e), call. = FALSE)
+      NULL
+    })
+  }
+  assign("MONITORA_REPLAY_ORACULO_RESULTADO_FINAL", resultado, envir = .GlobalEnv)
+  assign("MONITORA_REPLAY_ORACULO_VALIDADO_FINAL", TRUE, envir = .GlobalEnv)
+  if (!is.null(resultado) && nrow(resultado)) {
+    status <- as.character(resultado$status_convergencia[1L])
+    message("[monitora] Gate final do oráculo de replay: ", status,
+            " | contexto=", contexto,
+            " | relatórios=output/03_auditorias/replay_semantico/.")
+  }
+  invisible(resultado)
 }
 
 monitora_oraculo_resumo_ocorrencias_localizar <- function(fase_oraculo = "pos_painel") {
@@ -20096,7 +20280,7 @@ monitora_oraculo_resumo_ocorrencias_localizar <- function(fase_oraculo = "pos_pa
 
 monitora_oraculo_comparar_resumo_ocorrencias <- function(fase_atual = "pre_painel", fase_oraculo = "pos_painel") {
   if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return(invisible(NULL))
-  out_dir <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes"), inherits = TRUE), "diagnostico_oraculo_replay")
+  out_dir <- monitora_oraculo_output_dir()
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   arq_ref <- monitora_oraculo_resumo_ocorrencias_localizar(fase_oraculo)
   nome_atual <- paste0("resumo_ocorrencias_diagnosticas_", fase_atual, ".csv")
@@ -20124,10 +20308,10 @@ monitora_oraculo_comparar_resumo_ocorrencias <- function(fase_atual = "pre_paine
   ref <- monitora_oraculo_ler_csv(arq_ref)
   key <- intersect(c("tipo_ocorrencia", "rotulo_ocorrencia", "severidade"), intersect(names(atual), names(ref)))
   if (!length(key)) key <- intersect(names(atual), names(ref))[1]
-  for (cc in names(atual)) atual[[cc]] <- as.character(atual[[cc]])
-  for (cc in names(ref)) ref[[cc]] <- as.character(ref[[cc]])
-  atual[, .origem_comparacao := "atual"]
-  ref[, .origem_comparacao := "oraculo"]
+  for (cc in names(atual)) data.table::set(atual, j = cc, value = as.character(atual[[cc]]))
+  for (cc in names(ref)) data.table::set(ref, j = cc, value = as.character(ref[[cc]]))
+  data.table::set(atual, j = ".origem_comparacao", value = "atual")
+  data.table::set(ref, j = ".origem_comparacao", value = "oraculo")
   cmp <- merge(
     ref[, c(key, intersect(c("n_linhas", "n_coletas"), names(ref))), with = FALSE],
     atual[, c(key, intersect(c("n_linhas", "n_coletas"), names(atual))), with = FALSE],
@@ -34578,6 +34762,13 @@ monitora_execucao_gravar_checkpoint_parcial <- function(obj, produto = "registro
       abortar = TRUE
     )
     obj <- prep$registros_corrig
+  }
+  if (identical(basename(produto), "registros_corrig.csv") &&
+      exists("monitora_replay_oraculo_validar_final", mode = "function", inherits = TRUE)) {
+    monitora_replay_oraculo_validar_final(
+      obj,
+      contexto = paste0("checkpoint_parcial_", as.character(motivo)[1L])
+    )
   }
   caminho_produto <- file.path(MONITORA_OUTPUT_DIR, produto)
   if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
@@ -51740,9 +51931,6 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
     MONITORA_ARQUIVO_CORRECOES_CAMPOS <<- monitora_correcao_preparar_arquivo_sessao_pos_replay()
     monitora_correcao_console_msg("Replay concluído. Novas operações do painel serão gravadas separadamente em ", MONITORA_ARQUIVO_CORRECOES_CAMPOS, ".")
     monitora_perf_registrar_checkpoint("reaplicacao_correcoes_anteriores_pre_painel", "correções anteriores reaplicadas antes dos diagnósticos pré-painel", registros_corrig)
-    if (exists("monitora_oraculo_comparar_registros_corrig", mode = "function", inherits = TRUE)) {
-      try(monitora_oraculo_comparar_registros_corrig(registros_corrig, fase = "pos_replay_pre_sanitizacao"), silent = TRUE)
-    }
   }
 
  ### aliases históricos nas listas de categoria são harmonizados para
@@ -52201,6 +52389,12 @@ if (exists("registros_corrig")) {
       abortar = TRUE
     )
     registros_corrig <- prep_registros_corrig$registros_corrig
+  }
+  if (exists("monitora_replay_oraculo_validar_final", mode = "function", inherits = TRUE)) {
+    monitora_replay_oraculo_validar_final(
+      registros_corrig,
+      contexto = "pre_analises_registros_corrig"
+    )
   }
   caminho_registros_corrig_preanalises <- file.path(MONITORA_OUTPUT_DIR, "registros_corrig.csv")
   if (exists("monitora_publicacao_aa_exportar_registros_corrig_aprovado", mode = "function")) {
