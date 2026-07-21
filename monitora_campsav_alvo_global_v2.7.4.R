@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão candidata: 2.7.4-dev
-### Base pública preservada: v2.7.3
+### Versão do script: 2.7.4
+### Release pública: v2.7.4
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.7.4-dev"
-MONITORA_SCRIPT_BUILD_ID <- "v2.7.4-dev-20260721"
+MONITORA_SCRIPT_VERSAO <- "2.7.4"
+MONITORA_SCRIPT_BUILD_ID <- "v2.7.4-20260721"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
