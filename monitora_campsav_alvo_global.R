@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.7.2
-### Base pública preservada: v2.7.0
+### Versão do script: 2.7.3
+### Release pública: v2.7.3
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.7.2"
-MONITORA_SCRIPT_BUILD_ID <- "v2.7.2-20260720"
+MONITORA_SCRIPT_VERSAO <- "2.7.3"
+MONITORA_SCRIPT_BUILD_ID <- "v2.7.3-20260721"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -3782,6 +3782,11 @@ monitora_correcao_colunas_dependentes_por_token <- function(dt, categoria, token
   sins <- monitora_correcao_sinonimos_forma(token)
   hit <- rep(FALSE, nrow(mapa))
   for (ss in sins) hit <- hit | grepl(paste0("(^|_)", ss, "($|_)"), mapa$coluna_norm)
+  if ("token_associado" %in% names(mapa)) {
+    token_mapa <- monitora_correcao_normalizar_nome_coluna(mapa$token_associado)
+    token_alvo <- unique(monitora_correcao_normalizar_nome_coluna(c(token, sins)))
+    hit <- hit | (!is.na(token_mapa) & token_mapa %in% token_alvo)
+  }
   roles <- c("atributo_dependente_habito", "especie_nome_popular")
   cols <- mapa[hit & papel_coluna %in% roles & (is.na(cat_val) | !nzchar(cat_val) | categoria == cat_val | is.na(categoria)), coluna_registros_corrig]
   unique(cols[!is.na(cols) & nzchar(cols) & cols %in% names(dt) & !monitora_correcao_coluna_protegida(cols)])
@@ -16007,6 +16012,10 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
       if (nrow(deps_mov) > 0L) deps_origem_cols <- unique(vapply(deps_mov$dependent_name, function(nn) monitora_correcao_resolver_coluna(dt, nn, dicionario, permitir_heuristica = FALSE), character(1)))
     }
   }
+  deps_origem_cols <- unique(deps_origem_cols[
+    !is.na(deps_origem_cols) & deps_origem_cols %in% names(dt) &
+      !monitora_correcao_coluna_protegida(deps_origem_cols)
+  ])
   if (!length(deps_origem_cols)) deps_origem_cols <- unique(unlist(lapply(tokens_remover, function(tok) monitora_correcao_colunas_dependentes_por_token(dt, origem, tok, dicionario)), use.names = FALSE))
   deps_origem_cols <- unique(deps_origem_cols[!is.na(deps_origem_cols) & deps_origem_cols %in% names(dt) & !monitora_correcao_coluna_protegida(deps_origem_cols)])
   deps_origem_cols <- setdiff(deps_origem_cols, c(col_origem, col_destino))
@@ -39104,6 +39113,39 @@ monitora_validados_derivar_ou_mapear_coluna <- function(dt, atributo, formato, l
   if (identical(atributo, "uuid")) return(monitora_validados_uuid_por_coleta_ou_sintetico(dt, "uuid"))
   if (identical(atributo, "amostragem/registro/uuid")) return(monitora_validados_uuid_registro_ou_sintetico(dt))
 
+ ### Os 12 hábitos obrigatórios são descobertos no XLSForm atual e já
+ ### chegam a esta etapa reconciliados, por versão e por posição, no campo
+ ### físico canônico de registros_corrig. Aliases históricos podem conservar o
+ ### vetor bruto do repeat (por exemplo, "---|terrestre|terrestre") e não podem
+ ### ser comparados novamente como se fossem escalares da linha. A projeção
+ ### validada usa a mesma regra contratual/resolvedor do diagnóstico e do SANHAB;
+ ### os aliases brutos continuam preservados em registros_corrig e na linhagem.
+  regras_habito <- tryCatch(
+    monitora_correcao_regras_habito_contrato_atual(),
+    error = function(e) data.table::data.table()
+  )
+  regra_habito <- if (nrow(regras_habito)) {
+    regras_habito[as.character(atributo_canonico) == as.character(atributo)]
+  } else data.table::data.table()
+  if (nrow(regra_habito) == 1L) {
+    col_habito <- tryCatch(
+      monitora_correcao_resolver_coluna_habito(
+        dt,
+        regra_habito$categoria[1L],
+        regra_habito$forma[1L]
+      ),
+      error = function(e) NA_character_
+    )
+    valor_habito <- if (!is.na(col_habito) && col_habito %in% names(dt)) {
+      monitora_validados_limpar_ausencia_saida(dt[[col_habito]])
+    } else rep("", n)
+    return(list(
+      valor = monitora_validados_formatar_valor(valor_habito, formato, largura),
+      coluna = col_habito,
+      estrategia = "mapeada_habito_canonico_contrato_atual_pos_reconciliacao"
+    ))
+  }
+
   if (identical(atributo, "ciclo")) {
     p <- monitora_validados_pegar(dt, c("CICLO", "ciclo", "amostragem/ciclo"), n)
     v <- monitora_validados_preencher_por_coleta(dt, p$valor, padrao = "nao_informado")
@@ -46495,6 +46537,29 @@ monitora_pipe_condicional_preferir_preenchido_035m_d3 <- function(preferido,
   cmp_fallback <- monitora_correcao_limpar_texto(fallback)
   conflito <- !is.na(preferido) & !is.na(fallback) & cmp_preferido != cmp_fallback
   conflito[is.na(conflito)] <- FALSE
+  ### Alguns exports históricos repetem o mesmo valor escalar no campo
+  ### serializado (por exemplo, "terrestre|terrestre"), enquanto o alias
+  ### canônico contém apenas "terrestre". Isso não representa divergência de
+  ### fato. A reconciliação abaixo atua somente nos raros candidatos já
+  ### divergentes e só colapsa sequências formadas por um único token distinto;
+  ### sequências heterogêneas permanecem diferentes e continuam falhando
+  ### fechado para preservar a correspondência posicional de origem.
+  idx_conflito <- which(conflito)
+  if (length(idx_conflito)) {
+    normalizar_cmp_pipe_escalar <- function(x) {
+      tokens <- trimws(strsplit(as.character(x), "|", fixed = TRUE)[[1L]])
+      tokens <- monitora_correcao_limpar_texto(tokens)
+      tokens <- tokens[!is.na(tokens) & nzchar(tokens)]
+      if (!length(tokens)) return(NA_character_)
+      if (data.table::uniqueN(tokens) == 1L) return(tokens[[1L]])
+      paste(tokens, collapse = "|")
+    }
+    cmp_pipe_preferido <- vapply(preferido[idx_conflito], normalizar_cmp_pipe_escalar, character(1L))
+    cmp_pipe_fallback <- vapply(fallback[idx_conflito], normalizar_cmp_pipe_escalar, character(1L))
+    equivalente_pipe_escalar <- !is.na(cmp_pipe_preferido) & !is.na(cmp_pipe_fallback) &
+      cmp_pipe_preferido == cmp_pipe_fallback
+    conflito[idx_conflito[equivalente_pipe_escalar]] <- FALSE
+  }
   if (any(conflito)) {
     stop(
       "Aliases físicos divergentes no seletor multiversão ", contexto,
