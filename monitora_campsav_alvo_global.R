@@ -60852,8 +60852,9 @@ if (!exists("MONITORA_RELATORIO_TEXTUAL_GERADO") && exists("MONITORA_OUTPUT_DIR"
   }
 }
 
-### Exportação dos arquivos KML.
-### Gravação manual de KML para produtos simples com geometrias de ponto e linha.
+### Exportação dos arquivos KML/KMZ.
+### Pontos, linhas e polígonos são preparados separadamente e reunidos apenas
+### no documento final, sem empilhar geometrias mistas em data.table.
 
 if (isTRUE(MONITORA_EXPORTAR_KML) && exists("registros_corrig_stat") && nrow(registros_corrig_stat) <= MONITORA_MAX_UAS_KML_AUTO && all(c("long_ini", "lat_ini", "long_fin", "lat_fin") %in% names(registros_corrig_stat))) {
 
@@ -60865,6 +60866,16 @@ monitora_kml_escape_xml <- function(x) {
   x <- gsub(">", "&gt;", x, fixed = TRUE)
   x <- gsub('"', "&quot;", x, fixed = TRUE)
   x <- gsub("'", "&apos;", x, fixed = TRUE)
+  x
+}
+
+monitora_kml_escape_html <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  x <- gsub('"', "&quot;", x, fixed = TRUE)
   x
 }
 
@@ -60926,7 +60937,31 @@ monitora_kml_sanitizar_atributos <- function(x) {
   dt[]
 }
 
-monitora_kml_extended_data <- function(dt, cols) {
+monitora_kml_tipo_schema <- function(x) {
+  if (is.logical(x)) return("bool")
+  if (is.integer(x)) return("int")
+  if (is.numeric(x)) return("double")
+  "string"
+}
+
+monitora_kml_schema <- function(dt, cols, schema_id, nome_schema) {
+  cols <- intersect(cols, names(dt))
+  campos <- vapply(cols, function(cc) {
+    paste0(
+      '    <SimpleField name="', monitora_kml_escape_xml(cc),
+      '" type="', monitora_kml_tipo_schema(dt[[cc]]), '">',
+      '<displayName>', monitora_kml_escape_xml(cc), '</displayName>',
+      '</SimpleField>'
+    )
+  }, character(1))
+  c(
+    paste0('  <Schema id="', monitora_kml_escape_xml(schema_id), '" name="', monitora_kml_escape_xml(nome_schema), '">'),
+    campos,
+    "  </Schema>"
+  )
+}
+
+monitora_kml_schema_data <- function(dt, cols, schema_id) {
   cols <- intersect(cols, names(dt))
   if (!length(cols) || !nrow(dt)) {
     return(rep("", nrow(dt)))
@@ -60934,15 +60969,48 @@ monitora_kml_extended_data <- function(dt, cols) {
 
   partes <- lapply(cols, function(cc) {
     paste0(
-      '<Data name="', monitora_kml_escape_xml(cc), '"><value>',
+      '<SimpleData name="', monitora_kml_escape_xml(cc), '">',
       monitora_kml_escape_xml(dt[[cc]]),
-      "</value></Data>"
+      "</SimpleData>"
     )
   })
-  paste0("    <ExtendedData>", do.call(paste0, partes), "</ExtendedData>\n")
+  paste0(
+    '    <ExtendedData><SchemaData schemaUrl="#', monitora_kml_escape_xml(schema_id), '">',
+    do.call(paste0, partes),
+    "</SchemaData></ExtendedData>\n"
+  )
 }
 
-monitora_kml_gravar <- function(path, nome_documento, placemarks, estilos = character()) {
+monitora_kml_descricao <- function(dt, cols) {
+  cols <- intersect(cols, names(dt))
+  if (!length(cols) || !nrow(dt)) return(rep("", nrow(dt)))
+  linhas <- lapply(cols, function(cc) {
+    paste0(
+      '<tr><th style="text-align:left;padding:2px 8px 2px 0;vertical-align:top">',
+      monitora_kml_escape_html(cc),
+      '</th><td style="padding:2px 0;vertical-align:top">',
+      monitora_kml_escape_html(dt[[cc]]),
+      "</td></tr>"
+    )
+  })
+  paste0(
+    "    <description><![CDATA[<table>",
+    do.call(paste0, linhas),
+    "</table>]]></description>\n"
+  )
+}
+
+monitora_kml_pasta <- function(nome, placemarks) {
+  c(
+    "  <Folder>",
+    paste0("    <name>", monitora_kml_escape_xml(nome), "</name>"),
+    placemarks,
+    "  </Folder>"
+  )
+}
+
+monitora_kml_gravar <- function(path, nome_documento, conteudo, estilos = character(), schemas = character()) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(path)) unlink(path)
   con <- file(path, open = "w", encoding = "UTF-8")
   on.exit(close(con), add = TRUE)
@@ -60951,19 +61019,132 @@ monitora_kml_gravar <- function(path, nome_documento, placemarks, estilos = char
   writeLines("<Document>", con, useBytes = TRUE)
   writeLines(paste0("  <name>", monitora_kml_escape_xml(nome_documento), "</name>"), con, useBytes = TRUE)
   if (length(estilos)) writeLines(estilos, con, useBytes = TRUE)
-  if (length(placemarks)) writeLines(placemarks, con, useBytes = TRUE)
+  if (length(schemas)) writeLines(schemas, con, useBytes = TRUE)
+  if (length(conteudo)) writeLines(conteudo, con, useBytes = TRUE)
   writeLines("</Document>", con, useBytes = TRUE)
   writeLines("</kml>", con, useBytes = TRUE)
   invisible(path)
 }
 
-registros_corrig_stat <- monitora_dt_referenciar(registros_corrig_stat)
-for (cc in intersect(c("long_ini", "lat_ini", "long_fin", "lat_fin", "alt_ini", "alt_fin"), names(registros_corrig_stat))) {
-  data.table::set(registros_corrig_stat, j = cc, value = suppressWarnings(as.numeric(registros_corrig_stat[[cc]])))
+monitora_kml_escrever_icon_ua <- function(path) {
+  # Ativo de 10 x 10 px do template: círculo #1f78b4 com borda #ffffff.
+  icon_hex <- paste0(
+    "89504e470d0a1a0a0000000d494844520000000a0000000a08060000008d32cfbd",
+    "000000097048597300000ec400000ec401952b0e1b000000f44944415418957590",
+    "b14ac3601485cfbdbf7f6a9b58a476b074702c66c8269845bafa008ed549bafa2",
+    "43e808be0223abb39383a141707e9e066c9642ca454b0bfc9718a62aadf7439e7",
+    "bb70b940059211c9a89a4b3964cec5d3cc9d0345070054346905f543df93d1b7",
+    "9839173f27b39b83b3fbd6674e0080358aeb619cf636d7f77d4f4602002fe9fb",
+    "b87f7ad72ba5929a55dc9eec8db736826d251915283a5509003e5c01a3da2519",
+    "ea52fb0f2a228f2a9a786679a76e0df282131179520068062b4757c338add91f7",
+    "9d51a5c1eefbeb5d71a835fef992fb8f33a9b5f18d52e00e43927ed6663e07bf",
+    "2f0e72d2443926135ff02501c57421725953d0000000049454e44ae426082"
+  )
+  pares <- substring(icon_hex, seq.int(1L, nchar(icon_hex), by = 2L), seq.int(2L, nchar(icon_hex), by = 2L))
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  con <- file(path, open = "wb")
+  on.exit(close(con), add = TRUE)
+  writeBin(as.raw(strtoi(pares, base = 16L)), con)
+  invisible(path)
+}
+
+monitora_kmz_gravar <- function(kml_path, kmz_path, icon_path) {
+  # A compactação muda temporariamente o diretório de trabalho no fallback.
+  # Fixar o destino absoluto evita que caminhos relativos passem a apontar
+  # para dentro do diretório temporário e mantém o mesmo comportamento em OSs.
+  kmz_path_abs <- file.path(
+    normalizePath(dirname(kmz_path), winslash = "/", mustWork = TRUE),
+    basename(kmz_path)
+  )
+  td <- tempfile("monitora_kmz_")
+  dir.create(file.path(td, "files"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(td, recursive = TRUE, force = TRUE), add = TRUE)
+  if (!isTRUE(file.copy(kml_path, file.path(td, "doc.kml"), overwrite = TRUE))) {
+    stop("Falha ao preparar doc.kml para o KMZ: ", basename(kmz_path), call. = FALSE)
+  }
+  if (!isTRUE(file.copy(icon_path, file.path(td, "files", "icon1.png"), overwrite = TRUE))) {
+    stop("Falha ao preparar o ícone interno do KMZ: ", basename(kmz_path), call. = FALSE)
+  }
+  if (file.exists(kmz_path_abs)) unlink(kmz_path_abs)
+  if (requireNamespace("zip", quietly = TRUE)) {
+    zip::zipr(
+      zipfile = kmz_path_abs,
+      files = c("doc.kml", "files/icon1.png"),
+      recurse = FALSE,
+      compression_level = 1,
+      include_directories = FALSE,
+      root = td,
+      mode = "mirror"
+    )
+  } else {
+    wd_anterior <- getwd()
+    on.exit(setwd(wd_anterior), add = TRUE)
+    setwd(td)
+    utils::zip(
+      zipfile = kmz_path_abs,
+      files = c("doc.kml", "files/icon1.png"),
+      flags = "-1X"
+    )
+    setwd(wd_anterior)
+  }
+  itens <- tryCatch(utils::unzip(kmz_path_abs, list = TRUE)$Name, error = function(e) character())
+  if (!file.exists(kmz_path_abs) || !all(c("doc.kml", "files/icon1.png") %in% itens)) {
+    stop("KMZ incompleto ou inválido: ", kmz_path, call. = FALSE)
+  }
+  invisible(kmz_path_abs)
+}
+
+monitora_kml_rotulo_ua <- function(x) {
+  x <- trimws(as.character(x))
+  x[is.na(x) | !nzchar(x)] <- "sem identificação"
+  ifelse(grepl("^UA(?:[-_ ]|$)", x, ignore.case = TRUE), x, paste0("UA-", x))
+}
+
+monitora_kml_ponto_medio_geodesico <- function(lon_ini, lat_ini, lon_fin, lat_fin) {
+  rad <- pi / 180
+  lon1 <- as.numeric(lon_ini) * rad
+  lat1 <- as.numeric(lat_ini) * rad
+  lon2 <- as.numeric(lon_fin) * rad
+  lat2 <- as.numeric(lat_fin) * rad
+  dlon <- lon2 - lon1
+  bx <- cos(lat2) * cos(dlon)
+  by <- cos(lat2) * sin(dlon)
+  lat_m <- atan2(sin(lat1) + sin(lat2), sqrt((cos(lat1) + bx)^2 + by^2))
+  lon_m <- lon1 + atan2(by, cos(lat1) + bx)
+  lon_m <- ((lon_m + pi) %% (2 * pi)) - pi
+  list(longitude = lon_m / rad, latitude = lat_m / rad)
+}
+
+monitora_kml_circulo_geodesico <- function(lon, lat, raio_m = 100, n_segmentos = 72L) {
+  rad <- pi / 180
+  raio_terra_m <- 6371008.8
+  angulo <- as.numeric(raio_m) / raio_terra_m
+  rumo <- seq(0, 2 * pi, length.out = as.integer(n_segmentos) + 1L)
+  lon1 <- as.numeric(lon) * rad
+  lat1 <- as.numeric(lat) * rad
+  lat2 <- asin(sin(lat1) * cos(angulo) + cos(lat1) * sin(angulo) * cos(rumo))
+  lon2 <- lon1 + atan2(
+    sin(rumo) * sin(angulo) * cos(lat1),
+    cos(angulo) - sin(lat1) * sin(lat2)
+  )
+  lon2 <- ((lon2 + pi) %% (2 * pi)) - pi
+  paste(monitora_kml_coord(lon2 / rad, lat2 / rad, 0), collapse = " ")
+}
+
+monitora_kml_colapsar_unicos <- function(x) {
+  x <- trimws(as.character(x))
+  x <- unique(x[!is.na(x) & nzchar(x)])
+  if (!length(x)) return(NA_character_)
+  paste(x, collapse = " | ")
+}
+
+kml_registros_fonte <- monitora_dt_referenciar(registros_corrig_stat)
+for (cc in intersect(c("long_ini", "lat_ini", "long_fin", "lat_fin", "alt_ini", "alt_fin"), names(kml_registros_fonte))) {
+  data.table::set(kml_registros_fonte, j = cc, value = suppressWarnings(as.numeric(kml_registros_fonte[[cc]])))
 }
 
 # Remove registros sem coordenadas finitas e fora da faixa WGS84.
-registros_corrig_stat <- registros_corrig_stat[
+kml_registros_fonte <- kml_registros_fonte[
   is.finite(long_ini) & is.finite(lat_ini) &
     is.finite(long_fin) & is.finite(lat_fin) &
     data.table::between(long_ini, -180, 180) &
@@ -60974,67 +61155,90 @@ registros_corrig_stat <- registros_corrig_stat[
 
 monitora_perf_registrar_checkpoint(
   "exportacao_kml_preparacao_coordenadas",
-  "coordenadas numéricas válidas para KML manual",
-  registros_corrig_stat
+  "coordenadas numéricas válidas para produtos KML/KMZ",
+  kml_registros_fonte
 )
 
-if (nrow(registros_corrig_stat)) {
+if (nrow(kml_registros_fonte)) {
 
-  kml_base <- monitora_kml_sanitizar_atributos(registros_corrig_stat)
+  kml_base <- monitora_kml_sanitizar_atributos(kml_registros_fonte)
 
- # Garante nomes únicos para os trechos de linha.
-  kml_base[, name_base_kml := paste(UA, ANO, sep = "_")]
-  kml_base[, name := paste(name_base_kml, seq_len(.N), sep = "_"), by = name_base_kml]
-  kml_base[, name_base_kml := NULL]
+  if (!"UC" %in% names(kml_base)) kml_base[, UC := NA_character_]
+  if (!"UA" %in% names(kml_base)) kml_base[, UA := paste0("sem_identificacao_", seq_len(.N))]
+  if (!"ANO" %in% names(kml_base)) kml_base[, ANO := NA_character_]
+  cols_stat_origem <- data.table::copy(names(kml_base))
+
+  kml_base[, rotulo_ua_kml := monitora_kml_rotulo_ua(UA)]
+  kml_base[, rotulo_base_kml := paste0(
+    rotulo_ua_kml,
+    ifelse(is.na(ANO) | !nzchar(trimws(as.character(ANO))), "", paste0("_", ANO))
+  )]
+  kml_base[, indice_ref_kml := seq_len(.N), by = .(UC, UA, ANO)]
+  kml_base[, total_ref_kml := .N, by = .(UC, UA, ANO)]
+  kml_base[, name := ifelse(
+    total_ref_kml > 1L,
+    paste0(rotulo_base_kml, " (", indice_ref_kml, ")"),
+    rotulo_base_kml
+  )]
   kml_base[, point_type := "line"]
 
-  cols_ext_kml <- intersect(c(
-    ".id", "PROTOCOLO", "UC", "UA", "ANO", "CICLO", "CAMPANHA", "form_veg",
+  allowlist_campo <- c(
+    "UC", "UA", "COLETA", "ANO", "PROTOCOLO", "CICLO", "CAMPANHA", "form_veg",
     "lat_ini", "long_ini", "alt_ini", "acc_ini",
     "lat_fin", "long_fin", "alt_fin", "acc_fin",
     "point_type"
-  ), names(kml_base))
+  )
+  cols_campo <- intersect(allowlist_campo, c(names(kml_base), "point_type"))
+  cols_stat <- unique(c(cols_stat_origem, "point_type"))
+  cols_desc_stat <- intersect(c(
+    "UC", "UA", "COLETA", "ANO", "PROTOCOLO", "form_veg",
+    "sum_nativa", "sum_exotica", "sum_seca_morta", "sum_material_botanico_tipo",
+    "sum_presence_herb", "sum_presence_lenh", "sum_presence_nativa",
+    "sum_presence_exotica", "sum_presence_seca_morta",
+    "material_botanico", "serrapilheira", "solo_nu", "sum_herbacea", "sum_lenhosa",
+    "point_type"
+  ), cols_stat)
 
-  ext_linhas <- monitora_kml_extended_data(kml_base, cols_ext_kml)
   coords_linha <- paste0(
     monitora_kml_coord(kml_base$long_ini, kml_base$lat_ini, if ("alt_ini" %in% names(kml_base)) kml_base$alt_ini else NULL),
     " ",
     monitora_kml_coord(kml_base$long_fin, kml_base$lat_fin, if ("alt_fin" %in% names(kml_base)) kml_base$alt_fin else NULL)
   )
 
-  placemarks_linhas <- paste0(
+  placemarks_linhas_campo <- paste0(
     "  <Placemark>\n",
     "    <name>", monitora_kml_escape_xml(kml_base$name), "</name>\n",
     "    <styleUrl>#linha_ua</styleUrl>\n",
-    ext_linhas,
+    monitora_kml_descricao(kml_base, cols_campo),
+    monitora_kml_schema_data(kml_base, cols_campo, "schema_campo"),
     "    <LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>",
     coords_linha,
     "</coordinates></LineString>\n",
     "  </Placemark>"
   )
 
-  estilos_linhas <- c(
-    '  <Style id="linha_ua">',
-    "    <LineStyle><width>2</width></LineStyle>",
-    "  </Style>"
+  placemarks_linhas_stat <- paste0(
+    "  <Placemark>\n",
+    "    <name>", monitora_kml_escape_xml(kml_base$name), "</name>\n",
+    "    <styleUrl>#linha_ua</styleUrl>\n",
+    monitora_kml_descricao(kml_base, cols_desc_stat),
+    monitora_kml_schema_data(kml_base, cols_stat, "schema_stat"),
+    "    <LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>",
+    coords_linha,
+    "</coordinates></LineString>\n",
+    "  </Placemark>"
   )
 
-  kml_registros <- file.path(MONITORA_OUTPUT_DIR, "UAs_registros_corrig_stat.kml")
-  monitora_kml_gravar(
-    kml_registros,
-    "UAs registros corrigidos - linhas inicial-final",
-    placemarks_linhas,
-    estilos_linhas
-  )
-  monitora_perf_registrar_checkpoint(
-    "exportacao_kml_linhas_manual",
-    "KML de linhas gravado diretamente, sem geometria mista sf",
-    registros_corrig_stat
+  estilos_transectos <- c(
+    '  <Style id="linha_ua">',
+    "    <LabelStyle><color>ffffffff</color><scale>1</scale></LabelStyle>",
+    "    <LineStyle><color>ff1c1ae3</color><width>0.7358267716535433</width></LineStyle>",
+    "  </Style>"
   )
 
   pontos_ini <- data.table::copy(kml_base)
   pontos_ini[, `:=`(
-    name = paste0("Inicial: ", UA, "_", ANO),
+    name = paste0("Inicial: ", name),
     point_type = "start",
     kml_lon = long_ini,
     kml_lat = lat_ini,
@@ -61043,7 +61247,7 @@ if (nrow(registros_corrig_stat)) {
 
   pontos_fin <- data.table::copy(kml_base)
   pontos_fin[, `:=`(
-    name = paste0("Final: ", UA, "_", ANO),
+    name = paste0("Final: ", name),
     point_type = "end",
     kml_lon = long_fin,
     kml_lat = lat_fin,
@@ -61057,20 +61261,26 @@ if (nrow(registros_corrig_stat)) {
     fill = TRUE
   )
 
-  cols_ext_pontos <- intersect(c(
-    ".id", "PROTOCOLO", "UC", "UA", "ANO", "CICLO", "CAMPANHA", "form_veg",
-    "point_type", "lat_ini", "long_ini", "alt_ini", "acc_ini",
-    "lat_fin", "long_fin", "alt_fin", "acc_fin"
-  ), names(pontos_kml))
-
-  ext_pontos <- monitora_kml_extended_data(pontos_kml, cols_ext_pontos)
   coords_pontos <- monitora_kml_coord(pontos_kml$kml_lon, pontos_kml$kml_lat, pontos_kml$kml_alt)
 
-  placemarks_pontos <- paste0(
+  placemarks_pontos_campo <- paste0(
     "  <Placemark>\n",
     "    <name>", monitora_kml_escape_xml(pontos_kml$name), "</name>\n",
     "    <styleUrl>#ponto_ua</styleUrl>\n",
-    ext_pontos,
+    monitora_kml_descricao(pontos_kml, cols_campo),
+    monitora_kml_schema_data(pontos_kml, cols_campo, "schema_campo"),
+    "    <Point><altitudeMode>clampToGround</altitudeMode><coordinates>",
+    coords_pontos,
+    "</coordinates></Point>\n",
+    "  </Placemark>"
+  )
+
+  placemarks_pontos_stat <- paste0(
+    "  <Placemark>\n",
+    "    <name>", monitora_kml_escape_xml(pontos_kml$name), "</name>\n",
+    "    <styleUrl>#ponto_ua</styleUrl>\n",
+    monitora_kml_descricao(pontos_kml, cols_desc_stat),
+    monitora_kml_schema_data(pontos_kml, cols_stat, "schema_stat"),
     "    <Point><altitudeMode>clampToGround</altitudeMode><coordinates>",
     coords_pontos,
     "</coordinates></Point>\n",
@@ -61079,45 +61289,202 @@ if (nrow(registros_corrig_stat)) {
 
   estilos_pontos <- c(
     '  <Style id="ponto_ua">',
-    "    <IconStyle><scale>0.8</scale></IconStyle>",
+    "    <IconStyle><scale>0.5039370078740157</scale><Icon><href>files/icon1.png</href></Icon></IconStyle>",
+    "    <LabelStyle><color>ffffffff</color><scale>1</scale></LabelStyle>",
     "  </Style>"
   )
 
-  kml_pontos <- file.path(MONITORA_OUTPUT_DIR, "UAs_verg_ini_verg_fin.kml")
+  estilos_comuns <- c(estilos_pontos, estilos_transectos)
+  schema_campo <- monitora_kml_schema(kml_base, cols_campo, "schema_campo", "Atributos espaciais e operacionais")
+  schema_stat <- monitora_kml_schema(kml_base, cols_stat, "schema_stat", "Atributos de registros_corrig_stat")
+
+  kml_dir <- file.path(MONITORA_OUTPUT_DIR, "04_validacao_espacial")
+  dir.create(kml_dir, recursive = TRUE, showWarnings = FALSE)
+  icon_path <- file.path(kml_dir, "files", "icon1.png")
+  monitora_kml_escrever_icon_ua(icon_path)
+
+  kml_campo <- file.path(kml_dir, "UAs_verg_ini_verg_fin.kml")
   monitora_kml_gravar(
-    kml_pontos,
-    "UAs vértices inicial e final",
-    placemarks_pontos,
-    estilos_pontos
+    kml_campo,
+    "UAs - transectos e vértices inicial/final",
+    c(
+      monitora_kml_pasta("Transectos", placemarks_linhas_campo),
+      monitora_kml_pasta("Vértices inicial e final", placemarks_pontos_campo)
+    ),
+    estilos_comuns,
+    schema_campo
   )
+
+  kml_registros <- file.path(kml_dir, "UAs_registros_corrig_stat.kml")
+  monitora_kml_gravar(
+    kml_registros,
+    "UAs - validação estatística restrita",
+    c(
+      monitora_kml_pasta("Transectos", placemarks_linhas_stat),
+      monitora_kml_pasta("Vértices inicial e final", placemarks_pontos_stat)
+    ),
+    estilos_comuns,
+    schema_stat
+  )
+
+  ponto_medio <- monitora_kml_ponto_medio_geodesico(
+    kml_base$long_ini, kml_base$lat_ini,
+    kml_base$long_fin, kml_base$lat_fin
+  )
+  meta_area <- intersect(c("COLETA", "ANO", "PROTOCOLO", "CICLO", "CAMPANHA", "form_veg"), names(kml_base))
+  area_raw <- data.table::data.table(
+    UC = as.character(kml_base$UC),
+    UA = as.character(kml_base$UA),
+    centro_longitude = ponto_medio$longitude,
+    centro_latitude = ponto_medio$latitude
+  )
+  for (cc in meta_area) data.table::set(area_raw, j = cc, value = kml_base[[cc]])
+  area_raw[, chave_espacial := paste0(
+    sprintf("%.8f", centro_longitude), "|", sprintf("%.8f", centro_latitude)
+  )]
+  area_ref <- area_raw[, c(
+    list(
+      centro_longitude = mean(centro_longitude),
+      centro_latitude = mean(centro_latitude),
+      n_registros_referencia = .N
+    ),
+    lapply(.SD, monitora_kml_colapsar_unicos)
+  ), by = .(UC, UA, chave_espacial), .SDcols = meta_area]
+  area_ref[, `:=`(
+    raio_m = 100,
+    metodo_centro = "ponto médio geodésico da transecção",
+    metodo_delimitacao = "circunferência geodésica de raio 100 m"
+  )]
+  area_ref[, total_referencias_espaciais_ua := .N, by = .(UC, UA)]
+  area_ref[, ano_referencia_espacial := if ("ANO" %in% names(area_ref)) as.character(ANO) else NA_character_]
+  area_ref[, name := monitora_kml_rotulo_ua(UA)]
+  area_ref[, point_type := "operational_protection_area"]
+  area_ref[, coords_poligono := vapply(
+    seq_len(.N),
+    function(i) monitora_kml_circulo_geodesico(centro_longitude[i], centro_latitude[i], 100, 72L),
+    character(1)
+  )]
+
+  cols_area <- setdiff(
+    names(area_ref),
+    c("chave_espacial", "name", "coords_poligono")
+  )
+  schema_area <- monitora_kml_schema(area_ref, cols_area, "schema_area_operacional", "Área operacional de proteção da UA")
+  placemarks_area <- paste0(
+    "  <Placemark>\n",
+    "    <name>", monitora_kml_escape_xml(area_ref$name), "</name>\n",
+    "    <styleUrl>#area_protecao_ua</styleUrl>\n",
+    monitora_kml_descricao(area_ref, cols_area),
+    monitora_kml_schema_data(area_ref, cols_area, "schema_area_operacional"),
+    "    <MultiGeometry>",
+    "<Point><altitudeMode>clampToGround</altitudeMode><coordinates>",
+    monitora_kml_coord(area_ref$centro_longitude, area_ref$centro_latitude, 0),
+    "</coordinates></Point>",
+    "<Polygon><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode>",
+    "<outerBoundaryIs><LinearRing><coordinates>", area_ref$coords_poligono,
+    "</coordinates></LinearRing></outerBoundaryIs></Polygon>",
+    "</MultiGeometry>\n",
+    "  </Placemark>"
+  )
+  estilo_area <- c(
+    '  <Style id="area_protecao_ua">',
+    "    <IconStyle><scale>0</scale></IconStyle>",
+    "    <LabelStyle><color>ff00ffff</color><scale>1</scale></LabelStyle>",
+    "    <LineStyle><color>ff00ffff</color><width>2</width></LineStyle>",
+    "    <PolyStyle><color>0000ffff</color><fill>0</fill><outline>1</outline></PolyStyle>",
+    "  </Style>"
+  )
+  kml_area <- file.path(kml_dir, "UAs_areas_operacionais_protecao_100m.kml")
+  monitora_kml_gravar(
+    kml_area,
+    "Áreas operacionais de proteção das UAs - raio de 100 m",
+    monitora_kml_pasta("Áreas operacionais de proteção", placemarks_area),
+    estilo_area,
+    schema_area
+  )
+
+  kmz_campo <- file.path(kml_dir, "UAs_verg_ini_verg_fin.kmz")
+  kmz_registros <- file.path(kml_dir, "UAs_registros_corrig_stat.kmz")
+  kmz_area <- file.path(kml_dir, "UAs_areas_operacionais_protecao_100m.kmz")
+  monitora_kmz_gravar(kml_campo, kmz_campo, icon_path)
+  monitora_kmz_gravar(kml_registros, kmz_registros, icon_path)
+  monitora_kmz_gravar(kml_area, kmz_area, icon_path)
+
+  caminho_auditoria_areas <- file.path(kml_dir, "auditoria_areas_operacionais_protecao_100m.csv")
+  monitora_fwrite(area_ref[, ..cols_area], caminho_auditoria_areas, na = "")
+
+  produtos_kml <- data.table::data.table(
+    produto = basename(c(kml_campo, kmz_campo, kml_registros, kmz_registros, kml_area, kmz_area)),
+    caminho = c(kml_campo, kmz_campo, kml_registros, kmz_registros, kml_area, kmz_area),
+    finalidade = c(
+      "compartilhamento_equipe_campo", "compartilhamento_equipe_campo",
+      "validacao_estatistica_restrita", "validacao_estatistica_restrita",
+      "compartilhamento_gestao_uc", "compartilhamento_gestao_uc"
+    ),
+    n_linhas = c(nrow(kml_base), nrow(kml_base), nrow(kml_base), nrow(kml_base), 0L, 0L),
+    n_pontos = c(nrow(pontos_kml), nrow(pontos_kml), nrow(pontos_kml), nrow(pontos_kml), nrow(area_ref), nrow(area_ref)),
+    n_poligonos = c(0L, 0L, 0L, 0L, nrow(area_ref), nrow(area_ref)),
+    n_atributos = c(length(cols_campo), length(cols_campo), length(cols_stat), length(cols_stat), length(cols_area), length(cols_area))
+  )
+  produtos_kml[, `:=`(
+    existe = file.exists(caminho),
+    tamanho_bytes = suppressWarnings(as.numeric(file.info(caminho)$size)),
+    md5 = as.character(tools::md5sum(caminho))
+  )]
+  gate_campo <- !".id" %in% cols_campo &&
+    identical(setdiff(cols_campo, allowlist_campo), character()) &&
+    (!("form_veg" %in% names(kml_base)) || "form_veg" %in% cols_campo)
+  gate_stat <- setequal(cols_stat, unique(c(cols_stat_origem, "point_type")))
+  gate_arquivos <- all(produtos_kml$existe & is.finite(produtos_kml$tamanho_bytes) & produtos_kml$tamanho_bytes > 0)
+  produtos_kml[, `:=`(
+    gate_privacidade_campo = gate_campo,
+    gate_paridade_estatistica = gate_stat,
+    gate_arquivos = gate_arquivos,
+    status = if (gate_campo && gate_stat && gate_arquivos) "ok" else "falha"
+  )]
+  caminho_auditoria_kml <- file.path(kml_dir, "auditoria_produtos_kml_kmz.csv")
+  monitora_fwrite(produtos_kml, caminho_auditoria_kml, na = "")
+
   monitora_perf_registrar_checkpoint(
-    "exportacao_kml_pontos_manual",
-    "KML de pontos inicial/final gravado diretamente, sem geometria mista sf",
-    pontos_kml
+    "exportacao_kml_kmz_layout_contratual",
+    "KML/KMZ com linhas, vértices, atributos por finalidade e áreas operacionais de 100 m",
+    kml_registros_fonte
   )
 
   monitora_log_registrar_evento(
     "exportacao_kml",
     "INFO",
     kml_registros,
-    paste0("KML de linhas exportado com ", nrow(kml_base), " feições"),
-    "método manual robusto sem sf::st_write"
+    paste0("KML/KMZ estatístico restrito exportado com ", nrow(kml_base), " linhas e ", nrow(pontos_kml), " pontos"),
+    "atributos completos de registros_corrig_stat; geometrias preparadas separadamente"
   )
   monitora_log_registrar_evento(
     "exportacao_kml",
     "INFO",
-    kml_pontos,
-    paste0("KML de pontos exportado com ", nrow(pontos_kml), " feições"),
-    "método manual robusto sem geometria mista"
+    kml_campo,
+    paste0("KML/KMZ operacional exportado com ", nrow(kml_base), " linhas e ", nrow(pontos_kml), " pontos"),
+    "allowlist espacial inclui form_veg e exclui .id e dados primários"
+  )
+  monitora_log_registrar_evento(
+    "exportacao_kml",
+    if (gate_campo && gate_stat && gate_arquivos) "INFO" else "ERRO",
+    caminho_auditoria_kml,
+    paste0("Áreas operacionais exportadas: ", nrow(area_ref), "; gate localizado KML/KMZ=", gate_campo && gate_stat && gate_arquivos),
+    "raio geodésico de 100 m; sem preenchimento; contorno amarelo"
   )
 
   monitora_rm_seguro(
-    "kml_base", "cols_ext_kml", "ext_linhas", "coords_linha", "placemarks_linhas",
-    "estilos_linhas", "pontos_ini", "pontos_fin", "pontos_kml", "cols_ext_pontos",
-    "ext_pontos", "coords_pontos", "placemarks_pontos", "estilos_pontos",
-    "kml_registros", "kml_pontos"
+    "kml_registros_fonte", "kml_base", "cols_stat_origem", "allowlist_campo", "cols_campo",
+    "cols_stat", "cols_desc_stat", "coords_linha", "placemarks_linhas_campo",
+    "placemarks_linhas_stat", "estilos_transectos", "pontos_ini", "pontos_fin",
+    "pontos_kml", "coords_pontos", "placemarks_pontos_campo", "placemarks_pontos_stat",
+    "estilos_pontos", "estilos_comuns", "schema_campo", "schema_stat", "kml_dir",
+    "icon_path", "kml_campo", "kml_registros", "ponto_medio", "meta_area", "area_raw",
+    "area_ref", "cols_area", "schema_area", "placemarks_area", "estilo_area", "kml_area",
+    "kmz_campo", "kmz_registros", "kmz_area", "caminho_auditoria_areas", "produtos_kml",
+    "gate_campo", "gate_stat", "gate_arquivos", "caminho_auditoria_kml"
   )
-  monitora_recurso_gc("exportacao_kml_manual")
+  monitora_recurso_gc("exportacao_kml_kmz_layout_contratual")
 
 } else {
   monitora_log_registrar_evento(
@@ -61130,14 +61497,18 @@ if (nrow(registros_corrig_stat)) {
   monitora_perf_registrar_checkpoint(
     "exportacao_kml_sem_coordenadas_validas",
     "nenhum registro elegível para KML",
-    registros_corrig_stat
+    kml_registros_fonte
   )
 }
 
 monitora_rm_seguro(
   "monitora_kml_escape_xml", "monitora_kml_fmt_num", "monitora_kml_coord",
-  "monitora_kml_sanitizar_atributos", "monitora_kml_extended_data",
-  "monitora_kml_gravar"
+  "monitora_kml_escape_html", "monitora_kml_sanitizar_atributos",
+  "monitora_kml_tipo_schema", "monitora_kml_schema", "monitora_kml_schema_data",
+  "monitora_kml_descricao", "monitora_kml_pasta", "monitora_kml_gravar",
+  "monitora_kml_escrever_icon_ua", "monitora_kmz_gravar", "monitora_kml_rotulo_ua",
+  "monitora_kml_ponto_medio_geodesico", "monitora_kml_circulo_geodesico",
+  "monitora_kml_colapsar_unicos", "kml_registros_fonte"
 )
 
 } else {
