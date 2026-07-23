@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.7.4
-### Release pública: v2.7.4
+### Versão do script: 2.8.0
+### Release pública: v2.8.0
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.7.4"
-MONITORA_SCRIPT_BUILD_ID <- "v2.7.4-20260721"
+MONITORA_SCRIPT_VERSAO <- "2.8.0"
+MONITORA_SCRIPT_BUILD_ID <- "v2.8.0-20260722"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -8196,31 +8196,10 @@ monitora_correcao_reconciliar_plano_semantico <- function(dt, corr, contexto = "
   }, by = .(monitora_row_id, linha_indice, dominio_semantico)]
   if (nrow(conflitos_loc)) conflitos <- data.table::rbindlist(list(conflitos, conflitos_loc), fill = TRUE, use.names = TRUE)
 
- ### TRIOUT não pode apagar/rebaixar um ancestral quando existe descendente
- ### ecológico significativo. Placeholders já foram sanitizados e não entram.
-  tri_rows <- unique(atom[classe_abrangencia_semantica == "sanitizacao_ampla" & dominio_semantico == "outras_formas_vida", .(op_row, id_correcao, monitora_row_id, linha_indice)])
-  if (nrow(tri_rows) && nrow(excl)) {
-    excl_tri <- unique(excl[dominio_semantico == "outras_formas_vida", .(op_row, monitora_row_id)])
-    if (nrow(excl_tri)) tri_rows <- tri_rows[!excl_tri, on = .(op_row, monitora_row_id)]
-  }
-  if (nrow(tri_rows)) {
-    regras <- tryCatch(monitora_correcao_contrato_fechamento_hierarquico(dt), error = function(e) data.table::data.table())
-    regras <- regras[status_regra == "ok" & token %in% monitora_correcao_tokens_residuo_historico_outras_formas() & campo_inferior %in% names(dt)]
-    if (nrow(regras)) {
-      conf_desc <- list()
-      for (rr in seq_len(nrow(tri_rows))) {
-        li <- tri_rows$linha_indice[rr]
-        cols_sig <- regras[!monitora_correcao_vazio_vec(vapply(campo_inferior, function(cc) as.character(dt[[cc]][li]), character(1L))), unique(campo_inferior)]
-        if (length(cols_sig)) conf_desc[[length(conf_desc) + 1L]] <- data.table::data.table(
-          monitora_row_id = tri_rows$monitora_row_id[rr], linha_indice = li,
-          dominio_semantico = "outras_formas_vida",
-          ids_operacoes = tri_rows$id_correcao[rr], classes = "sanitizacao_ampla",
-          efeitos = paste0("conflito_descendente_significativo:", paste(cols_sig, collapse = " | "))
-        )
-      }
-      if (length(conf_desc)) conflitos <- unique(data.table::rbindlist(list(conflitos, data.table::rbindlist(conf_desc, fill = TRUE)), fill = TRUE, use.names = TRUE))
-    }
-  }
+ ### A validade da TRIOUT é aferida pelo executor atômico no estado final da
+ ### linha, após a proteção das correções específicas. Campos inferiores
+ ### legítimos de outras categorias (por exemplo, espécie de arbusto) não são
+ ### evidência de conflito com a remoção do token histórico `outra`.
 
   auditoria <- data.table::data.table()
   manter <- rep(TRUE, nrow(corr))
@@ -20679,6 +20658,28 @@ monitora_esp_norm_chr <- function(x) {
   trimws(x)
 }
 
+monitora_esp_chave_ua <- function(UC, EA, UA) {
+  paste(monitora_esp_norm_chr(UC), monitora_esp_norm_chr(EA), monitora_esp_norm_chr(UA), sep = "||")
+}
+
+monitora_esp_choices_ua_contextuais <- function(v) {
+  v <- data.table::as.data.table(v)
+  if (!nrow(v) || !all(c("UC", "EA", "UA") %in% names(v))) return(character(0))
+  z <- unique(v[, .(UC = as.character(UC), EA = as.character(EA), UA = as.character(UA))])
+  z[, chave := monitora_esp_chave_ua(UC, EA, UA)]
+  z <- z[nzchar(UA) & !duplicated(chave)]
+  z[, rotulo := paste0(ifelse(nzchar(UC), paste0(UC, " | "), ""), ifelse(nzchar(EA), paste0(EA, " | "), ""), UA)]
+  data.table::setorder(z, UC, EA, UA)
+  stats::setNames(z$chave, z$rotulo)
+}
+
+monitora_esp_filtrar_chave_ua <- function(v, chave) {
+  v <- data.table::as.data.table(v)
+  chave <- monitora_esp_norm_chr(chave)[1L]
+  if (!nrow(v) || !nzchar(chave) || !all(c("UC", "EA", "UA") %in% names(v))) return(v)
+  v[monitora_esp_chave_ua(UC, EA, UA) == chave]
+}
+
 monitora_esp_primeiro_valido <- function(x) {
   z <- monitora_esp_norm_chr(x)
   z <- z[nzchar(z) & !(tolower(z) %in% c("na", "nan", "null", "---"))]
@@ -20732,6 +20733,7 @@ monitora_esp_colunas_chave <- function(dt) {
   out$ano <- monitora_esp_resolver_coluna(dt, c("ANO", "ano", "Ano"), "(^|_)ano$", FALSE, "ANO")
   out$data_hora <- monitora_esp_resolver_coluna(dt, c("Data (data_hora)", "data_hora/data", "data"), "data_hora|data.*hora", FALSE, "Data (data_hora)")
   out$coleta_uuid <- monitora_esp_resolver_coluna(dt, c("coleta_uuid", "COLETA_UUID", "uuid_coleta"), "coleta.*uuid|uuid.*coleta", FALSE, "coleta_uuid")
+  out$id_registro <- monitora_esp_resolver_coluna(dt, c(".id", "id", "ID", "registro_id"), "(^|/)\\.id$|registro.*id", FALSE, ".id")
   out$usuario <- monitora_esp_resolver_coluna(dt, c("usuario", "usuário", "coletor", "COLETOR"), "usuario|usuário|coletor", FALSE, "usuário/coletor")
   out$ponto_amostral <- monitora_esp_resolver_coluna(dt, c("Ponto amostral", "ponto_amostral", "amostragem/registro/ponto_amostral"), "ponto.*amostral", FALSE, "Ponto amostral")
   out$ponto_metro <- monitora_esp_resolver_coluna(dt, c("Ponto metro", "ponto_metro", "amostragem/registro/ponto_metro"), "ponto.*metro", FALSE, "Ponto metro")
@@ -20750,6 +20752,35 @@ monitora_esp_colunas_chave <- function(dt) {
     "coordenada do vergalhão final"
   )
   out
+}
+
+monitora_esp_preparar_rejeicoes <- function(registros) {
+  d <- data.table::as.data.table(registros)
+  if (!nrow(d)) return(data.table::data.table())
+  ch <- tryCatch(monitora_esp_colunas_chave(d), error = function(e) NULL)
+  if (is.null(ch)) return(data.table::data.table(
+    linha_registros_corrig = seq_len(nrow(d)),
+    motivo_rejeicao = "esquema_espacial_obrigatorio_nao_resolvido"
+  ))
+  coleta <- monitora_esp_norm_chr(d[[ch$coleta]])
+  ua <- monitora_esp_norm_chr(d[[ch$ua]])
+  idx <- which(!nzchar(coleta) | !nzchar(ua))
+  if (!length(idx)) return(data.table::data.table())
+  valor <- function(cc) if (!is.na(cc) && cc %in% names(d)) as.character(d[[cc]][idx]) else rep(NA_character_, length(idx))
+  data.table::data.table(
+    linha_registros_corrig = idx,
+    UC = valor(ch$uc), EA = valor(ch$ea), UA = ua[idx],
+    ANO = if (!is.na(ch$ano) && ch$ano %in% names(d)) valor(ch$ano) else monitora_esp_extrair_ano(valor(ch$data_hora)),
+    COLETA = coleta[idx],
+    coleta_uuid = valor(ch$coleta_uuid),
+    id_registro = valor(ch$id_registro),
+    motivo_rejeicao = data.table::fcase(
+      !nzchar(coleta[idx]) & !nzchar(ua[idx]), "coleta_e_ua_ausentes",
+      !nzchar(coleta[idx]), "coleta_ausente",
+      !nzchar(ua[idx]), "ua_ausente",
+      default = "identidade_espacial_incompleta"
+    )
+  )
 }
 
 monitora_esp_extrair_ano <- function(x) {
@@ -20779,30 +20810,42 @@ monitora_esp_parse_coord <- function(x) {
 
 monitora_esp_dist_m <- function(lat1, lon1, lat2, lon2) {
   lat1 <- as.numeric(lat1); lon1 <- as.numeric(lon1); lat2 <- as.numeric(lat2); lon2 <- as.numeric(lon2)
+  n1 <- length(lat1); n2 <- length(lon1); n3 <- length(lat2); n4 <- length(lon2)
+  n <- max(n1, n2, n3, n4)
+  if (!n) return(numeric())
+  if (!((n1 == 1L || n1 == n) && (n2 == 1L || n2 == n) && (n3 == 1L || n3 == n) && (n4 == 1L || n4 == n))) {
+    stop("Comprimentos incompatíveis no cálculo espacial: ", paste(c(n1, n2, n3, n4), collapse = ", "), call. = FALSE)
+  }
   ok <- is.finite(lat1) & is.finite(lon1) & is.finite(lat2) & is.finite(lon2)
-  out <- rep(NA_real_, length(lat1 + lat2))
-  if (!any(ok)) return(out)
+  if (!any(ok)) return(rep(NA_real_, n))
   r <- 6371008.8
-  p1 <- lat1[ok] * pi / 180
-  p2 <- lat2[ok] * pi / 180
-  dp <- (lat2[ok] - lat1[ok]) * pi / 180
-  dl <- (lon2[ok] - lon1[ok]) * pi / 180
+  p1 <- lat1 * pi / 180
+  p2 <- lat2 * pi / 180
+  dp <- (lat2 - lat1) * pi / 180
+  dl <- (lon2 - lon1) * pi / 180
   a <- sin(dp / 2)^2 + cos(p1) * cos(p2) * sin(dl / 2)^2
-  out[ok] <- 2 * r * atan2(sqrt(a), sqrt(pmax(0, 1 - a)))
+  out <- 2 * r * atan2(sqrt(a), sqrt(pmax(0, 1 - a)))
+  out[!ok] <- NA_real_
   out
 }
 
 monitora_esp_bearing_graus <- function(lat1, lon1, lat2, lon2) {
   lat1 <- as.numeric(lat1); lon1 <- as.numeric(lon1); lat2 <- as.numeric(lat2); lon2 <- as.numeric(lon2)
+  n1 <- length(lat1); n2 <- length(lon1); n3 <- length(lat2); n4 <- length(lon2)
+  n <- max(n1, n2, n3, n4)
+  if (!n) return(numeric())
+  if (!((n1 == 1L || n1 == n) && (n2 == 1L || n2 == n) && (n3 == 1L || n3 == n) && (n4 == 1L || n4 == n))) {
+    stop("Comprimentos incompatíveis no cálculo espacial: ", paste(c(n1, n2, n3, n4), collapse = ", "), call. = FALSE)
+  }
   ok <- is.finite(lat1) & is.finite(lon1) & is.finite(lat2) & is.finite(lon2)
-  out <- rep(NA_real_, length(lat1 + lat2))
-  if (!any(ok)) return(out)
-  p1 <- lat1[ok] * pi / 180
-  p2 <- lat2[ok] * pi / 180
-  dl <- (lon2[ok] - lon1[ok]) * pi / 180
+  if (!any(ok)) return(rep(NA_real_, n))
+  p1 <- lat1 * pi / 180
+  p2 <- lat2 * pi / 180
+  dl <- (lon2 - lon1) * pi / 180
   y <- sin(dl) * cos(p2)
   x <- cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
-  out[ok] <- (atan2(y, x) * 180 / pi + 360) %% 360
+  out <- (atan2(y, x) * 180 / pi + 360) %% 360
+  out[!ok] <- NA_real_
   out
 }
 
@@ -20920,12 +20963,22 @@ monitora_esp_componentes <- function(adj) {
   comp
 }
 
-monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_ESPACIAL_M, min_n = MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL) {
+monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_ESPACIAL_M, min_n = MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL, matrizes_precalculadas = NULL) {
   g <- data.table::as.data.table(grupo)
+  g_todas <- g
   g <- g[coordenadas_validas == TRUE]
   min_n <- max(1L, as.integer(min_n)[1L])
   if (!nrow(g)) {
-    vazio_c <- data.table::data.table(consenso_valido = FALSE, n_coletas_validas = 0L, n_coletas_consenso = 0L)
+    vazio_c <- data.table::data.table(
+      consenso_valido = FALSE,
+      consenso_ambiguo = FALSE,
+      consenso_dominante = FALSE,
+      consenso_robusto = FALSE,
+      evidencia_consenso = "sem_coordenadas_validas",
+      n_coletas_validas = 0L,
+      n_coletas_consenso = 0L
+    )
+    if (nrow(g_todas)) vazio_c <- cbind(g_todas[1L, .(UC, EA, UA)], vazio_c)
     vazio_m <- data.table::data.table()
     return(list(consenso = vazio_c, clusters = vazio_m))
   }
@@ -20941,6 +20994,10 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
     c0 <- g[1L, .(UC, EA, UA)]
     c0[, `:=`(
       consenso_valido = FALSE,
+      consenso_ambiguo = FALSE,
+      consenso_dominante = FALSE,
+      consenso_robusto = FALSE,
+      evidencia_consenso = "referencia_insuficiente",
       n_coletas_validas = nrow(g),
       n_coletas_consenso = 0L,
       metodo_consenso = "referencia_insuficiente"
@@ -20948,7 +21005,10 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
     return(list(consenso = c0, clusters = cl))
   }
 
-  mats <- monitora_esp_score_matrizes(g)
+  mats <- matrizes_precalculadas
+  if (is.null(mats) || !is.list(mats) || !all(c("score", "normal", "invertido") %in% names(mats))) {
+    mats <- monitora_esp_score_matrizes(g)
+  }
   score <- as.matrix(mats$score)
   normal <- as.matrix(mats$normal)
   invertido <- as.matrix(mats$invertido)
@@ -20963,6 +21023,18 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
   dentro <- is.finite(score) & score <= as.numeric(raio_m)
   diag(dentro) <- TRUE
   suporte <- rowSums(dentro, na.rm = TRUE)
+  suporte_maximo <- max(suporte, na.rm = TRUE)
+  consenso_dominante <- is.finite(suporte_maximo) && suporte_maximo > n / 2
+  candidatos_maximos <- which(suporte == suporte_maximo)
+  consenso_ambiguo <- FALSE
+  if (length(candidatos_maximos) > 1L) {
+    assinatura_ref <- dentro[candidatos_maximos[1L], ]
+    consenso_ambiguo <- any(vapply(
+      candidatos_maximos[-1L],
+      function(ii) any(dentro[ii, ] != assinatura_ref),
+      logical(1L)
+    ))
+  }
   mediana_score <- apply(score, 1L, function(z) {
     z <- z[is.finite(z)]
     if (!length(z)) return(Inf)
@@ -20976,7 +21048,7 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
   comp_tam <- data.table::data.table(cluster_espacial = comp)[, .(cluster_tamanho_componente = .N), by = cluster_espacial]
   cluster_tamanho_comp <- comp_tam$cluster_tamanho_componente[match(comp, comp_tam$cluster_espacial)]
 
-  if (length(membros) < min_n) {
+  if (length(membros) < min_n || isTRUE(consenso_ambiguo) || !isTRUE(consenso_dominante)) {
     cl <- g[, .(
       id_coleta_espacial,
       cluster_espacial = comp,
@@ -20988,9 +21060,13 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
     c0 <- g[1L, .(UC, EA, UA)]
     c0[, `:=`(
       consenso_valido = FALSE,
+      consenso_ambiguo = isTRUE(consenso_ambiguo),
+      consenso_dominante = isTRUE(consenso_dominante),
+      consenso_robusto = FALSE,
+      evidencia_consenso = if (isTRUE(consenso_ambiguo)) "grupos_temporais_empatados" else if (!isTRUE(consenso_dominante)) "sem_maioria_temporal" else "cluster_insuficiente",
       n_coletas_validas = nrow(g),
       n_coletas_consenso = length(membros),
-      metodo_consenso = "cluster_principal_insuficiente"
+      metodo_consenso = if (isTRUE(consenso_ambiguo)) "consenso_ambiguo_sem_escolha_arbitraria" else if (!isTRUE(consenso_dominante)) "consenso_sem_maioria_temporal" else "cluster_principal_insuficiente"
     )]
     return(list(consenso = c0, clusters = cl))
   }
@@ -21009,6 +21085,10 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
   fim_lon_c <- stats::median(fim_lon_norm[membros], na.rm = TRUE)
   c1[, `:=`(
     consenso_valido = TRUE,
+    consenso_ambiguo = FALSE,
+    consenso_dominante = TRUE,
+    consenso_robusto = length(membros) >= 3L,
+    evidencia_consenso = if (length(membros) >= 3L) "maioria_temporal_robusta" else "referencia_temporal_limitada",
     n_coletas_validas = nrow(g),
     n_coletas_consenso = length(membros),
     n_coletas_outlier = nrow(g) - length(membros),
@@ -21016,6 +21096,7 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
     raio_validacao_m = as.numeric(raio_m),
     id_coleta_medoide = g$id_coleta_espacial[medoid],
     COLETA_medoide = g$COLETA[medoid],
+    ANO_medoide = g$ANO[medoid],
     inicio_lat_consenso = ini_lat_c,
     inicio_lon_consenso = ini_lon_c,
     fim_lat_consenso = fim_lat_c,
@@ -21037,12 +21118,23 @@ monitora_esp_consenso_grupo <- function(grupo, raio_m = MONITORA_RAIO_VALIDACAO_
 
 monitora_esp_calcular_consensos <- function(coletas, raio_m = MONITORA_RAIO_VALIDACAO_ESPACIAL_M, min_n = MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL) {
   cdt <- data.table::as.data.table(coletas)
-  if (!nrow(cdt)) return(list(consensos = data.table::data.table(), clusters = data.table::data.table()))
+  if (!nrow(cdt)) return(list(consensos = data.table::data.table(), clusters = data.table::data.table(), grupos = list(), matrizes = list()))
   grupos <- split(cdt, by = c("UC", "EA", "UA"), keep.by = TRUE, drop = TRUE)
-  res <- lapply(grupos, monitora_esp_consenso_grupo, raio_m = raio_m, min_n = min_n)
+  matrizes <- lapply(grupos, function(g) {
+    if (!nrow(g) || !all(g$coordenadas_validas == TRUE)) return(NULL)
+    monitora_esp_score_matrizes(g)
+  })
+  res <- Map(function(g, mats) {
+    monitora_esp_consenso_grupo(
+      g,
+      raio_m = raio_m,
+      min_n = min_n,
+      matrizes_precalculadas = mats
+    )
+  }, grupos, matrizes)
   consensos <- data.table::rbindlist(lapply(res, `[[`, "consenso"), fill = TRUE, use.names = TRUE)
   clusters <- data.table::rbindlist(lapply(res, `[[`, "clusters"), fill = TRUE, use.names = TRUE)
-  list(consensos = consensos, clusters = clusters)
+  list(consensos = consensos, clusters = clusters, grupos = grupos, matrizes = matrizes)
 }
 
 monitora_esp_classificar_linha <- function(di, df, dni, raio, alerta) {
@@ -21058,11 +21150,28 @@ monitora_esp_classificar_linha <- function(di, df, dni, raio, alerta) {
   "pendencia_ambos_divergentes"
 }
 
-monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one_out = TRUE) {
+monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one_out = TRUE, matrizes_precalculadas = NULL) {
   g <- data.table::as.data.table(grupo)
   out <- vector("list", nrow(g))
+  matrizes_grupo <- matrizes_precalculadas
+  if (is.null(matrizes_grupo) && nrow(g) && all(g$coordenadas_validas == TRUE)) {
+    matrizes_grupo <- monitora_esp_score_matrizes(g)
+  }
   for (ii in seq_len(nrow(g))) {
     linha <- g[ii]
+    conflito_interno <- suppressWarnings(as.integer(linha$n_coord_inicio_distintas[1L])) > 1L ||
+      suppressWarnings(as.integer(linha$n_coord_fim_distintas[1L])) > 1L
+    if (isTRUE(conflito_interno)) {
+      out[[ii]] <- linha[, .(
+        id_coleta_espacial,
+        status_espacial = "coordenadas_conflitantes_na_coleta",
+        referencia_consenso = "nao_calculada",
+        dist_inicio_consenso_m = NA_real_, dist_fim_consenso_m = NA_real_,
+        dist_par_normal_m = NA_real_, dist_par_invertido_m = NA_real_,
+        n_coletas_consenso_loo = 0L
+      )]
+      next
+    }
     if (!isTRUE(linha$coordenadas_validas)) {
       out[[ii]] <- linha[, .(id_coleta_espacial, status_espacial = "coordenada_invalida_ou_ausente", referencia_consenso = "nao_calculada", dist_inicio_consenso_m = NA_real_, dist_fim_consenso_m = NA_real_, dist_par_normal_m = NA_real_, dist_par_invertido_m = NA_real_, n_coletas_consenso_loo = 0L)]
       next
@@ -21073,9 +21182,20 @@ monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one
       min_ref <- as.integer(get0("MONITORA_MIN_COLETAS_CONSENSO_LOO_ESPACIAL", ifnotfound = max(1L, as.integer(min_n) - 1L), inherits = TRUE))
       if (!is.finite(min_ref) || min_ref < 1L) min_ref <- 1L
     }
-    ref <- monitora_esp_consenso_grupo(ref_base, raio_m = raio_m, min_n = min_ref)$consenso
+    matrizes_ref <- NULL
+    if (!is.null(matrizes_grupo)) {
+      manter <- if (isTRUE(leave_one_out)) setdiff(seq_len(nrow(g)), ii) else seq_len(nrow(g))
+      matrizes_ref <- lapply(matrizes_grupo, function(m) m[manter, manter, drop = FALSE])
+    }
+    ref <- monitora_esp_consenso_grupo(
+      ref_base,
+      raio_m = raio_m,
+      min_n = min_ref,
+      matrizes_precalculadas = matrizes_ref
+    )$consenso
     if (!nrow(ref) || !isTRUE(ref$consenso_valido[1])) {
-      out[[ii]] <- linha[, .(id_coleta_espacial, status_espacial = "referencia_insuficiente", referencia_consenso = if (isTRUE(leave_one_out)) "leave_one_out" else "consenso_completo", dist_inicio_consenso_m = NA_real_, dist_fim_consenso_m = NA_real_, dist_par_normal_m = NA_real_, dist_par_invertido_m = NA_real_, n_coletas_consenso_loo = 0L)]
+      status_ref <- if (nrow(ref) && isTRUE(ref$consenso_ambiguo[1L])) "referencia_temporal_ambigua" else "referencia_insuficiente"
+      out[[ii]] <- linha[, .(id_coleta_espacial, status_espacial = status_ref, referencia_consenso = if (isTRUE(leave_one_out)) "leave_one_out" else "consenso_completo", dist_inicio_consenso_m = NA_real_, dist_fim_consenso_m = NA_real_, dist_par_normal_m = NA_real_, dist_par_invertido_m = NA_real_, n_coletas_consenso_loo = 0L)]
       next
     }
     di <- monitora_esp_dist_m(linha$inicio_lat, linha$inicio_lon, ref$inicio_lat_consenso, ref$inicio_lon_consenso)
@@ -21104,10 +21224,17 @@ monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one
 
 monitora_esp_marcar_publicas_outras_uas <- function(validacao, consensos, raio_m) {
   v <- data.table::as.data.table(data.table::copy(validacao))
-  if (!nrow(v) || !nrow(consensos)) return(v)
+  if (!nrow(v)) return(v)
+  v[, `:=`(
+    status_espacial_base = as.character(status_espacial),
+    alerta_proximidade_outra_ua = FALSE,
+    n_uas_candidatas_proximas = 0L,
+    candidata_ua_inequivoca = FALSE
+  )]
+  if (!nrow(consensos)) return(v)
   pend_status <- c("pendencia_inicio_divergente", "pendencia_fim_divergente", "pendencia_ambos_divergentes", "possivel_transecto_invertido")
   pend <- v[status_espacial %in% pend_status & coordenadas_validas == TRUE]
-  cons <- data.table::as.data.table(consensos)[consenso_valido == TRUE]
+  cons <- data.table::as.data.table(consensos)[consenso_valido == TRUE & consenso_ambiguo == FALSE]
   if (!nrow(pend) || !nrow(cons)) return(v)
   cons <- cons[, .(
     UC,
@@ -21136,34 +21263,143 @@ monitora_esp_marcar_publicas_outras_uas <- function(validacao, consensos, raio_m
   cand <- cand[is.finite(dist_par_ua_publica_melhor_m) & dist_par_ua_publica_melhor_m <= as.numeric(raio_m)]
   if (!nrow(cand)) return(v)
   data.table::setorder(cand, id_coleta_espacial, dist_par_ua_publica_melhor_m)
-  best <- cand[, .SD[1L], by = id_coleta_espacial]
-  cols_add <- c("EA_publica", "UA_publica", "n_coletas_consenso_publica", "dist_par_ua_publica_melhor_m", "dist_par_ua_publica_m", "dist_par_ua_publica_invertida_m")
+  best <- cand[, {
+    n_cand <- .N
+    d1 <- dist_par_ua_publica_melhor_m[1L]
+    d2 <- if (n_cand >= 2L) dist_par_ua_publica_melhor_m[2L] else Inf
+    z <- .SD[1L]
+    z[, `:=`(
+      n_uas_candidatas_proximas = n_cand,
+      margem_segunda_ua_m = d2 - d1,
+      candidata_ua_inequivoca = n_cand == 1L || (is.finite(d2) && (d2 - d1) > as.numeric(raio_m) / 2)
+    )]
+    z
+  }, by = id_coleta_espacial]
+  cols_add <- c("EA_publica", "UA_publica", "n_coletas_consenso_publica", "dist_par_ua_publica_melhor_m", "dist_par_ua_publica_m", "dist_par_ua_publica_invertida_m", "n_uas_candidatas_proximas", "margem_segunda_ua_m", "candidata_ua_inequivoca")
   v[best, on = "id_coleta_espacial", (cols_add) := mget(paste0("i.", cols_add))]
-  v[best, on = "id_coleta_espacial", status_espacial := "possivel_ua_trocada"]
+  v[best, on = "id_coleta_espacial", alerta_proximidade_outra_ua := TRUE]
+  v[best[candidata_ua_inequivoca == TRUE], on = "id_coleta_espacial", status_espacial := "possivel_ua_trocada"]
   v[]
+}
+
+monitora_esp_diagnosticar_consensos_uas_coincidentes <- function(consensos, raio_m) {
+  cons <- data.table::as.data.table(data.table::copy(consensos))
+  if (!nrow(cons) || !("consenso_robusto" %in% names(cons))) return(data.table::data.table())
+  cons <- cons[consenso_valido == TRUE & consenso_robusto == TRUE & consenso_ambiguo == FALSE]
+  if (nrow(cons) < 2L) return(data.table::data.table())
+  cons[, id_consenso := .I]
+  a <- cons[, .(
+    UC, id_a = id_consenso, EA_a = EA, UA_a = UA,
+    n_coletas_a = n_coletas_consenso,
+    inicio_lat_a = inicio_lat_consenso, inicio_lon_a = inicio_lon_consenso,
+    fim_lat_a = fim_lat_consenso, fim_lon_a = fim_lon_consenso
+  )]
+  b <- cons[, .(
+    UC, id_b = id_consenso, EA_b = EA, UA_b = UA,
+    n_coletas_b = n_coletas_consenso,
+    inicio_lat_b = inicio_lat_consenso, inicio_lon_b = inicio_lon_consenso,
+    fim_lat_b = fim_lat_consenso, fim_lon_b = fim_lon_consenso
+  )]
+  cand <- merge(a, b, by = "UC", allow.cartesian = TRUE)
+  cand <- cand[id_a < id_b & !(monitora_esp_norm_chr(EA_a) == monitora_esp_norm_chr(EA_b) & monitora_esp_norm_chr(UA_a) == monitora_esp_norm_chr(UA_b))]
+  if (!nrow(cand)) return(data.table::data.table())
+  cand[, `:=`(
+    distancia_normal_m = pmax(
+      monitora_esp_dist_m(inicio_lat_a, inicio_lon_a, inicio_lat_b, inicio_lon_b),
+      monitora_esp_dist_m(fim_lat_a, fim_lon_a, fim_lat_b, fim_lon_b),
+      na.rm = FALSE
+    ),
+    distancia_invertida_m = pmax(
+      monitora_esp_dist_m(inicio_lat_a, inicio_lon_a, fim_lat_b, fim_lon_b),
+      monitora_esp_dist_m(fim_lat_a, fim_lon_a, inicio_lat_b, inicio_lon_b),
+      na.rm = FALSE
+    )
+  )]
+  cand[, distancia_melhor_m := pmin(distancia_normal_m, distancia_invertida_m, na.rm = TRUE)]
+  cand <- cand[is.finite(distancia_melhor_m) & distancia_melhor_m <= as.numeric(raio_m)]
+  if (!nrow(cand)) return(data.table::data.table())
+  cand[, `:=`(
+    orientacao_relativa = data.table::fifelse(distancia_invertida_m < distancia_normal_m, "invertida", "normal"),
+    diagnostico = "consensos_robustos_de_uas_distintas_coincidentes",
+    recomendacao = "revisar identidade das UAs e evidências de campo; não renomear automaticamente"
+  )]
+  data.table::setorder(cand, UC, EA_a, UA_a, EA_b, UA_b)
+  cand[]
 }
 
 monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDACAO_ESPACIAL_M, alerta_m = MONITORA_RAIO_ALERTA_ESPACIAL_M, min_n = MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL) {
   cdt <- data.table::as.data.table(data.table::copy(coletas))
-  if (!nrow(cdt)) return(list(validacao = data.table::data.table(), consensos = data.table::data.table(), clusters = data.table::data.table()))
+  if (!nrow(cdt)) return(list(validacao = data.table::data.table(), consensos = data.table::data.table(), clusters = data.table::data.table(), consensos_uas_coincidentes = data.table::data.table()))
   leave_one_out <- monitora_esp_cfg_bool(MONITORA_VALIDACAO_ESPACIAL_LEAVE_ONE_OUT, TRUE)
   cons <- monitora_esp_calcular_consensos(cdt, raio_m = raio_m, min_n = min_n)
-  grupos <- split(cdt, by = c("UC", "EA", "UA"), keep.by = TRUE, drop = TRUE)
+  grupos <- cons$grupos
   val <- data.table::rbindlist(
-    lapply(grupos, monitora_esp_validar_grupo, raio_m = raio_m, alerta_m = alerta_m, min_n = min_n, leave_one_out = leave_one_out),
+    Map(function(g, mats) {
+      monitora_esp_validar_grupo(
+        g,
+        raio_m = raio_m,
+        alerta_m = alerta_m,
+        min_n = min_n,
+        leave_one_out = leave_one_out,
+        matrizes_precalculadas = mats
+      )
+    }, grupos, cons$matrizes),
     fill = TRUE,
     use.names = TRUE
   )
   val <- cdt[val, on = "id_coleta_espacial"]
-  val[cons$clusters, on = "id_coleta_espacial", `:=`(
-    cluster_espacial = i.cluster_espacial,
-    cluster_tamanho = i.cluster_tamanho,
-    cluster_principal = i.cluster_principal,
-    orientacao_cluster = i.orientacao_cluster,
-    distancia_medoid_cluster_m = i.distancia_medoid_cluster_m
+  if (nrow(cons$clusters) && "id_coleta_espacial" %in% names(cons$clusters)) {
+    val[cons$clusters, on = "id_coleta_espacial", `:=`(
+      cluster_espacial = i.cluster_espacial,
+      cluster_tamanho = i.cluster_tamanho,
+      cluster_principal = i.cluster_principal,
+      orientacao_cluster = i.orientacao_cluster,
+      distancia_medoid_cluster_m = i.distancia_medoid_cluster_m
+    )]
+  } else {
+    val[, `:=`(cluster_espacial = NA_integer_, cluster_tamanho = NA_integer_, cluster_principal = NA, orientacao_cluster = NA_character_, distancia_medoid_cluster_m = NA_real_)]
+  }
+  spec_cons <- list(
+    consenso_valido = FALSE, consenso_ambiguo = FALSE, consenso_dominante = FALSE,
+    consenso_robusto = FALSE, evidencia_consenso = NA_character_, n_coletas_consenso = 0L,
+    id_coleta_medoide = NA_character_, COLETA_medoide = NA_character_, ANO_medoide = NA_character_,
+    inicio_lat_consenso = NA_real_, inicio_lon_consenso = NA_real_,
+    fim_lat_consenso = NA_real_, fim_lon_consenso = NA_real_
+  )
+  for (cc in names(spec_cons)) if (!(cc %in% names(cons$consensos))) data.table::set(cons$consensos, j = cc, value = spec_cons[[cc]])
+  cons_join <- cons$consensos[, .(
+    UC, EA, UA,
+    consenso_valido_ua = consenso_valido,
+    consenso_ambiguo_ua = consenso_ambiguo,
+    consenso_dominante_ua = consenso_dominante,
+    consenso_robusto_ua = consenso_robusto,
+    evidencia_consenso_ua = evidencia_consenso,
+    n_coletas_consenso_ua = n_coletas_consenso,
+    id_coleta_medoide_ua = id_coleta_medoide,
+    COLETA_medoide_ua = COLETA_medoide,
+    ANO_medoide_ua = ANO_medoide,
+    inicio_lat_consenso_ua = inicio_lat_consenso,
+    inicio_lon_consenso_ua = inicio_lon_consenso,
+    fim_lat_consenso_ua = fim_lat_consenso,
+    fim_lon_consenso_ua = fim_lon_consenso
   )]
+  cols_cons_join <- setdiff(names(cons_join), c("UC", "EA", "UA"))
+  val[cons_join, on = .(UC, EA, UA), (cols_cons_join) := mget(paste0("i.", cols_cons_join))]
+  status_validado_base <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso")
+  val[status_espacial %in% status_validado_base & consenso_valido_ua == TRUE & n_coletas_consenso_ua < 3L,
+      status_espacial := "coerente_com_referencia_temporal_limitada"]
   val <- monitora_esp_marcar_publicas_outras_uas(val, cons$consensos, raio_m = raio_m)
-  val[status_espacial == "pendencia_ambos_divergentes" & (is.na(cluster_principal) | cluster_principal != TRUE) & is.finite(cluster_tamanho) & cluster_tamanho >= as.integer(min_n), status_espacial := "serie_temporal_secundaria_sugerir_nova_ua"]
+  val[, alerta_serie_temporal_secundaria := status_espacial_base == "pendencia_ambos_divergentes" & (is.na(cluster_principal) | cluster_principal != TRUE) & is.finite(cluster_tamanho) & cluster_tamanho >= as.integer(min_n)]
+  val[is.na(alerta_serie_temporal_secundaria), alerta_serie_temporal_secundaria := FALSE]
+  coincidentes <- monitora_esp_diagnosticar_consensos_uas_coincidentes(cons$consensos, raio_m = raio_m)
+  val[, alerta_ua_consenso_coincidente := FALSE]
+  if (nrow(coincidentes)) {
+    ua_alerta <- unique(data.table::rbindlist(list(
+      coincidentes[, .(UC, EA = EA_a, UA = UA_a)],
+      coincidentes[, .(UC, EA = EA_b, UA = UA_b)]
+    ), use.names = TRUE))
+    val[ua_alerta, on = .(UC, EA, UA), alerta_ua_consenso_coincidente := TRUE]
+  }
   usar_acc <- monitora_esp_cfg_bool(MONITORA_USAR_ACURACIA_GPS_NA_TRIAGEM, TRUE)
   if (isTRUE(usar_acc)) {
     val[, alerta_acuracia_gps := data.table::fifelse(
@@ -21183,28 +21419,145 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
   } else {
     val[, alerta_comprimento_transecto := FALSE]
   }
-  val[, pendencia_espacial := !(status_espacial %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso"))]
+  status_validos <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada")
+  val[, pendencia_espacial := !(status_espacial %in% status_validos)]
   val[is.na(pendencia_espacial), pendencia_espacial := TRUE]
   val[, alerta_raio_rigoroso := status_espacial == "validada_com_alerta_raio_rigoroso"]
   val[is.na(alerta_raio_rigoroso), alerta_raio_rigoroso := FALSE]
-  val[, alerta_espacial := alerta_raio_rigoroso == TRUE | alerta_acuracia_gps == TRUE | alerta_comprimento_transecto == TRUE]
+  val[, alerta_referencia_limitada := status_espacial == "coerente_com_referencia_temporal_limitada"]
+  val[is.na(alerta_referencia_limitada), alerta_referencia_limitada := FALSE]
+  val[, alerta_espacial := alerta_raio_rigoroso == TRUE | alerta_acuracia_gps == TRUE | alerta_comprimento_transecto == TRUE |
+        alerta_referencia_limitada == TRUE | alerta_proximidade_outra_ua == TRUE |
+        alerta_serie_temporal_secundaria == TRUE | alerta_ua_consenso_coincidente == TRUE]
   val[is.na(alerta_espacial), alerta_espacial := FALSE]
   val[, pendencia_ou_alerta_espacial := pendencia_espacial == TRUE | alerta_espacial == TRUE]
   val[is.na(pendencia_ou_alerta_espacial), pendencia_ou_alerta_espacial := TRUE]
   sugestoes <- c(
     validada_espacialmente = "sem ação",
     validada_com_alerta_raio_rigoroso = "validada no raio operacional; revisar apenas se houver outro indício",
+    coerente_com_referencia_temporal_limitada = "referência coerente, porém limitada a duas campanhas; manter em revisão não impeditiva",
     possivel_ua_trocada = "avaliar se a COLETA foi realizada no local da UA publica",
     possivel_transecto_invertido = "avaliar inversão de vergalhão inicial/final",
     pendencia_inicio_divergente = "revisar ou copiar coordenada do vergalhão inicial",
     pendencia_fim_divergente = "revisar ou copiar coordenada do vergalhão final",
-    serie_temporal_secundaria_sugerir_nova_ua = "avaliar nova designação única de UA para série temporal secundária",
+    coordenadas_conflitantes_na_coleta = "reconciliar coordenadas divergentes registradas dentro da mesma COLETA",
+    referencia_temporal_ambigua = "revisar manualmente: há séries temporais concorrentes sem maioria inequívoca",
     referencia_insuficiente = "não validar automaticamente; referência temporal insuficiente"
   )
   val[, sugestao_operacional := unname(sugestoes[status_espacial])]
   val[is.na(sugestao_operacional) | !nzchar(sugestao_operacional), sugestao_operacional := "sugerir não validação ou revisão de campo"]
   data.table::setorderv(val, c("pendencia_espacial", "UC", "EA", "UA", "ANO", "COLETA"), order = c(-1L, 1L, 1L, 1L, 1L, 1L), na.last = TRUE)
-  list(validacao = val, consensos = cons$consensos, clusters = cons$clusters)
+  list(validacao = val, consensos = cons$consensos, clusters = cons$clusters, consensos_uas_coincidentes = coincidentes)
+}
+
+monitora_esp_plano_correcoes <- function(res) {
+  v <- data.table::as.data.table(data.table::copy(res$validacao))
+  if (!nrow(v)) return(data.table::data.table())
+  cols_logicos <- c(
+    "pendencia_espacial", "alerta_espacial", "consenso_robusto_ua", "consenso_ambiguo_ua",
+    "alerta_acuracia_gps", "alerta_proximidade_outra_ua", "alerta_serie_temporal_secundaria",
+    "alerta_ua_consenso_coincidente"
+  )
+  for (cc in cols_logicos) if (!(cc %in% names(v))) data.table::set(v, j = cc, value = FALSE)
+  v <- v[pendencia_espacial == TRUE | alerta_espacial == TRUE]
+  if (!nrow(v)) return(data.table::data.table())
+  raio <- as.numeric(get0("MONITORA_RAIO_VALIDACAO_ESPACIAL_M", ifnotfound = 20, inherits = TRUE))
+  rigoroso <- as.numeric(get0("MONITORA_RAIO_ALERTA_ESPACIAL_M", ifnotfound = 10, inherits = TRUE))
+  v[, acao_recomendada := data.table::fcase(
+    status_espacial == "possivel_transecto_invertido", "inverter_vergalhoes_inicio_fim",
+    status_espacial == "pendencia_inicio_divergente", "copiar_coordenada_inicio_de_referencia_validada",
+    status_espacial == "pendencia_fim_divergente", "copiar_coordenada_fim_de_referencia_validada",
+    status_espacial == "possivel_ua_trocada", "revisar_identidade_da_ua_com_evidencias_de_campo",
+    status_espacial == "coordenadas_conflitantes_na_coleta", "reconciliar_coordenadas_internas_da_coleta",
+    status_espacial == "referencia_temporal_ambigua", "revisar_series_temporais_concorrentes",
+    default = "revisao_humana_sem_correcao_automatica"
+  )]
+  v[, elegivel_sanitizacao_automatica :=
+      status_espacial == "possivel_transecto_invertido" &
+      consenso_robusto_ua == TRUE & consenso_ambiguo_ua == FALSE &
+      is.finite(dist_par_normal_m) & dist_par_normal_m > raio &
+      is.finite(dist_par_invertido_m) & dist_par_invertido_m <= rigoroso &
+      alerta_acuracia_gps == FALSE & alerta_proximidade_outra_ua == FALSE &
+      alerta_serie_temporal_secundaria == FALSE & alerta_ua_consenso_coincidente == FALSE]
+  v[, nivel_confianca := data.table::fcase(
+    elegivel_sanitizacao_automatica == TRUE, "deterministico_alto",
+    consenso_robusto_ua == TRUE & consenso_ambiguo_ua == FALSE & alerta_acuracia_gps == FALSE, "assistido_alto",
+    consenso_ambiguo_ua == TRUE | alerta_ua_consenso_coincidente == TRUE, "ambiguo_revisao_obrigatoria",
+    default = "assistido_limitado"
+  )]
+  v[, `:=`(
+    tipo_execucao_autorizada = data.table::fifelse(elegivel_sanitizacao_automatica, "enfileirar_inversao_apos_confirmacao", "nao_automatizar"),
+    motivo_nao_automatizar = data.table::fifelse(
+      elegivel_sanitizacao_automatica,
+      NA_character_,
+      "correções de coordenada isolada ou identidade de UA exigem confirmação humana e fonte inequívoca"
+    )
+  )]
+  cols <- intersect(c(
+    "id_coleta_espacial", "UC", "EA", "UA", "ANO", "COLETA", "status_espacial", "status_espacial_base",
+    "sugestao_operacional", "acao_recomendada", "nivel_confianca", "elegivel_sanitizacao_automatica",
+    "tipo_execucao_autorizada", "motivo_nao_automatizar", "n_linhas", "coleta_uuid", "usuario",
+    "id_coleta_medoide_ua", "COLETA_medoide_ua", "ANO_medoide_ua", "n_coletas_consenso_ua",
+    "evidencia_consenso_ua", "dist_inicio_consenso_m", "dist_fim_consenso_m", "dist_par_normal_m",
+    "dist_par_invertido_m", "inicio_lat", "inicio_lon", "fim_lat", "fim_lon",
+    "inicio_lat_consenso_loo", "inicio_lon_consenso_loo", "fim_lat_consenso_loo", "fim_lon_consenso_loo",
+    "alerta_acuracia_gps", "alerta_comprimento_transecto", "alerta_referencia_limitada",
+    "alerta_proximidade_outra_ua", "alerta_serie_temporal_secundaria", "alerta_ua_consenso_coincidente"
+  ), names(v))
+  data.table::setorderv(v, c("elegivel_sanitizacao_automatica", "UC", "EA", "UA", "ANO", "COLETA"), c(-1L, 1L, 1L, 1L, 1L, 1L), na.last = TRUE)
+  v[, ..cols]
+}
+
+monitora_esp_ocorrencias_diagnosticas <- function(res) {
+  v <- data.table::as.data.table(data.table::copy(res$validacao))
+  if (!nrow(v)) return(data.table::data.table())
+  ids <- intersect(c("id_coleta_espacial", "UC", "EA", "UA", "ANO", "COLETA"), names(v))
+  out <- list()
+  add <- function(idx, codigo, classe, impeditiva, motivo) {
+    idx[is.na(idx)] <- FALSE
+    if (!any(idx)) return(invisible(NULL))
+    z <- v[idx, ..ids]
+    z[, `:=`(
+      codigo_ocorrencia = codigo,
+      classe_ocorrencia = classe,
+      impeditiva = impeditiva,
+      status_espacial = as.character(v$status_espacial[idx]),
+      motivo = motivo
+    )]
+    out[[length(out) + 1L]] <<- z
+    invisible(NULL)
+  }
+  idx_pend <- v$pendencia_espacial == TRUE
+  motivos_status <- c(
+    coordenada_invalida_ou_ausente = "coordenada inicial ou final ausente/inválida",
+    coordenadas_conflitantes_na_coleta = "a mesma COLETA contém mais de um valor para coordenada inicial ou final",
+    referencia_insuficiente = "não há campanhas válidas suficientes para formar referência temporal",
+    referencia_temporal_ambigua = "há séries temporais concorrentes sem maioria espacial inequívoca",
+    pendencia_inicio_divergente = "vergalhão inicial diverge da referência temporal da UA",
+    pendencia_fim_divergente = "vergalhão final diverge da referência temporal da UA",
+    pendencia_ambos_divergentes = "os dois vergalhões divergem da referência temporal da UA",
+    possivel_transecto_invertido = "início e fim coincidem com a referência temporal somente quando invertidos",
+    possivel_ua_trocada = "a COLETA é mais compatível com o consenso espacial inequívoco de outra UA"
+  )
+  motivos_pend <- unname(motivos_status[as.character(v$status_espacial[idx_pend])])
+  motivos_pend[is.na(motivos_pend) | !nzchar(motivos_pend)] <- "status espacial exige correção ou decisão humana"
+  add(idx_pend, "status_espacial_pendente", "pendencia", TRUE, motivos_pend)
+  mapa_alertas <- c(
+    alerta_raio_rigoroso = "distância no intervalo entre o raio rigoroso e o operacional",
+    alerta_acuracia_gps = "acurácia GPS acima do limite de triagem",
+    alerta_comprimento_transecto = "comprimento do transecto fora da faixa operacional",
+    alerta_referencia_limitada = "referência temporal limitada a duas campanhas",
+    alerta_proximidade_outra_ua = "coleta próxima do consenso de outra UA",
+    alerta_serie_temporal_secundaria = "série espacial secundária sem decisão determinística",
+    alerta_ua_consenso_coincidente = "consensos robustos de UAs distintas espacialmente coincidentes"
+  )
+  for (cc in names(mapa_alertas)) {
+    if (cc %in% names(v)) add(as.logical(v[[cc]]) == TRUE, cc, "alerta", FALSE, unname(mapa_alertas[[cc]]))
+  }
+  if (!length(out)) return(data.table::data.table())
+  ans <- data.table::rbindlist(out, fill = TRUE, use.names = TRUE)
+  data.table::setorder(ans, impeditiva, UC, EA, UA, ANO, COLETA, codigo_ocorrencia, na.last = TRUE)
+  ans[]
 }
 
 monitora_esp_resumo_validacao <- function(validacao) {
@@ -21221,7 +21574,9 @@ monitora_esp_resumo_validacao <- function(validacao) {
   alerta_acur[is.na(alerta_acur)] <- FALSE
   alerta_comp <- if ("alerta_comprimento_transecto" %in% names(v)) as.logical(v$alerta_comprimento_transecto) else rep(FALSE, nrow(v))
   alerta_comp[is.na(alerta_comp)] <- FALSE
-  validas_operacionais <- status_chr %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso")
+  alerta_total <- if ("alerta_espacial" %in% names(v)) as.logical(v$alerta_espacial) else alerta_raio | alerta_acur | alerta_comp
+  alerta_total[is.na(alerta_total)] <- FALSE
+  validas_operacionais <- status_chr %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada")
   validas_operacionais[is.na(validas_operacionais)] <- FALSE
   geral <- data.table::data.table(
     metrica = c(
@@ -21241,7 +21596,7 @@ monitora_esp_resumo_validacao <- function(validacao) {
       sum(alerta_raio),
       sum(alerta_acur),
       sum(alerta_comp),
-      sum(pend | alerta_raio | alerta_acur | alerta_comp),
+      sum(pend | alerta_total),
       sum(status_chr == "validada_espacialmente", na.rm = TRUE),
       sum(validas_operacionais),
       data.table::uniqueN(paste(v$UC, v$EA, v$UA, sep = "\r"))
@@ -21257,7 +21612,7 @@ monitora_esp_gravar_produtos <- function(res, momento = "pre_painel", output_dir
   base_dir <- file.path(output_dir, "validacao_espacial", momento)
   dir.create(base_dir, showWarnings = FALSE, recursive = TRUE)
   val <- data.table::as.data.table(res$validacao)
-  if (!"pendencia_espacial" %in% names(val)) val[, pendencia_espacial := !(status_espacial %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso"))]
+  if (!"pendencia_espacial" %in% names(val)) val[, pendencia_espacial := !(status_espacial %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada"))]
   if (!"alerta_espacial" %in% names(val)) {
     alerta_raio_tmp <- if ("alerta_raio_rigoroso" %in% names(val)) as.logical(val$alerta_raio_rigoroso) else as.character(val$status_espacial) == "validada_com_alerta_raio_rigoroso"
     alerta_acur_tmp <- if ("alerta_acuracia_gps" %in% names(val)) as.logical(val$alerta_acuracia_gps) else rep(FALSE, nrow(val))
@@ -21269,12 +21624,18 @@ monitora_esp_gravar_produtos <- function(res, momento = "pre_painel", output_dir
   alertas <- val[alerta_espacial == TRUE]
   pend_alertas <- val[pendencia_ou_alerta_espacial == TRUE]
   resumo <- monitora_esp_resumo_validacao(val)
+  ocorrencias <- monitora_esp_ocorrencias_diagnosticas(res)
+  plano <- monitora_esp_plano_correcoes(res)
   monitora_esp_fwrite(val, file.path(base_dir, "validacao_espacial_coletas.csv"))
   monitora_esp_fwrite(pend, file.path(base_dir, "validacao_espacial_pendencias.csv"))
   monitora_esp_fwrite(alertas, file.path(base_dir, "validacao_espacial_alertas.csv"))
   monitora_esp_fwrite(pend_alertas, file.path(base_dir, "validacao_espacial_pendencias_e_alertas.csv"))
   monitora_esp_fwrite(data.table::as.data.table(res$consensos), file.path(base_dir, "validacao_espacial_consenso_ua.csv"))
   monitora_esp_fwrite(data.table::as.data.table(res$clusters), file.path(base_dir, "validacao_espacial_clusters_ua.csv"))
+  monitora_esp_fwrite(data.table::as.data.table(res$consensos_uas_coincidentes), file.path(base_dir, "validacao_espacial_consensos_uas_coincidentes.csv"))
+  monitora_esp_fwrite(data.table::as.data.table(res$rejeicoes_preparacao), file.path(base_dir, "validacao_espacial_rejeicoes_preparacao.csv"))
+  monitora_esp_fwrite(ocorrencias, file.path(base_dir, "validacao_espacial_ocorrencias_diagnosticas.csv"))
+  monitora_esp_fwrite(plano, file.path(base_dir, "plano_correcoes_espaciais.csv"))
   monitora_esp_fwrite(resumo, file.path(base_dir, "resumo_validacao_espacial.csv"))
   indice <- data.table::data.table(
     momento = momento,
@@ -21295,9 +21656,11 @@ monitora_espacial_executar <- function(registros_corrig, momento = c("pre_painel
   }
   tempo_ini <- proc.time()[["elapsed"]]
   monitora_esp_msg("Iniciando validação espacial de COLETAS [", momento, "].")
+  rejeicoes_preparacao <- monitora_esp_preparar_rejeicoes(registros_corrig)
   coletas <- monitora_esp_preparar_coletas(registros_corrig)
   res <- monitora_esp_validar_coletas(coletas)
   res$coletas <- coletas
+  res$rejeicoes_preparacao <- rejeicoes_preparacao
   monitora_esp_gravar_produtos(res, momento = momento, output_dir = output_dir, log_dir = log_dir)
   if (momento %in% c("pre_painel", "pre_painel_incremental")) {
     assign("MONITORA_VALIDACAO_ESPACIAL_PRE_PAINEL_ULTIMA", res$validacao, envir = .GlobalEnv)
@@ -21386,7 +21749,10 @@ monitora_espacial_comparar_pre_pos <- function(pre, pos) {
   cols_keep <- c(
     "id_coleta_espacial", "UC", "EA", "UA", "ANO", "COLETA", "status_espacial",
     "pendencia_espacial", "alerta_espacial", "pendencia_ou_alerta_espacial",
-    "dist_inicio_consenso_m", "dist_fim_consenso_m", "dist_par_normal_m", "sugestao_operacional"
+    "dist_inicio_consenso_m", "dist_fim_consenso_m", "dist_par_normal_m", "dist_par_invertido_m",
+    "coord_inicio_txt", "coord_fim_txt", "n_coord_inicio_distintas", "n_coord_fim_distintas",
+    "alerta_referencia_limitada", "alerta_proximidade_outra_ua", "alerta_serie_temporal_secundaria",
+    "alerta_ua_consenso_coincidente", "sugestao_operacional"
   )
   a <- a[, intersect(cols_keep, names(a)), with = FALSE]
   b <- b[, intersect(cols_keep, names(b)), with = FALSE]
@@ -21467,6 +21833,7 @@ monitora_esp_correcoes_schema <- function(ops) {
   ops <- data.table::as.data.table(ops)
   cols <- c(
     "id_operacao", "item_operacao", "n_itens_operacao", "timestamp", "tipo_operacao", "COLETA_alvo", "UC", "EA", "UA", "ANO",
+    "UC_fonte", "EA_fonte", "UA_fonte",
     "ANO_fonte", "ANO_destino", "escopo_destino", "tipo_origem", "campo_alvo", "coord_inicio_original_esperada", "coord_fim_original_esperada",
     "coord_inicio_nova", "coord_fim_nova", "COLETA_fonte", "origem_valor", "ocorrencia_coordenada_manual",
     "n_linhas_esperado", "confirmar_abrangencia", "justificativa"
@@ -21844,10 +22211,15 @@ monitora_esp_aplicar_uma_operacao <- function(dt, op, ch) {
     id_operacao = op$id_operacao,
     tipo_operacao = op$tipo_operacao,
     COLETA_alvo = op$COLETA_alvo,
+    UC = op$UC, EA = op$EA, UA = op$UA, ANO = op$ANO,
+    COLETA_fonte = op$COLETA_fonte,
+    UC_fonte = op$UC_fonte, EA_fonte = op$EA_fonte, UA_fonte = op$UA_fonte, ANO_fonte = op$ANO_fonte,
     status = "pendente",
     motivo_falha = NA_character_,
     n_linhas_alvo = 0L,
-    campos_alterados = NA_character_
+    campos_alterados = NA_character_,
+    coord_inicio_antes = NA_character_, coord_fim_antes = NA_character_,
+    coord_inicio_depois = NA_character_, coord_fim_depois = NA_character_
   )
   coleta_alvo <- monitora_esp_norm_chr(op$COLETA_alvo)
   if (!nzchar(coleta_alvo)) {
@@ -21877,6 +22249,10 @@ monitora_esp_aplicar_uma_operacao <- function(dt, op, ch) {
   }
   ini_col <- ch$coord_inicio
   fim_col <- ch$coord_fim
+  audit[, `:=`(
+    coord_inicio_antes = paste(monitora_esp_unique_validos(dt[[ini_col]][idx]), collapse = " | "),
+    coord_fim_antes = paste(monitora_esp_unique_validos(dt[[fim_col]][idx]), collapse = " | ")
+  )]
   ini_esp <- monitora_esp_norm_chr(op$coord_inicio_original_esperada)
   fim_esp <- monitora_esp_norm_chr(op$coord_fim_original_esperada)
   if (nzchar(ini_esp) && any(monitora_esp_norm_chr(dt[[ini_col]][idx]) != ini_esp)) {
@@ -21896,33 +22272,47 @@ monitora_esp_aplicar_uma_operacao <- function(dt, op, ch) {
     old_fim <- dt[[fim_col]][idx]
     data.table::set(dt, i = idx, j = ini_col, value = old_fim)
     data.table::set(dt, i = idx, j = fim_col, value = old_ini)
-    audit[, `:=`(status = "aplicada", campos_alterados = paste(ini_col, fim_col, sep = "; "))]
+    audit[, `:=`(
+      status = "aplicada", campos_alterados = paste(ini_col, fim_col, sep = "; "),
+      coord_inicio_depois = paste(monitora_esp_unique_validos(dt[[ini_col]][idx]), collapse = " | "),
+      coord_fim_depois = paste(monitora_esp_unique_validos(dt[[fim_col]][idx]), collapse = " | ")
+    )]
     return(audit)
   }
   campos <- character(0)
+  novo_ini <- NA_character_
+  novo_fim <- NA_character_
   if (isTRUE(alterar_ini)) {
-    novo <- monitora_esp_norm_chr(op$coord_inicio_nova)
-    if (!nzchar(novo) || !monitora_esp_coord_valida_texto(novo)) {
+    novo_ini <- monitora_esp_norm_chr(op$coord_inicio_nova)
+    if (!nzchar(novo_ini) || !monitora_esp_coord_valida_texto(novo_ini)) {
       audit[, `:=`(status = "falha", motivo_falha = "coord_inicio_nova inválida")]
       return(audit)
     }
-    data.table::set(dt, i = idx, j = ini_col, value = novo)
-    campos <- c(campos, ini_col)
   }
   if (isTRUE(alterar_fim)) {
-    novo <- monitora_esp_norm_chr(op$coord_fim_nova)
-    if (!nzchar(novo) || !monitora_esp_coord_valida_texto(novo)) {
+    novo_fim <- monitora_esp_norm_chr(op$coord_fim_nova)
+    if (!nzchar(novo_fim) || !monitora_esp_coord_valida_texto(novo_fim)) {
       audit[, `:=`(status = "falha", motivo_falha = "coord_fim_nova inválida")]
       return(audit)
     }
-    data.table::set(dt, i = idx, j = fim_col, value = novo)
+  }
+  if (isTRUE(alterar_ini)) {
+    data.table::set(dt, i = idx, j = ini_col, value = novo_ini)
+    campos <- c(campos, ini_col)
+  }
+  if (isTRUE(alterar_fim)) {
+    data.table::set(dt, i = idx, j = fim_col, value = novo_fim)
     campos <- c(campos, fim_col)
   }
   if (!length(campos)) {
     audit[, `:=`(status = "falha", motivo_falha = "operação sem campo espacial reconhecido")]
     return(audit)
   }
-  audit[, `:=`(status = "aplicada", campos_alterados = paste(unique(campos), collapse = "; "))]
+  audit[, `:=`(
+    status = "aplicada", campos_alterados = paste(unique(campos), collapse = "; "),
+    coord_inicio_depois = paste(monitora_esp_unique_validos(dt[[ini_col]][idx]), collapse = " | "),
+    coord_fim_depois = paste(monitora_esp_unique_validos(dt[[fim_col]][idx]), collapse = " | ")
+  )]
   audit
 }
 
@@ -26781,6 +27171,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::h4("Correção espacial guiada: origem → destino → operação"),
           shiny::helpText("Selecione uma pendência na tabela, confira a origem das coordenadas, escolha o destino da correção e revise a prévia antes de adicionar a operação. Ao selecionar uma COLETA, as coordenadas atuais são pré-preenchidas para facilitar edição manual."),
           shiny::fluidRow(
+            shiny::column(6, shiny::selectizeInput("esp_ua_fonte", "UA da fonte (UC | EA | UA)", choices = character(0), selected = character(0), multiple = FALSE, options = list(placeholder = "Selecione a UA da fonte"))),
+            shiny::column(6, shiny::selectizeInput("esp_ua_destino", "UA do destino (UC | EA | UA)", choices = character(0), selected = character(0), multiple = FALSE, options = list(placeholder = "Selecione a UA do destino")))
+          ),
+          shiny::fluidRow(
             shiny::column(3, shiny::selectInput("esp_tipo_operacao", "Operação espacial", choices = monitora_painel_choices_label_name(c(
               "Editar início e fim manualmente" = "editar_ambos",
               "Editar apenas início manualmente" = "editar_inicio",
@@ -26845,6 +27239,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::h4("Mapa das transecções espaciais pré-painel"),
           shiny::uiOutput("esp_mapa_ui"),
           shiny::h4("Pendências espaciais pré-painel"),
+          shiny::uiOutput("esp_sanitizacao_segura_info"),
+          shiny::actionButton("esp_sanitizar_pendencias_seguras", "Sanitizar pendências espaciais determinísticas", class = "btn-danger"),
+          shiny::helpText("A ação somente enfileira inversões inequívocas de início/fim contra consenso temporal robusto. Coordenadas isoladas, identidade de UA, referências ambíguas e casos com baixa acurácia permanecem para decisão humana."),
           DT::DTOutput("esp_tabela_pendencias"),
           shiny::h4("Correções espaciais pendentes nesta sessão"),
           shiny::uiOutput("esp_status_correcoes"),
@@ -28085,6 +28482,32 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       data.table::rbindlist(ops, fill = TRUE, use.names = TRUE)
     }
 
+    monitora_painel_prevalidar_limpeza_outras_atomica <- function(linhas_alvo, id) {
+      linhas_alvo <- unique(as.integer(linhas_alvo))
+      linhas_alvo <- linhas_alvo[!is.na(linhas_alvo) & linhas_alvo >= 1L & linhas_alvo <= nrow(dt)]
+      if (!length(linhas_alvo)) return(list(ok = FALSE, mensagem = "Nenhuma linha-alvo válida para a pré-validação TRIOUT."))
+      alvo <- data.table::copy(dt[linhas_alvo])
+      res <- tryCatch(
+        monitora_correcao_aplicar_limpeza_outras_formas_atomica(
+          alvo,
+          seq_len(nrow(alvo)),
+          id_correcao = id,
+          arquivo_correcao = "prevalidacao_painel_triout",
+          dicionario = if (!is.null(meta_xls)) meta_xls$campos else NULL
+        ),
+        error = function(e) list(falha = TRUE, audit = data.table::data.table(mensagem = conditionMessage(e)))
+      )
+      if (!isTRUE(res$falha)) return(list(ok = TRUE, mensagem = NA_character_))
+      aud <- data.table::as.data.table(res$audit)
+      msg <- "A limpeza TRIOUT foi recusada porque o estado final não atende ao contrato único."
+      if (nrow(aud) && "mensagem" %in% names(aud)) {
+        cand <- as.character(aud$mensagem)
+        cand <- cand[!is.na(cand) & nzchar(trimws(cand))]
+        if (length(cand)) msg <- cand[1L]
+      }
+      list(ok = FALSE, mensagem = msg)
+    }
+
     monitora_painel_adicionar_limpeza_outras_escopo <- function() {
       motivo_val <- monitora_painel_valor(input$motivo)
       if (!nzchar(motivo_val)) motivo_val <- "Limpeza atômica de outra(s) forma(s) de vida no escopo selecionado."
@@ -28155,6 +28578,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       id <- monitora_correcao_novo_id("TRIOUT_ATOM")
       op <- monitora_painel_criar_op_limpeza_outras_atomica(id, linhas_alvo, escopo_op, coleta_serial, ponto_val, motivo_val)
       if (is.null(op) || !nrow(op)) return(NULL)
+      pre_triout <- monitora_painel_prevalidar_limpeza_outras_atomica(linhas_alvo, id)
+      if (!isTRUE(pre_triout$ok)) {
+        monitora_painel_bloquear_operacao(pre_triout$mensagem, etapa = "prevalidacao_contrato_triout", atributo = "__limpar_outras_formas_vida__", acao = "limpar_outras_formas_vida", duration = 14)
+        return(NULL)
+      }
       n_add <- monitora_painel_adicionar_ops_pendentes(list(op), origem = "limpeza atômica outras formas de vida")
       monitora_painel_notificar(paste0(n_add, " operação atômica adicionada para ", length(linhas_alvo), " linha(s) diagnóstica(s) com resíduo de outra forma de vida. Universo filtrado: ", length(linhas_alvo_original), " linha(s)."), type = if (n_add > 0L) "message" else "warning", duration = 10)
       monitora_correcao_console_msg("Limpeza atômica outras formas: ", n_add, " operação adicionada; linhas_alvo=", length(linhas_alvo), "; universo_filtrado=", length(linhas_alvo_original), "; residuos=", resumo$linhas_com_residuo_total[1L], ".")
@@ -28200,6 +28628,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       id <- monitora_correcao_novo_id("TRIOUT_ATOM")
       coleta_serial <- if (chaves$coleta %in% names(dt)) monitora_correcao_colapsar_lista_serializada(unique(as.character(dt[[chaves$coleta]][linhas_total]))) else NA_character_
       op <- monitora_painel_criar_op_limpeza_outras_atomica(id, linhas_total, "linhas_alvo", coleta_serial, NA_character_, motivo_val)
+      pre_triout <- monitora_painel_prevalidar_limpeza_outras_atomica(linhas_total, id)
+      if (!isTRUE(pre_triout$ok)) {
+        monitora_painel_bloquear_operacao(pre_triout$mensagem, etapa = "prevalidacao_contrato_triout", atributo = "__limpar_outras_formas_vida__", acao = "limpar_outras_formas_vida", duration = 14)
+        return(NULL)
+      }
       n_add <- monitora_painel_adicionar_ops_pendentes(list(op), origem = "triagem outras formas de vida atômica")
       monitora_painel_notificar(paste0(n_add, " operação atômica adicionada para limpar ", resumo$linhas_com_residuo_total[1L], " linha(s) selecionada(s) com outras formas de vida."), type = if (n_add > 0L) "message" else "warning", duration = 10)
       monitora_correcao_console_msg("Triagem outras formas de vida atômica: ", n_add, " operação adicionada; linhas_alvo=", length(linhas_total), "; residuos=", resumo$linhas_com_residuo_total[1L], ".")
@@ -28989,6 +29422,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       v[]
     })
 
+    esp_base_origem_espacial <- shiny::reactive({
+      v <- data.table::as.data.table(validacao_esp_painel)
+      if (!nrow(v)) return(v)
+      g_uc <- monitora_painel_valores_input(input$filtro_uc)
+      g_ea <- monitora_painel_valores_input(input$filtro_ea)
+      if (length(g_uc) && "UC" %in% names(v)) v <- v[as.character(UC) %in% g_uc]
+      if (length(g_ea) && "EA" %in% names(v)) v <- v[as.character(EA) %in% g_ea]
+      v[]
+    })
+
     esp_coletas_escopo_painel <- shiny::reactive({
       vals <- character(0)
       if (isTRUE(monitora_painel_usar_lote_coletas())) {
@@ -29074,6 +29517,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     esp_coletas_destino_choices_guiadas <- function() {
       v <- esp_base_global_filtrada()
       if (!nrow(v)) return(character(0))
+      v <- monitora_esp_filtrar_chave_ua(v, monitora_painel_valor(input$esp_ua_destino))
       if (isTRUE(input$esp_somente_pendencias)) {
         if ("pendencia_ou_alerta_espacial" %in% names(v)) v <- v[pendencia_ou_alerta_espacial == TRUE]
         else if ("pendencia_espacial" %in% names(v)) v <- v[pendencia_espacial == TRUE]
@@ -29090,6 +29534,19 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (nzchar(coleta_fonte)) choices <- setdiff(choices, coleta_fonte)
       choices
     }
+
+    shiny::observeEvent(list(esp_base_global_filtrada(), esp_base_origem_espacial()), {
+      v <- esp_base_global_filtrada()
+      choices_fonte <- monitora_esp_choices_ua_contextuais(esp_base_origem_espacial())
+      choices_destino <- monitora_esp_choices_ua_contextuais(esp_validacao_filtrada())
+      if (!length(choices_destino)) choices_destino <- choices_fonte
+      sel_fonte <- shiny::isolate(monitora_painel_valor(input$esp_ua_fonte))
+      sel_destino <- shiny::isolate(monitora_painel_valor(input$esp_ua_destino))
+      try(shiny::freezeReactiveValue(input, "esp_ua_fonte"), silent = TRUE)
+      try(shiny::freezeReactiveValue(input, "esp_ua_destino"), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "esp_ua_fonte", choices = choices_fonte, selected = if (sel_fonte %in% unname(choices_fonte)) sel_fonte else character(0), server = TRUE), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "esp_ua_destino", choices = choices_destino, selected = if (sel_destino %in% unname(choices_destino)) sel_destino else character(0), server = TRUE), silent = TRUE)
+    }, ignoreInit = FALSE)
 
  # Atualização em cascata dos filtros espaciais.
  # Regra: controles de destino seguem o diagnóstico/status; controles de origem
@@ -29111,11 +29568,13 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     )
 
     shiny::observeEvent(
-      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
+      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_ua_destino, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
       {
         status <- monitora_painel_valores_input(input$esp_filtro_status)
         ua <- monitora_painel_valores_input(input$esp_filtro_ua)
-        choices_ano_destino <- esp_choices_chr(esp_choices_filtradas_por_parametros(status = status, ua = ua), "ANO")
+        v_anos_destino <- esp_choices_filtradas_por_parametros(status = status, ua = ua)
+        v_anos_destino <- monitora_esp_filtrar_chave_ua(v_anos_destino, monitora_painel_valor(input$esp_ua_destino))
+        choices_ano_destino <- esp_choices_chr(v_anos_destino, "ANO")
         sel_ano <- shiny::isolate(monitora_painel_valores_input(input$esp_filtro_ano))
         sel_ano_destino <- shiny::isolate(monitora_painel_valores_input(input$esp_lote_ano_destino))
         sel_ano_destino_guiado <- shiny::isolate(monitora_painel_valores_input(input$esp_ano_destino))
@@ -29128,16 +29587,22 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     )
 
     shiny::observeEvent(
-      list(input$esp_filtro_ua, esp_base_global_filtrada()),
+      list(input$esp_ua_fonte, input$esp_filtro_ua, esp_base_origem_espacial()),
       {
  # ANO fonte deve vir da série completa da mesma UA, não apenas do status/ANO destino.
-        v <- esp_base_global_filtrada()
-        ua <- monitora_painel_valores_input(input$esp_filtro_ua)
-        if (!length(ua)) {
-          ctx <- esp_linha_selecionada()
-          if (nrow(ctx) && "UA" %in% names(ctx)) ua <- as.character(ctx$UA[1L])
+        v <- esp_base_origem_espacial()
+        chave_fonte <- monitora_painel_valor(input$esp_ua_fonte)
+        ua <- character(0)
+        if (nzchar(chave_fonte)) {
+          v <- monitora_esp_filtrar_chave_ua(v, chave_fonte)
+        } else {
+          ua <- monitora_painel_valores_input(input$esp_filtro_ua)
+          if (nrow(v) && length(ua) && "UA" %in% names(v)) v <- v[as.character(UA) %in% ua]
         }
-        if (nrow(v) && length(ua) && "UA" %in% names(v)) v <- v[as.character(UA) %in% ua]
+        if (!nzchar(chave_fonte) && !length(ua)) {
+          ctx <- esp_linha_selecionada()
+          if (nrow(ctx)) v <- v[monitora_esp_chave_ua(UC, EA, UA) == monitora_esp_chave_ua(ctx$UC[1L], ctx$EA[1L], ctx$UA[1L])]
+        }
         choices_ano_fonte <- esp_choices_chr(v, "ANO")
         sel_ano_fonte <- shiny::isolate(monitora_painel_valor(input$esp_ano_fonte))
         sel_lote_ano_fonte <- shiny::isolate(monitora_painel_valor(input$esp_lote_ano_fonte))
@@ -29149,42 +29614,49 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     )
 
     shiny::observeEvent(
-      list(input$esp_filtro_ua, input$esp_ano_fonte, esp_base_global_filtrada()),
+      list(input$esp_ua_fonte, input$esp_filtro_ua, input$esp_ano_fonte, esp_base_origem_espacial()),
       {
  # COLETA fonte deve vir da origem possível da mesma UA/ANO fonte, não da COLETA destino.
-        v <- esp_base_global_filtrada()
+        v <- esp_base_origem_espacial()
+        chave_fonte <- monitora_painel_valor(input$esp_ua_fonte)
         ua <- monitora_painel_valores_input(input$esp_filtro_ua)
         ano_fonte <- monitora_painel_valor(input$esp_ano_fonte)
-        if (!length(ua)) {
+        if (nzchar(chave_fonte)) {
+          v <- monitora_esp_filtrar_chave_ua(v, chave_fonte)
+        } else if (!length(ua)) {
           ctx <- esp_linha_selecionada()
           if (nrow(ctx) && "UA" %in% names(ctx)) ua <- as.character(ctx$UA[1L])
         }
-        if (nrow(v) && length(ua) && "UA" %in% names(v)) v <- v[as.character(UA) %in% ua]
+        if (!nzchar(chave_fonte) && nrow(v) && length(ua) && "UA" %in% names(v)) v <- v[as.character(UA) %in% ua]
         if (nrow(v) && nzchar(ano_fonte) && "ANO" %in% names(v)) v <- v[as.character(ANO) == ano_fonte]
         choices_coleta_fonte <- esp_choices_chr(v, "COLETA")
         sel_coleta_fonte <- shiny::isolate(monitora_painel_valor(input$esp_coleta_fonte))
         try(shiny::freezeReactiveValue(input, "esp_coleta_fonte"), silent = TRUE)
-        try(shiny::updateSelectizeInput(session, "esp_coleta_fonte", choices = choices_coleta_fonte, selected = if (sel_coleta_fonte %in% choices_coleta_fonte) sel_coleta_fonte else character(0), server = TRUE), silent = TRUE)
+        selecionada_fonte <- if (length(choices_coleta_fonte) == 1L) choices_coleta_fonte else if (sel_coleta_fonte %in% choices_coleta_fonte) sel_coleta_fonte else character(0)
+        try(shiny::updateSelectizeInput(session, "esp_coleta_fonte", choices = choices_coleta_fonte, selected = selecionada_fonte, server = TRUE), silent = TRUE)
       },
       ignoreInit = FALSE
     )
 
     shiny::observeEvent(
-      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_filtro_ano, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
+      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_filtro_ano, input$esp_ua_destino, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
       {
         status <- monitora_painel_valores_input(input$esp_filtro_status)
         ua <- monitora_painel_valores_input(input$esp_filtro_ua)
         ano <- monitora_painel_valores_input(input$esp_filtro_ano)
-        choices_coleta_destino <- esp_choices_chr(esp_choices_filtradas_por_parametros(status = status, ua = ua, ano = ano), "COLETA")
+        v_destino <- esp_choices_filtradas_por_parametros(status = status, ua = ua, ano = ano)
+        v_destino <- monitora_esp_filtrar_chave_ua(v_destino, monitora_painel_valor(input$esp_ua_destino))
+        choices_coleta_destino <- esp_choices_chr(v_destino, "COLETA")
         sel_coleta_alvo <- shiny::isolate(monitora_painel_valor(input$esp_coleta_alvo))
         try(shiny::freezeReactiveValue(input, "esp_coleta_alvo"), silent = TRUE)
-        try(shiny::updateSelectizeInput(session, "esp_coleta_alvo", choices = choices_coleta_destino, selected = if (sel_coleta_alvo %in% choices_coleta_destino) sel_coleta_alvo else character(0), server = TRUE), silent = TRUE)
+        selecionada_destino <- if (length(choices_coleta_destino) == 1L) choices_coleta_destino else if (sel_coleta_alvo %in% choices_coleta_destino) sel_coleta_alvo else character(0)
+        try(shiny::updateSelectizeInput(session, "esp_coleta_alvo", choices = choices_coleta_destino, selected = selecionada_destino, server = TRUE), silent = TRUE)
       },
       ignoreInit = FALSE
     )
 
     shiny::observeEvent(
-      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_filtro_ano, input$esp_ano_destino, input$esp_somente_pendencias, input$esp_coleta_fonte, esp_coletas_escopo_painel()),
+      list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_filtro_ano, input$esp_ua_destino, input$esp_ano_destino, input$esp_somente_pendencias, input$esp_coleta_fonte, esp_coletas_escopo_painel()),
       {
         choices_lote_destino <- esp_coletas_destino_choices_guiadas()
         sel_coletas_destino <- shiny::isolate(monitora_painel_valores_input(input$esp_coletas_destino))
@@ -29292,6 +29764,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       esc <- monitora_painel_valor(input$esp_escopo_destino)
       v <- esp_base_global_filtrada()
       if (!nrow(v)) return(list(dt = data.table::data.table(), erro = "tabela espacial vazia"))
+      v <- monitora_esp_filtrar_chave_ua(v, monitora_painel_valor(input$esp_ua_destino))
 
  # Regra operacional: quando o campo "COLETAS destino do lote"
  # estiver preenchido, ele tem prioridade sobre o destino único e sobre o
@@ -29348,10 +29821,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         tipo_final <- tipo_op_original
         coleta_fonte <- NA_character_
         ano_fonte <- NA_character_
+        fonte_ctx <- data.table::data.table()
         coords <- list(inicio = NA_character_, fim = NA_character_)
         if (identical(tipo_origem, "inverter_propria_coleta") || identical(tipo_op_original, "inverter_alvo")) {
           tipo_final <- "inverter_inicio_fim"
           coleta_fonte <- if ("COLETA" %in% names(alvo)) as.character(alvo$COLETA[1L]) else NA_character_
+          fonte_ctx <- alvo
           coords <- list(inicio = NA_character_, fim = NA_character_)
         } else if (identical(tipo_origem, "coordenada_manual")) {
           if (identical(tipo_op_original, "copiar_invertido")) return(list(ops = data.table::data.table(), erro = "copiar invertido exige COLETA/ANO/consenso como origem, não coordenada manual", preview = data.table::data.table()))
@@ -29360,26 +29835,47 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         } else if (identical(tipo_origem, "coleta_fonte")) {
           coleta_fonte <- monitora_painel_valor(input$esp_coleta_fonte)
           if (!nzchar(coleta_fonte)) return(list(ops = data.table::data.table(), erro = "informe a COLETA fonte", preview = data.table::data.table()))
-          fonte <- esp_linha_por_coleta(coleta_fonte, preferir_filtrada = FALSE)
+          fonte <- esp_base_origem_espacial()
+          chave_fonte <- monitora_painel_valor(input$esp_ua_fonte)
+          if (nzchar(chave_fonte)) fonte <- monitora_esp_filtrar_chave_ua(fonte, chave_fonte)
+          ano_fonte_sel <- monitora_painel_valor(input$esp_ano_fonte)
+          if (nzchar(ano_fonte_sel) && "ANO" %in% names(fonte)) fonte <- fonte[as.character(ANO) == ano_fonte_sel]
+          fonte <- fonte[as.character(COLETA) == coleta_fonte]
           if (!nrow(fonte)) return(list(ops = data.table::data.table(), erro = paste0("COLETA fonte não localizada: ", coleta_fonte), preview = data.table::data.table()))
+          if (nrow(fonte) > 1L) return(list(ops = data.table::data.table(), erro = "a COLETA fonte não é inequívoca; selecione UA e ANO da fonte", preview = data.table::data.table()))
+          if (nzchar(chave_fonte) && monitora_esp_chave_ua(fonte$UC[1L], fonte$EA[1L], fonte$UA[1L]) != chave_fonte) return(list(ops = data.table::data.table(), erro = "a COLETA fonte não pertence à UA fonte selecionada", preview = data.table::data.table()))
+          if (nzchar(ano_fonte_sel) && "ANO" %in% names(fonte) && as.character(fonte$ANO[1L]) != ano_fonte_sel) return(list(ops = data.table::data.table(), erro = "a COLETA fonte não pertence ao ANO fonte selecionado", preview = data.table::data.table()))
+          fonte_ctx <- fonte
+          ano_fonte <- if ("ANO" %in% names(fonte)) as.character(fonte$ANO[1L]) else ano_fonte_sel
           coords <- esp_coordenadas_linha(fonte)
         } else if (identical(tipo_origem, "ano_fonte")) {
           ano_fonte <- monitora_painel_valor(input$esp_ano_fonte)
           if (!nzchar(ano_fonte)) return(list(ops = data.table::data.table(), erro = "informe o ANO fonte", preview = data.table::data.table()))
-          vfonte <- esp_base_global_filtrada()
-          if (all(c("UC", "EA", "UA", "ANO") %in% names(vfonte)) && all(c("UC", "EA", "UA") %in% names(alvo))) {
+          vfonte <- esp_base_origem_espacial()
+          chave_fonte <- monitora_painel_valor(input$esp_ua_fonte)
+          if (nzchar(chave_fonte)) {
+            vfonte <- monitora_esp_filtrar_chave_ua(vfonte, chave_fonte)
+            fonte <- vfonte[as.character(ANO) == ano_fonte]
+          } else if (all(c("UC", "EA", "UA", "ANO") %in% names(vfonte)) && all(c("UC", "EA", "UA") %in% names(alvo))) {
             fonte <- vfonte[as.character(UC) == as.character(alvo$UC[1L]) & as.character(EA) == as.character(alvo$EA[1L]) & as.character(UA) == as.character(alvo$UA[1L]) & as.character(ANO) == ano_fonte]
           } else {
             fonte <- data.table::data.table()
           }
           if (!nrow(fonte)) return(list(ops = data.table::data.table(), erro = paste0("nenhuma COLETA fonte localizada para UA/ANO fonte ", ano_fonte), preview = data.table::data.table()))
-          if (data.table::uniqueN(as.character(fonte$COLETA)) > 1L) return(list(ops = data.table::data.table(), erro = paste0("há múltiplas COLETAS fonte para a mesma UA no ANO ", ano_fonte, "; restrinja a seleção ou use COLETA fonte"), preview = data.table::data.table()))
+          if (data.table::uniqueN(as.character(fonte$COLETA)) > 1L) {
+            coleta_fonte_escolhida <- monitora_painel_valor(input$esp_coleta_fonte)
+            if (!nzchar(coleta_fonte_escolhida) || !(coleta_fonte_escolhida %in% as.character(fonte$COLETA))) return(list(ops = data.table::data.table(), erro = paste0("há múltiplas COLETAS fonte para a mesma UA no ANO ", ano_fonte, "; escolha a COLETA fonte no seletor já filtrado"), preview = data.table::data.table()))
+            fonte <- fonte[as.character(COLETA) == coleta_fonte_escolhida]
+          }
           fonte <- fonte[1L]
+          fonte_ctx <- fonte
           coleta_fonte <- if ("COLETA" %in% names(fonte)) as.character(fonte$COLETA[1L]) else NA_character_
           coords <- esp_coordenadas_linha(fonte)
         } else if (identical(tipo_origem, "consenso_ua")) {
           coords <- esp_coordenadas_linha(alvo, usar_consenso = TRUE)
           coleta_fonte <- "consenso_ua"
+          fonte_ctx <- alvo
+          ano_fonte <- if ("ANO_medoide_ua" %in% names(alvo)) as.character(alvo$ANO_medoide_ua[1L]) else NA_character_
         }
         if (identical(tipo_op_original, "copiar_invertido")) {
           coords <- list(inicio = coords$fim, fim = coords$inicio)
@@ -29408,7 +29904,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           escopo_destino = escopo_destino,
           ocorrencia_coordenada_manual = ocorr
         )
-        op[, `:=`(id_operacao = id_guiado, item_operacao = ii, n_itens_operacao = nrow(alvos), ANO_fonte = ano_fonte, ANO_destino = if ("ANO" %in% names(alvo)) as.character(alvo$ANO[1L]) else NA_character_)]
+        op[, `:=`(
+          id_operacao = id_guiado,
+          item_operacao = ii,
+          n_itens_operacao = nrow(alvos),
+          UC_fonte = if (nrow(fonte_ctx) && "UC" %in% names(fonte_ctx)) as.character(fonte_ctx$UC[1L]) else NA_character_,
+          EA_fonte = if (nrow(fonte_ctx) && "EA" %in% names(fonte_ctx)) as.character(fonte_ctx$EA[1L]) else NA_character_,
+          UA_fonte = if (nrow(fonte_ctx) && "UA" %in% names(fonte_ctx)) as.character(fonte_ctx$UA[1L]) else NA_character_,
+          ANO_fonte = ano_fonte,
+          ANO_destino = if ("ANO" %in% names(alvo)) as.character(alvo$ANO[1L]) else NA_character_
+        )]
         ops_list[[ii]] <- op
         prev_list[[ii]] <- data.table::data.table(
           COLETA_alvo = op$COLETA_alvo,
@@ -29567,6 +30072,106 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, server = TRUE)
  ### - ------------------------------------------------
 
+    esp_candidatas_sanitizacao_segura <- shiny::reactive({
+      v <- esp_validacao_filtrada()
+      if (!nrow(v)) return(data.table::data.table())
+      plano <- monitora_esp_plano_correcoes(list(validacao = v))
+      if (!nrow(plano) || !("elegivel_sanitizacao_automatica" %in% names(plano))) return(data.table::data.table())
+      cand <- plano[elegivel_sanitizacao_automatica == TRUE]
+      if (!nrow(cand)) return(cand)
+      protegidas <- character(0)
+      ce <- data.table::as.data.table(rv$correcoes_espaciais)
+      if (nrow(ce) && "COLETA_alvo" %in% names(ce)) protegidas <- c(protegidas, as.character(ce$COLETA_alvo))
+      cg <- data.table::as.data.table(rv$correcoes)
+      if (nrow(cg)) {
+        for (cc in intersect(c("coleta", "COLETA", "COLETA_alvo"), names(cg))) protegidas <- c(protegidas, as.character(cg[[cc]]))
+      }
+      protegidas <- unique(protegidas[!is.na(protegidas) & nzchar(trimws(protegidas))])
+      if (length(protegidas)) cand <- cand[!(as.character(COLETA) %in% protegidas)]
+      cand[]
+    })
+
+    output$esp_sanitizacao_segura_info <- shiny::renderUI({
+      n <- nrow(esp_candidatas_sanitizacao_segura())
+      if (!n) return(shiny::div(class = "alert alert-info", "Nenhuma inversão espacial determinística elegível no escopo atual. Casos ambíguos e COLETAS já abrangidas por correções pendentes permanecem protegidos."))
+      shiny::div(class = "alert alert-warning", shiny::strong(paste0(n, " COLETA(s) elegível(is) para sanitização determinística. ")), "O botão apenas adiciona uma operação atômica à fila; nenhuma coordenada é alterada antes de salvar.")
+    })
+
+    shiny::observeEvent(input$esp_sanitizar_pendencias_seguras, {
+      if (!monitora_painel_iniciar_botao("esp_sanitizar_pendencias_seguras", "preparar sanitização espacial determinística")) return(NULL)
+      on.exit(monitora_painel_liberar_botao("esp_sanitizar_pendencias_seguras"), add = TRUE)
+      cand <- esp_candidatas_sanitizacao_segura()
+      if (!nrow(cand)) {
+        monitora_painel_notificar("Nenhuma pendência espacial determinística elegível no escopo atual.", type = "warning", duration = 8)
+        return(NULL)
+      }
+      shiny::showModal(shiny::modalDialog(
+        title = "Confirmar sanitização espacial determinística",
+        paste0("Serão enfileiradas ", nrow(cand), " inversão(ões) de vergalhão inicial/final, todas apoiadas por consenso temporal robusto e sem conflito com operações pendentes."),
+        shiny::tags$p("Coordenadas isoladas, mudanças de identidade de UA e casos ambíguos não serão alterados."),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancelar"),
+          shiny::actionButton("esp_confirmar_sanitizacao_segura", "Enfileirar sanitizações", class = "btn-danger")
+        ),
+        easyClose = FALSE
+      ))
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$esp_confirmar_sanitizacao_segura, {
+      if (!monitora_painel_iniciar_botao("esp_confirmar_sanitizacao_segura", "confirmar sanitização espacial determinística")) return(NULL)
+      on.exit(monitora_painel_liberar_botao("esp_confirmar_sanitizacao_segura"), add = TRUE)
+      cand <- esp_candidatas_sanitizacao_segura()
+      if (!nrow(cand)) {
+        shiny::removeModal()
+        monitora_painel_notificar("As candidatas mudaram ou foram protegidas por outra operação; nenhuma sanitização foi adicionada.", type = "warning", duration = 10)
+        return(NULL)
+      }
+      base <- esp_base_global_filtrada()
+      id <- paste0("ESP_SAN_DET_", format(Sys.time(), "%Y%m%d%H%M%S"), "_", sprintf("%04d", sample.int(9999L, 1L)))
+      ops <- lapply(seq_len(nrow(cand)), function(ii) {
+        ctx <- base[
+          as.character(COLETA) == as.character(cand$COLETA[ii]) &
+          as.character(UC) == as.character(cand$UC[ii]) &
+          as.character(EA) == as.character(cand$EA[ii]) &
+          as.character(UA) == as.character(cand$UA[ii]) &
+          as.character(ANO) == as.character(cand$ANO[ii])
+        ]
+        if (!nrow(ctx)) return(NULL)
+        ctx <- ctx[1L]
+        n_exp <- suppressWarnings(as.integer(ctx$n_linhas[1L]))
+        if (!is.finite(n_exp) || n_exp < 1L) n_exp <- 101L
+        op <- monitora_espacial_painel_operacao_dt(
+          tipo_operacao = "inverter_inicio_fim",
+          coleta_alvo = as.character(ctx$COLETA[1L]),
+          n_linhas_esperado = n_exp,
+          confirmar_abrangencia = TRUE,
+          justificativa = "Sanitização espacial determinística: inversão inequívoca contra consenso temporal robusto; demais diagnósticos excluídos.",
+          contexto = ctx,
+          tipo_origem = "sanitizacao_espacial_deterministica",
+          coleta_fonte = as.character(ctx$COLETA[1L]),
+          origem_valor = "painel_validacao_espacial_sanitizacao_deterministica",
+          escopo_destino = "coleta_selecionada"
+        )
+        op[, `:=`(
+          id_operacao = id, item_operacao = ii, n_itens_operacao = nrow(cand),
+          UC_fonte = as.character(ctx$UC[1L]), EA_fonte = as.character(ctx$EA[1L]),
+          UA_fonte = as.character(ctx$UA[1L]), ANO_fonte = as.character(ctx$ANO[1L]),
+          ANO_destino = as.character(ctx$ANO[1L])
+        )]
+        op
+      })
+      ops <- data.table::rbindlist(ops[!vapply(ops, is.null, logical(1L))], fill = TRUE, use.names = TRUE)
+      shiny::removeModal()
+      if (!nrow(ops)) {
+        monitora_painel_notificar("Nenhuma operação espacial pôde ser materializada.", type = "error", duration = 10)
+        return(NULL)
+      }
+      rv$correcoes_espaciais <- data.table::rbindlist(list(rv$correcoes_espaciais, ops), fill = TRUE, use.names = TRUE)
+      san_esp <- monitora_painel_esp_reconciliar_exclusoes(motivo = "sanitização espacial determinística reconciliada com exclusões pendentes")
+      n_cancel <- nrow(san_esp$descartadas)
+      monitora_painel_notificar(paste0(nrow(ops), " inversão(ões) determinística(s) adicionada(s) à fila.", if (n_cancel) paste0(" ", n_cancel, " item(ns) protegido(s)/cancelado(s) pela reconciliação.") else ""), type = "message", duration = 12)
+    }, ignoreInit = TRUE)
+
     output$esp_tabela_pendencias <- DT::renderDT({
       if (!isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
         return(DT::datatable(data.table::data.table(mensagem = "Validação espacial desativada."), rownames = FALSE))
@@ -29581,6 +30186,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     shiny::observeEvent(input$esp_tabela_pendencias_rows_selected, {
       ctx <- esp_linha_selecionada()
       if (!nrow(ctx)) return(NULL)
+      if (all(c("UC", "EA", "UA") %in% names(ctx))) {
+        chave_ctx <- monitora_esp_chave_ua(ctx$UC[1L], ctx$EA[1L], ctx$UA[1L])
+        try(shiny::updateSelectizeInput(session, "esp_ua_destino", selected = chave_ctx), silent = TRUE)
+        if (!nzchar(monitora_painel_valor(input$esp_ua_fonte))) try(shiny::updateSelectizeInput(session, "esp_ua_fonte", selected = chave_ctx), silent = TRUE)
+      }
       esp_preencher_campos_coleta(ctx, atualizar_alvo = TRUE)
     }, ignoreInit = TRUE)
 
@@ -29778,7 +30388,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       for (id in c("filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo", "filtro_campanha", "filtro_ua")) {
         try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
       }
-      for (id in c("esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte", "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino")) {
+      for (id in c("esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_ua_fonte", "esp_ua_destino", "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte", "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino")) {
         try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
       }
       try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = TRUE), silent = TRUE)
@@ -29790,7 +30400,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$esp_limpar_filtros, {
-      for (id in c("esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte", "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino")) {
+      for (id in c("esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_ua_fonte", "esp_ua_destino", "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte", "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino")) {
         try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
       }
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_fonte", selected = character(0)), silent = TRUE)
