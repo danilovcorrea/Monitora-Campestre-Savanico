@@ -129,7 +129,7 @@
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.8.0"
-MONITORA_SCRIPT_BUILD_ID <- "v2.8.0-20260722"
+MONITORA_SCRIPT_BUILD_ID <- "v2.8.0-20260722.2"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -7809,16 +7809,44 @@ monitora_correcao_parse_ids_estaveis <- function(x) {
   unique(out[!is.na(out) & nzchar(out)])
 }
 
+monitora_correcao_classes_abrangencia <- function(ops) {
+  ops <- data.table::as.data.table(ops)
+  n <- nrow(ops)
+  if (!n) return(character(0))
+  getc <- function(cc) if (cc %in% names(ops)) tolower(trimws(as.character(ops[[cc]]))) else rep("", n)
+  familia <- tryCatch(
+    as.character(monitora_correcao_classificar_tipo_operacao(ops)),
+    error = function(e) rep("operacao_generica", n)
+  )
+  tipo <- getc("tipo_correcao")
+  acao <- getc("acao")
+  escopo <- getc("escopo_aplicacao")
+  out <- rep("correcao_especifica", n)
+  ampla <- familia %in% c(
+    "limpeza_outras_formas_atomica", "sanitizacao_habito_obrigatorio_ausente",
+    "sanitizacao_orfaos_encostam"
+  ) | grepl("limpeza_outras_formas|sanitizar_orfaos_encostam|sanitizacao_habito_obrigatorio_ausente", paste(tipo, acao))
+  lote <- familia %in% c(
+    "movimento_forma_vida_lote_atomico", "pendencia_sem_forma_vida_lote",
+    "pendencia_habito_lote", "lote_multicoletas_campo_superior"
+  ) | grepl("movimento_forma_vida_lote|lote_multicoletas_campo_superior|pendencia_sem_forma_vida_lote|pendencia_habito_lote", paste(tipo, acao))
+  n_alvos <- rep(NA_real_, n)
+  for (cc in intersect(c("n_linhas_solicitadas", "n_linhas_esperado", "n_linhas_alvo"), names(ops))) {
+    z <- suppressWarnings(as.numeric(ops[[cc]]))
+    n_alvos <- data.table::fifelse(is.na(n_alvos), z, data.table::fifelse(is.na(z), n_alvos, pmax(n_alvos, z)))
+  }
+  lote <- lote | escopo %in% c(
+    "coleta_inteira", "coletas_do_lote", "lote_coletas",
+    "linhas_pendentes_ocorrencia", "linhas_pendentes_ocorrencia_diagnostica"
+  ) | (!is.na(n_alvos) & n_alvos > 1 & !(escopo %in% c("ponto", "uuid_registro")))
+  out[lote] <- "operacao_lote"
+  out[ampla] <- "sanitizacao_ampla"
+  out
+}
+
 monitora_correcao_classe_abrangencia <- function(op) {
-  op <- data.table::as.data.table(op)
-  existente <- if ("classe_abrangencia_semantica" %in% names(op)) trimws(as.character(op$classe_abrangencia_semantica[1L])) else ""
-  if (!is.na(existente) && nzchar(existente)) return(existente)
-  tipo <- if ("tipo_correcao" %in% names(op)) tolower(trimws(as.character(op$tipo_correcao[1L]))) else ""
-  acao <- if ("acao" %in% names(op)) tolower(trimws(as.character(op$acao[1L]))) else ""
-  txt <- paste(tipo, acao)
-  if (grepl("limpeza_outras_formas|sanitizar_orfaos_encostam|sanitizacao_habito_obrigatorio_ausente", txt)) return("sanitizacao_ampla")
-  if (grepl("movimento_forma_vida_lote|lote_multicoletas_campo_superior", txt)) return("operacao_lote")
-  "correcao_especifica"
+  out <- monitora_correcao_classes_abrangencia(op)
+  if (length(out)) out[1L] else "correcao_especifica"
 }
 
 monitora_correcao_prioridade_abrangencia <- function(classe) {
@@ -7975,12 +8003,13 @@ monitora_correcao_dominios_operacao <- function(op, dt = NULL) {
     return(paste0("habito:atributo:", attr_norm_h))
   }
   if (grepl("sanitizar_orfaos_encostam|sem_forma_vida", contexto_norm)) {
-    cat <- get1("categoria_origem")
+    cat <- get1("categoria_destino")
+    if (is.na(cat) || !nzchar(cat)) cat <- get1("categoria_origem")
     if (is.na(cat) || !nzchar(cat)) {
       cat <- sub(".*(nativa|exotica|seca_morta)_sem_forma_vida.*", "\\1", contexto_norm)
       if (identical(cat, contexto_norm)) cat <- "categoria_indefinida"
     }
-    return(paste0("orfao_encostam:", cat))
+    return(unique(c(paste0("orfao_encostam:", cat), paste0("forma_vida:", cat, ":*"))))
   }
   if (isTRUE(papel == "campo_superior_tipo_forma_vida") || grepl("encostam|tipo_forma_vida", contexto_norm)) {
     cats <- intersect(toks_op_norm, c("nativa", "exotica", "seca_morta"))
@@ -8110,10 +8139,11 @@ monitora_correcao_reconciliar_plano_semantico <- function(dt, corr, contexto = "
   chaves <- monitora_correcao_colunas_chave(dt)
   indice <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
   indice_row_id <- stats::setNames(seq_len(nrow(dt)), as.character(dt[[MONITORA_COL_ROW_ID]]))
+  classes_corr <- monitora_correcao_classes_abrangencia(corr)
   atomos <- list()
   conflitos_localizacao <- list()
   for (ii in seq_len(nrow(corr))) {
-    classe <- monitora_correcao_classe_abrangencia(corr[ii])
+    classe <- classes_corr[ii]
     dominios <- unique(monitora_correcao_dominios_operacao(corr[ii], dt = dt))
     linhas <- monitora_correcao_linhas_alvo_operacao(dt, corr[ii], chaves, indice, indice_row_id = indice_row_id)
     linhas <- unique(as.integer(linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]))
@@ -8204,7 +8234,7 @@ monitora_correcao_reconciliar_plano_semantico <- function(dt, corr, contexto = "
   auditoria <- data.table::data.table()
   manter <- rep(TRUE, nrow(corr))
   for (ii in seq_len(nrow(corr))) {
-    classe <- monitora_correcao_classe_abrangencia(corr[ii])
+    classe <- classes_corr[ii]
     at_i <- atom[op_row == ii]
     ids_todos <- unique(at_i$monitora_row_id)
     ex_i <- if (nrow(excl)) excl[op_row == ii] else excl
@@ -9942,9 +9972,9 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt, linhas = N
 monitora_publicacao_g_log <- function(..., nivel = "INFO") {
   msg <- paste0(..., collapse = "")
   if (exists("monitora_correcao_console_msg", mode = "function")) {
-    try(monitora_correcao_console_msg("[v2.6.3] ", msg), silent = TRUE)
+    try(monitora_correcao_console_msg("[contrato] ", msg), silent = TRUE)
   } else {
-    message("[v2.6.3] ", msg)
+    message("[contrato] ", msg)
   }
   invisible(TRUE)
 }
@@ -12070,7 +12100,7 @@ monitora_correcao_recalcular_superiores_vinculados_seguro <- function(dt, linhas
     monitora_log_registrar_evento(
       "recalculo_superiores_vinculados_seguro", "INFO", NA_character_,
       paste0("n_linhas=", n_linhas, "; tempo=", round(dt_seg, 2), "s; timeout_configurado=", timeout_seg, "s"),
-      "wrapper de seguranca com timeout, etapa_validacao v2.6.3"
+      "wrapper de seguranca com timeout, etapa_validacao_contratual"
     )
   }
   if (is.list(resultado) && isTRUE(resultado$erro)) {
@@ -16021,6 +16051,40 @@ monitora_correcao_aplicar_movimento_forma_vida_atomico <- function(dt, linha_mov
     limpar <- !monitora_correcao_vazio_vec(antes_dep)
     if (any(limpar, na.rm = TRUE)) atualizacoes_deps[[dep_col]] <- list(idx = linhas[limpar], antes = antes_dep[limpar], depois = rep(NA_character_, sum(limpar, na.rm = TRUE)))
   }
+  tokens_habito_origem <- tokens_remover[
+    monitora_correcao_normalizar_nome_coluna(tokens_remover) %in%
+      monitora_correcao_normalizar_nome_coluna(monitora_correcao_tokens_formas_exigem_habito())
+  ]
+  if (length(tokens_habito_origem)) {
+    for (tok in tokens_habito_origem) {
+      for (li in linhas) {
+        dep_hab_origem <- tryCatch(
+          monitora_correcao_resolver_coluna_habito(
+            dt, origem, tok, dicionario, linha = li, meta_xls = NULL
+          ),
+          error = function(e) NA_character_
+        )
+        if (!monitora_correcao_coluna_habito_segura(dt, dep_hab_origem, origem, tok) ||
+            dep_hab_origem %in% c(col_origem, col_destino)) next
+        valor_hab_origem <- as.character(dt[[dep_hab_origem]][li])
+        if (monitora_correcao_vazio(valor_hab_origem)) next
+        existente <- atualizacoes_deps[[dep_hab_origem]]
+        if (is.null(existente)) {
+          atualizacoes_deps[[dep_hab_origem]] <- list(
+            idx = as.integer(li),
+            antes = valor_hab_origem,
+            depois = NA_character_
+          )
+        } else if (!(li %in% existente$idx)) {
+          atualizacoes_deps[[dep_hab_origem]] <- list(
+            idx = c(as.integer(existente$idx), as.integer(li)),
+            antes = c(as.character(existente$antes), valor_hab_origem),
+            depois = c(as.character(existente$depois), NA_character_)
+          )
+        }
+      }
+    }
+  }
 
   habito <- if ("habito_escolhido" %in% names(linha_mov)) trimws(as.character(linha_mov$habito_escolhido[1L])) else ""
   if (is.na(habito)) habito <- ""
@@ -16600,6 +16664,7 @@ monitora_correcao_classificar_tipo_operacao <- function(corr) {
   out <- rep("operacao_generica", nrow(corr))
   out[grepl("^EXCCOL", idc) | tipo %in% c("exclusao_coletas_filtradas", "exclusao_coleta_atomica") | acao %in% c("excluir_coleta", "exclusao_coleta")] <- "exclusao_coleta_atomica"
   out[grepl("^PENDFV", idc) | tipo %in% c("pendencia_sem_forma_vida_lote", "pendencia_sem_forma_vida") | attr %in% c("__pendencia_sem_forma_vida__")] <- "pendencia_sem_forma_vida_lote"
+  out[grepl("^PENDHAB", idc) | tipo %in% c("pendencia_habito_lote") | grepl("habito_obrigatorio_ausente", attr, fixed = TRUE)] <- "pendencia_habito_lote"
   out[grepl("^TRIOUT", idc) | tipo %in% c("triagem_limpeza_outras_formas_vida_atomica", "limpeza_outras_formas_vida_atomica") | acao %in% c("limpar_outras_formas_vida", "limpeza_outras_formas_vida_atomica")] <- "limpeza_outras_formas_atomica"
   out[grepl("^TRIDESC", idc) | tipo %in% c("triagem_substituir_desconhecida", "triagem_substituir_desconhecida_atomica") | acao %in% c("substituir_desconhecida", "substituir_forma_desconhecida") | attr %in% c("__substituir_desconhecida__", "__triagem_desconhecida__")] <- "triagem_desconhecida_atomica"
   out[grepl("^MVLOTE", idc) | tipo %in% c("movimento_forma_vida_lote_atomico", "movimento_forma_vida_lote") | acao %in% c("mover_forma_vida_lote", "movimento_forma_vida_lote_atomico") | attr %in% c("__mover_forma_vida_lote__", "__movimento_forma_vida_lote__")] <- "movimento_forma_vida_lote_atomico"
@@ -16609,6 +16674,7 @@ monitora_correcao_classificar_tipo_operacao <- function(corr) {
   out[grepl("^SYNC_ENCOSTAM_FINAL$", idc)] <- "sincronizacao_final_encostam"
   out[grepl("^SANHAB", idc) | tipo %in% c("sanitizacao_habito_obrigatorio_ausente") | grepl("habito_obrigatorio_ausente", attr, fixed = TRUE)] <- "sanitizacao_habito_obrigatorio_ausente"
   out[grepl("^SANEORF", idc) | grepl("sanitizar_orfaos_encostam", tipo, fixed = TRUE)] <- "sanitizacao_orfaos_encostam"
+  out[grepl("^LOTECOL", idc) | tipo %in% c("lote_multicoletas_campo_superior")] <- "lote_multicoletas_campo_superior"
   out
 }
 
@@ -21150,7 +21216,7 @@ monitora_esp_classificar_linha <- function(di, df, dni, raio, alerta) {
   "pendencia_ambos_divergentes"
 }
 
-monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one_out = TRUE, matrizes_precalculadas = NULL) {
+monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one_out = TRUE, matrizes_precalculadas = NULL, consenso_grupo_precalculado = NULL) {
   g <- data.table::as.data.table(grupo)
   out <- vector("list", nrow(g))
   matrizes_grupo <- matrizes_precalculadas
@@ -21193,6 +21259,20 @@ monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one
       min_n = min_ref,
       matrizes_precalculadas = matrizes_ref
     )$consenso
+    referencia_usada <- if (isTRUE(leave_one_out)) "leave_one_out" else "consenso_completo"
+    if ((!nrow(ref) || !isTRUE(ref$consenso_valido[1L])) && isTRUE(leave_one_out)) {
+      ref_completo <- data.table::as.data.table(consenso_grupo_precalculado)
+      if (
+        nrow(ref_completo) &&
+          isTRUE(ref_completo$consenso_valido[1L]) &&
+          isTRUE(ref_completo$consenso_robusto[1L]) &&
+          !isTRUE(ref_completo$consenso_ambiguo[1L]) &&
+          isTRUE(ref_completo$consenso_dominante[1L])
+      ) {
+        ref <- ref_completo
+        referencia_usada <- "consenso_completo_robusto_fallback"
+      }
+    }
     if (!nrow(ref) || !isTRUE(ref$consenso_valido[1])) {
       status_ref <- if (nrow(ref) && isTRUE(ref$consenso_ambiguo[1L])) "referencia_temporal_ambigua" else "referencia_insuficiente"
       out[[ii]] <- linha[, .(id_coleta_espacial, status_espacial = status_ref, referencia_consenso = if (isTRUE(leave_one_out)) "leave_one_out" else "consenso_completo", dist_inicio_consenso_m = NA_real_, dist_fim_consenso_m = NA_real_, dist_par_normal_m = NA_real_, dist_par_invertido_m = NA_real_, n_coletas_consenso_loo = 0L)]
@@ -21207,7 +21287,7 @@ monitora_esp_validar_grupo <- function(grupo, raio_m, alerta_m, min_n, leave_one
     out[[ii]] <- linha[, .(
       id_coleta_espacial,
       status_espacial = monitora_esp_classificar_linha(di, df, invertido, raio_m, alerta_m),
-      referencia_consenso = if (isTRUE(leave_one_out)) "leave_one_out" else "consenso_completo",
+      referencia_consenso = referencia_usada,
       dist_inicio_consenso_m = as.numeric(di),
       dist_fim_consenso_m = as.numeric(df),
       dist_par_normal_m = as.numeric(normal),
@@ -21334,16 +21414,17 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
   cons <- monitora_esp_calcular_consensos(cdt, raio_m = raio_m, min_n = min_n)
   grupos <- cons$grupos
   val <- data.table::rbindlist(
-    Map(function(g, mats) {
+    Map(function(g, mats, consenso_grupo) {
       monitora_esp_validar_grupo(
         g,
         raio_m = raio_m,
         alerta_m = alerta_m,
         min_n = min_n,
         leave_one_out = leave_one_out,
-        matrizes_precalculadas = mats
+        matrizes_precalculadas = mats,
+        consenso_grupo_precalculado = consenso_grupo
       )
-    }, grupos, cons$matrizes),
+    }, grupos, cons$matrizes, lapply(seq_along(grupos), function(ii) cons$consensos[ii])),
     fill = TRUE,
     use.names = TRUE
   )
@@ -21862,12 +21943,14 @@ monitora_esp_operacao_tipo_valido <- function(tipo) {
 monitora_esp_operacao_exige_inicio <- function(tipo, campo) {
   tipo <- tolower(trimws(as.character(tipo)))
   campo <- tolower(trimws(as.character(campo)))
+  if (tipo %in% c("inverter", "inverter_alvo", "inverter_inicio_fim", "trocar_inicio_fim")) return(FALSE)
   tipo %in% c("copiar_inicio", "editar_inicio", "copiar_ambos", "copiar_invertido", "editar_ambos") || campo %in% c("inicio", "inicial", "ambos")
 }
 
 monitora_esp_operacao_exige_fim <- function(tipo, campo) {
   tipo <- tolower(trimws(as.character(tipo)))
   campo <- tolower(trimws(as.character(campo)))
+  if (tipo %in% c("inverter", "inverter_alvo", "inverter_inicio_fim", "trocar_inicio_fim")) return(FALSE)
   tipo %in% c("copiar_fim", "editar_fim", "copiar_ambos", "copiar_invertido", "editar_ambos") || campo %in% c("fim", "final", "ambos")
 }
 
@@ -21897,7 +21980,7 @@ monitora_esp_sanitizar_ops_estrutural <- function(ops, motivo = "sanitização e
   status[status == "valida" & !tipo_valido] <- "descartada_tipo_operacao_invalido"
   status[status == "valida" & exige_ini & !coord_ini_ok] <- "descartada_sem_coord_inicio_valida"
   status[status == "valida" & exige_fim & !coord_fim_ok] <- "descartada_sem_coord_fim_valida"
-  sem_campo <- status == "valida" & !exige_ini & !exige_fim & !(tipo %in% c("inverter", "inverter_inicio_fim", "trocar_inicio_fim"))
+  sem_campo <- status == "valida" & !exige_ini & !exige_fim & !(tipo %in% c("inverter", "inverter_alvo", "inverter_inicio_fim", "trocar_inicio_fim"))
   status[sem_campo] <- "descartada_operacao_sem_campo_espacial"
   desc <- ops0[status != "valida"]
   if (nrow(desc)) {
@@ -22017,6 +22100,143 @@ monitora_esp_normalizar_itens_operacao <- function(ops) {
   ops[]
 }
 
+monitora_esp_classe_abrangencia <- function(ops) {
+  ops <- monitora_esp_correcoes_schema(ops)
+  if (!nrow(ops)) return(character(0))
+  origem <- tolower(trimws(as.character(ops$tipo_origem)))
+  escopo <- tolower(trimws(as.character(ops$escopo_destino)))
+  ids <- toupper(trimws(as.character(ops$id_operacao)))
+  n_itens <- suppressWarnings(as.integer(ops$n_itens_operacao))
+  out <- rep("correcao_especifica", nrow(ops))
+  lote <- grepl("^ESP_LOTE_", ids) |
+    escopo %in% c("lote_coletas", "ano_destino", "pendencias_filtradas") |
+    (!is.na(n_itens) & n_itens > 1L)
+  out[lote] <- "operacao_lote"
+  out[origem %in% c("sanitizacao_espacial_deterministica") | grepl("sanitizacao_espacial", origem, fixed = TRUE)] <- "sanitizacao_ampla"
+  out
+}
+
+monitora_esp_dominios_operacao <- function(tipo, campo) {
+  tipo <- tolower(trimws(as.character(tipo)[1L]))
+  campo <- tolower(trimws(as.character(campo)[1L]))
+  if (tipo %in% c("inverter", "inverter_alvo", "inverter_inicio_fim", "trocar_inicio_fim")) return(c("inicio", "fim"))
+  out <- character(0)
+  if (isTRUE(monitora_esp_operacao_exige_inicio(tipo, campo))) out <- c(out, "inicio")
+  if (isTRUE(monitora_esp_operacao_exige_fim(tipo, campo))) out <- c(out, "fim")
+  unique(out)
+}
+
+monitora_esp_reconciliar_precedencia <- function(ops, motivo = "reconciliação bidirecional de operações espaciais") {
+  ops <- monitora_esp_correcoes_schema(ops)
+  vazio <- list(ops = ops, descartadas = data.table::data.table(), conflitos = data.table::data.table(), auditoria = data.table::data.table())
+  if (!nrow(ops)) return(vazio)
+  ops <- data.table::copy(ops)
+  ops[, .op_row_precedencia := seq_len(.N)]
+  classes <- monitora_esp_classe_abrangencia(ops)
+  tipo <- tolower(trimws(as.character(ops$tipo_operacao)))
+  campo <- tolower(trimws(as.character(ops$campo_alvo)))
+  inversao <- tipo %in% c("inverter", "inverter_alvo", "inverter_inicio_fim", "trocar_inicio_fim")
+  toca_inicio <- inversao | tipo %in% c("copiar_inicio", "editar_inicio", "copiar_ambos", "copiar_invertido", "editar_ambos") | campo %in% c("inicio", "inicial", "ambos")
+  toca_fim <- inversao | tipo %in% c("copiar_fim", "editar_fim", "copiar_ambos", "copiar_invertido", "editar_ambos") | campo %in% c("fim", "final", "ambos")
+  chave <- paste(
+    trimws(as.character(ops$UC)), trimws(as.character(ops$EA)),
+    trimws(as.character(ops$UA)), trimws(as.character(ops$ANO)),
+    trimws(as.character(ops$COLETA_alvo)), sep = "\r"
+  )
+  efeito_inv <- paste("inverter", ops$coord_inicio_original_esperada, ops$coord_fim_original_esperada, sep = "\r")
+  base_atom <- data.table::data.table(
+    op_row = seq_len(nrow(ops)), chave_alvo = chave,
+    id_operacao = as.character(ops$id_operacao), classe_abrangencia = classes
+  )
+  atom <- data.table::rbindlist(list(
+    base_atom[toca_inicio][, `:=`(
+      dominio_espacial = "inicio",
+      efeito = data.table::fifelse(inversao[toca_inicio], efeito_inv[toca_inicio], paste("atribuir", trimws(as.character(ops$coord_inicio_nova[toca_inicio])), sep = "\r"))
+    )],
+    base_atom[toca_fim][, `:=`(
+      dominio_espacial = "fim",
+      efeito = data.table::fifelse(inversao[toca_fim], efeito_inv[toca_fim], paste("atribuir", trimws(as.character(ops$coord_fim_nova[toca_fim])), sep = "\r"))
+    )]
+  ), fill = TRUE, use.names = TRUE)
+  if (!nrow(atom)) {
+    ops[, .op_row_precedencia := NULL]
+    return(list(ops = ops[], descartadas = data.table::data.table(), conflitos = data.table::data.table(), auditoria = data.table::data.table()))
+  }
+  chave_dominio <- paste(atom$chave_alvo, atom$dominio_espacial, sep = "\r")
+  if (!anyDuplicated(chave_dominio)) {
+    ops[, .op_row_precedencia := NULL]
+    return(list(ops = ops[], descartadas = data.table::data.table(), conflitos = data.table::data.table(), auditoria = data.table::data.table()))
+  }
+  status_exclusao <- rep(NA_character_, nrow(ops))
+  resumo_especificas <- atom[classe_abrangencia == "correcao_especifica", .(
+    n_ops = data.table::uniqueN(op_row), n_efeitos = data.table::uniqueN(efeito),
+    ids_operacoes = paste(unique(id_operacao), collapse = " | "),
+    classes = paste(unique(classe_abrangencia), collapse = " | "),
+    efeitos = paste(unique(efeito), collapse = " | ")
+  ), by = .(chave_alvo, dominio_espacial)]
+  conflitos_especificos <- resumo_especificas[n_ops > 1L & n_efeitos > 1L]
+  if (nrow(conflitos_especificos)) conflitos_especificos[, status := "conflito_operacoes_espaciais_especificas"]
+  chaves_protegidas <- resumo_especificas[, .(chave_alvo, dominio_espacial, ids_protetores = ids_operacoes)]
+  baixas <- if (nrow(chaves_protegidas)) merge(
+    atom[classe_abrangencia != "correcao_especifica"], chaves_protegidas,
+    by = c("chave_alvo", "dominio_espacial"), allow.cartesian = TRUE
+  ) else data.table::data.table()
+  if (nrow(baixas)) status_exclusao[unique(baixas$op_row)] <- "protegida_por_operacao_espacial_especifica"
+  auditoria_protecao <- if (nrow(baixas)) baixas[, .(
+    id_operacao_ampla = id_operacao, classe_operacao_ampla = classe_abrangencia,
+    id_operacao_protetora = ids_protetores, chave_alvo, dominio_espacial,
+    status = "alvo_espacial_amplo_excluido_por_decisao_especifica"
+  )] else data.table::data.table()
+
+  marcar_duplicadas <- function(a, resumo, classe_status) {
+    grupos <- resumo[n_ops > 1L & n_efeitos == 1L, .(chave_alvo, dominio_espacial)]
+    if (!nrow(grupos)) return(data.table::data.table())
+    d <- a[grupos, on = .(chave_alvo, dominio_espacial), nomatch = 0L]
+    data.table::setorder(d, chave_alvo, dominio_espacial, op_row)
+    d[, ordem_duplicata := seq_len(.N), by = .(chave_alvo, dominio_espacial)]
+    d <- d[ordem_duplicata > 1L]
+    if (!nrow(d)) return(data.table::data.table())
+    status_exclusao[d$op_row] <<- data.table::fifelse(
+      is.na(status_exclusao[d$op_row]), "operacao_espacial_duplicada_mesmo_efeito_removida", status_exclusao[d$op_row]
+    )
+    d[, .(
+      id_operacao_ampla = id_operacao, classe_operacao_ampla = classe_abrangencia,
+      id_operacao_protetora = NA_character_, chave_alvo, dominio_espacial,
+      status = classe_status
+    )]
+  }
+  atom_esp <- atom[classe_abrangencia == "correcao_especifica"]
+  auditoria_dup_esp <- marcar_duplicadas(atom_esp, resumo_especificas, "operacao_espacial_especifica_duplicada_mesmo_efeito_removida")
+  atom_amplo <- atom[classe_abrangencia != "correcao_especifica"]
+  if (nrow(chaves_protegidas)) atom_amplo <- atom_amplo[!chaves_protegidas, on = .(chave_alvo, dominio_espacial)]
+  resumo_amplo <- atom_amplo[, .(
+    n_ops = data.table::uniqueN(op_row), n_efeitos = data.table::uniqueN(efeito),
+    ids_operacoes = paste(unique(id_operacao), collapse = " | "),
+    classes = paste(unique(classe_abrangencia), collapse = " | "),
+    efeitos = paste(unique(efeito), collapse = " | ")
+  ), by = .(chave_alvo, dominio_espacial)]
+  conflitos_amplos <- resumo_amplo[n_ops > 1L & n_efeitos > 1L]
+  if (nrow(conflitos_amplos)) conflitos_amplos[, status := "conflito_operacoes_espaciais_amplas"]
+  auditoria_dup_amplo <- marcar_duplicadas(atom_amplo, resumo_amplo, "operacao_espacial_duplicada_mesmo_efeito_removida")
+  excluir <- which(!is.na(status_exclusao))
+  excluir <- sort(unique(as.integer(excluir)))
+  desc <- if (length(excluir)) data.table::copy(ops[.op_row_precedencia %in% excluir]) else data.table::data.table()
+  if (nrow(desc)) desc[, `:=`(
+    status_sanitizacao = status_exclusao[.op_row_precedencia],
+    motivo_sanitizacao = motivo,
+    timestamp_sanitizacao = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  )]
+  keep <- if (length(excluir)) ops[!(.op_row_precedencia %in% excluir)] else data.table::copy(ops)
+  keep[, .op_row_precedencia := NULL]
+  if (nrow(desc)) desc[, .op_row_precedencia := NULL]
+  keep <- monitora_esp_normalizar_itens_operacao(keep)
+  list(
+    ops = keep[], descartadas = desc[],
+    conflitos = data.table::rbindlist(list(conflitos_especificos, conflitos_amplos), fill = TRUE, use.names = TRUE),
+    auditoria = data.table::rbindlist(list(auditoria_protecao, auditoria_dup_esp, auditoria_dup_amplo), fill = TRUE, use.names = TRUE)
+  )
+}
+
 
 monitora_esp_sanitizar_ops_por_coletas_excluidas <- function(ops, coletas_excluidas = character(), motivo = "coleta marcada para exclusão na mesma sessão") {
   est <- monitora_esp_sanitizar_ops_estrutural(ops, motivo = paste0(motivo, "; sanitização estrutural prévia"))
@@ -22072,10 +22292,14 @@ monitora_esp_sanitizar_ops_por_coletas_excluidas <- function(ops, coletas_exclui
 
 monitora_esp_sanitizar_ops_contra_base <- function(ops, registros_corrig, coletas_excluidas = character()) {
   est <- monitora_esp_sanitizar_ops_estrutural(ops, motivo = "sanitização estrutural antes da aplicação espacial")
-  ops0 <- est$ops
+  prec <- monitora_esp_reconciliar_precedencia(est$ops)
+  ops0 <- prec$ops
   descartadas <- est$descartadas
+  descartadas <- data.table::rbindlist(list(descartadas, prec$descartadas), fill = TRUE, use.names = TRUE)
+  conflitos <- prec$conflitos
+  auditoria_precedencia <- prec$auditoria
   if (!nrow(ops0)) {
-    return(list(ops = ops0, descartadas = descartadas, resumo = est$resumo))
+    return(list(ops = ops0, descartadas = descartadas, conflitos = conflitos, auditoria_precedencia = auditoria_precedencia, resumo = est$resumo))
   }
   dt <- data.table::as.data.table(registros_corrig)
   ch <- monitora_esp_colunas_chave(dt)
@@ -22099,10 +22323,10 @@ monitora_esp_sanitizar_ops_contra_base <- function(ops, registros_corrig, coleta
       n_itens_removidos = nrow(descartadas),
       coletas_excluidas = paste(coletas_excluidas, collapse = "; ")
     )
-    return(list(ops = ops2, descartadas = descartadas, resumo = resumo))
+    return(list(ops = ops2, descartadas = descartadas, conflitos = conflitos, auditoria_precedencia = auditoria_precedencia, resumo = resumo))
   }
   if (is.na(ch$coleta) || !(ch$coleta %in% names(dt))) {
-    return(list(ops = ops2, descartadas = descartadas, resumo = san_excl$resumo))
+    return(list(ops = ops2, descartadas = descartadas, conflitos = conflitos, auditoria_precedencia = auditoria_precedencia, resumo = san_excl$resumo))
   }
   existe_coleta <- unique(trimws(as.character(dt[[ch$coleta]])))
   existe_coleta <- existe_coleta[!is.na(existe_coleta) & nzchar(existe_coleta)]
@@ -22128,11 +22352,11 @@ monitora_esp_sanitizar_ops_contra_base <- function(ops, registros_corrig, coleta
     n_itens_removidos = nrow(descartadas),
     coletas_excluidas = paste(coletas_excluidas, collapse = "; ")
   )
-  list(ops = keep, descartadas = descartadas, resumo = resumo2)
+  list(ops = keep, descartadas = descartadas, conflitos = conflitos, auditoria_precedencia = auditoria_precedencia, resumo = resumo2)
 }
 
 
-monitora_esp_gravar_sanitizacao_correcoes <- function(recebidas = NULL, sanitizadas = NULL, descartadas = NULL, resumo = NULL, prefixo = "correcoes_espaciais") {
+monitora_esp_gravar_sanitizacao_correcoes <- function(recebidas = NULL, sanitizadas = NULL, descartadas = NULL, conflitos = NULL, auditoria_precedencia = NULL, resumo = NULL, prefixo = "correcoes_espaciais") {
   out_dir <- monitora_esp_dir_global("MONITORA_OUTPUT_DIR", "output")
   log_dir <- monitora_esp_dir_global("MONITORA_LOG_DIR", "log")
   exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
@@ -22141,6 +22365,8 @@ monitora_esp_gravar_sanitizacao_correcoes <- function(recebidas = NULL, sanitiza
   if (!is.null(recebidas)) monitora_esp_fwrite(data.table::as.data.table(recebidas), file.path(base, paste0(prefixo, "_recebidas.csv")))
   if (!is.null(sanitizadas)) monitora_esp_fwrite(data.table::as.data.table(sanitizadas), file.path(base, paste0(prefixo, "_sanitizadas.csv")))
   if (!is.null(descartadas)) monitora_esp_fwrite(data.table::as.data.table(descartadas), file.path(base, paste0(prefixo, "_descartadas.csv")))
+  if (!is.null(conflitos)) monitora_esp_fwrite(data.table::as.data.table(conflitos), file.path(base, paste0(prefixo, "_conflitos_precedencia.csv")))
+  if (!is.null(auditoria_precedencia)) monitora_esp_fwrite(data.table::as.data.table(auditoria_precedencia), file.path(base, paste0(prefixo, "_auditoria_precedencia.csv")))
   if (!is.null(resumo)) {
     resumo <- data.table::as.data.table(resumo)
     monitora_esp_fwrite(resumo, file.path(base, paste0("auditoria_sanitizacao_", prefixo, ".csv")))
@@ -22332,7 +22558,13 @@ monitora_espacial_aplicar_correcoes_atomicas <- function(registros_corrig, arqui
   }
   san <- monitora_esp_sanitizar_ops_contra_base(ops_recebidas, registros_corrig, coletas_excluidas = coletas_excluidas)
   ops <- san$ops
-  monitora_esp_gravar_sanitizacao_correcoes(recebidas = ops_recebidas, sanitizadas = ops, descartadas = san$descartadas, resumo = san$resumo)
+  monitora_esp_gravar_sanitizacao_correcoes(
+    recebidas = ops_recebidas, sanitizadas = ops, descartadas = san$descartadas,
+    conflitos = san$conflitos, auditoria_precedencia = san$auditoria_precedencia, resumo = san$resumo
+  )
+  if (nrow(data.table::as.data.table(san$conflitos)) && isTRUE(abortar_falha)) {
+    stop("Correções espaciais possuem conflitos de mesma precedência; ver output/validacao_espacial/correcoes_espaciais_conflitos_precedencia.csv", call. = FALSE)
+  }
   if (nrow(san$descartadas)) {
     n_cancel <- sum(as.character(san$descartadas$status_sanitizacao) == "cancelado_por_exclusao_previa", na.rm = TRUE)
     n_falha <- sum(as.character(san$descartadas$status_sanitizacao) == "falha_sem_alvo_na_base_atual", na.rm = TRUE)
