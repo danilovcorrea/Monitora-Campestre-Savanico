@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.8.0
-### Release pública: v2.8.0
+### Versão do script: 2.8.1
+### Base pública preservada: v2.8.0
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -128,8 +128,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.8.0"
-MONITORA_SCRIPT_BUILD_ID <- "v2.8.0-20260722.2"
+MONITORA_SCRIPT_VERSAO <- "2.8.1"
+MONITORA_SCRIPT_BUILD_ID <- "v2.8.1-20260730.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -3124,13 +3124,31 @@ monitora_correcao_canonizar_multiselect <- function(x) {
   }, character(1))
 }
 
-monitora_correcao_valores_equivalentes <- function(valor_final, valor_esperado, atributo, chaves = NULL) {
+monitora_correcao_valores_equivalentes <- function(
+    valor_final,
+    valor_esperado,
+    atributo,
+    chaves = NULL,
+    modo_multiselect = c("superset_compativel", "superset_sem_tokens_proibidos"),
+    tokens_proibidos = character(0)) {
  ### Comparação vetorizada usada nas travas de persistência. Campos escalares
  ### continuam com comparação literal normalizada. Campos multiselect usam
- ### comparação semântica por tokens. Em replay de operações semânticas antigas,
- ### uma operação do tipo append_token deve ser considerada persistida quando o
- ### token esperado está contido no valor final, mesmo que o valor final contenha
- ### outros tokens adicionados por outra operação compatível.
+ ### comparação semântica por tokens. O modo histórico `superset_compativel`
+ ### permanece como padrão para replay de append_token: o token esperado pode
+ ### estar contido no valor final junto de tokens de outra operação compatível.
+ ### Operações destrutivas como TRIOUT usam
+ ### `superset_sem_tokens_proibidos`: aceitam tokens válidos acrescentados por
+ ### fechamento contratual posterior, mas nunca aceitam o reaparecimento de um
+ ### token que a própria operação removeu.
+  modo_multiselect <- match.arg(modo_multiselect)
+  if (identical(modo_multiselect, "superset_sem_tokens_proibidos")) {
+    tokens_proibidos <- unique(monitora_correcao_normalizar_nome_coluna(
+      unlist(lapply(as.character(tokens_proibidos), monitora_correcao_tokenizar), use.names = FALSE)
+    ))
+    tokens_proibidos <- tokens_proibidos[!is.na(tokens_proibidos) & nzchar(tokens_proibidos)]
+  } else {
+    tokens_proibidos <- character(0)
+  }
   valor_final <- as.character(valor_final)
   valor_esperado <- as.character(valor_esperado)
   n <- max(length(valor_final), length(valor_esperado), length(atributo), 1L)
@@ -3149,8 +3167,12 @@ monitora_correcao_valores_equivalentes <- function(valor_final, valor_esperado, 
       toks_fin <- unique(strsplit(ff, "\\s+")[[1]])
       toks_esp <- toks_esp[nzchar(toks_esp)]
       toks_fin <- toks_fin[nzchar(toks_fin)]
-      if (!length(toks_esp)) return(!length(toks_fin))
-      all(toks_esp %in% toks_fin)
+      if (identical(modo_multiselect, "superset_sem_tokens_proibidos")) {
+        all(toks_esp %in% toks_fin) && !any(toks_fin %in% tokens_proibidos)
+      } else {
+        if (!length(toks_esp)) return(!length(toks_fin))
+        all(toks_esp %in% toks_fin)
+      }
     }, canon_final, canon_esp, USE.NAMES = FALSE)
     out[multi] <- out_multi
   }
@@ -3505,8 +3527,20 @@ monitora_correcao_papel_coluna_canonico <- function(cols) {
 monitora_correcao_token_associado_coluna <- function(cols) {
   cols <- as.character(cols)
   z <- monitora_correcao_normalizar_nome_coluna(cols)
-  tokens <- monitora_correcao_tokens_forma_vida_catalogo()
   out <- rep(NA_character_, length(cols))
+
+ ### Relações estruturais de altura/diâmetro têm precedência sobre palavras
+ ### genéricas do rótulo. Em particular, "Outra espécie de arbusto..." usa
+ ### "outra" para qualificar ESPÉCIE; a forma de vida pai continua sendo
+ ### arbusto_abaixo/arbusto_acima. Resolver primeiro os padrões inequívocos
+ ### impede que o fechamento hierárquico converta "outra espécie" na forma
+ ### histórica `outra` e desfaça a TRIOUT.
+  out[grepl("arvore", z) & grepl("(menor_que_5|abaixo_de_5|abaixo.*5cm|menor.*5cm)", z)] <- "arvore_abaixo"
+  out[grepl("arvore", z) & grepl("(igual_ou_maior_que_5|acima_de_5|acima.*5cm|maior.*5cm)", z)] <- "arvore_acima"
+  out[grepl("arbusto", z) & grepl("(inferior_a_50|abaixo.*50|abaixo.*0_5|inferior.*0_5)", z)] <- "arbusto_abaixo"
+  out[grepl("arbusto", z) & grepl("(igual_ou_superior_a_50|acima.*50|acima.*0_5|superior.*0_5)", z)] <- "arbusto_acima"
+
+  tokens <- monitora_correcao_tokens_forma_vida_catalogo()
   for (tok in tokens) {
     sins <- monitora_correcao_sinonimos_forma(tok)
     hit <- rep(FALSE, length(z))
@@ -3516,10 +3550,6 @@ monitora_correcao_token_associado_coluna <- function(cols) {
  ### rótulos históricos nem sempre preservam o `name` XLSForm no nome
  ### físico da coluna. Estes padrões são inequívocos e distinguem os pares de
  ### altura/diâmetro sem recorrer a substring aproximada ou posição da coluna.
-  out[is.na(out) & grepl("arvore", z) & grepl("(menor_que_5|abaixo_de_5|abaixo.*5cm|menor.*5cm)", z)] <- "arvore_abaixo"
-  out[is.na(out) & grepl("arvore", z) & grepl("(igual_ou_maior_que_5|acima_de_5|acima.*5cm|maior.*5cm)", z)] <- "arvore_acima"
-  out[is.na(out) & grepl("arbusto", z) & grepl("(inferior_a_50|abaixo.*50|abaixo.*0_5|inferior.*0_5)", z)] <- "arbusto_abaixo"
-  out[is.na(out) & grepl("arbusto", z) & grepl("(igual_ou_superior_a_50|acima.*50|acima.*0_5|superior.*0_5)", z)] <- "arbusto_acima"
   out[is.na(out) & grepl("bambu|taquara", z)] <- "bambu"
   out[is.na(out) & grepl("liana|cipo|trepadeira", z)] <- "lianas"
   out[is.na(out) & grepl("palmeira", z)] <- "palmeira"
@@ -3565,7 +3595,7 @@ monitora_correcao_mapa_colunas_estrutura <- function(dt) {
 monitora_correcao_mapa_colunas_canonicas <- function(dt, meta_xls = NULL, contexto = "mapa_colunas", gravar = FALSE, incluir_preenchidos = isTRUE(gravar), usar_cache = TRUE) {
   dt <- data.table::as.data.table(dt)
   if (isTRUE(usar_cache)) {
-    key <- monitora_correcao_mapa_colunas_cache_key(dt, "estrutura")
+    key <- monitora_correcao_mapa_colunas_cache_key(dt, "estrutura_v281_triout")
     mapa_cache <- tryCatch(get(key, envir = .MONITORA_MAPA_COLUNAS_CANONICAS_CACHE, inherits = FALSE), error = function(e) NULL)
     if (is.null(mapa_cache)) {
       mapa_cache <- monitora_correcao_mapa_colunas_estrutura(dt)
@@ -8427,7 +8457,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
   audit <- data.table::as.data.table(audit)
   dt <- monitora_dt_referenciar(dt)
   if (!nrow(audit)) return(data.table::data.table())
-  for (cc in c("id_correcao", "status", "atributo", "linha_indice", "monitora_row_id", "valor_depois", "COLETA", "coleta_uuid", "uuid_registro", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Data (data_hora)", "Ponto amostral", "Ponto metro")) {
+  for (cc in c("id_correcao", "status", "atributo", "linha_indice", "monitora_row_id", "valor_antes", "valor_depois", "COLETA", "coleta_uuid", "uuid_registro", "UC", "EA", "UA", "CICLO", "CAMPANHA", "ANO", "Data (data_hora)", "Ponto amostral", "Ponto metro")) {
     if (!(cc %in% names(audit))) data.table::set(audit, j = cc, value = NA_character_)
   }
   coletas_excluidas <- unique(as.character(coletas_excluidas))
@@ -8586,12 +8616,36 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
         next
       }
       finais <- as.character(dt[[attr_dt]][linhas])
-      ok <- monitora_correcao_valores_equivalentes(finais, esperado, attr_dt, chaves)
-      modo_comparacao <- ifelse(
-        isTRUE(monitora_correcao_campo_multiselect_auditoria(attr_dt, chaves)),
-        "tokens_multiselect",
-        "literal"
+      id_correcao_atual <- as.character(audit$id_correcao[ii])
+      eh_triout <- !is.na(id_correcao_atual) && grepl("^TRIOUT", id_correcao_atual)
+      eh_multiselect <- isTRUE(monitora_correcao_campo_multiselect_auditoria(attr_dt, chaves))
+      tokens_removidos_audit <- character(0)
+      if (eh_triout && eh_multiselect) {
+        tokens_antes_audit <- monitora_correcao_normalizar_nome_coluna(
+          monitora_correcao_tokenizar(as.character(audit$valor_antes[ii]))
+        )
+        tokens_depois_audit <- monitora_correcao_normalizar_nome_coluna(
+          monitora_correcao_tokenizar(esperado)
+        )
+        tokens_removidos_audit <- setdiff(
+          tokens_antes_audit[!is.na(tokens_antes_audit) & nzchar(tokens_antes_audit)],
+          tokens_depois_audit[!is.na(tokens_depois_audit) & nzchar(tokens_depois_audit)]
+        )
+      }
+      modo_multiselect <- if (eh_triout && eh_multiselect) "superset_sem_tokens_proibidos" else "superset_compativel"
+      ok <- monitora_correcao_valores_equivalentes(
+        finais,
+        esperado,
+        attr_dt,
+        chaves,
+        modo_multiselect = modo_multiselect,
+        tokens_proibidos = tokens_removidos_audit
       )
+      modo_comparacao <- if (eh_multiselect) {
+        if (eh_triout) "tokens_multiselect_superset_sem_tokens_removidos" else "tokens_multiselect"
+      } else {
+        "literal"
+      }
       status <- ifelse(all(ok), "ok_aplicacao_persistiu", "falha_valor_nao_persistiu")
       categoria_ok <- if (metodo_localizacao == "monitora_row_id") {
         "relocalizado_por_monitora_row_id"
@@ -8633,7 +8687,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
  ### move a mesma forma para outra categoria. Se outra operação aplicada no
  ### mesmo alvo já confere com o valor final, a divergência intermediária é
  ### marcada como sobreposição compatível, sem bloquear a execução.
-    for (cc in c("atributo_resolvido", "COLETA", "linha_indice_auditoria", "linhas_localizadas_final_indice", "status_persistencia", "categoria_persistencia_chave_estavel")) {
+    for (cc in c("atributo_resolvido", "COLETA", "linha_indice_auditoria", "linhas_localizadas_final_indice", "status_persistencia", "categoria_persistencia_chave_estavel", "modo_comparacao")) {
       if (!(cc %in% names(res))) data.table::set(res, j = cc, value = NA_character_)
     }
     chave_res <- paste(
@@ -8643,7 +8697,11 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
       sep = "\r"
     )
     chaves_ok <- unique(chave_res[as.character(res$status_persistencia) == "ok_aplicacao_persistiu"])
-    idx_sobreposta <- which(as.character(res$status_persistencia) == "falha_valor_nao_persistiu" & chave_res %chin% chaves_ok)
+    idx_sobreposta <- which(
+      as.character(res$status_persistencia) == "falha_valor_nao_persistiu" &
+        chave_res %chin% chaves_ok &
+        !grepl("^TRIOUT", as.character(res$id_correcao))
+    )
     if (length(idx_sobreposta) > 0L) {
       data.table::set(res, i = idx_sobreposta, j = "status_persistencia", value = "ok_sobreposta_por_correcao_final_compativel")
       data.table::set(res, i = idx_sobreposta, j = "mensagem", value = "Valor intermediário auditado foi sobrescrito por outra correção aplicada no mesmo alvo; o estado final confere com auditoria posterior")
@@ -8846,6 +8904,23 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     monitora_persist_reclassificar_estado_contratual <- function(res, dt, chaves, contexto_estado = "persistencia_estado_final_contratual") {
       if (!nrow(res)) return(res)
       idx <- which(as.character(res$status_persistencia) == "falha_valor_nao_persistiu")
+ ### TRIOUT moderno possui sentinela própria e gate de estado final dedicado
+ ### logo abaixo. Não permitir que o normalizador genérico antecipe um sucesso
+ ### por equivalência de superset e esconda token/descritor removido que
+ ### reapareceu após o fechamento.
+      ids_triout_com_sentinela <- unique(as.character(
+        audit[
+          as.character(atributo) == "__limpar_outras_formas_vida__" &
+            grepl("^TRIOUT", as.character(id_correcao)),
+          id_correcao
+        ]
+      ))
+      ids_triout_com_sentinela <- ids_triout_com_sentinela[
+        !is.na(ids_triout_com_sentinela) & nzchar(ids_triout_com_sentinela)
+      ]
+      if (length(ids_triout_com_sentinela)) {
+        idx <- idx[!(as.character(res$id_correcao[idx]) %in% ids_triout_com_sentinela)]
+      }
       if (!length(idx)) return(res)
 
       for (ii_estado in idx) {
@@ -8939,13 +9014,12 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
  ### existir ou indicar resíduo/pendência manual real, a falha permanece --
  ### cai no reclassificador global (linha abaixo) como segunda tentativa e,
  ### se também não resolver, continua bloqueando normalmente.
-    monitora_persist_reclassificar_triout_por_efeito_proprio <- function(res, audit, contexto_estado = "pos_aplicacao_objeto") {
+    monitora_persist_reclassificar_triout_por_efeito_proprio <- function(res, audit, dt, contexto_estado = "pos_aplicacao_objeto") {
       if (!nrow(res)) return(res)
       if (!("status_persistencia" %in% names(res))) return(res)
-      idx_falha <- which(as.character(res$status_persistencia) %in% c(
-        "falha_valor_nao_persistiu",
-        "falha_linha_nao_localizada"
-      ))
+ ### Falha de localização nunca pode ser convertida em sucesso: sem linhas
+ ### finais relocalizadas não existe evidência do efeito persistido.
+      idx_falha <- which(as.character(res$status_persistencia) == "falha_valor_nao_persistiu")
       if (!length(idx_falha)) return(res)
 
       ids <- as.character(res$id_correcao)
@@ -8958,6 +9032,12 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
       sentinela <- audit[as.character(atributo) == "__limpar_outras_formas_vida__"]
       if (!nrow(sentinela)) return(res)
 
+      cols_info_final <- tryCatch(
+        monitora_correcao_colunas_limpeza_outras_formas(dt, NULL),
+        error = function(e) data.table::data.table()
+      )
+      if (!nrow(cols_info_final)) return(res)
+
       ids_triout_falha <- unique(ids[idx_triout])
       for (id_alvo in ids_triout_falha) {
         linha_sentinela <- sentinela[as.character(id_correcao) == id_alvo]
@@ -8968,11 +9048,132 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
         ok_proprio <- all(as.character(linha_sentinela$status) == "auditoria_ok")
         if (!isTRUE(ok_proprio)) next
         idx_desta_id <- idx_triout[ids[idx_triout] == id_alvo]
+
+ ### Reconstituir o escopo FINAL integral da operação, não apenas as linhas
+ ### das comparações que falharam. A união usa: (1) todas as relocalizações
+ ### finais do mesmo id; (2) identidades imutáveis do plano efetivo, quando
+ ### disponíveis; e só então (3) linha_indice da auditoria como fallback para
+ ### ledgers antigos. Se alguma identidade declarada não existir no objeto
+ ### final, a operação não pode ser reclassificada como sucesso.
+        idx_todas_id <- which(ids == id_alvo)
+        linhas_serializadas <- as.character(res$linhas_localizadas_final_indice[idx_todas_id])
+        linhas_serializadas <- linhas_serializadas[!is.na(linhas_serializadas) & nzchar(linhas_serializadas)]
+        linhas_finais <- unique(suppressWarnings(as.integer(unlist(
+          strsplit(linhas_serializadas, ";", fixed = TRUE),
+          use.names = FALSE
+        ))))
+
+        plano_efetivo <- get0(
+          "MONITORA_PLANO_CORRECOES_EFETIVO_ULTIMO",
+          ifnotfound = NULL,
+          inherits = TRUE
+        )
+        ids_estaveis_escopo <- character(0)
+        ids_estaveis_solicitados <- character(0)
+        linhas_plano_serializadas <- character(0)
+        if (inherits(plano_efetivo, c("data.frame", "data.table"))) {
+          plano_efetivo <- data.table::as.data.table(plano_efetivo)
+          if ("id_correcao" %in% names(plano_efetivo)) {
+            plano_id <- plano_efetivo[as.character(id_correcao) == id_alvo]
+            for (cc_ids in intersect(
+              c("alvos_efetivos_monitora_row_id", "monitora_row_id"),
+              names(plano_id)
+            )) {
+              ids_estaveis_escopo <- c(
+                ids_estaveis_escopo,
+                monitora_correcao_parse_ids_estaveis(plano_id[[cc_ids]])
+              )
+            }
+            for (cc_ids in intersect(
+              "alvos_solicitados_monitora_row_id",
+              names(plano_id)
+            )) {
+              ids_estaveis_solicitados <- c(
+                ids_estaveis_solicitados,
+                monitora_correcao_parse_ids_estaveis(plano_id[[cc_ids]])
+              )
+            }
+            for (cc_lin in intersect(
+              c("linhas_alvo_efetivas_serializadas", "linhas_alvo_serializadas"),
+              names(plano_id)
+            )) {
+              linhas_plano_serializadas <- c(
+                linhas_plano_serializadas,
+                as.character(plano_id[[cc_lin]])
+              )
+            }
+          }
+        }
+        ids_estaveis_escopo <- unique(ids_estaveis_escopo[
+          !is.na(ids_estaveis_escopo) & nzchar(ids_estaveis_escopo)
+        ])
+        ids_estaveis_solicitados <- unique(ids_estaveis_solicitados[
+          !is.na(ids_estaveis_solicitados) & nzchar(ids_estaveis_solicitados)
+        ])
+        if (!length(ids_estaveis_escopo)) {
+          ids_estaveis_escopo <- ids_estaveis_solicitados
+        }
+        if (
+          length(ids_estaveis_escopo) &&
+            MONITORA_COL_ROW_ID %in% names(dt)
+        ) {
+          linhas_ids <- match(
+            ids_estaveis_escopo,
+            as.character(dt[[MONITORA_COL_ROW_ID]]),
+            nomatch = 0L
+          )
+          if (any(linhas_ids == 0L)) next
+          linhas_finais <- c(linhas_finais, linhas_ids)
+        }
+        if (length(linhas_plano_serializadas) && !length(ids_estaveis_escopo)) {
+          linhas_finais <- c(
+            linhas_finais,
+            suppressWarnings(as.integer(unlist(lapply(
+              linhas_plano_serializadas,
+              monitora_correcao_parse_serial_generico
+            ), use.names = FALSE)))
+          )
+        }
+        if (!length(linhas_finais)) {
+          linhas_finais <- suppressWarnings(as.integer(
+            audit[
+              as.character(id_correcao) == id_alvo,
+              linha_indice
+            ]
+          ))
+        }
+        linhas_finais <- linhas_finais[
+          !is.na(linhas_finais) & linhas_finais >= 1L & linhas_finais <= nrow(dt)
+        ]
+        linhas_finais <- unique(as.integer(linhas_finais))
+        if (!length(linhas_finais)) next
+
         msg_sentinela <- as.character(linha_sentinela$mensagem[1L])
+        n_alvos_sentinela <- suppressWarnings(as.integer(sub(
+          ".*linhas_alvo=([0-9]+).*",
+          "\\1",
+          msg_sentinela,
+          perl = TRUE
+        )))
+        if (
+          length(n_alvos_sentinela) &&
+            !is.na(n_alvos_sentinela) &&
+            n_alvos_sentinela >= 0L &&
+            length(linhas_finais) != n_alvos_sentinela
+        ) next
+
+ ### A sentinela descreve o estado imediatamente após a operação. Antes de
+ ### reclassificar qualquer divergência, confirma-se de novo o estado FINAL
+ ### real de TODO o escopo, após fechamento hierárquico e normalizadores.
+        residuos_finais <- tryCatch(
+          monitora_correcao_linhas_residuo_outras_formas(dt, linhas_finais, cols_info_final),
+          error = function(e) linhas_finais
+        )
+        if (length(residuos_finais)) next
         if (is.na(msg_sentinela) || !nzchar(msg_sentinela)) msg_sentinela <- "residuos_depois=0; pendencias_manuais=0."
         data.table::set(res, i = idx_desta_id, j = "status_persistencia", value = "ok_persistiu_por_efeito_especifico_outras_formas")
         data.table::set(res, i = idx_desta_id, j = "mensagem", value = paste0(
-          "Limpeza de outras formas persistiu por efeito específico; pendências impeditivas globais remanescentes não relacionadas permanecem para checkpoint de registros_corrig. Auditoria própria da operação: ",
+          "Limpeza de outras formas persistiu por efeito específico e foi reconfirmada sem resíduos nas linhas do objeto final; pendências impeditivas globais remanescentes não relacionadas permanecem para checkpoint de registros_corrig. Auditoria própria da operação: ",
           msg_sentinela
         ))
         if (!("modo_comparacao" %in% names(res))) data.table::set(res, j = "modo_comparacao", value = NA_character_)
@@ -8981,7 +9182,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
       res
     }
 
-    res <- monitora_persist_reclassificar_triout_por_efeito_proprio(res, audit, contexto_estado = contexto)
+    res <- monitora_persist_reclassificar_triout_por_efeito_proprio(res, audit, dt, contexto_estado = contexto)
  ### FIM ajuste ------------------------------------------------------
 
  ### auditoria de persistência por efeito diagnóstico final --------
@@ -9010,6 +9211,25 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
         "^(TRIOUT|PENDFV|MVLOTE|TRIDESC|MOVFV|RECALC_SUPERIORES_XLSFORM|FECHAMENTO_HIERARQUICO_CONTRATO|SYNC_ENCOSTAM_FINAL)",
         ids[idx_falha_compat]
       )]
+ ### Ledgers TRIOUT atuais com sentinela própria já foram submetidos ao gate
+ ### específico de resíduo nas linhas finais. Se esse gate não confirmou o
+ ### efeito, o diagnóstico global não pode transformar a falha em sucesso.
+ ### TRIOUT legado sem sentinela conserva o fallback global histórico.
+      ids_triout_com_sentinela <- unique(as.character(
+        audit[
+          as.character(atributo) == "__limpar_outras_formas_vida__" &
+            grepl("^TRIOUT", as.character(id_correcao)),
+          id_correcao
+        ]
+      ))
+      ids_triout_com_sentinela <- ids_triout_com_sentinela[
+        !is.na(ids_triout_com_sentinela) & nzchar(ids_triout_com_sentinela)
+      ]
+      if (length(ids_triout_com_sentinela)) {
+        idx_familias_semanticas <- idx_familias_semanticas[
+          !(ids[idx_familias_semanticas] %in% ids_triout_com_sentinela)
+        ]
+      }
       if (!length(idx_familias_semanticas)) return(res)
 
       efeito <- tryCatch({
@@ -11889,7 +12109,7 @@ if (!exists(".MONITORA_FECHAMENTO_HIERARQUICO_CACHE", inherits = FALSE)) {
 
 monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   dt <- data.table::as.data.table(dt)
-  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_r24")
+  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_v281_triout")
   if (exists(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)) {
     return(data.table::copy(get(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)))
   }
@@ -11900,18 +12120,37 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   if (!nrow(mapa)) return(data.table::data.table())
 
  ### Algumas colunas operacionais preservam o label histórico em vez do path
- ### canônico (por exemplo, a árvore D30 nativa). Recuperar categoria/token
- ### somente por aliases contratuais EXATOS e unívocos; labels compartilhados
- ### entre categorias permanecem sem inferência.
+ ### canônico (por exemplo, a árvore D30 nativa). Para campos dependentes,
+ ### aliases contratuais EXATOS e unívocos prevalecem somente quando a leitura
+ ### lexical ficou ausente ou recaiu na família genérica "outra/outros". Essa
+ ### precedência localizada é obrigatória para rótulos "Outra espécie...":
+ ### `outra` qualifica a espécie aberta, enquanto o path/relevant do contrato
+ ### único informa a forma de vida pai. Labels compartilhados entre categorias
+ ### permanecem sem inferência.
   aliases_contrato <- tryCatch(monitora_validados_aliases(), error = function(e) list())
-  idx_sem_hierarquia <- which(
-    mapa$papel_coluna %in% c("atributo_dependente_habito", "especie_nome_popular") &
-      (is.na(mapa$categoria) | !nzchar(mapa$categoria) | is.na(mapa$token_associado) | !nzchar(mapa$token_associado))
+  token_norm_inicial <- monitora_correcao_normalizar_nome_coluna(mapa$token_associado)
+  coluna_norm_mapa <- monitora_correcao_normalizar_nome_coluna(mapa$coluna_registros_corrig)
+  eh_especie_aberta_outra <- mapa$papel_coluna == "especie_nome_popular" & (
+    grepl("(^|_)outra_especie($|_)", coluna_norm_mapa) |
+      grepl("(^|_)outra_sp($|_)", coluna_norm_mapa)
   )
-  if (length(idx_sem_hierarquia) && length(aliases_contrato)) {
-    for (ii in idx_sem_hierarquia) {
+  idx_dependentes <- which(
+    mapa$papel_coluna %in% c("atributo_dependente_habito", "especie_nome_popular") &
+      (
+        is.na(mapa$categoria) | !nzchar(mapa$categoria) |
+          is.na(mapa$token_associado) | !nzchar(mapa$token_associado) |
+          token_norm_inicial %in% c("outra", "outro", "outras", "outros") |
+          eh_especie_aberta_outra
+      )
+  )
+  resolvido_por_alias_exato <- rep(FALSE, nrow(mapa))
+  if (length(idx_dependentes) && length(aliases_contrato)) {
+    for (ii in idx_dependentes) {
       col_alvo <- mapa$coluna_registros_corrig[ii]
-      chaves_hit <- names(aliases_contrato)[vapply(aliases_contrato, function(vals) col_alvo %in% as.character(vals), logical(1L))]
+      chaves_hit <- names(aliases_contrato)[
+        names(aliases_contrato) == col_alvo |
+          vapply(aliases_contrato, function(vals) col_alvo %in% as.character(vals), logical(1L))
+      ]
       if (!length(chaves_hit)) next
       cats_hit <- unique(monitora_correcao_categoria_coluna_canonica(chaves_hit))
       toks_hit <- unique(monitora_correcao_token_associado_coluna(chaves_hit))
@@ -11920,8 +12159,22 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
       if (length(cats_hit) == 1L && length(toks_hit) == 1L) {
         data.table::set(mapa, i = ii, j = "categoria", value = cats_hit)
         data.table::set(mapa, i = ii, j = "token_associado", value = toks_hit)
+        resolvido_por_alias_exato[ii] <- TRUE
       }
     }
+  }
+
+ ### Defesa contratual: nenhum campo de espécie aberta "Outra espécie"/
+ ### `outra_sp` pode criar forma de vida pai só pela leitura lexical do rótulo.
+ ### Exige path ou alias EXATO e unívoco do contrato embutido; sem essa prova a
+ ### relação é apenas diagnóstica/ambígua. O path atual
+ ### `exotica_outros_outra_sp` é resolvido exatamente para `outros` e permanece
+ ### válido.
+  idx_especie_aberta_sem_contrato <- which(
+    eh_especie_aberta_outra & !resolvido_por_alias_exato
+  )
+  if (length(idx_especie_aberta_sem_contrato)) {
+    data.table::set(mapa, i = idx_especie_aberta_sem_contrato, j = "token_associado", value = NA_character_)
   }
 
   regras <- mapa[papel_coluna %in% c("atributo_dependente_habito", "especie_nome_popular")]
@@ -12254,7 +12507,11 @@ monitora_correcao_tokens_residuo_historico_outras_formas <- function() {
  ### antigas. Não inclui forma_vida_outros: esse é o campo atual válido do
  ### XLSForm 21FEV25; valores como musgos/hepaticas/liquens/fungos nele são
  ### resultado esperado da sanitização e não devem manter a pendência ativa.
-  c("outra_forma_vida", "outras_formas_vida", "outra", "outro", "outras", "outros")
+ ### Também não inclui `outros`: no contrato vigente ele é uma choice válida de
+ ### `forma_vida_exotica`, pai de `especies_exotica_outros`. A limpeza legada
+ ### deve remover somente as formas históricas incompatíveis, nunca essa choice
+ ### atual derivada do contrato único.
+  c("outra_forma_vida", "outras_formas_vida", "outra", "outro", "outras")
 }
 
 monitora_correcao_tokens_tipo_validos_pos_limpeza_outras <- function() {
