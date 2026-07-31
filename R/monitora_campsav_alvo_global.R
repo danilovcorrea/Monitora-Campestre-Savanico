@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.8.1
-### Base pública preservada: v2.8.0
+### Versão do script: 2.8.2
+### Base pública preservada: v2.8.1
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -32,6 +32,9 @@
 ### - output/registros_corrig_stat.csv: tabela estatística por COLETA, UC, UA e ano;
 ### - output/registros_validados.csv: produto opcional compatível com o contrato
 ### XLSForm/SISMONITORA, gerado a partir de registros_corrig.csv final;
+### - output/01_produtos_dados/registros_validados_importacao_sismonitora.xlsx:
+### planilha opcional derivada exclusivamente de registros_validados.csv aprovado
+### e materializado na mesma execução, para um contexto UC + ciclo + campanha;
 ### - output/02_painel_correcoes/: operações, diagnósticos, relatórios e linhagem
 ### e arquivos de apoio do painel;
 ### - output/04_validacao_espacial/: validação espacial pré/pós-painel, consensos,
@@ -128,8 +131,8 @@
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.8.1"
-MONITORA_SCRIPT_BUILD_ID <- "v2.8.1-20260730.1"
+MONITORA_SCRIPT_VERSAO <- "2.8.2"
+MONITORA_SCRIPT_BUILD_ID <- "v2.8.2-20260730.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -146,6 +149,19 @@ try(message(
 MONITORA_MODO_EXECUCAO <- "completo"
 MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "N"
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
+### Produto derivado opcional, desligado por padrão para preservar desempenho.
+### Quando "S", exige registros_validados.csv apto e gera a planilha
+### registros_validados_importacao_sismonitora.xlsx a partir do modelo 21FEV25.
+### A planilha preserva as três abas do modelo, inclui explicitamente a coluna
+### obrigatória uc em Preenchimento e opera somente em modo de inclusão de
+### registros novos. As colunas uuid e amostragem/registro/uuid permanecem no
+### schema, mas suas células de dados ficam vazias para que o SISMONITORA gere
+### novas identidades; os UUIDs da fonte não são alterados e permanecem no
+### registros_validados.csv e na auditoria de linhagem. Devido a uma limitação
+### comprovada do importador, que não avalia a função XPath regex do XLSForm
+### 21FEV25, observacoes_gerais também é omitido somente da planilha e
+### preservado na auditoria e na fonte canônica.
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- "N"
 
 ### Performance e granularidade das auditorias volumosas --------------------
 ### O resumo e o detalhamento célula a célula continuam obrigatórios. A versão
@@ -430,6 +446,16 @@ MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- toupper(trimws(as.character(MONITORA
 if (!(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS deve ser 'S' ou 'N'.", call. = FALSE)
 }
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- Sys.getenv(
+  "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA",
+  unset = as.character(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)[1L]
+)
+MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- toupper(trimws(
+  as.character(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)[1L]
+))
+if (!(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA %in% c("S", "N"))) {
+  stop("MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA deve ser 'S' ou 'N'.", call. = FALSE)
+}
 
 MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS <- Sys.getenv(
   "MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS",
@@ -562,6 +588,17 @@ MONITORA_ESPACIAL_LOTE_AMPLO_MIN_ANOS_DESTINO <- monitora_cfg_env_int("MONITORA_
 MONITORA_ESPACIAL_LOTE_AMPLO_JUSTIFICATIVA_MIN_CHARS <- monitora_cfg_env_int("MONITORA_ESPACIAL_LOTE_AMPLO_JUSTIFICATIVA_MIN_CHARS", MONITORA_ESPACIAL_LOTE_AMPLO_JUSTIFICATIVA_MIN_CHARS)
 
 MONITORA_GERAR_REGISTROS_VALIDADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS, "S")
+MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- identical(
+  MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA,
+  "S"
+)
+if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA) &&
+    !isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS)) {
+  stop(
+    "A geração de registros_validados_importacao_sismonitora.xlsx exige MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'.",
+    call. = FALSE
+  )
+}
 MONITORA_GERAR_REGISTROS_IMPORTADOS <- identical(MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS, "S")
 ### calcular a variável derivada do painel antes de qualquer uso.
 ### Em painel_e_parar/abrir_painel_cache/painel_incremental_registros_corrig,
@@ -576,6 +613,7 @@ if (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES)) MONITORA_GERAR_MANUAL_USUARIO <- TR
 MONITORA_GERAR_REGISTROS_IMPORTADOS_BRUTO_OBRIGATORIO <- (isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES) && !isTRUE(MONITORA_MODO_USA_REGISTROS_CORRIG_ENTRADA)) || MONITORA_MODO_EXECUCAO %in% c("painel_e_parar", "abrir_painel_cache")
 MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL <- isTRUE(MONITORA_GERAR_REGISTROS_IMPORTADOS) || isTRUE(MONITORA_GERAR_REGISTROS_IMPORTADOS_BRUTO_OBRIGATORIO)
 MONITORA_REGISTROS_VALIDADOS_GERADO <- FALSE
+MONITORA_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA_GERADO <- FALSE
 
 MONITORA_EXECUCAO_PARCIAL <- MONITORA_MODO_EXECUCAO %in% c("ate_registros_corrig", "painel_e_parar", "abrir_painel_cache", "painel_incremental_registros_corrig")
 MONITORA_PARAR_APOS_REGISTROS_CORRIG <- MONITORA_MODO_EXECUCAO %in% c("ate_registros_corrig", "painel_e_parar", "abrir_painel_cache", "painel_incremental_registros_corrig")
@@ -1631,6 +1669,12 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em docs/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/relatorios_validacao/ após a materialização de registros_corrig.csv.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o ledger a reaplicar; se vazio, procura a trilha consolidada em input/linhagem/ e input/, depois os nomes legados aceitos.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
     cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N impede o painel. Em painel_e_parar, abrir_painel_cache e painel_incremental_*, o painel abre mesmo se estiver N.", "Produto sensível; não publicar. Em modos com painel a geração bruta/saneada pode ser obrigatória para auditoria pré-painel.", "Não é substituto de revisão humana; depende de registros_corrig consistente e sem bloqueios impeditivos.", "A validação espacial depende de coordenadas detectáveis e deve ser interpretada junto com relatórios específicos.", "Se leaflet não estiver instalado, o script mantém tabela e relatórios, mas pode omitir mapa interativo.", "Não depende de dados reais e pode ser gerado isoladamente, mas em execução com painel fica disponível antes da edição.", "Produto local de governança; pode conter nomes de arquivos e caminhos locais.", "HTML é o formato técnico principal; PDF é preferencialmente gerado via HTML/pagedown para evitar tabelas largas.", "Preencha no painel ou por variável de ambiente. O valor digitado no painel tem prioridade.", "Evite deixar vazio em execução institucional.", "Use deliberadamente: replay muda o estado da base antes do painel. O relatório audita o arquivo reaplicado.", "Prefira correcoes_semanticas_consolidada.csv exportado pelo script; correcoes_campos.csv legado é aceito, mas pode depender mais da estrutura da rodada original.", "Mantenha ligado para preservar a intenção das operações independentemente da evolução posterior do script.", "Mantida para compatibilidade; o modo explícito é mais claro e auditável.", "Só use se souber qual cache pertence ao input atual.", "O uso de cache incorreto pode aplicar correções fora de contexto.")
   )
+  cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
+    variavel = "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA",
+    valores = "S ou N; padrão N",
+    finalidade = "Gera registros_validados_importacao_sismonitora.xlsx, em modo de inclusão de registros novos, para um único contexto UC + ciclo + campanha, a partir do registros_validados.csv materializado e validado na mesma execução.",
+    cuidados = "Exige MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S; preserva as três abas do modelo 21FEV25, inclui a coluna obrigatória uc em Preenchimento e mantém campos comuns apenas na primeira linha de cada bloco de 101 pontos. As colunas uuid e amostragem/registro/uuid são mantidas, mas ficam vazias na planilha para o SISMONITORA gerar novas identidades; os valores originais permanecem intocados em registros_validados.csv e são rastreados na auditoria. observacoes_gerais também é omitido somente da planilha porque o importador não suporta a função XPath regex do formulário; o valor original permanece na fonte e na auditoria. Pode conter dados pessoais e referências a fotos. Não use para editar registros já existentes."
+  )), use.names = TRUE, fill = TRUE)
 
   modos <- data.table::data.table(
     modo = c("completo", "sem_png", "estatisticas_sem_graficos", "ate_registros_corrig", "painel_e_parar", "abrir_painel_cache", "registros_corrig_completo", "registros_corrig_sem_png", "registros_corrig_estatisticas_sem_graficos", "painel_incremental_registros_corrig", "painel_incremental_completo", "painel_incremental_sem_png", "painel_incremental_estatisticas_sem_graficos"),
@@ -1652,6 +1696,14 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     finalidade = c("Auditar importação, diagnosticar problemas de ZIP, codificação, cabeçalhos e montagem.", "Comparar a entrada saneada com registros_corrig e apoiar o relatório consolidado.", "Auditar a base operacional pré-painel e permitir comparação sem semântica híbrida.", "Subsidiar estatísticas, relatórios específicos, painel incremental, validação espacial e registros_validados.", "Disponibilizar uma base compatível com estrutura, ordem, domínios e formatos esperados pelo contrato de destino.", "Subsidiar diretamente as estatísticas tabulares/textuais e os gráficos PNG da execução."),
     subsidia = c("Depuração do input e descrição dos arquivos de entrada.", "Painel, comparação pré/pós e rastreabilidade documental.", "Diagnósticos pré-painel e comparação com registros_importados.csv.", "Toda a etapa pós-correção: relatórios, estatísticas, mapas, KML, auditorias e contrato final.", "Auditoria final, integração/devolutiva e conferência formal de schema/formato.", "Estatísticas, gráficos e KMLs de UAs.")
   )
+  produtos <- data.table::rbindlist(list(produtos, data.table::data.table(
+    produto = "registros_validados_importacao_sismonitora.xlsx",
+    como_e_criado = "Criado opcionalmente por projeção estrita do registros_validados.csv materializado e validado na mesma execução, preservando o modelo oficial 21FEV25, acrescentando a coluna obrigatória uc na aba Preenchimento, mantendo vazias as células de uuid e amostragem/registro/uuid para inclusão nova e omitindo observacoes_gerais, cujo XPath regex não é suportado pelo importador.",
+    escopo = "Produto derivado de integração, sem alterar registros_validados.csv.",
+    pre_requisitos = "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA = S; MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S; um único contexto UC + ciclo + campanha; coletas com exatamente 101 pontos.",
+    finalidade = "Homologação e importação de registros novos no SISMONITORA.",
+    subsidia = "Inclusão de registros provenientes de formulários em papel e auditoria da carga."
+  )), use.names = TRUE, fill = TRUE)
 
   painel <- data.table::data.table(
     controle = c("Responsável", "Filtros UC/EA/UA/Ciclo/Campanha", "COLETA", "Atributo", "Valor novo", "Justificativa", "Aplicar correção", "Aplicar em lote", "Mover exótica para nativa", "Substituir desconhecida", "Limpar outras formas", "Operação espacial", "Atualizar diagnóstico", "Salvar e fechar", "Fechar sem salvar"),
@@ -41062,6 +41114,956 @@ monitora_publicacao_aa_materializar_regras_xlsform21_corrig <- function(registro
   list(dt = dt, auditoria = aud, problemas = prob)
 }
 
+### Produto derivado: registros_validados_importacao_sismonitora.xlsx -----
+### Fonte única: registros_validados.csv efetivamente materializado e aprovado
+### na mesma execução. A opção permanece desligada por padrão e, quando
+### desligada, não acrescenta projeção, leitura ou escrita ao fluxo normal.
+### As próprias funções do módulo só são materializadas quando a opção está
+### ativa, evitando alocação e avaliação desnecessárias no caminho padrão.
+if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)) {
+monitora_importacao_sismonitora_modelo_sha256 <- function() {
+  "c7a9914d539cf09fd256ad765447c6983e5102e5fad81502b34a7ee66273a956"
+}
+monitora_importacao_sismonitora_modelo_base64 <- function() {
+  paste0(
+    "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",
+    "In1jwokeEjgmvKiQwjHhRoUkjgk/KqRxTDhSIZFjwpMKqRwTrlRI5pjwpcI6E8ZUWGfCmQrrTFhTYZ0Jb2qsM2FOjXUm3KmxzoQ9",
+    "NdaZ8KfGOhMG1VhnwqEa60xYVGOdCY9qrDNhUo11JlxqsM6ETQ3WmfCpQTonhE8N0jkhfGqQzgnhU4N0TgifGqRzQt01kc4J4VOD",
+    "dE4Inxqkc0L41MePCoRPfaRzQvjUxzoTPvWxzoRPfawz4VMf60z41Mc6Ez71sc6ET32sM+FTH+tM+DTAOhM+DbDOhE8DrDPh0wDr",
+    "TPg0wDoTPg2wzoRPA6wz4dMA60z4NEA6p4RPA6RzSvg0RDqnhE9DpHNK+DTED8iET0Okc0r4NEQ6p4RPQ6RzSj3jIp1Twqch0jkl",
+    "fBpinQmfhlhnwqcR1pnwaYR1JnwaYZ0Jn0ZYZ8KnEdaZ8GmEdSZ8GmGdCZ9GWGfCpxHWmfBphHUmfCoFFpowqhRYacKpUmCpCatK",
+    "gbUmvCoFEjsjzCoFUjsj3CoFkjsj7CoF0jsj/CoFEjwjDCsFUjwjHCvxVDAjLCvxZDAjPCvxdDAjTCvxhDCjZqejKeG8Kp/6JQHv",
+    "X5YEvHFjdPVlYikTy5jYb0zsORN7wcReMrFXTOw1E/udib1hYm+Z2B9M7B0Te8/E/mRiH5jYRyb2iYl9ZmJfmNhXJvYXE/ubif3D",
+    "xGIO7JgjO+bQjjm2Yw7umKM75vCOOb5jDvCYIzzmEI85xmMO8pijPOYwjznOYw70mCM95lCPOdZjDvaYoz3mcI853mMO+JgjPmEv",
+    "5RzxCUd8whGfcMQnHPEJR3zCEZ9wxCcc8QlHfMIRn3DEJxzxCUd8whGfcMQnHPEJR3zCEZ9wxCcc8QlHfMIRn3DEJxzxKUd8yj69",
+    "cMSnHPEpR3zKEZ9yxKcc8SlHfMoRn3LEpxzxKUd8yhGfcsSnHPEpR3zKEZ9yxKcc8SlHfMoRn3LEpxzxKUd8yhGfccRnHPEZ+8DO",
+    "EZ9xxGcc8RlHfMYRn3HEZ/9C/GG6Mx/thu6q1bZ+t+teq57cDa/O3ubrfTEdjnws6uP26rxplN8Vb/PqbtW0WRe3TaR7hak6vPba",
+    "fa7LXffJTCffyrouN/DtvnsHt/2mppPbsqzhy7Fu80MPu8ku3xXVx9X/im7qVlarYlt3735fT4/v2TZztUXebvN2f8Jxu6o/lf17",
+    "t8fvx03h5mtb+F3V/e6yfNp+ui+27x6Lqtsg7l9wv/k/UEsDBBQAAAgIABJ1/lxbgGh+2wMAAMkOAAAYAAQAeGwvd29ya3NoZWV0",
+    "cy9zaGVldDIueG1sU1YAAI3XXXPaOBQG4Pv9FR7fF6MPJ4EBOt12uu1Md9JJst1rYcugiW15ZQFJf/0ey0A5zdEMFwm2zHss2Q9w",
+    "vHj/0tTJXrve2HaZssk0TXRb2NK0m2X6z9Pnd3dp0nvVlqq2rV6mr7pP36/+WByse+63WvsECrT9Mt16382zrC+2ulH9xHa6hSOV",
+    "dY3ysOs2Wd85rcoQauqMT6c3WaNMm44V5u6aGraqTKE/2WLX6NaPRZyulYfp91vT9adqL+VV9UqnDrDU03wupvhpPHKux+Sbeo0p",
+    "nO1t5SeFbY5Te7vKWTZD63xpriukXwpNXKamuGZdjXLPu+4dlOvg2qxNbfxrqJUmTTH/ummtU+sa7iesSxUXi1Rvy1+/TKi0WoSx",
+    "7261sDtfm1Z/d0m/a2BCr3/q2h4AWXoaeDCbrR8GstUiO+dKA/d28Jg4XS3TD2z+QYa3hHf8MPrQX2wnXq0fda0Lr8tlCnwHmWtr",
+    "n4eDX8ehfmsPfzlTfoPpAFXvdnocfLCHj7b+AiuBT8AwESgcag1nV/Cy1x91XQ+TgMB/x/n8mu5wjsvt08Q+h1sBKy91pXa1h/N8",
+    "0cfFyolMk+O1+ab3un4YLsoUj8GshjE4UWHrPvxPGtOGi9eol/B6MKXfLtM8T5Ni13vb/DsOHJfnX4f7G2pkY5HRtfJqtXD2kLjx",
+    "VnRq+Piy+bD4YhgMaw3HYLo9jO5XjOWLbD8Ugj/IngtwsgBH0Rs6KsioQNFbOirJqETROzqak9EcRWd09IaM3lxG+ZSO3pLRWxRl",
+    "dPSOjN6hKKejMzI6Q1FBR9mUljFFYRkJR1ghUTwiitGkGDLFI6YYjYohVTyiitGsGHLFI64YDYshWTwii9G0GLIlIrYYjYshXSKi",
+    "i9G8GPIlIr4YDYwhYSIijNPCOBImIsI4LYwjYSL2nRX50kLCREQYp4VxJExEhHFaGEfCREQYp4VxJExEhHFaGEfCZEQYp4VxJExG",
+    "hHFaGEfCZEQYp4VxJExGhAlamEDCZESYoIUJJExGhAlamEDCZOx3MfLDiITJiDBBCxNImIwIE7QwgYTJiDBBCxNIWB4RJmhhAgnL",
+    "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",
+    "AA=="
+  )
+}
+
+monitora_importacao_sismonitora_modelo_materializar <- function(destino) {
+  raw_modelo <- jsonlite::base64_dec(monitora_importacao_sismonitora_modelo_base64())
+  con <- file(destino, open = "wb")
+  on.exit(try(close(con), silent = TRUE), add = TRUE)
+  writeBin(raw_modelo, con)
+  close(con)
+  on.exit(NULL, add = FALSE)
+  hash <- digest::digest(file = destino, algo = "sha256")
+  if (!identical(hash, monitora_importacao_sismonitora_modelo_sha256())) {
+    stop(
+      "Integridade do modelo SISMONITORA 21FEV25 embutido não comprovada; geração bloqueada.",
+      call. = FALSE
+    )
+  }
+  invisible(destino)
+}
+
+monitora_importacao_sismonitora_headers <- function(schema = NULL) {
+  if (is.null(schema)) schema <- monitora_validados_schema_embutido()
+  schema <- data.table::as.data.table(schema)
+  if (!("atributo" %in% names(schema))) {
+    stop("Schema de registros_validados sem a coluna atributo.", call. = FALSE)
+  }
+  atributos <- as.character(schema$atributo)
+  if (length(atributos) != 129L ||
+      !identical(atributos[18L], "controle_versao") ||
+      !identical(atributos[19L], "n_form_ref") ||
+      !identical(atributos[129L], "uuid")) {
+    stop("Schema de registros_validados incompatível com a projeção SISMONITORA 21FEV25.", call. = FALSE)
+  }
+  headers <- c(
+    atributos[18L],
+    "uc",
+    "estacao_amostral",
+    "unidade_amostral",
+    atributos[19L:129L]
+  )
+  if (length(headers) != 115L || anyDuplicated(headers)) {
+    stop("A planilha SISMONITORA 21FEV25 deve possuir exatamente 115 colunas únicas, incluindo uc.", call. = FALSE)
+  }
+  headers
+}
+
+monitora_importacao_sismonitora_vazio <- function(x) {
+  y <- as.character(x)
+  is.na(y) | !nzchar(trimws(y))
+}
+
+monitora_importacao_sismonitora_hora <- function(x, coleta) {
+  y <- trimws(as.character(x)[1L])
+  if (!nzchar(y)) return("")
+  if (grepl("^[0-2][0-9]-[0-5][0-9]-[0-5][0-9]$", y)) return(y)
+  if (grepl("^[0-2][0-9]:[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?(?:Z|[+-][0-2][0-9]:?[0-5][0-9])?$", y, perl = TRUE)) {
+    return(sub("^([0-2][0-9]):([0-5][0-9]):([0-5][0-9]).*$", "\\1-\\2-\\3", y, perl = TRUE))
+  }
+  stop("Hora incompatível com HH-MM-SS na coleta ", coleta, ": ", y, call. = FALSE)
+}
+
+monitora_importacao_sismonitora_valor_comum <- function(x, atributo, coleta) {
+  y <- as.character(x)
+  y[is.na(y)] <- ""
+  valores <- unique(y[nzchar(trimws(y))])
+  if (length(valores) > 1L) {
+    stop(
+      "Atributo comum com mais de um valor não vazio na coleta ",
+      coleta, ": ", atributo, ".",
+      call. = FALSE
+    )
+  }
+  if (length(valores)) valores[1L] else ""
+}
+
+monitora_importacao_sismonitora_campos_omitidos_importador <- function() {
+  ### O importador do SISMONITORA não avalia a função XPath regex usada pela
+  ### restrição de observacoes_gerais no XLSForm 21FEV25. Um valor não vazio
+  ### bloqueia a carga antes da edição. O transporte omite somente esse campo;
+  ### registros_validados.csv e a auditoria preservam integralmente o original.
+  "observacoes_gerais"
+}
+
+monitora_importacao_sismonitora_campos_uuid_inclusao <- function() {
+  ### O produto destina-se exclusivamente à inclusão de registros novos,
+  ### originalmente coletados em formulário de papel. Os cabeçalhos exigidos
+  ### pelo modelo permanecem, mas as células ficam vazias para que o
+  ### SISMONITORA atribua novas identidades. A fonte canônica não é alterada.
+  c("amostragem/registro/uuid", "uuid")
+}
+
+monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Pacote data.table é obrigatório para gerar a planilha de importação SISMONITORA.", call. = FALSE)
+  }
+  headers <- monitora_importacao_sismonitora_headers(schema)
+  mapa_origem <- stats::setNames(headers, headers)
+  mapa_origem[["estacao_amostral"]] <- "ea"
+  mapa_origem[["unidade_amostral"]] <- "ua"
+  obrigatorias <- unique(c(
+    "coleta", "coleta_uuid", "uc", "ciclo", "campanha", "ea", "ua",
+    unname(mapa_origem)
+  ))
+  registros_dt <- data.table::as.data.table(registros)
+  ausentes <- setdiff(obrigatorias, names(registros_dt))
+  if (length(ausentes)) {
+    stop(
+      "registros_validados sem coluna(s) necessária(s) à planilha SISMONITORA: ",
+      paste(ausentes, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (!nrow(registros_dt)) stop("Não há registros para gerar a planilha SISMONITORA.", call. = FALSE)
+  ### Projeta uma única vez somente as colunas necessárias e protege o objeto
+  ### de origem contra qualquer mutação por referência.
+  dt <- data.table::copy(registros_dt[, ..obrigatorias])
+  dt <- dt[, lapply(.SD, as.character)]
+
+  chaves_contexto <- c("uc", "ciclo", "campanha")
+  for (nm in c(chaves_contexto, "coleta", "ea", "ua")) {
+    if (any(monitora_importacao_sismonitora_vazio(dt[[nm]]))) {
+      stop("Campo contextual obrigatório vazio: ", nm, ".", call. = FALSE)
+    }
+  }
+  for (nm in chaves_contexto) {
+    if (data.table::uniqueN(dt[[nm]]) != 1L) {
+      stop(
+        "registros_validados_importacao_sismonitora.xlsx exige um único contexto UC + ciclo + campanha; há mais de um valor de ",
+        nm, ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  registro_headers <- grep("^amostragem/registro/", headers, value = TRUE)
+  coletor_headers <- c("coletor/cpf", "coletor/nome")
+  comuns_headers <- setdiff(headers, c(registro_headers, coletor_headers))
+  ### Uma única partição linear evita varrer a tabela inteira para cada coleta.
+  blocos_entrada <- split(dt, by = "coleta", keep.by = TRUE, sorted = FALSE)
+  ordem_coletas <- data.table::rbindlist(lapply(seq_along(blocos_entrada), function(ii) {
+    bloco <- blocos_entrada[[ii]]
+    id <- bloco$coleta[1L]
+    data.table::data.table(
+      indice_bloco = ii,
+      coleta = id,
+      ea = monitora_importacao_sismonitora_valor_comum(bloco$ea, "ea", id),
+      ua = monitora_importacao_sismonitora_valor_comum(bloco$ua, "ua", id),
+      data = monitora_importacao_sismonitora_valor_comum(bloco[["data_hora/data"]], "data_hora/data", id)
+    )
+  }))
+  data.table::setorderv(ordem_coletas, c("ea", "ua", "data", "coleta"), na.last = TRUE)
+
+  blocos <- vector("list", nrow(ordem_coletas))
+  auditoria <- vector("list", nrow(ordem_coletas))
+  campos_omitidos_importador <- monitora_importacao_sismonitora_campos_omitidos_importador()
+  campos_uuid_inclusao <- monitora_importacao_sismonitora_campos_uuid_inclusao()
+  for (ii in seq_len(nrow(ordem_coletas))) {
+    id <- ordem_coletas$coleta[ii]
+    bloco <- data.table::copy(blocos_entrada[[ordem_coletas$indice_bloco[ii]]])
+    if (nrow(bloco) != 101L) {
+      stop(
+        "Coleta ", id, " possui ", nrow(bloco),
+        " linha(s); o contrato exige exatamente 101.",
+        call. = FALSE
+      )
+    }
+    ponto_chr <- trimws(bloco[["amostragem/registro/ponto_amostral"]])
+    ponto_num <- suppressWarnings(as.integer(ponto_chr))
+    if (anyNA(ponto_num) ||
+        !identical(sort(unique(ponto_num)), 1:101) ||
+        length(unique(ponto_num)) != 101L) {
+      stop(
+        "Coleta ", id,
+        " não contém exatamente os pontos amostrais inteiros de 1 a 101.",
+        call. = FALSE
+      )
+    }
+    bloco <- bloco[order(ponto_num)]
+
+    coleta_uuid_fonte <- monitora_importacao_sismonitora_valor_comum(
+      bloco[["coleta_uuid"]], "coleta_uuid", id
+    )
+    uuid_raiz_fonte <- monitora_importacao_sismonitora_valor_comum(
+      bloco[["uuid"]], "uuid", id
+    )
+    uuid_registro_fonte <- trimws(as.character(
+      bloco[["amostragem/registro/uuid"]]
+    ))
+    uuid_registro_fonte[is.na(uuid_registro_fonte)] <- ""
+
+    saida <- data.table::as.data.table(stats::setNames(
+      rep(list(rep("", 101L)), length(headers)),
+      headers
+    ))
+    valores_omitidos <- stats::setNames(
+      rep("", length(campos_omitidos_importador)),
+      campos_omitidos_importador
+    )
+    for (header in comuns_headers) {
+      origem <- unname(mapa_origem[[header]])
+      valor <- monitora_importacao_sismonitora_valor_comum(bloco[[origem]], header, id)
+      if (identical(header, "data_hora/data") &&
+          nzchar(valor) &&
+          !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", valor)) {
+        stop("Data incompatível com aaaa-mm-dd na coleta ", id, ": ", valor, call. = FALSE)
+      }
+      if (identical(header, "data_hora/hora")) {
+        valor <- monitora_importacao_sismonitora_hora(valor, id)
+      }
+      if (header %in% campos_omitidos_importador) {
+        valores_omitidos[[header]] <- valor
+        valor <- ""
+      }
+      if (header %in% campos_uuid_inclusao) valor <- ""
+      data.table::set(saida, i = 1L, j = header, value = valor)
+    }
+
+    cpf <- trimws(bloco[["coletor/cpf"]])
+    nome <- trimws(bloco[["coletor/nome"]])
+    cpf[is.na(cpf)] <- ""
+    nome[is.na(nome)] <- ""
+    idx_coletor <- which(nzchar(cpf) | nzchar(nome))
+    pares <- data.table::data.table(
+      cpf = cpf[idx_coletor],
+      nome = nome[idx_coletor],
+      ordem = seq_along(idx_coletor)
+    )
+    if (nrow(pares)) pares <- pares[!duplicated(pares[, .(cpf, nome)])]
+    if (!nrow(pares) || any(!nzchar(pares$nome))) {
+      stop(
+        "Coleta ", id,
+        " sem coletor válido; cada repetição preenchida deve possuir nome.",
+        call. = FALSE
+      )
+    }
+    cpf_invalidos <- nzchar(pares$cpf) & !grepl("^[0-9]{11}$", pares$cpf)
+    if (any(cpf_invalidos)) {
+      stop("Coleta ", id, " contém CPF fora do contrato de 11 dígitos.", call. = FALSE)
+    }
+    pares[, nome_chave := tolower(trimws(iconv(nome, from = "", to = "ASCII//TRANSLIT")))]
+    pares[, cpf_chave := cpf]
+    conflitos_nome <- pares[, .(n_valores = data.table::uniqueN(cpf)), by = nome_chave][n_valores > 1L]
+    conflitos_cpf <- pares[
+      nzchar(cpf),
+      .(n_valores = data.table::uniqueN(nome_chave)),
+      by = cpf_chave
+    ][n_valores > 1L]
+    if (nrow(conflitos_nome) || nrow(conflitos_cpf)) {
+      stop(
+        "Coleta ", id,
+        " contém conflito nome/CPF entre coletores; a geração não fará inferência.",
+        call. = FALSE
+      )
+    }
+    if (nrow(pares) > 101L) {
+      stop("Coleta ", id, " possui mais de 101 repetições de coletor.", call. = FALSE)
+    }
+    data.table::set(saida, i = seq_len(nrow(pares)), j = "coletor/cpf", value = pares$cpf)
+    data.table::set(saida, i = seq_len(nrow(pares)), j = "coletor/nome", value = pares$nome)
+
+    for (header in setdiff(registro_headers, campos_uuid_inclusao)) {
+      data.table::set(saida, j = header, value = as.character(bloco[[header]]))
+    }
+    blocos[[ii]] <- saida
+    auditoria[[ii]] <- data.table::data.table(
+      coleta = id,
+      uc = bloco$uc[1L],
+      ciclo = bloco$ciclo[1L],
+      campanha = bloco$campanha[1L],
+      estacao_amostral = saida$estacao_amostral[1L],
+      unidade_amostral = saida$unidade_amostral[1L],
+      n_linhas = nrow(saida),
+      n_coletores = nrow(pares),
+      coleta_uuid_fonte = coleta_uuid_fonte,
+      uuid_raiz_fonte = uuid_raiz_fonte,
+      n_uuid_registro_preenchidos_fonte = sum(nzchar(uuid_registro_fonte)),
+      n_uuid_registro_unicos_fonte = data.table::uniqueN(
+        uuid_registro_fonte[nzchar(uuid_registro_fonte)]
+      ),
+      uuid_raiz_omitido_importacao = nzchar(trimws(uuid_raiz_fonte)),
+      n_uuid_registro_omitidos_importacao = sum(nzchar(uuid_registro_fonte)),
+      motivo_omissao_uuid = "modo_inclusao_registros_novos_sismonitora_gera_identidades",
+      observacoes_gerais_original = valores_omitidos[["observacoes_gerais"]],
+      observacoes_gerais_omitida_importacao = nzchar(
+        trimws(valores_omitidos[["observacoes_gerais"]])
+      ),
+      motivo_omissao_observacoes_gerais = ifelse(
+        nzchar(trimws(valores_omitidos[["observacoes_gerais"]])),
+        "xpath_regex_nao_suportado_no_importador_sismonitora",
+        ""
+      ),
+      status = "aprovado_modo_inclusao"
+    )
+  }
+
+  dados <- data.table::rbindlist(blocos, use.names = TRUE, fill = FALSE)
+  aud <- data.table::rbindlist(auditoria, use.names = TRUE, fill = TRUE)
+  if (any(nzchar(dados$uuid)) ||
+      any(nzchar(dados[["amostragem/registro/uuid"]]))) {
+    stop(
+      "Modo de inclusão violado: as células de uuid e amostragem/registro/uuid devem permanecer vazias.",
+      call. = FALSE
+    )
+  }
+  data.table::setcolorder(dados, headers)
+  opcoes <- list(
+    uc = unique(dt$uc)[1L],
+    estacoes = sort(unique(dt$ea)),
+    unidades = sort(unique(dt$ua))
+  )
+  list(dados = dados, auditoria = aud, headers = headers, opcoes = opcoes)
+}
+
+monitora_importacao_sismonitora_coluna_excel <- function(indice) {
+  indice <- as.integer(indice)[1L]
+  if (is.na(indice) || indice < 1L) stop("Índice de coluna XLSX inválido.", call. = FALSE)
+  partes <- character()
+  while (indice > 0L) {
+    resto <- (indice - 1L) %% 26L
+    partes <- c(intToUtf8(65L + resto), partes)
+    indice <- (indice - 1L) %/% 26L
+  }
+  paste0(partes, collapse = "")
+}
+
+monitora_importacao_sismonitora_xml_escapar <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  gsub(">", "&gt;", x, fixed = TRUE)
+}
+
+monitora_importacao_sismonitora_linha_xml <- function(valores,
+                                                       linha,
+                                                       colunas,
+                                                       estilo = NULL) {
+  valores <- as.character(valores)
+  valores[is.na(valores)] <- ""
+  preenchidas <- which(nzchar(valores))
+  if (!length(preenchidas)) {
+    return(paste0("<row r=\"", linha, "\" spans=\"1:", length(colunas), "\"/>"))
+  }
+  if (any(nchar(valores[preenchidas], type = "chars") > 32767L)) {
+    stop("Valor excede o limite de 32.767 caracteres por célula do XLSX.", call. = FALSE)
+  }
+  atributo_estilo <- if (is.null(estilo)) "" else paste0(" s=\"", as.integer(estilo), "\"")
+  celulas <- paste0(
+    "<c r=\"", colunas[preenchidas], linha, "\"", atributo_estilo,
+    " t=\"inlineStr\"><is><t>",
+    monitora_importacao_sismonitora_xml_escapar(valores[preenchidas]),
+    "</t></is></c>",
+    collapse = ""
+  )
+  paste0("<row r=\"", linha, "\" spans=\"1:", length(colunas), "\">", celulas, "</row>")
+}
+
+monitora_importacao_sismonitora_colunas_inserir_uc <- function(xml) {
+  inicio <- regexpr("<cols>", xml, fixed = TRUE)[1L]
+  fim <- regexpr("</cols>", xml, fixed = TRUE)[1L]
+  if (inicio < 1L || fim < 1L || fim <= inicio) {
+    stop("Definições de largura da aba Preenchimento não reconhecidas.", call. = FALSE)
+  }
+  bloco <- substr(xml, inicio, fim + nchar("</cols>") - 1L)
+  tags <- regmatches(bloco, gregexpr("<col [^>]*/>", bloco, perl = TRUE))[[1L]]
+  if (length(tags) != 114L) {
+    stop("O modelo 21FEV25 deve possuir 114 larguras de coluna explícitas.", call. = FALSE)
+  }
+  indices <- suppressWarnings(as.integer(sub(
+    '^.* min="([0-9]+)".*$',
+    "\\1",
+    tags,
+    perl = TRUE
+  )))
+  if (!identical(indices, seq_len(114L))) {
+    stop("A sequência de larguras do modelo 21FEV25 é incompatível.", call. = FALSE)
+  }
+  deslocadas <- tags
+  for (ii in 2:114) {
+    deslocadas[ii] <- sub(
+      'min="[0-9]+"',
+      paste0('min="', ii + 1L, '"'),
+      deslocadas[ii],
+      perl = TRUE
+    )
+    deslocadas[ii] <- sub(
+      'max="[0-9]+"',
+      paste0('max="', ii + 1L, '"'),
+      deslocadas[ii],
+      perl = TRUE
+    )
+  }
+  novo_bloco <- paste0(
+    "<cols>",
+    deslocadas[1L],
+    '<col min="2" max="2" width="55" customWidth="true" style="0"/>',
+    paste0(deslocadas[2:114], collapse = ""),
+    "</cols>"
+  )
+  paste0(
+    substr(xml, 1L, inicio - 1L),
+    novo_bloco,
+    substr(xml, fim + nchar("</cols>"), nchar(xml))
+  )
+}
+
+monitora_importacao_sismonitora_sheet1_gravar <- function(caminho,
+                                                           dados,
+                                                           headers) {
+  xml <- paste(readLines(caminho, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  if (!grepl("dimension ref=\"A1:DJ2\"", xml, fixed = TRUE) ||
+      !grepl("<sheetData>", xml, fixed = TRUE) ||
+      !grepl("</sheetData>", xml, fixed = TRUE)) {
+    stop("Estrutura da aba Preenchimento do modelo 21FEV25 não reconhecida.", call. = FALSE)
+  }
+  if (length(headers) != 115L || !identical(headers[2L], "uc")) {
+    stop("A aba Preenchimento deve conter 115 colunas, com uc na segunda posição.", call. = FALSE)
+  }
+  ultima_linha <- nrow(dados) + 2L
+  ultima_coluna <- monitora_importacao_sismonitora_coluna_excel(length(headers))
+  xml <- sub(
+    "dimension ref=\"A1:DJ2\"",
+    paste0("dimension ref=\"A1:", ultima_coluna, ultima_linha, "\""),
+    xml,
+    fixed = TRUE
+  )
+  xml <- monitora_importacao_sismonitora_colunas_inserir_uc(xml)
+  inicio <- regexpr("<sheetData>", xml, fixed = TRUE)[1L]
+  fim <- regexpr("</sheetData>", xml, fixed = TRUE)[1L]
+  prefixo <- substr(xml, 1L, inicio + nchar("<sheetData>") - 1L)
+  sufixo <- substr(xml, fim, nchar(xml))
+  colunas <- vapply(
+    seq_along(headers),
+    monitora_importacao_sismonitora_coluna_excel,
+    character(1L)
+  )
+  matriz <- as.matrix(dados[, ..headers])
+  con <- file(caminho, open = "wb")
+  on.exit(try(close(con), silent = TRUE), add = TRUE)
+  writeLines(prefixo, con = con, sep = "\n", useBytes = TRUE)
+  writeLines(
+    monitora_importacao_sismonitora_linha_xml(headers, 1L, colunas, estilo = 1L),
+    con = con,
+    sep = "\n",
+    useBytes = TRUE
+  )
+  writeLines(
+    monitora_importacao_sismonitora_linha_xml(
+      rep("Label não informado", length(headers)),
+      2L,
+      colunas
+    ),
+    con = con,
+    sep = "\n",
+    useBytes = TRUE
+  )
+  if (nrow(matriz)) {
+    inicios <- seq.int(1L, nrow(matriz), by = 250L)
+    for (primeira in inicios) {
+      ultima <- min(primeira + 249L, nrow(matriz))
+      linhas <- vapply(
+        primeira:ultima,
+        function(ii) monitora_importacao_sismonitora_linha_xml(
+          matriz[ii, ],
+          ii + 2L,
+          colunas
+        ),
+        character(1L)
+      )
+      writeLines(linhas, con = con, sep = "\n", useBytes = TRUE)
+    }
+  }
+  writeLines(sufixo, con = con, sep = "\n", useBytes = TRUE)
+  close(con)
+  on.exit(NULL, add = FALSE)
+  invisible(caminho)
+}
+
+monitora_importacao_sismonitora_sheet2_gravar <- function(caminho,
+                                                           opcoes) {
+  valores <- c(
+    paste0("uc: ", opcoes$uc, ", "),
+    paste0("estacao_amostral: ", paste(opcoes$estacoes, collapse = ", "), ", "),
+    paste0("unidade_amostral: ", paste(opcoes$unidades, collapse = ", "), ", ")
+  )
+  xml <- paste(readLines(caminho, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  for (ii in seq_along(valores)) {
+    numero_linha <- ii + 1L
+    padrao <- paste0("<row r=\"", numero_linha, "\"[^>]*>.*?</row>")
+    substituto <- paste0(
+      "<row r=\"", numero_linha, "\" spans=\"1:1\"><c r=\"A", numero_linha,
+      "\" t=\"inlineStr\"><is><t>",
+      monitora_importacao_sismonitora_xml_escapar(valores[ii]),
+      "</t></is></c></row>"
+    )
+    if (!grepl(padrao, xml, perl = TRUE)) {
+      stop("Estrutura da aba Opções válidas do modelo 21FEV25 não reconhecida.", call. = FALSE)
+    }
+    xml <- sub(padrao, substituto, xml, perl = TRUE)
+  }
+  writeLines(xml, con = caminho, useBytes = TRUE)
+  invisible(caminho)
+}
+
+monitora_importacao_sismonitora_xlsx_criar <- function(preparado,
+                                                        destino_temporario) {
+  modelo_temporario <- tempfile(
+    pattern = "monitora_modelo_sismonitora_21FEV25_",
+    fileext = ".xlsx"
+  )
+  pacote_dir <- tempfile(pattern = "monitora_xlsx_sismonitora_")
+  dir.create(pacote_dir, recursive = TRUE, showWarnings = FALSE)
+  on.exit({
+    if (file.exists(modelo_temporario)) unlink(modelo_temporario, force = TRUE)
+    if (dir.exists(pacote_dir)) unlink(pacote_dir, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+
+  monitora_importacao_sismonitora_modelo_materializar(modelo_temporario)
+  entradas_modelo <- sort(utils::unzip(modelo_temporario, list = TRUE)$Name)
+  utils::unzip(modelo_temporario, exdir = pacote_dir)
+  monitora_importacao_sismonitora_sheet1_gravar(
+    file.path(pacote_dir, "xl", "worksheets", "sheet1.xml"),
+    preparado$dados,
+    preparado$headers
+  )
+  monitora_importacao_sismonitora_sheet2_gravar(
+    file.path(pacote_dir, "xl", "worksheets", "sheet2.xml"),
+    preparado$opcoes
+  )
+
+  arquivos <- sort(list.files(
+    pacote_dir,
+    recursive = TRUE,
+    full.names = FALSE,
+    all.files = TRUE,
+    include.dirs = FALSE,
+    no.. = TRUE
+  ))
+  zip::zip(
+    zipfile = destino_temporario,
+    files = arquivos,
+    recurse = FALSE,
+    compression_level = 1L,
+    include_directories = FALSE,
+    root = pacote_dir
+  )
+  entradas_produto <- sort(utils::unzip(destino_temporario, list = TRUE)$Name)
+  if (!identical(entradas_produto, entradas_modelo)) {
+    stop("O pacote XLSX gerado não preservou integralmente a estrutura do modelo 21FEV25.", call. = FALSE)
+  }
+  tamanho <- suppressWarnings(file.info(destino_temporario)$size)
+  if (!is.finite(tamanho) || tamanho <= 0) {
+    stop("A planilha XLSX foi gerada vazia.", call. = FALSE)
+  }
+  invisible(destino_temporario)
+}
+
+monitora_importacao_sismonitora_publicar <- function(temporario,
+                                                      destino) {
+  backup <- ""
+  if (file.exists(destino)) {
+    backup <- tempfile(
+      pattern = ".registros_validados_importacao_sismonitora_backup_",
+      tmpdir = dirname(destino),
+      fileext = ".xlsx"
+    )
+    if (!file.rename(destino, backup)) {
+      stop("Não foi possível proteger a planilha SISMONITORA preexistente.", call. = FALSE)
+    }
+  }
+  if (!file.rename(temporario, destino)) {
+    if (nzchar(backup) && file.exists(backup)) {
+      file.rename(backup, destino)
+    }
+    stop("Não foi possível publicar registros_validados_importacao_sismonitora.xlsx.", call. = FALSE)
+  }
+  if (nzchar(backup) && file.exists(backup)) unlink(backup, force = TRUE)
+  invisible(destino)
+}
+
+monitora_planilha_importacao_sismonitora_gerar <- function(
+    registros_validados,
+    output_dir = MONITORA_OUTPUT_DIR,
+    log_dir = MONITORA_LOG_DIR,
+    exec_id = MONITORA_EXEC_ID,
+    schema = NULL,
+    fonte_csv) {
+  pacotes <- c("data.table", "digest", "jsonlite", "zip")
+  faltantes <- pacotes[!vapply(pacotes, requireNamespace, logical(1L), quietly = TRUE)]
+  if (length(faltantes)) {
+    stop(
+      "Pacote(s) obrigatório(s) ausente(s) para gerar registros_validados_importacao_sismonitora.xlsx: ",
+      paste(faltantes, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (!isTRUE(get0(
+    "MONITORA_REGISTROS_VALIDADOS_GERADO",
+    ifnotfound = FALSE,
+    inherits = TRUE
+  ))) {
+    stop(
+      "registros_validados_importacao_sismonitora.xlsx exige registros_validados.csv gerado e validado na execução corrente; arquivo preexistente não é aceito.",
+      call. = FALSE
+    )
+  }
+  fonte_csv <- as.character(fonte_csv)[1L]
+  if (is.na(fonte_csv) || !nzchar(fonte_csv) || !file.exists(fonte_csv)) {
+    stop(
+      "registros_validados_importacao_sismonitora.xlsx só pode ser gerado após registros_validados.csv ser materializado na mesma execução.",
+      call. = FALSE
+    )
+  }
+  fonte_esperada <- file.path(
+    output_dir,
+    "01_produtos_dados",
+    "registros_validados.csv"
+  )
+  if (!identical(
+    normalizePath(fonte_csv, winslash = "/", mustWork = TRUE),
+    normalizePath(fonte_esperada, winslash = "/", mustWork = TRUE)
+  )) {
+    stop(
+      "A fonte da planilha SISMONITORA deve ser o registros_validados.csv canônico desta execução.",
+      call. = FALSE
+    )
+  }
+  headers_fonte <- names(data.table::fread(
+    fonte_csv,
+    nrows = 0L,
+    encoding = "UTF-8",
+    check.names = FALSE,
+    showProgress = FALSE
+  ))
+  headers_schema <- as.character(data.table::as.data.table(
+    if (is.null(schema)) monitora_validados_schema_embutido() else schema
+  )$atributo)
+  if (!identical(headers_fonte, headers_schema)) {
+    stop(
+      "Cabeçalho de registros_validados.csv não coincide com o contrato de 129 atributos; planilha de importação bloqueada.",
+      call. = FALSE
+    )
+  }
+
+  preparado <- monitora_importacao_sismonitora_preparar(registros_validados, schema)
+  destino <- file.path(
+    output_dir,
+    "01_produtos_dados",
+    "registros_validados_importacao_sismonitora.xlsx"
+  )
+  dir.create(dirname(destino), recursive = TRUE, showWarnings = FALSE)
+  temporario <- tempfile(
+    pattern = ".registros_validados_importacao_sismonitora_",
+    tmpdir = dirname(destino),
+    fileext = ".xlsx"
+  )
+  on.exit(if (file.exists(temporario)) unlink(temporario, force = TRUE), add = TRUE)
+  monitora_importacao_sismonitora_xlsx_criar(preparado, temporario)
+  monitora_importacao_sismonitora_publicar(temporario, destino)
+
+  dir_aud <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+  dir_manifesto <- file.path(output_dir, "00_manifesto_execucao")
+  dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
+  dir.create(dir_manifesto, recursive = TRUE, showWarnings = FALSE)
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  manifesto <- data.table::data.table(
+    produto = "registros_validados_importacao_sismonitora.xlsx",
+    caminho_relativo = "01_produtos_dados/registros_validados_importacao_sismonitora.xlsx",
+    fonte_unica = "01_produtos_dados/registros_validados.csv",
+    uc = preparado$auditoria$uc[1L],
+    ciclo = preparado$auditoria$ciclo[1L],
+    campanha = preparado$auditoria$campanha[1L],
+    modo = "inclusao_registros_novos",
+    modelo_referencia = "planilha_PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_modelo.xlsx",
+    sha256_modelo_referencia = monitora_importacao_sismonitora_modelo_sha256(),
+    adaptacao_modelo = "coluna uc incluída na segunda posição da aba Preenchimento",
+    sha256_fonte = digest::digest(file = fonte_csv, algo = "sha256"),
+    sha256_produto = digest::digest(file = destino, algo = "sha256"),
+    n_abas = 3L,
+    n_coletas = nrow(preparado$auditoria),
+    n_linhas_dados = nrow(preparado$dados),
+    n_linhas_fisicas_preenchimento = nrow(preparado$dados) + 2L,
+    n_colunas_preenchimento = ncol(preparado$dados),
+    coluna_uc_incluida = TRUE,
+    opcoes_contextuais_preenchidas = TRUE,
+    n_observacoes_gerais_omitidas_importacao = sum(
+      preparado$auditoria$observacoes_gerais_omitida_importacao
+    ),
+    observacoes_gerais_preservadas_na_auditoria = TRUE,
+    colunas_uuid_mantidas = all(
+      c("uuid", "amostragem/registro/uuid") %in% names(preparado$dados)
+    ),
+    coleta_uuid_preenchidos_na_fonte = sum(nzchar(preparado$auditoria$coleta_uuid_fonte)),
+    uuid_raiz_preenchidos_na_fonte = sum(
+      preparado$auditoria$uuid_raiz_omitido_importacao
+    ),
+    uuid_registros_preenchidos_na_fonte = sum(
+      preparado$auditoria$n_uuid_registro_omitidos_importacao
+    ),
+    uuid_raiz_preenchidos_na_planilha = sum(nzchar(preparado$dados$uuid)),
+    uuid_registros_preenchidos_na_planilha = sum(
+      nzchar(preparado$dados[["amostragem/registro/uuid"]])
+    ),
+    uuid_fonte_preservados_registros_validados = TRUE,
+    status = "aprovado_estruturalmente_para_homologacao_modo_inclusao"
+  )
+  arq_aud <- file.path(dir_aud, "auditoria_planilha_importacao_sismonitora.csv")
+  arq_log <- file.path(
+    log_dir,
+    paste0("auditoria_planilha_importacao_sismonitora_", exec_id, ".csv")
+  )
+  arq_manifesto <- file.path(
+    dir_manifesto,
+    "manifesto_planilha_importacao_sismonitora.csv"
+  )
+  data.table::fwrite(preparado$auditoria, arq_aud, na = "", bom = TRUE)
+  data.table::fwrite(preparado$auditoria, arq_log, na = "", bom = TRUE)
+  data.table::fwrite(manifesto, arq_manifesto, na = "", bom = TRUE)
+
+  assign("MONITORA_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA_GERADO", TRUE, envir = .GlobalEnv)
+  assign(
+    "MONITORA_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA_ULTIMA_AUDITORIA",
+    list(produto = destino, manifesto = manifesto, auditoria = preparado$auditoria),
+    envir = .GlobalEnv
+  )
+  if (exists("monitora_log_registrar_evento", mode = "function")) {
+    monitora_log_registrar_evento(
+      "planilha_importacao_sismonitora_exportada",
+      "INFO",
+      destino,
+      paste0(
+        "planilha gerada com ", nrow(preparado$dados), " linhas de dados, ",
+        ncol(preparado$dados), " colunas, coluna uc explícita e ",
+        nrow(preparado$auditoria), " coletas; observacoes_gerais omitidas=",
+        sum(preparado$auditoria$observacoes_gerais_omitida_importacao),
+        "; células UUID preenchidas na planilha=0"
+      ),
+      "fonte única=registros_validados.csv gerado na mesma execução; modo=inclusao_registros_novos; colunas UUID mantidas com células vazias e valores da fonte preservados; modelo=21FEV25; três abas preservadas; workaround auditado para XPath regex não suportado"
+    )
+  }
+  invisible(list(produto = destino, manifesto = manifesto, auditoria = preparado$auditoria))
+}
+}
+
 monitora_registros_validados_exportar <- function(registros_corrig,
                                                   output_dir = MONITORA_OUTPUT_DIR,
                                                   log_dir = MONITORA_LOG_DIR,
@@ -41232,6 +42234,16 @@ monitora_registros_validados_exportar <- function(registros_corrig,
       stop("Cabeçalho de registros_validados.csv difere do schema SISMONITORA embutido; exportação bloqueada.", call. = FALSE)
     }
     MONITORA_REGISTROS_VALIDADOS_GERADO <<- TRUE
+    if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)) {
+      monitora_planilha_importacao_sismonitora_gerar(
+        registros_validados = out_cache,
+        output_dir = output_dir,
+        log_dir = log_dir,
+        exec_id = exec_id,
+        schema = schema,
+        fonte_csv = caminho_saida
+      )
+    }
     MONITORA_REGISTROS_VALIDADOS_ULTIMA_AUDITORIA <<- cache_validados$auditoria
     if (exists("monitora_log_registrar_evento", mode = "function")) {
       monitora_log_registrar_evento("registros_validados_exportado", "INFO", caminho_saida, paste0("registros_validados.csv gerado por herança de registros_corrig validado com ", nrow(out_cache), " linhas e ", ncol(out_cache), " colunas"), "cache contratual v2.5.4; sem revalidação semântica")
@@ -41647,6 +42659,16 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     stop("Cabeçalho de registros_validados.csv difere do schema SISMONITORA embutido; exportação bloqueada.", call. = FALSE)
   }
   MONITORA_REGISTROS_VALIDADOS_GERADO <<- TRUE
+  if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)) {
+    monitora_planilha_importacao_sismonitora_gerar(
+      registros_validados = out,
+      output_dir = output_dir,
+      log_dir = log_dir,
+      exec_id = exec_id,
+      schema = schema,
+      fonte_csv = caminho_saida
+    )
+  }
   MONITORA_REGISTROS_VALIDADOS_ULTIMA_AUDITORIA <<- list(produto = caminho_saida, auditoria = auditoria, resumo = resumo, contrato_registros_corrig = auditoria_contrato_corrig)
   if (exists("monitora_log_registrar_evento", mode = "function")) {
     monitora_log_registrar_evento("registros_validados_exportado", "INFO", caminho_saida, paste0("registros_validados.csv gerado com ", nrow(out), " linhas e ", ncol(out), " colunas"), "schema embutido; entrada=registros_corrig")
@@ -62756,6 +63778,10 @@ monitora_auditar_produtos_finais <- function() {
     isTRUE(monitora_global_get("MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS", FALSE))
 
   espera_registros_validados <- isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_VALIDADOS", FALSE))
+  espera_registros_validados_importacao_sismonitora <- isTRUE(monitora_global_get(
+    "MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA",
+    FALSE
+  ))
   espera_registros_importados <- (
     isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_IMPORTADOS", FALSE)) ||
       isTRUE(monitora_global_get("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", FALSE))
@@ -62769,6 +63795,7 @@ monitora_auditar_produtos_finais <- function() {
     produto_linha("registros_importados_bruto.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_importados_bruto.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_importados_bruto.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "snapshot técnico bruto da leitura/montagem dos arquivos de entrada"),
     produto_linha("registros_corrig.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig.csv"), "arquivo", TRUE, TRUE, 1L, "base corrigida final"),
     produto_linha("registros_validados.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_validados.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_validados.csv"), "arquivo", espera_registros_validados, espera_registros_validados, 1L, "produto opcional no schema SISMONITORA 21FEV25"),
+    produto_linha("registros_validados_importacao_sismonitora.xlsx", file.path(out_dir, "01_produtos_dados", "registros_validados_importacao_sismonitora.xlsx"), "arquivo", espera_registros_validados_importacao_sismonitora, espera_registros_validados_importacao_sismonitora, 1L, "XLSX opcional, em modo de inclusão de registros novos, com as três abas do modelo 21FEV25 e coluna uc explícita, derivado exclusivamente de registros_validados.csv gerado e validado nesta execução; colunas uuid e amostragem/registro/uuid mantidas com células vazias, preservando os identificadores na fonte e na auditoria; observacoes_gerais omitido da carga e preservado na auditoria devido a XPath regex não suportado pelo importador"),
     produto_linha("registros_corrig_stat.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig_stat.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig_stat.csv"), "arquivo", TRUE, TRUE, 1L, "base estatística final"),
     produto_linha("relatorio_execucao_ultima_execucao.csv", caminho_raiz_ou_organizado("relatorio_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "log consolidado da última execução"),
     produto_linha("performance_execucao_ultima_execucao.csv", caminho_raiz_ou_organizado("performance_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "performance consolidada da última execução"),
@@ -62794,6 +63821,18 @@ monitora_auditar_produtos_finais <- function() {
     data.table::set(aud, i = idx_validados_aud, j = "status", value = "nao_gerado_nesta_execucao")
     data.table::set(aud, i = idx_validados_aud, j = "observacao", value = paste0(
       aud$observacao[idx_validados_aud],
+      "; arquivo eventualmente preexistente não é aceito como evidência da execução atual"
+    ))
+  }
+  idx_importacao_sismonitora_aud <- which(
+    aud$produto == "registros_validados_importacao_sismonitora.xlsx" &
+      aud$esperado == TRUE
+  )
+  if (length(idx_importacao_sismonitora_aud) &&
+      !isTRUE(monitora_global_get("MONITORA_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA_GERADO", FALSE))) {
+    data.table::set(aud, i = idx_importacao_sismonitora_aud, j = "status", value = "nao_gerado_nesta_execucao")
+    data.table::set(aud, i = idx_importacao_sismonitora_aud, j = "observacao", value = paste0(
+      aud$observacao[idx_importacao_sismonitora_aud],
       "; arquivo eventualmente preexistente não é aceito como evidência da execução atual"
     ))
   }
