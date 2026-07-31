@@ -18,9 +18,9 @@ capturar_erro <- function(expr) {
 }
 
 repo <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
-candidato <- file.path(
-  repo,
-  "monitora_campsav_alvo_global_v2.8.2.R"
+candidato <- Sys.getenv(
+  "MONITORA_TESTE_SCRIPT_IMPORTACAO_SISMONITORA",
+  unset = file.path(repo, "monitora_campsav_alvo_global_v2.8.2.R")
 )
 baseline <- file.path(repo, "monitora_campsav_alvo_global_v2.8.1.R")
 fixture <- Sys.getenv(
@@ -28,7 +28,7 @@ fixture <- Sys.getenv(
   unset = ""
 )
 
-assert(file.exists(candidato), "Script público v2.8.2 não encontrado.")
+assert(file.exists(candidato), "Script sob teste da importação SISMONITORA não encontrado.")
 assert(file.exists(baseline), "Baseline pública v2.8.1 não encontrada.")
 assert(
   nzchar(fixture) && file.exists(fixture),
