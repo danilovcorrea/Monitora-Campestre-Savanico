@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.0
-### Base pública preservada: v2.8.2
+### Versão do script: 2.9.1
+### Base pública preservada: v2.9.0
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -206,8 +206,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.0"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.0-20260731.1"
+MONITORA_SCRIPT_VERSAO <- "2.9.1"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.1-20260801.2"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -236,15 +236,20 @@ MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
 ### com múltiplos contextos, acrescenta ao nome um identificador determinístico
 ### e rótulos seguros de UC, ciclo e campanha. Cada planilha preserva as três
 ### abas do modelo, inclui explicitamente a coluna obrigatória uc em
-### Preenchimento e opera somente em modo de inclusão de registros novos. As
-### colunas uuid e amostragem/registro/uuid permanecem no schema, mas suas
-### células de dados ficam vazias para que o SISMONITORA gere novas identidades;
-### os UUIDs da fonte não são alterados e permanecem no registros_validados.csv
-### e na auditoria de linhagem. Devido a uma limitação comprovada do importador,
+### Preenchimento. As colunas uuid e amostragem/registro/uuid permanecem sempre
+### no schema. A opção imediatamente abaixo controla somente seus valores no
+### XLSX: "S" os esvazia para inclusão de registros novos; "N" preserva os UUIDs
+### da fonte para eventual atualização, uso que depende de homologação prévia da
+### funcionalidade pela equipe do SISMONITORA. Em ambos os modos, a fonte
+### registros_validados.csv permanece intocada. Devido a uma limitação
+### comprovada do importador,
 ### que não avalia a função XPath regex do XLSForm 21FEV25,
 ### observacoes_gerais também é omitido somente das planilhas e preservado na
 ### auditoria e na fonte canônica.
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- "N"
+### Padrão "S" preserva o comportamento público já homologado para inclusão.
+### Esta opção só é lida e validada quando a geração da planilha está ativa.
+MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA <- "S"
 
 ### Performance e granularidade das auditorias volumosas --------------------
 ### O resumo e o detalhamento célula a célula continuam obrigatórios. A versão
@@ -264,11 +269,11 @@ MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
 ### Relatórios analíticos por UC: produto aditivo, desligado por padrão.
 ### Quando "N", nenhum pacote, arquivo, mapa ou cálculo específico deste módulo
 ### é executado. Quando "S", o script gera versões sintética e detalhada em
-### Rmd, Markdown, HTML e PDF, além dos CSVs editáveis de evidências, esforço e
-### continuidade. O produto exige exatamente uma UC na execução para não
+### Rmd, Markdown, HTML, DOCX e PDF, além dos CSVs editáveis de evidências,
+### esforço e continuidade. O produto exige exatamente uma UC na execução para não
 ### apresentar estatísticas agregadas entre UCs como se fossem específicas.
 MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS <- "N"
-MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "pdf")
+MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "docx", "pdf")
 ### Caminho opcional do navegador usado somente para gerar PDF. Deixe vazio
 ### para autodetecção multiplataforma de Chrome, Chromium ou Edge. Quando
 ### informado, pode ser um caminho absoluto ou um comando disponível no PATH.
@@ -441,7 +446,7 @@ MONITORA_PROGRESSO_CLI_FALLBACK_TXT <- "N"
 ### - "barra_completa": mostra barra visual, percentual, contador, ETA, decorrido e status;
 ### - "compacto": prioriza ETA/status em uma linha no console estreito do RStudio;
 ### - "barra": preserva uma barra visual longa com nome da execução;
-### - "tres_linhas": legado experimental; pode não renderizar bem no RStudio.
+### - "tres_linhas": legado alternativo; pode não renderizar bem no RStudio.
 MONITORA_PROGRESSO_CLI_LAYOUT <- "barra_completa"
 MONITORA_PROGRESSO_CLI_STATUS_MAX_CHARS <- 180L
 MONITORA_PROGRESSO_CLI_LARGURA <- 180L
@@ -647,7 +652,7 @@ MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- Sys.getenv(
   unset = paste(
     as.character(get0(
       "MONITORA_FORMATOS_RELATORIOS_ANALITICOS",
-      ifnotfound = c("rmd", "md", "html", "pdf"),
+      ifnotfound = c("rmd", "md", "html", "docx", "pdf"),
       inherits = TRUE
     )),
     collapse = ","
@@ -660,10 +665,10 @@ MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- unique(tolower(trimws(unlist(strsplit
 )))))
 MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- intersect(
   MONITORA_FORMATOS_RELATORIOS_ANALITICOS[nzchar(MONITORA_FORMATOS_RELATORIOS_ANALITICOS)],
-  c("rmd", "md", "html", "pdf")
+  c("rmd", "md", "html", "docx", "pdf")
 )
 if (!length(MONITORA_FORMATOS_RELATORIOS_ANALITICOS)) {
-  MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "pdf")
+  MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "docx", "pdf")
 }
 MONITORA_CAMINHO_NAVEGADOR_PDF <- trimws(Sys.getenv(
   "MONITORA_CAMINHO_NAVEGADOR_PDF",
@@ -803,6 +808,29 @@ MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA <- identical(
   MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA,
   "S"
 )
+MONITORA_REMOVER_UUID_IMPORTACAO_SISMONITORA <- NA
+if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA)) {
+  ### O caminho desligado não consulta ambiente, não valida a opção e não
+  ### materializa código do produto. Assim, a nova política de UUID não
+  ### acrescenta leitura de dados nem custo mensurável quando o XLSX está em N.
+  MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA <- Sys.getenv(
+    "MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA",
+    unset = as.character(MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA)[1L]
+  )
+  MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA <- toupper(trimws(
+    as.character(MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA)[1L]
+  ))
+  if (!(MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA %in% c("S", "N"))) {
+    stop(
+      "MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA deve ser 'S' ou 'N'.",
+      call. = FALSE
+    )
+  }
+  MONITORA_REMOVER_UUID_IMPORTACAO_SISMONITORA <- identical(
+    MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA,
+    "S"
+  )
+}
 if (isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA) &&
     !isTRUE(MONITORA_GERAR_REGISTROS_VALIDADOS)) {
   stop(
@@ -1903,10 +1931,19 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N impede o painel. Em painel_e_parar, abrir_painel_cache e painel_incremental_*, o painel abre mesmo se estiver N.", "Produto sensível; não publicar. Em modos com painel a geração bruta/saneada pode ser obrigatória para auditoria pré-painel.", "Não é substituto de revisão humana; depende de registros_corrig consistente e sem bloqueios impeditivos.", "A validação espacial depende de coordenadas detectáveis e deve ser interpretada junto com relatórios específicos.", "Se leaflet não estiver instalado, o script mantém tabela e relatórios, mas pode omitir mapa interativo.", "Não depende de dados reais e pode ser gerado isoladamente, mas em execução com painel fica disponível antes da edição.", "Produto local de governança; pode conter nomes de arquivos e caminhos locais.", "HTML é o formato técnico principal; PDF é preferencialmente gerado via HTML/pagedown para evitar tabelas largas.", "Preencha no painel ou por variável de ambiente. O valor digitado no painel tem prioridade.", "Evite deixar vazio em execução institucional.", "Use deliberadamente: replay muda o estado da base antes do painel. O relatório audita o arquivo reaplicado.", "Prefira correcoes_semanticas_consolidada.csv exportado pelo script; correcoes_campos.csv legado é aceito, mas pode depender mais da estrutura da rodada original.", "Mantenha ligado para preservar a intenção das operações independentemente da evolução posterior do script.", "Mantida para compatibilidade; o modo explícito é mais claro e auditável.", "Só use se souber qual cache pertence ao input atual.", "O uso de cache incorreto pode aplicar correções fora de contexto.")
   )
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
-    variavel = "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA",
-    valores = "S ou N; padrão N",
-    finalidade = "Gera uma planilha de importação para cada contexto UC + ciclo + campanha, em modo de inclusão de registros novos, a partir do registros_validados.csv materializado e validado na mesma execução. Um contexto preserva o nome canônico; múltiplos contextos recebem nomes inequívocos.",
-    cuidados = "Exige MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S; cada arquivo preserva as três abas do modelo 21FEV25, inclui a coluna obrigatória uc em Preenchimento e mantém campos comuns apenas na primeira linha de cada bloco de 101 pontos. As colunas uuid e amostragem/registro/uuid são mantidas, mas ficam vazias para o SISMONITORA gerar novas identidades; os valores originais permanecem intocados em registros_validados.csv e são rastreados na auditoria. observacoes_gerais também é omitido somente das planilhas porque o importador não suporta a função XPath regex do formulário; o valor original permanece na fonte e na auditoria. Pode conter dados pessoais e referências a fotos. Não use para editar registros já existentes."
+    variavel = c(
+      "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA",
+      "MONITORA_OPCAO_REMOVER_UUID_IMPORTACAO_SISMONITORA"
+    ),
+    valores = c("S ou N; padrão N", "S ou N; padrão S"),
+    finalidade = c(
+      "Gera uma planilha de importação para cada contexto UC + ciclo + campanha a partir do registros_validados.csv materializado e validado na mesma execução. Um contexto preserva o nome canônico; múltiplos contextos recebem nomes inequívocos.",
+      "Controla somente os valores das colunas uuid e amostragem/registro/uuid no XLSX: S os remove para inclusão de registros novos; N preserva os valores da fonte para eventual atualização por UUID."
+    ),
+    cuidados = c(
+      "Exige MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S; cada arquivo preserva as três abas do modelo 21FEV25, inclui a coluna obrigatória uc em Preenchimento e mantém campos comuns apenas na primeira linha de cada bloco de 101 pontos. observacoes_gerais é omitido somente das planilhas porque o importador não suporta a função XPath regex do formulário; o valor original permanece na fonte e na auditoria. Pode conter dados pessoais e referências a fotos.",
+      "A opção só é lida quando a planilha está ativa. O padrão S mantém o modo já homologado de inclusão. Use N somente após a equipe do SISMONITORA confirmar e homologar a atualização por UUID; registros_validados.csv permanece intocado em ambos os modos."
+    )
   )), use.names = TRUE, fill = TRUE)
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
     variavel = c(
@@ -1917,13 +1954,13 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     ),
     valores = c(
       "S ou N; padrão N",
-      "rmd, md, html, pdf",
+      "rmd, md, html, docx, pdf",
       "S ou N; padrão N",
       "SENTINEL2_PUBLICO ou GOOGLE_MAPS; padrão SENTINEL2_PUBLICO"
     ),
     finalidade = c(
       "Gera relatórios analíticos sintético e detalhado por UC em output/08_relatorios_analiticos/, com tabelas editáveis de evidências, esforço real e continuidade.",
-      "Define os formatos documentais. Rmd e Markdown preservam fontes editáveis; HTML e PDF são produtos de leitura/publicação.",
+      "Define os formatos documentais. Rmd e Markdown preservam fontes editáveis; DOCX é editável em processadores de texto; HTML e PDF são produtos de leitura/publicação.",
       "Acrescenta ao relatório um mapa de continuidade sobre imagem orbital em cor natural.",
       "Seleciona a fonte do fundo orbital. SENTINEL2_PUBLICO consulta imagens Sentinel-2 L2A recentes, sem chave, conta ou cobrança; GOOGLE_MAPS mantém a alternativa autenticada."
     ),
@@ -1957,11 +1994,11 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
   )
   produtos <- data.table::rbindlist(list(produtos, data.table::data.table(
     produto = "registros_validados_importacao_sismonitora*.xlsx",
-    como_e_criado = "Criado opcionalmente por projeção estrita do registros_validados.csv materializado e validado na mesma execução, com um XLSX por contexto UC + ciclo + campanha, preservando o modelo oficial 21FEV25, acrescentando a coluna obrigatória uc na aba Preenchimento, mantendo vazias as células de uuid e amostragem/registro/uuid para inclusão nova e omitindo observacoes_gerais, cujo XPath regex não é suportado pelo importador.",
+    como_e_criado = "Criado opcionalmente por projeção estrita do registros_validados.csv materializado e validado na mesma execução, com um XLSX por contexto UC + ciclo + campanha, preservando o modelo oficial 21FEV25, acrescentando a coluna obrigatória uc na aba Preenchimento, aplicando a política configurada de remoção ou preservação dos UUIDs e omitindo observacoes_gerais, cujo XPath regex não é suportado pelo importador.",
     escopo = "Produto derivado de integração, sem alterar registros_validados.csv.",
     pre_requisitos = "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA = S; MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = S; chaves UC, ciclo e campanha preenchidas; coletas com exatamente 101 pontos.",
-    finalidade = "Homologação e importação de registros novos no SISMONITORA.",
-    subsidia = "Inclusão de registros provenientes de formulários em papel e auditoria da carga."
+    finalidade = "Homologação e importação de registros novos ou, após confirmação funcional do SISMONITORA, eventual atualização por UUID.",
+    subsidia = "Inclusão de registros provenientes de formulários em papel, eventual atualização controlada e auditoria da carga."
   )), use.names = TRUE, fill = TRUE)
 
   painel <- data.table::data.table(
@@ -42025,10 +42062,9 @@ monitora_importacao_sismonitora_campos_omitidos_importador <- function() {
 }
 
 monitora_importacao_sismonitora_campos_uuid_inclusao <- function() {
-  ### O produto destina-se exclusivamente à inclusão de registros novos,
-  ### originalmente coletados em formulário de papel. Os cabeçalhos exigidos
-  ### pelo modelo permanecem, mas as células ficam vazias para que o
-  ### SISMONITORA atribua novas identidades. A fonte canônica não é alterada.
+  ### O schema mantém os dois campos. A política configurada decide se seus
+  ### valores serão esvaziados para inclusão ou preservados para uma eventual
+  ### atualização por UUID, sem alterar a fonte canônica.
   c("amostragem/registro/uuid", "uuid")
 }
 
@@ -42117,7 +42153,11 @@ monitora_importacao_sismonitora_contextos <- function(registros) {
   contextos[]
 }
 
-monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
+monitora_importacao_sismonitora_preparar <- function(
+  registros,
+  schema = NULL,
+  remover_uuid = TRUE
+) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Pacote data.table é obrigatório para gerar a planilha de importação SISMONITORA.", call. = FALSE)
   }
@@ -42139,6 +42179,7 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
     )
   }
   if (!nrow(registros_dt)) stop("Não há registros para gerar a planilha SISMONITORA.", call. = FALSE)
+  remover_uuid <- isTRUE(remover_uuid)
   ### Projeta uma única vez somente as colunas necessárias e protege o objeto
   ### de origem contra qualquer mutação por referência.
   dt <- data.table::copy(registros_dt[, ..obrigatorias])
@@ -42239,7 +42280,7 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
         valores_omitidos[[header]] <- valor
         valor <- ""
       }
-      if (header %in% campos_uuid_inclusao) valor <- ""
+      if (isTRUE(remover_uuid) && header %in% campos_uuid_inclusao) valor <- ""
       data.table::set(saida, i = 1L, j = header, value = valor)
     }
 
@@ -42286,8 +42327,28 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
     data.table::set(saida, i = seq_len(nrow(pares)), j = "coletor/cpf", value = pares$cpf)
     data.table::set(saida, i = seq_len(nrow(pares)), j = "coletor/nome", value = pares$nome)
 
-    for (header in setdiff(registro_headers, campos_uuid_inclusao)) {
+    registro_headers_exportar <- if (isTRUE(remover_uuid)) {
+      setdiff(registro_headers, campos_uuid_inclusao)
+    } else {
+      registro_headers
+    }
+    for (header in registro_headers_exportar) {
       data.table::set(saida, j = header, value = as.character(bloco[[header]]))
+    }
+    if (!isTRUE(remover_uuid)) {
+      if (!identical(
+        trimws(as.character(saida[["amostragem/registro/uuid"]])),
+        uuid_registro_fonte
+      ) || !identical(
+        trimws(as.character(saida$uuid[1L])),
+        trimws(as.character(uuid_raiz_fonte))
+      )) {
+        stop(
+          "Preservação de UUID falhou na coleta ", id,
+          "; a planilha não foi publicada.",
+          call. = FALSE
+        )
+      }
     }
     blocos[[ii]] <- saida
     auditoria[[ii]] <- data.table::data.table(
@@ -42305,9 +42366,18 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
       n_uuid_registro_unicos_fonte = data.table::uniqueN(
         uuid_registro_fonte[nzchar(uuid_registro_fonte)]
       ),
-      uuid_raiz_omitido_importacao = nzchar(trimws(uuid_raiz_fonte)),
-      n_uuid_registro_omitidos_importacao = sum(nzchar(uuid_registro_fonte)),
-      motivo_omissao_uuid = "modo_inclusao_registros_novos_sismonitora_gera_identidades",
+      politica_uuid = if (isTRUE(remover_uuid)) "remover" else "preservar",
+      uuid_raiz_removido_importacao = isTRUE(remover_uuid) && nzchar(trimws(uuid_raiz_fonte)),
+      n_uuid_registro_removidos_importacao = if (isTRUE(remover_uuid)) sum(nzchar(uuid_registro_fonte)) else 0L,
+      motivo_politica_uuid = if (isTRUE(remover_uuid)) {
+        "inclusao_registros_novos_sismonitora_gera_identidades"
+      } else {
+        "preservacao_explicita_para_eventual_atualizacao_por_uuid"
+      },
+      uuid_raiz_preenchido_planilha = nzchar(trimws(as.character(saida$uuid[1L]))),
+      n_uuid_registro_preenchidos_planilha = sum(nzchar(trimws(as.character(
+        saida[["amostragem/registro/uuid"]]
+      )))),
       observacoes_gerais_original = valores_omitidos[["observacoes_gerais"]],
       observacoes_gerais_omitida_importacao = nzchar(
         trimws(valores_omitidos[["observacoes_gerais"]])
@@ -42317,14 +42387,19 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
         "xpath_regex_nao_suportado_no_importador_sismonitora",
         ""
       ),
-      status = "aprovado_modo_inclusao"
+      status = if (isTRUE(remover_uuid)) {
+        "aprovado_modo_inclusao"
+      } else {
+        "aprovado_estruturalmente_uuid_preservado_homologacao_sismonitora_pendente"
+      }
     )
   }
 
   dados <- data.table::rbindlist(blocos, use.names = TRUE, fill = FALSE)
   aud <- data.table::rbindlist(auditoria, use.names = TRUE, fill = TRUE)
-  if (any(nzchar(dados$uuid)) ||
-      any(nzchar(dados[["amostragem/registro/uuid"]]))) {
+  if (isTRUE(remover_uuid) &&
+      (any(nzchar(dados$uuid)) ||
+       any(nzchar(dados[["amostragem/registro/uuid"]])))) {
     stop(
       "Modo de inclusão violado: as células de uuid e amostragem/registro/uuid devem permanecer vazias.",
       call. = FALSE
@@ -42336,7 +42411,13 @@ monitora_importacao_sismonitora_preparar <- function(registros, schema = NULL) {
     estacoes = sort(unique(dt$ea)),
     unidades = sort(unique(dt$ua))
   )
-  list(dados = dados, auditoria = aud, headers = headers, opcoes = opcoes)
+  list(
+    dados = dados,
+    auditoria = aud,
+    headers = headers,
+    opcoes = opcoes,
+    remover_uuid = remover_uuid
+  )
 }
 
 monitora_importacao_sismonitora_coluna_excel <- function(indice) {
@@ -42675,7 +42756,12 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
     log_dir = MONITORA_LOG_DIR,
     exec_id = MONITORA_EXEC_ID,
     schema = NULL,
-    fonte_csv) {
+    fonte_csv,
+    remover_uuid = get0(
+      "MONITORA_REMOVER_UUID_IMPORTACAO_SISMONITORA",
+      ifnotfound = TRUE,
+      inherits = TRUE
+    )) {
   pacotes <- c("data.table", "digest", "jsonlite", "zip")
   faltantes <- pacotes[!vapply(pacotes, requireNamespace, logical(1L), quietly = TRUE)]
   if (length(faltantes)) {
@@ -42734,6 +42820,7 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
   }
 
   registros_dt <- data.table::as.data.table(registros_validados)
+  remover_uuid <- isTRUE(remover_uuid)
   contextos <- monitora_importacao_sismonitora_contextos(registros_dt)
   n_contextos <- nrow(contextos)
   produtos_dir <- file.path(output_dir, "01_produtos_dados")
@@ -42753,7 +42840,8 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
   for (ii in seq_len(n_contextos)) {
     preparados[[ii]] <- monitora_importacao_sismonitora_preparar(
       registros_dt[contextos$linhas[[ii]]],
-      schema
+      schema,
+      remover_uuid = remover_uuid
     )
     temporarios[ii] <- tempfile(
       pattern = paste0(
@@ -42819,7 +42907,12 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
       uc = preparado$auditoria$uc[1L],
       ciclo = preparado$auditoria$ciclo[1L],
       campanha = preparado$auditoria$campanha[1L],
-      modo = "inclusao_registros_novos",
+      modo = if (isTRUE(remover_uuid)) {
+        "inclusao_registros_novos_uuid_removido"
+      } else {
+        "uuid_preservado_eventual_atualizacao_homologacao_pendente"
+      },
+      opcao_remover_uuid = if (isTRUE(remover_uuid)) "S" else "N",
       modelo_referencia = "planilha_PLANTASHERBACEASELENHOSAS_CAMPSAV_21FEV25_modelo.xlsx",
       sha256_modelo_referencia = sha256_modelo,
       adaptacao_modelo = "coluna uc incluída na segunda posição da aba Preenchimento",
@@ -42842,11 +42935,11 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
       coleta_uuid_preenchidos_na_fonte = sum(
         nzchar(preparado$auditoria$coleta_uuid_fonte)
       ),
-      uuid_raiz_preenchidos_na_fonte = sum(
-        preparado$auditoria$uuid_raiz_omitido_importacao
-      ),
+      uuid_raiz_preenchidos_na_fonte = sum(nzchar(
+        trimws(preparado$auditoria$uuid_raiz_fonte)
+      )),
       uuid_registros_preenchidos_na_fonte = sum(
-        preparado$auditoria$n_uuid_registro_omitidos_importacao
+        preparado$auditoria$n_uuid_registro_preenchidos_fonte
       ),
       uuid_raiz_preenchidos_na_planilha = sum(
         nzchar(preparado$dados$uuid)
@@ -42855,7 +42948,17 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
         nzchar(preparado$dados[["amostragem/registro/uuid"]])
       ),
       uuid_fonte_preservados_registros_validados = TRUE,
-      status = "aprovado_estruturalmente_para_homologacao_modo_inclusao"
+      politica_uuid_aplicada = if (isTRUE(remover_uuid)) "remover" else "preservar",
+      homologacao_atualizacao_uuid_sismonitora = if (isTRUE(remover_uuid)) {
+        "nao_aplicavel_modo_inclusao"
+      } else {
+        "pendente_confirmacao_equipe_sismonitora"
+      },
+      status = if (isTRUE(remover_uuid)) {
+        "aprovado_estruturalmente_para_homologacao_modo_inclusao"
+      } else {
+        "aprovado_estruturalmente_uuid_preservado_homologacao_funcional_pendente"
+      }
     )
   }
   auditoria <- data.table::rbindlist(
@@ -42907,9 +43010,17 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
         n_linhas_total, " linhas de dados, 115 colunas e ",
         n_coletas_total, " coletas; observacoes_gerais omitidas=",
         sum(auditoria$observacoes_gerais_omitida_importacao),
-        "; células UUID preenchidas na planilha=0"
+        "; política UUID=", if (isTRUE(remover_uuid)) "remover" else "preservar",
+        "; células UUID preenchidas na planilha=",
+        sum(manifesto$uuid_raiz_preenchidos_na_planilha) +
+          sum(manifesto$uuid_registros_preenchidos_na_planilha)
       ),
-      "fonte única=registros_validados.csv gerado na mesma execução; particionamento determinístico por UC+ciclo+campanha; modo=inclusao_registros_novos; colunas UUID mantidas com células vazias e valores da fonte preservados; modelo=21FEV25; três abas preservadas; workaround auditado para XPath regex não suportado"
+      paste0(
+        "fonte única=registros_validados.csv gerado na mesma execução; particionamento determinístico por UC+ciclo+campanha; ",
+        "colunas UUID sempre mantidas; valores ",
+        if (isTRUE(remover_uuid)) "removidos somente do XLSX para inclusão" else "preservados no XLSX para eventual atualização, dependente de homologação funcional",
+        "; fonte intocada; modelo=21FEV25; três abas preservadas; workaround auditado para XPath regex não suportado"
+      )
     )
   }
   invisible(list(
@@ -64436,6 +64547,12 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     limite_nuvens_area_pct = NA_real_,
     resolucao_m = NA_real_,
     crs_imagem = NA_character_,
+    referencial_mapa = NA_character_,
+    projecao_mapa = NA_character_,
+    epsg_mapa = NA_character_,
+    zona_utm = NA_character_,
+    unidade_coordenadas = NA_character_,
+    responsabilidade = NA_character_,
     cache_reutilizado = FALSE,
     chave_persistida = FALSE,
     url_credencial_persistida = FALSE,
@@ -64806,15 +64923,1408 @@ monitora_relatorios_analiticos_escala_mapa <- function(largura_m) {
   max(candidatos[candidatos <= alvo], na.rm = TRUE)
 }
 
+monitora_relatorios_analiticos_escala_numerica <- function(
+  largura_m,
+  largura_impressao_cm = 13.8
+) {
+  denominador <- as.numeric(largura_m) / (as.numeric(largura_impressao_cm) / 100)
+  if (!is.finite(denominador) || denominador <= 0) return(NA_real_)
+  ordem <- floor(log10(denominador))
+  passo <- 10 ^ max(0, ordem - 2L)
+  max(1, round(denominador / passo) * passo)
+}
+
+monitora_relatorios_analiticos_fmt_escala_numerica <- function(x) {
+  x <- suppressWarnings(as.numeric(x)[1L])
+  if (!is.finite(x) || x <= 0) return("não calculável")
+  paste0("1:", format(round(x), big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE))
+}
+
+monitora_relatorios_analiticos_rotulo_longitude <- function(x) {
+  hemisferio <- ifelse(x < 0, "O", ifelse(x > 0, "L", ""))
+  paste0(
+    formatC(abs(x), format = "f", digits = 3L, decimal.mark = ","),
+    "°", hemisferio
+  )
+}
+
+monitora_relatorios_analiticos_rotulo_latitude <- function(x) {
+  hemisferio <- ifelse(x < 0, "S", ifelse(x > 0, "N", ""))
+  paste0(
+    formatC(abs(x), format = "f", digits = 3L, decimal.mark = ","),
+    "°", hemisferio
+  )
+}
+
+monitora_relatorios_analiticos_parametros_cartograficos <- function(
+  longitude,
+  latitude,
+  largura_impressao_cm = 13.8,
+  n_grade = 5L
+) {
+  longitude <- suppressWarnings(as.numeric(longitude))
+  latitude <- suppressWarnings(as.numeric(latitude))
+  longitude <- longitude[is.finite(longitude)]
+  latitude <- latitude[is.finite(latitude)]
+  if (!length(longitude) || !length(latitude)) {
+    stop("Não há coordenadas válidas para compor os elementos cartográficos.", call. = FALSE)
+  }
+  xlim <- range(longitude)
+  ylim <- range(latitude)
+  dx <- diff(xlim)
+  dy <- diff(ylim)
+  if (!is.finite(dx) || dx <= 0) dx <- 0.01
+  if (!is.finite(dy) || dy <= 0) dy <- 0.01
+  xlim <- xlim + c(-1, 1) * max(dx * 0.08, 0.0015)
+  ylim <- ylim + c(-1, 1) * max(dy * 0.08, 0.0015)
+  dx <- diff(xlim)
+  dy <- diff(ylim)
+  latitude_media <- mean(ylim)
+  largura_m <- dx * 111320 * max(0.05, cos(latitude_media * pi / 180))
+  escala_m <- monitora_relatorios_analiticos_escala_mapa(largura_m)
+  escala_graus <- escala_m / (111320 * max(0.05, cos(latitude_media * pi / 180)))
+  x0 <- xlim[1L] + 0.055 * dx
+  y0 <- ylim[1L] + 0.065 * dy
+  list(
+    xlim = xlim,
+    ylim = ylim,
+    dx = dx,
+    dy = dy,
+    x_breaks = pretty(xlim, n = as.integer(n_grade)),
+    y_breaks = pretty(ylim, n = as.integer(n_grade)),
+    x0 = x0,
+    y0 = y0,
+    escala_m = escala_m,
+    escala_graus = escala_graus,
+    escala_numerica = monitora_relatorios_analiticos_escala_numerica(
+      largura_m,
+      largura_impressao_cm
+    )
+  )
+}
+
+monitora_relatorios_analiticos_camadas_cartograficas <- function(
+  parametros,
+  compacto = FALSE
+) {
+  p <- parametros
+  metade <- p$escala_graus / 2
+  altura_barra <- p$dy * if (isTRUE(compacto)) 0.012 else 0.009
+  tamanho_texto <- if (isTRUE(compacto)) 2.60 else 3.00
+  rotulo_escala <- if (p$escala_m >= 1000) {
+    paste0(
+      format(round(p$escala_m / 1000, 1L), decimal.mark = ",", trim = TRUE),
+      " km"
+    )
+  } else {
+    paste0(round(p$escala_m), " m")
+  }
+  xn <- p$xlim[2L] - 0.06 * p$dx
+  yn <- p$ylim[1L] + 0.055 * p$dy
+  list(
+    ggplot2::annotate(
+      "rect",
+      xmin = p$x0 - 0.015 * p$dx,
+      xmax = p$x0 + p$escala_graus + 0.015 * p$dx,
+      ymin = p$y0 - 0.025 * p$dy,
+      ymax = p$y0 + 0.055 * p$dy,
+      fill = grDevices::adjustcolor("white", alpha.f = 0.82),
+      colour = "#455A64",
+      linewidth = 0.25
+    ),
+    ggplot2::annotate(
+      "rect",
+      xmin = p$x0,
+      xmax = p$x0 + metade,
+      ymin = p$y0,
+      ymax = p$y0 + altura_barra,
+      fill = "#263238",
+      colour = "#263238",
+      linewidth = 0.25
+    ),
+    ggplot2::annotate(
+      "rect",
+      xmin = p$x0 + metade,
+      xmax = p$x0 + 2 * metade,
+      ymin = p$y0,
+      ymax = p$y0 + altura_barra,
+      fill = "white",
+      colour = "#263238",
+      linewidth = 0.25
+    ),
+    ggplot2::annotate(
+      "text",
+      x = p$x0 + metade,
+      y = p$y0 + 0.031 * p$dy,
+      label = rotulo_escala,
+      size = tamanho_texto,
+      fontface = "bold",
+      colour = "#263238"
+    ),
+    ggplot2::annotate(
+      "segment",
+      x = xn,
+      xend = xn,
+      y = yn,
+      yend = yn + 0.075 * p$dy,
+      colour = "#263238",
+      linewidth = 0.7,
+      arrow = grid::arrow(length = grid::unit(0.12, "inches"), type = "closed")
+    ),
+    ggplot2::annotate(
+      "text",
+      x = xn,
+      y = yn + 0.10 * p$dy,
+      label = "N",
+      size = if (isTRUE(compacto)) 3.25 else 3.65,
+      fontface = "bold",
+      colour = "#263238"
+    )
+  )
+}
+
+monitora_relatorios_analiticos_graticula_projetada <- function(
+  raster,
+  n_grade = 5L
+) {
+  crs_raster <- terra::crs(raster)
+  poligono <- terra::as.polygons(terra::ext(raster), crs = crs_raster)
+  poligono_geo <- terra::project(poligono, "EPSG:4326")
+  ext_geo <- terra::ext(poligono_geo)
+  lon_lim <- c(as.numeric(ext_geo$xmin), as.numeric(ext_geo$xmax))
+  lat_lim <- c(as.numeric(ext_geo$ymin), as.numeric(ext_geo$ymax))
+  lon_breaks <- pretty(lon_lim, n = as.integer(n_grade))
+  lat_breaks <- pretty(lat_lim, n = as.integer(n_grade))
+  lon_breaks <- lon_breaks[lon_breaks >= lon_lim[1L] & lon_breaks <= lon_lim[2L]]
+  lat_breaks <- lat_breaks[lat_breaks >= lat_lim[1L] & lat_breaks <= lat_lim[2L]]
+  projetar <- function(lon, lat) {
+    terra::crds(terra::project(
+      terra::vect(
+        data.frame(lon = lon, lat = lat),
+        geom = c("lon", "lat"),
+        crs = "EPSG:4326"
+      ),
+      crs_raster
+    ))
+  }
+  linhas_lon <- lapply(lon_breaks, function(lon) {
+    lat <- seq(lat_lim[1L], lat_lim[2L], length.out = 80L)
+    projetar(rep(lon, length(lat)), lat)
+  })
+  linhas_lat <- lapply(lat_breaks, function(lat) {
+    lon <- seq(lon_lim[1L], lon_lim[2L], length.out = 80L)
+    projetar(lon, rep(lat, length(lon)))
+  })
+  eixo_x <- if (length(lon_breaks)) {
+    projetar(lon_breaks, rep(lat_lim[1L], length(lon_breaks)))[, 1L]
+  } else numeric()
+  eixo_y <- if (length(lat_breaks)) {
+    projetar(rep(lon_lim[1L], length(lat_breaks)), lat_breaks)[, 2L]
+  } else numeric()
+  list(
+    lon_breaks = lon_breaks,
+    lat_breaks = lat_breaks,
+    linhas_lon = linhas_lon,
+    linhas_lat = linhas_lat,
+    eixo_x = eixo_x,
+    eixo_y = eixo_y
+  )
+}
+
+monitora_relatorios_analiticos_crs_cartografico <- function(raster) {
+  descricao <- tryCatch(
+    terra::crs(raster, describe = TRUE),
+    error = function(e) NULL
+  )
+  nome <- if (!is.null(descricao) && "name" %in% names(descricao) &&
+      nrow(descricao)) {
+    trimws(as.character(descricao$name[[1L]]))
+  } else {
+    "Sistema de referência não identificado"
+  }
+  autoridade <- if (!is.null(descricao) && "authority" %in% names(descricao) &&
+      nrow(descricao)) {
+    trimws(as.character(descricao$authority[[1L]]))
+  } else {
+    ""
+  }
+  codigo <- if (!is.null(descricao) && "code" %in% names(descricao) &&
+      nrow(descricao)) {
+    trimws(as.character(descricao$code[[1L]]))
+  } else {
+    ""
+  }
+  epsg <- if (nzchar(autoridade) && nzchar(codigo)) {
+    paste0(autoridade, ":", codigo)
+  } else {
+    "código não identificado"
+  }
+  list(nome = nome, epsg = epsg)
+}
+
+monitora_relatorios_analiticos_crs_utm_dinamico <- function(
+  longitude,
+  latitude
+) {
+  longitude <- suppressWarnings(mean(as.numeric(longitude), na.rm = TRUE))
+  latitude <- suppressWarnings(mean(as.numeric(latitude), na.rm = TRUE))
+  if (!is.finite(longitude) || !is.finite(latitude) ||
+      longitude < -180 || longitude > 180 ||
+      latitude < -80 || latitude > 84) {
+    stop("Centro geográfico inválido para definir a projeção UTM.", call. = FALSE)
+  }
+  zona <- max(1L, min(60L, as.integer(floor((longitude + 180) / 6) + 1L)))
+  hemisferio <- if (latitude < 0) "S" else "N"
+  no_dominio_sirgas2000 <- longitude >= -75 && longitude <= -30 &&
+    latitude >= -35 && latitude <= 7 && zona >= 18L && zona <= 25L
+  if (isTRUE(no_dominio_sirgas2000)) {
+    epsg <- if (identical(hemisferio, "S")) {
+      31960L + zona
+    } else {
+      31954L + zona
+    }
+    referencial <- "SIRGAS2000"
+  } else {
+    epsg <- if (identical(hemisferio, "S")) 32700L + zona else 32600L + zona
+    referencial <- "WGS 84"
+  }
+  list(
+    crs = paste0("EPSG:", epsg),
+    epsg = paste0("EPSG:", epsg),
+    codigo_epsg = as.integer(epsg),
+    referencial = referencial,
+    projecao = paste0("UTM zona ", zona, hemisferio),
+    zona_utm = paste0(zona, hemisferio),
+    unidade = "metro",
+    longitude_central = longitude,
+    latitude_central = latitude
+  )
+}
+
+monitora_relatorios_analiticos_normalizar_nome_uc <- function(x) {
+  x <- iconv(as.character(x), from = "", to = "ASCII//TRANSLIT")
+  x <- toupper(x)
+  x <- gsub("[^A-Z0-9]+", " ", x, perl = TRUE)
+  x <- gsub("\\b(DE|DA|DO|DAS|DOS|E)\\b", " ", x, perl = TRUE)
+  trimws(gsub("[[:space:]]+", " ", x, perl = TRUE))
+}
+
+monitora_relatorios_analiticos_preposicao_uc <- function(nome_uc) {
+  chave <- monitora_relatorios_analiticos_normalizar_nome_uc(nome_uc)
+  primeiro <- strsplit(chave, " ", fixed = TRUE)[[1L]][[1L]]
+  tipos_masculinos <- c(
+    "PARQUE", "PARNA", "REFUGIO", "REVIS", "MONUMENTO", "MONA"
+  )
+  tipos_femininos <- c(
+    "AREA", "APA", "ARIE", "ESTACAO", "ESEC", "FLORESTA", "FLONA",
+    "RESERVA", "REBIO", "RESEX", "RDS", "RPPN"
+  )
+  if (primeiro %in% tipos_masculinos) return("no")
+  if (primeiro %in% tipos_femininos) return("na")
+  "na"
+}
+
+monitora_relatorios_analiticos_status_limite_uc <- function(
+  solicitado = FALSE,
+  motivo = "não solicitado"
+) {
+  data.table::data.table(
+    solicitado = isTRUE(solicitado),
+    localizado = FALSE,
+    motivo = as.character(motivo)[1L],
+    nome_uc_entrada = NA_character_,
+    nome_uc_oficial = NA_character_,
+    cnuc = NA_character_,
+    uf = NA_character_,
+    estados_localizados = FALSE,
+    biomas_localizados = FALSE,
+    bioma_uc = NA_character_,
+    versao_base = NA_character_,
+    fonte = paste0(
+      "https://www.gov.br/icmbio/pt-br/dados-icmbio/dados_geoespaciais/",
+      "mapa-tematico-e-dados-geoestatisticos-das-unidades-de-conservacao-federais"
+    ),
+    fonte_estados = paste0(
+      "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?",
+      "formato=application/vnd.geo+json&qualidade=minima&intrarregiao=UF"
+    ),
+    fonte_biomas = paste0(
+      "https://geoftp.ibge.gov.br/informacoes_ambientais/estudos_ambientais/",
+      "biomas/vetores/Biomas_5000mil.zip"
+    ),
+    versao_estados = NA_character_,
+    versao_biomas = NA_character_,
+    consulta_utc = NA_character_,
+    uso_arquivo_temporario = FALSE,
+    artefato_espacial_persistido = FALSE
+  )
+}
+
+monitora_relatorios_analiticos_limite_uc_oficial <- function(
+  uas,
+  ativado = TRUE
+) {
+  status <- monitora_relatorios_analiticos_status_limite_uc(
+    solicitado = ativado,
+    motivo = if (isTRUE(ativado)) "pendente" else "não solicitado"
+  )
+  if (!isTRUE(ativado) || !nrow(uas)) {
+    return(list(limite = NULL, status = status))
+  }
+  ucs <- unique(trimws(as.character(uas$UC)))
+  ucs <- ucs[!is.na(ucs) & nzchar(ucs)]
+  if (length(ucs) != 1L) {
+    status[, motivo := "o mapa não possui exatamente uma UC identificável"]
+    return(list(limite = NULL, status = status))
+  }
+  status[, nome_uc_entrada := ucs[[1L]]]
+  status[, consulta_utc := format(
+    Sys.time(),
+    tz = "UTC",
+    format = "%Y-%m-%dT%H:%M:%SZ"
+  )]
+  dir_limites <- tempfile("monitora_limite_uc_icmbio_")
+  dir.create(dir_limites, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(dir_limites)) {
+    status[, motivo := "não foi possível criar o diretório temporário do limite oficial"]
+    return(list(limite = NULL, status = status))
+  }
+  on.exit(unlink(dir_limites, recursive = TRUE, force = TRUE), add = TRUE)
+  status[, uso_arquivo_temporario := TRUE]
+  fonte_pagina <- status$fonte[[1L]]
+  pagina <- tryCatch(
+    httr::GET(
+      fonte_pagina,
+      httr::timeout(20),
+      httr::user_agent(paste0(
+        "Monitora-Campestre-Savanico/",
+        get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "dev", inherits = TRUE)
+      ))
+    ),
+    error = function(e) e
+  )
+  if (inherits(pagina, "error")) {
+    status[, motivo := paste0(
+      "falha ao consultar a página oficial do ICMBio: ",
+      conditionMessage(pagina)
+    )]
+    return(list(limite = NULL, status = status))
+  }
+  if (httr::http_error(pagina)) {
+    status[, motivo := paste0(
+      "página oficial do ICMBio retornou HTTP ",
+      httr::status_code(pagina)
+    )]
+    return(list(limite = NULL, status = status))
+  }
+  html <- httr::content(pagina, as = "text", encoding = "UTF-8")
+  ocorrencias <- regmatches(
+    html,
+    gregexpr(
+      "href=[\"'][^\"']+\\.zip(?:\\?[^\"']*)?[\"']",
+      html,
+      perl = TRUE,
+      ignore.case = TRUE
+    )
+  )[[1L]]
+  links <- gsub("^href=[\"']|[\"']$", "", ocorrencias, perl = TRUE)
+  links <- links[grepl(
+    "copy_of_[0-9]{2}_[0-9]{4}\\.zip|uc.*federal.*\\.zip",
+    links,
+    ignore.case = TRUE,
+    perl = TRUE
+  )]
+  if (!length(links)) {
+    status[, motivo := "a página oficial não informou um ZIP reconhecível de limites federais"]
+    return(list(limite = NULL, status = status))
+  }
+  link_zip <- links[[1L]]
+  if (startsWith(link_zip, "/")) {
+    link_zip <- paste0("https://www.gov.br", link_zip)
+  } else if (!startsWith(link_zip, "http")) {
+    link_zip <- paste0(dirname(fonte_pagina), "/", link_zip)
+  }
+  arquivo_zip <- file.path(dir_limites, "limites_ucs_federais.zip")
+  resposta_zip <- tryCatch(
+    httr::GET(
+      link_zip,
+      httr::timeout(120),
+      httr::user_agent(paste0(
+        "Monitora-Campestre-Savanico/",
+        get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "dev", inherits = TRUE)
+      )),
+      httr::write_disk(arquivo_zip, overwrite = TRUE)
+    ),
+    error = function(e) e
+  )
+  baixado <- !inherits(resposta_zip, "error") &&
+    !httr::http_error(resposta_zip) &&
+    file.exists(arquivo_zip) &&
+    file.info(arquivo_zip)$size > 10000L
+  if (!isTRUE(baixado)) {
+    status[, motivo := "falha ao baixar o ZIP oficial de limites federais do ICMBio"]
+    return(list(limite = NULL, status = status))
+  }
+  extraido <- tryCatch(
+    {
+      utils::unzip(arquivo_zip, exdir = dir_limites)
+      TRUE
+    },
+    error = function(e) FALSE
+  )
+  if (!isTRUE(extraido)) {
+    status[, motivo := "falha ao extrair o ZIP oficial de limites federais do ICMBio"]
+    return(list(limite = NULL, status = status))
+  }
+  arquivos_shp <- list.files(
+    dir_limites,
+    pattern = "\\.shp$",
+    recursive = TRUE,
+    full.names = TRUE,
+    ignore.case = TRUE
+  )
+  arquivos_shp <- arquivos_shp[grepl(
+    "limite.*uc.*feder|uc.*feder.*limite",
+    basename(arquivos_shp),
+    ignore.case = TRUE,
+    perl = TRUE
+  )]
+  if (!length(arquivos_shp)) {
+    status[, motivo := "o ZIP oficial não contém shapefile de limites federais reconhecível"]
+    return(list(limite = NULL, status = status))
+  }
+  shp <- arquivos_shp[[which.max(file.info(arquivos_shp)$mtime)]]
+  limites <- tryCatch(terra::vect(shp), error = function(e) e)
+  if (inherits(limites, "error")) {
+    status[, motivo := paste0(
+      "falha ao abrir o limite oficial: ", conditionMessage(limites)
+    )]
+    return(list(limite = NULL, status = status))
+  }
+  nomes <- names(limites)
+  coluna_nome <- nomes[tolower(nomes) %in% c("nomeuc", "nome_uc", "nome")]
+  if (!length(coluna_nome)) {
+    status[, motivo := "a base oficial não contém atributo reconhecível para o nome da UC"]
+    return(list(limite = NULL, status = status))
+  }
+  valores_nome <- as.character(limites[[coluna_nome[[1L]]]][, 1L])
+  alvo <- monitora_relatorios_analiticos_normalizar_nome_uc(ucs[[1L]])
+  chaves <- monitora_relatorios_analiticos_normalizar_nome_uc(valores_nome)
+  indices <- which(chaves == alvo)
+  if (!length(indices)) {
+    distancia <- as.numeric(adist(alvo, chaves, partial = FALSE))
+    tolerancia <- max(2, ceiling(nchar(alvo) * 0.12))
+    indices <- which(distancia == min(distancia, na.rm = TRUE) & distancia <= tolerancia)
+  }
+  if (length(indices) != 1L) {
+    status[, motivo := "não foi possível associar inequivocamente a UC de entrada ao limite oficial"]
+    return(list(limite = NULL, status = status))
+  }
+  limite <- limites[indices[[1L]], ]
+  ### Materializa a geometria em memória antes da remoção do diretório
+  ### temporário. Nenhum componente do shapefile oficial acompanha o produto.
+  limite_dados <- terra::as.data.frame(limite, geom = "WKT")
+  limite <- terra::vect(
+    limite_dados,
+    geom = tail(names(limite_dados), 1L),
+    crs = terra::crs(limites)
+  )
+  obter <- function(candidatos) {
+    coluna <- nomes[tolower(nomes) %in% tolower(candidatos)]
+    if (!length(coluna)) return(NA_character_)
+    valor <- as.character(limite[[coluna[[1L]]]][1L, 1L])
+    if (!length(valor) || is.na(valor) || !nzchar(trimws(valor))) NA_character_ else valor
+  }
+  versao <- sub(
+    ".*?([0-9]{8}).*",
+    "\\1",
+    basename(shp),
+    perl = TRUE
+  )
+  if (identical(versao, basename(shp))) versao <- as.character(as.Date(file.info(shp)$mtime))
+  if (grepl("^[0-9]{8}$", versao)) {
+    versao <- paste0(
+      substr(versao, 5L, 8L), "-",
+      substr(versao, 3L, 4L), "-",
+      substr(versao, 1L, 2L)
+    )
+  }
+  status[, `:=`(
+    localizado = TRUE,
+    motivo = "limite oficial localizado por correspondência nominal",
+    nome_uc_oficial = valores_nome[[indices[[1L]]]],
+    cnuc = obter(c("cnuc")),
+    uf = obter(c("uf")),
+    versao_base = versao,
+    uso_arquivo_temporario = TRUE,
+    artefato_espacial_persistido = FALSE
+  )]
+
+  materializar_vetor <- function(x) {
+    dados <- terra::as.data.frame(x, geom = "WKT")
+    terra::vect(
+      dados,
+      geom = tail(names(dados), 1L),
+      crs = terra::crs(x)
+    )
+  }
+
+  ### Estados: malha simplificada da API oficial do IBGE. O GeoJSON é
+  ### descartado com o mesmo diretório temporário usado pelo limite da UC.
+  estados <- NULL
+  arquivo_estados <- file.path(dir_limites, "estados_ibge.geojson")
+  resposta_estados <- tryCatch(
+    httr::GET(
+      status$fonte_estados[[1L]],
+      httr::timeout(60),
+      httr::write_disk(arquivo_estados, overwrite = TRUE)
+    ),
+    error = function(e) e
+  )
+  estados_ok <- !inherits(resposta_estados, "error") &&
+    !httr::http_error(resposta_estados) &&
+    file.exists(arquivo_estados) && file.info(arquivo_estados)$size > 1000L
+  if (isTRUE(estados_ok)) {
+    estados <- tryCatch(terra::vect(arquivo_estados), error = function(e) NULL)
+    if (!is.null(estados) && nrow(estados)) {
+      codigos_uf <- as.character(estados[["codarea"]][, 1L])
+      metadados_uf <- tryCatch(
+        jsonlite::fromJSON(
+          httr::content(
+            httr::GET(
+              "https://servicodados.ibge.gov.br/api/v1/localidades/estados",
+              httr::timeout(20)
+            ),
+            as = "text",
+            encoding = "UTF-8"
+          )
+        ),
+        error = function(e) NULL
+      )
+      if (!is.null(metadados_uf) && all(c("id", "sigla") %in% names(metadados_uf))) {
+        siglas_uf <- stats::setNames(
+          as.character(metadados_uf$sigla),
+          as.character(metadados_uf$id)
+        )
+        estados$SIGLA_UF <- unname(siglas_uf[codigos_uf])
+      } else {
+        estados$SIGLA_UF <- codigos_uf
+      }
+      estados <- materializar_vetor(estados)
+      status[, `:=`(
+        estados_localizados = TRUE,
+        versao_estados = paste0(
+          "API de Malhas do IBGE v3, qualidade mínima; consulta ",
+          substr(consulta_utc, 1L, 10L)
+        )
+      )]
+    }
+  }
+
+  ### Biomas: a escala 1:5.000.000 é suficiente para o pequeno localizador
+  ### e reduz o download para menos de 0,5 MB.
+  biomas <- NULL
+  arquivo_biomas_zip <- file.path(dir_limites, "biomas_ibge_5000mil.zip")
+  resposta_biomas <- tryCatch(
+    httr::GET(
+      status$fonte_biomas[[1L]],
+      httr::timeout(120),
+      httr::write_disk(arquivo_biomas_zip, overwrite = TRUE)
+    ),
+    error = function(e) e
+  )
+  biomas_ok <- !inherits(resposta_biomas, "error") &&
+    !httr::http_error(resposta_biomas) &&
+    file.exists(arquivo_biomas_zip) &&
+    file.info(arquivo_biomas_zip)$size > 10000L
+  if (isTRUE(biomas_ok)) {
+    pasta_biomas <- file.path(dir_limites, "biomas_ibge")
+    dir.create(pasta_biomas, recursive = TRUE, showWarnings = FALSE)
+    extraido_biomas <- tryCatch(
+      {
+        utils::unzip(arquivo_biomas_zip, exdir = pasta_biomas)
+        TRUE
+      },
+      error = function(e) FALSE
+    )
+    shp_biomas <- if (isTRUE(extraido_biomas)) {
+      list.files(
+        pasta_biomas,
+        pattern = "\\.shp$",
+        recursive = TRUE,
+        full.names = TRUE,
+        ignore.case = TRUE
+      )
+    } else {
+      character()
+    }
+    if (length(shp_biomas)) {
+      biomas <- tryCatch(terra::vect(shp_biomas[[1L]]), error = function(e) NULL)
+      if (!is.null(biomas) && nrow(biomas)) {
+        if (!nzchar(terra::crs(biomas, proj = TRUE))) {
+          arquivo_prj <- list.files(
+            pasta_biomas,
+            pattern = "\\.prj(?:\\.txt)?$",
+            recursive = TRUE,
+            full.names = TRUE,
+            ignore.case = TRUE
+          )
+          if (length(arquivo_prj)) {
+            terra::crs(biomas) <- paste(
+              readLines(arquivo_prj[[1L]], warn = FALSE),
+              collapse = ""
+            )
+          }
+        }
+        if ("NOM_BIOMA" %in% names(biomas)) {
+          biomas$NOM_BIOMA <- iconv(
+            as.character(biomas$NOM_BIOMA),
+            from = "latin1",
+            to = "UTF-8"
+          )
+        }
+        limite_biomas <- terra::project(limite, terra::crs(biomas))
+        relacao_biomas <- terra::relate(biomas, limite_biomas, "intersects")
+        indices_biomas <- which(rowSums(relacao_biomas) > 0L)
+        nomes_biomas <- if (
+          length(indices_biomas) && "NOM_BIOMA" %in% names(biomas)
+        ) {
+          unique(as.character(biomas$NOM_BIOMA[indices_biomas]))
+        } else {
+          character()
+        }
+        nomes_biomas <- nomes_biomas[!is.na(nomes_biomas) & nzchar(nomes_biomas)]
+        biomas <- materializar_vetor(biomas)
+        status[, `:=`(
+          biomas_localizados = TRUE,
+          bioma_uc = if (length(nomes_biomas)) {
+            paste(sort(nomes_biomas), collapse = " | ")
+          } else {
+            NA_character_
+          },
+          versao_biomas = "IBGE, Biomas 1:5.000.000, disponibilização 2019"
+        )]
+      }
+    }
+  }
+
+  list(
+    limite = limite,
+    estados = estados,
+    biomas = biomas,
+    status = status[]
+  )
+}
+
+monitora_relatorios_analiticos_metadados_cartograficos_vazio <- function() {
+  data.table::data.table(
+    elemento_mgb2 = character(),
+    valor = character(),
+    observacao = character()
+  )
+}
+
+monitora_relatorios_analiticos_metadados_cartograficos <- function(
+  uas,
+  crs_mapa,
+  data_aquisicao,
+  nuvens_area_pct,
+  atribuicao,
+  cenas,
+  resolucao_origem_m,
+  status_limite_uc,
+  escala_numerica
+) {
+  ucs <- unique(trimws(as.character(uas$UC)))
+  ucs <- ucs[!is.na(ucs) & nzchar(ucs)]
+  anos <- if (all(c("ANO_INICIAL", "ANO_FINAL") %in% names(uas))) {
+    c(uas$ANO_INICIAL, uas$ANO_FINAL)
+  } else if ("ANO" %in% names(uas)) {
+    sort(unique(suppressWarnings(as.integer(as.character(uas$ANO)))))
+  } else integer()
+  anos <- anos[is.finite(anos)]
+  periodo <- if (!length(anos)) {
+    "não informado"
+  } else if (length(anos) == 1L) {
+    as.character(anos)
+  } else {
+    paste0(min(anos), "–", max(anos))
+  }
+  uc <- if (length(ucs) == 1L) ucs[[1L]] else paste(ucs, collapse = " | ")
+  extensao <- monitora_relatorios_analiticos_bbox_satelite(uas)
+  elementos <- c(
+    "perfil_metadados",
+    "titulo",
+    "resumo",
+    "finalidade",
+    "status",
+    "responsavel",
+    "data_elaboracao",
+    "periodo_dados_vetoriais",
+    "fonte_dados_vetoriais",
+    "fonte_limite_uc",
+    "versao_limite_uc",
+    "referencial_geodesico",
+    "sistema_projecao",
+    "codigo_epsg",
+    "unidade_coordenadas",
+    "escala_numerica_referencia",
+    "extensao_geografica",
+    "imagem_plataforma_sensor",
+    "imagem_nivel_produto",
+    "imagem_composicao",
+    "imagem_data_aquisicao",
+    "imagem_resolucao_origem_m",
+    "imagem_nuvens_sombras_area_pct",
+    "imagem_cenas",
+    "imagem_fonte_catalogo",
+    "imagem_processamento",
+    "credito_imagem",
+    "linhagem",
+    "limitacoes_uso",
+    "build_script"
+  )
+  valores <- c(
+    "MGB 2.0 — conjunto mínimo aplicável; registro auxiliar não certificado",
+    paste0("Distribuição espacial do esforço amostral — ", uc),
+    paste0(
+      "Mapa analítico das unidades amostrais do Componente Campestre Savânico ",
+      "sobre imagem orbital recente."
+    ),
+    "Apoiar a leitura do esforço e da continuidade amostral do Programa Monitora.",
+    "produto analítico",
+    "CBC/ICMBio",
+    format(Sys.Date(), "%Y-%m-%d"),
+    periodo,
+    "Programa Monitora — registros processados nesta execução",
+    as.character(status_limite_uc$fonte[[1L]]),
+    as.character(status_limite_uc$versao_base[[1L]]),
+    crs_mapa$referencial,
+    crs_mapa$projecao,
+    crs_mapa$epsg,
+    crs_mapa$unidade,
+    paste0(
+      monitora_relatorios_analiticos_fmt_escala_numerica(escala_numerica),
+      " para 13,8 cm de largura útil"
+    ),
+    paste0(
+      "O=", format(extensao[["xmin"]], digits = 8L),
+      "; S=", format(extensao[["ymin"]], digits = 8L),
+      "; L=", format(extensao[["xmax"]], digits = 8L),
+      "; N=", format(extensao[["ymax"]], digits = 8L)
+    ),
+    "Copernicus Sentinel-2 MSI",
+    "Level-2A",
+    "cor natural RGB B04–B03–B02",
+    as.character(data_aquisicao),
+    format(as.numeric(resolucao_origem_m), digits = 6L),
+    format(as.numeric(nuvens_area_pct), digits = 5L),
+    as.character(cenas),
+    "AWS Open Data / Earth Search",
+    paste0(
+      "seleção por cobertura e nuvens/sombras; mosaico quando necessário; ",
+      "recorte à extensão da rede; reprojeção cartográfica; reamostragem bilinear"
+    ),
+    as.character(atribuicao),
+    paste0(
+      "Registros processados pelo script; imagem Sentinel-2 L2A selecionada no ",
+      "catálogo Earth Search; limite oficial do ICMBio usado apenas no localizador."
+    ),
+    paste0(
+      "PEC/PEC-PCD não avaliada. Produto impróprio para demarcação fundiária ou ",
+      "cadastral e para medições de precisão."
+    ),
+    as.character(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "não informado", inherits = TRUE))
+  )
+  data.table::data.table(
+    elemento_mgb2 = elementos,
+    valor = valores,
+    observacao = c(
+      "Estrutura alinhada ao Perfil MGB 2.0; não substitui catalogação formal na INDE.",
+      rep("", length(elementos) - 1L)
+    )
+  )
+}
+
+monitora_relatorios_analiticos_gravar_metadados_cartograficos <- function(
+  metadados,
+  dir_relatorio
+) {
+  if (!nrow(metadados)) return(character())
+  arquivo_csv <- file.path(dir_relatorio, "metadados_cartograficos_mgb2.csv")
+  arquivo_json <- file.path(dir_relatorio, "metadados_cartograficos_mgb2.json")
+  data.table::fwrite(metadados, arquivo_csv, bom = TRUE, na = "")
+  jsonlite::write_json(
+    stats::setNames(as.list(metadados$valor), metadados$elemento_mgb2),
+    arquivo_json,
+    auto_unbox = TRUE,
+    pretty = TRUE,
+    na = "null"
+  )
+  c(arquivo_csv, arquivo_json)
+}
+
+monitora_relatorios_analiticos_logos_embutidas_base64 <- function() {
+  list(
+    monitora = paste0(
+      "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"
+    ),
+    cbc = paste0(
+      "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"
+    ),
+    icmbio = paste0(
+      "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"
+    )
+  )
+}
+
+monitora_relatorios_analiticos_logos_embutidas <- function() {
+  if (!requireNamespace("png", quietly = TRUE)) {
+    stop(
+      "A renderização das marcas institucionais exige o pacote 'png'.",
+      call. = FALSE
+    )
+  }
+  codificadas <- monitora_relatorios_analiticos_logos_embutidas_base64()
+  lapply(
+    codificadas,
+    function(conteudo) {
+      png::readPNG(jsonlite::base64_dec(conteudo), native = FALSE)
+    }
+  )
+}
+
 monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   rgb,
   uas,
   destino,
   data_aquisicao,
   nuvens_area_pct,
-  atribuicao
+  atribuicao,
+  cenas = NA_character_,
+  resolucao_origem_m = 10,
+  limite_uc = NULL,
+  estados = NULL,
+  biomas = NULL,
+  status_limite_uc = monitora_relatorios_analiticos_status_limite_uc()
 ) {
   dir.create(dirname(destino), recursive = TRUE, showWarnings = FALSE)
+  crs_mapa <- monitora_relatorios_analiticos_crs_utm_dinamico(
+    c(uas$long_ini, uas$long_fin, uas$lon_meio),
+    c(uas$lat_ini, uas$lat_fin, uas$lat_meio)
+  )
+  rgb <- terra::project(rgb[[1:3]], crs_mapa$crs, method = "bilinear")
+
   pontos_ini <- terra::vect(
     data.frame(lon = uas$long_ini, lat = uas$lat_ini),
     geom = c("lon", "lat"),
@@ -64835,6 +66345,34 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   xy_fin <- terra::crds(terra::project(pontos_fin, crs_rgb))
   xy_meio <- terra::crds(terra::project(pontos_meio, crs_rgb))
 
+  ### A reprojeção de uma imagem retangular pode criar cunhas NA nas bordas.
+  ### Elas são preenchidas somente para a composição visual, por expansão
+  ### local dos pixels válidos mais próximos. O processamento é condicionado
+  ### à existência de NA e não altera os dados vetoriais nem o raster-fonte.
+  n_na_rgb <- as.numeric(terra::global(
+    is.na(rgb[[1L]]),
+    fun = "sum",
+    na.rm = TRUE
+  )[[1L, 1L]])
+  if (is.finite(n_na_rgb) && n_na_rgb > 0) {
+    for (iteracao_preenchimento in seq_len(8L)) {
+      rgb <- terra::focal(
+        rgb,
+        w = 11L,
+        fun = "mean",
+        na.rm = TRUE,
+        na.policy = "only"
+      )
+      n_na_rgb <- as.numeric(terra::global(
+        is.na(rgb[[1L]]),
+        fun = "sum",
+        na.rm = TRUE
+      )[[1L, 1L]])
+      if (!is.finite(n_na_rgb) || n_na_rgb == 0) break
+    }
+  }
+  graticula <- monitora_relatorios_analiticos_graticula_projetada(rgb)
+
   classes <- as.character(uas$classe_continuidade_label)
   formacoes <- as.character(uas$formacao_label)
   cores <- c(
@@ -64846,10 +66384,119 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   cor_ponto[is.na(cor_ponto)] <- "#546E7A"
   pch_ponto <- ifelse(formacoes == "Campestre", 21L, 24L)
 
+  extensao_rgb <- terra::ext(rgb)
+  xmin_rgb <- as.numeric(extensao_rgb$xmin)
+  xmax_rgb <- as.numeric(extensao_rgb$xmax)
+  ymin_rgb <- as.numeric(extensao_rgb$ymin)
+  ymax_rgb <- as.numeric(extensao_rgb$ymax)
+  largura <- xmax_rgb - xmin_rgb
+  altura <- ymax_rgb - ymin_rgb
+  escala <- monitora_relatorios_analiticos_escala_mapa(largura)
+  escala_numerica <- monitora_relatorios_analiticos_escala_numerica(
+    largura,
+    largura_impressao_cm = 13.8
+  )
+  crs_cartografico <- monitora_relatorios_analiticos_crs_cartografico(rgb)
+
+  ucs_mapa <- unique(trimws(as.character(uas$UC)))
+  ucs_mapa <- ucs_mapa[!is.na(ucs_mapa) & nzchar(ucs_mapa)]
+  nome_uc_mapa <- if (length(ucs_mapa) == 1L) {
+    ucs_mapa[[1L]]
+  } else if (length(ucs_mapa) > 1L) {
+    "unidades de conservação representadas"
+  } else {
+    "não informada"
+  }
+  preposicao_uc <- monitora_relatorios_analiticos_preposicao_uc(nome_uc_mapa)
+  titulo_mapa <- paste(
+    strwrap(
+      paste0(
+        "Distribuição espacial do esforço amostral do monitoramento de ",
+        "Plantas Herbáceas e Lenhosas, Nativas e Exóticas, ",
+        preposicao_uc, " ", nome_uc_mapa
+      ),
+      width = 88L
+    ),
+    collapse = "\n"
+  )
+  anos_mapa <- if (all(c("ANO_INICIAL", "ANO_FINAL") %in% names(uas))) {
+    c(uas$ANO_INICIAL, uas$ANO_FINAL)
+  } else if ("ANO" %in% names(uas)) {
+    suppressWarnings(as.integer(as.character(uas$ANO)))
+  } else {
+    integer()
+  }
+  anos_mapa <- sort(unique(anos_mapa[is.finite(anos_mapa)]))
+  periodo_mapa <- if (!length(anos_mapa)) {
+    "não informado"
+  } else if (length(anos_mapa) == 1L) {
+    as.character(anos_mapa)
+  } else {
+    paste0(min(anos_mapa), "–", max(anos_mapa))
+  }
+  versao_limite <- if (isTRUE(status_limite_uc$localizado[[1L]])) {
+    as.character(status_limite_uc$versao_base[[1L]])
+  } else {
+    "não disponível"
+  }
+  ano_aquisicao <- substr(as.character(data_aquisicao), 1L, 4L)
+
+  paragrafos_quadro <- c(
+    paste0(
+      "Mapa: UAs do Alvo Global Plantas Herbáceas e Lenhosas, Nativas e ",
+      "Exóticas — Componente Campestre Savânico / Programa Monitora — ",
+      nome_uc_mapa, "."
+    ),
+    paste0("Dados vetoriais: Programa Monitora | ", periodo_mapa),
+    paste0(
+      "Projeção: ", crs_mapa$referencial, " / ", crs_mapa$projecao,
+      " (", crs_cartografico$epsg, ") | escala aproximada ",
+      monitora_relatorios_analiticos_fmt_escala_numerica(escala_numerica),
+      " para 13,8 cm"
+    ),
+    paste0(
+      "Imagem: Sentinel-2 MSI L2A | RGB B04-B03-B02 | ",
+      formatC(
+        as.numeric(resolucao_origem_m),
+        format = "f",
+        digits = 1L,
+        decimal.mark = ","
+      ),
+      " m"
+    ),
+    paste0(
+      "Aquisição: ", data_aquisicao,
+      " | nuvens/sombras: ",
+      formatC(
+        nuvens_area_pct,
+        format = "f",
+        digits = 1L,
+        decimal.mark = ","
+      ),
+      "%"
+    ),
+    "Processamento: seleção; mosaico; recorte; reprojeção; reamostragem bilinear",
+    paste0("Limite da UC: ICMBio | base ", versao_limite, " | uso temporário"),
+    paste0(
+      "Crédito: Copernicus Sentinel modificados ",
+      ano_aquisicao,
+      " | AWS Open Data / Earth Search"
+    ),
+    "Limitação: PEC/PEC-PCD não avaliada; não usar para demarcação ou medição de precisão",
+    paste0(
+      "Elaboração: CBC/ICMBio | ",
+      format(Sys.Date(), "%d/%m/%Y"),
+      " | ", get0(
+        "MONITORA_SCRIPT_BUILD_ID",
+        ifnotfound = "build não informado",
+        inherits = TRUE
+      )
+    )
+  )
   grDevices::png(
     destino,
-    width = 2400,
-    height = 1750,
+    width = 2800,
+    height = 2800,
     res = 240,
     bg = "white"
   )
@@ -64859,36 +66506,16 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   }, add = TRUE)
   graficos_antigos <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(graficos_antigos), add = TRUE)
-  graphics::layout(
-    matrix(1:3, ncol = 1L),
-    heights = c(0.105, 0.835, 0.060)
-  )
-  graphics::par(mar = rep(0, 4L), family = "sans")
-  graphics::plot.new()
-  graphics::text(
-    0.5,
-    0.68,
-    labels = "Distribuição espacial e continuidade das UAs",
-    cex = 1.6,
-    font = 2,
-    col = "#174B3B"
-  )
-  graphics::text(
-    0.5,
-    0.24,
-    labels = paste0(
-      "Sentinel-2 L2A • aquisição ", data_aquisicao,
-      " • nuvens/sombras na extensão exibida: ",
-      formatC(nuvens_area_pct, format = "f", digits = 1L, decimal.mark = ","),
-      "%"
-    ),
-    cex = 0.88,
-    col = "#37474F"
-  )
+
+  ### Layout cartográfico padrão quadrado (4 x 4). O mapa ocupa os 76%
+  ### superiores e uma faixa editorial exclusiva recebe os quadros e as marcas
+  ### institucionais nos 24% finais.
   graphics::par(
-    mar = rep(0, 4L),
+    fig = c(0, 1, 0.24, 1),
+    mar = c(3.7, 4.6, 4.7, 3.8),
     xaxs = "i",
     yaxs = "i",
+    mgp = c(1.9, 0.52, 0),
     family = "sans"
   )
   terra::plotRGB(
@@ -64898,8 +66525,31 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     b = 3L,
     scale = 255,
     axes = FALSE,
+    mar = c(3.7, 4.6, 4.7, 3.8),
     maxcell = 2000000
   )
+  ### Margem física única dos quadros: 3 mm medidos a partir da moldura
+  ### interna do mapa, independentemente do dispositivo ou da extensão.
+  tamanho_dispositivo_pol <- grDevices::dev.size("in")
+  margem_ndc_x <- (3 / 25.4) / tamanho_dispositivo_pol[[1L]]
+  margem_ndc_y <- (3 / 25.4) / tamanho_dispositivo_pol[[2L]]
+  bordas_mapa_ndc <- c(
+    esquerda = graphics::grconvertX(xmin_rgb, from = "user", to = "ndc"),
+    direita = graphics::grconvertX(xmax_rgb, from = "user", to = "ndc"),
+    inferior = graphics::grconvertY(ymin_rgb, from = "user", to = "ndc"),
+    superior = graphics::grconvertY(ymax_rgb, from = "user", to = "ndc")
+  )
+  margem_quadro_x <- margem_ndc_x /
+    (bordas_mapa_ndc[["direita"]] - bordas_mapa_ndc[["esquerda"]])
+  margem_quadro_y <- margem_ndc_y /
+    (bordas_mapa_ndc[["superior"]] - bordas_mapa_ndc[["inferior"]])
+  cor_grade <- grDevices::adjustcolor("white", alpha.f = 0.24)
+  for (linha in graticula$linhas_lon) {
+    graphics::lines(linha[, 1L], linha[, 2L], col = cor_grade, lwd = 0.45)
+  }
+  for (linha in graticula$linhas_lat) {
+    graphics::lines(linha[, 1L], linha[, 2L], col = cor_grade, lwd = 0.45)
+  }
   graphics::segments(
     xy_ini[, 1L], xy_ini[, 2L],
     xy_fin[, 1L], xy_fin[, 2L],
@@ -64920,122 +66570,789 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     lwd = 1.2,
     cex = 1.35
   )
-
-  extensao_rgb <- terra::ext(rgb)
-  xmin_rgb <- as.numeric(extensao_rgb$xmin)
-  xmax_rgb <- as.numeric(extensao_rgb$xmax)
-  ymin_rgb <- as.numeric(extensao_rgb$ymin)
-  ymax_rgb <- as.numeric(extensao_rgb$ymax)
-  largura <- xmax_rgb - xmin_rgb
-  altura <- ymax_rgb - ymin_rgb
-  graphics::legend(
-    x = xmin_rgb + 0.022 * largura,
-    y = ymax_rgb - 0.025 * altura,
-    legend = names(cores),
-    pch = 21,
-    pt.bg = unname(cores),
-    col = "white",
-    pt.cex = 1.2,
-    cex = 0.68,
-    title = "Continuidade",
-    bg = grDevices::adjustcolor("white", alpha.f = 0.88),
-    box.col = "#455A64",
-    xjust = 0,
-    yjust = 1
+  graphics::axis(
+    1,
+    pos = ymin_rgb,
+    at = graticula$eixo_x,
+    labels = monitora_relatorios_analiticos_rotulo_longitude(
+      graticula$lon_breaks
+    ),
+    cex.axis = 0.95,
+    col = "#263238",
+    col.axis = "#263238",
+    tck = -0.012,
+    lwd = 0.7,
+    lwd.ticks = 0.55
   )
-  graphics::legend(
-    x = xmin_rgb + 0.73 * largura,
-    y = ymax_rgb - 0.025 * altura,
-    legend = c("Campestre", "Savânica"),
-    pch = c(21, 24),
-    pt.bg = "#607D8B",
-    col = "white",
-    pt.cex = 1.2,
-    cex = 0.68,
-    title = "Formação mais recente",
-    bg = grDevices::adjustcolor("white", alpha.f = 0.88),
-    box.col = "#455A64",
-    xjust = 0,
-    yjust = 1
+  graphics::axis(
+    2,
+    pos = xmin_rgb,
+    at = graticula$eixo_y,
+    labels = monitora_relatorios_analiticos_rotulo_latitude(
+      graticula$lat_breaks
+    ),
+    cex.axis = 0.93,
+    las = 0,
+    col = "#263238",
+    col.axis = "#263238",
+    tck = -0.012,
+    lwd = 0.7,
+    lwd.ticks = 0.55
+  )
+  graphics::axis(
+    3,
+    pos = ymax_rgb,
+    at = graticula$eixo_x,
+    labels = monitora_relatorios_analiticos_rotulo_longitude(
+      graticula$lon_breaks
+    ),
+    cex.axis = 0.90,
+    col = "#263238",
+    col.axis = "#263238",
+    tck = -0.012,
+    lwd = 0.7,
+    lwd.ticks = 0.55
+  )
+  graphics::axis(
+    4,
+    pos = xmax_rgb,
+    at = graticula$eixo_y,
+    labels = monitora_relatorios_analiticos_rotulo_latitude(
+      graticula$lat_breaks
+    ),
+    cex.axis = 0.88,
+    las = 0,
+    col = "#263238",
+    col.axis = "#263238",
+    tck = -0.012,
+    lwd = 0.7,
+    lwd.ticks = 0.55
+  )
+  graphics::mtext(
+    titulo_mapa,
+    side = 3,
+    line = 2.15,
+    cex = 1.12,
+    font = 2,
+    col = "#174B3B"
+  )
+  graphics::rect(
+    xmin_rgb,
+    ymin_rgb,
+    xmax_rgb,
+    ymax_rgb,
+    border = "#263238",
+    lwd = 1.20
   )
 
-  escala <- monitora_relatorios_analiticos_escala_mapa(largura)
-  x0 <- xmin_rgb + 0.05 * largura
-  y0 <- ymin_rgb + 0.065 * altura
-  graphics::segments(x0, y0, x0 + escala, y0, col = "white", lwd = 6)
-  graphics::segments(x0, y0, x0 + escala, y0, col = "#263238", lwd = 2.2)
-  graphics::segments(c(x0, x0 + escala), y0 - 0.008 * altura,
-                     c(x0, x0 + escala), y0 + 0.008 * altura,
-                     col = "#263238", lwd = 2.2)
+  ### Norte geográfico vetorial inspirado no símbolo cartográfico empregado
+  ### nos mapas autorais de referência: lança bicolor, sem N/haste separados.
+  ### Dimensões expressas em milímetros para impedir deformação quando a
+  ### proporção do dispositivo ou da extensão cartográfica muda.
+  mm_usuario_x <- largura *
+    ((1 / 25.4) / tamanho_dispositivo_pol[[1L]]) /
+    (bordas_mapa_ndc[["direita"]] - bordas_mapa_ndc[["esquerda"]])
+  mm_usuario_y <- altura *
+    ((1 / 25.4) / tamanho_dispositivo_pol[[2L]]) /
+    (bordas_mapa_ndc[["superior"]] - bordas_mapa_ndc[["inferior"]])
+  xn <- xmax_rgb - (3 * mm_usuario_x + 4.5 * mm_usuario_x)
+  y_norte_topo <- ymax_rgb - (3 * mm_usuario_y + 1.5 * mm_usuario_y)
+  altura_norte <- 16 * mm_usuario_y
+  y_norte_centro <- y_norte_topo - 0.50 * altura_norte
+  y_norte_base <- y_norte_topo - altura_norte
+  meia_largura_norte <- 4.5 * mm_usuario_x
+  graphics::polygon(
+    c(xn, xn, xn - meia_largura_norte, xn),
+    c(y_norte_topo, y_norte_centro, y_norte_base, y_norte_topo),
+    col = "white",
+    border = "#101716",
+    lwd = 1.3
+  )
+  graphics::polygon(
+    c(xn, xn + meia_largura_norte, xn, xn),
+    c(y_norte_topo, y_norte_base, y_norte_centro, y_norte_topo),
+    col = "#101716",
+    border = "white",
+    lwd = 1.15
+  )
+  graphics::segments(
+    xn, y_norte_topo,
+    xn, y_norte_base,
+    col = "#101716",
+    lwd = 0.9
+  )
+
+  ### Escala gráfica permanece no corpo do mapa, a 3 mm da esquerda e com
+  ### afastamento vertical suficiente para não tocar a moldura/coordenadas.
+  x0 <- xmin_rgb + 3 * mm_usuario_x
+  y0 <- ymin_rgb + 8 * mm_usuario_y
+  graphics::segments(x0, y0, x0 + escala, y0, col = "white", lwd = 5.0)
+  graphics::segments(
+    c(x0, x0 + escala),
+    y0 - 1.5 * mm_usuario_y,
+    c(x0, x0 + escala),
+    y0 + 1.5 * mm_usuario_y,
+    col = "white",
+    lwd = 4.0
+  )
   rotulo_escala <- if (escala >= 1000) {
-    paste0(format(round(escala / 1000, 1L), decimal.mark = ","), " km")
+    paste0(
+      format(round(escala / 1000, 1L), decimal.mark = ","),
+      " km"
+    )
   } else {
     paste0(round(escala), " m")
   }
   graphics::text(
     x0 + escala / 2,
-    y0 + 0.025 * altura,
+    y0 + 4 * mm_usuario_y,
     labels = rotulo_escala,
-    cex = 0.72,
+    cex = 1.05,
     font = 2,
     col = "white"
   )
+
+  ### Faixa editorial inferior. O fundo e a linha superior tornam explícita
+  ### a separação entre a área cartográfica e os elementos explicativos.
+  fig_faixa_inferior <- c(0, 1, 0, 0.24)
+  graphics::par(
+    fig = fig_faixa_inferior,
+    mar = c(0, 0, 0, 0),
+    new = TRUE,
+    xaxs = "i",
+    yaxs = "i",
+    family = "sans"
+  )
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, 1), ylim = c(0, 1), xaxs = "i", yaxs = "i")
+  graphics::rect(0, 0, 1, 1, col = "#F2F4F2", border = NA)
+  graphics::segments(0, 1, 1, 1, col = "#52645B", lwd = 1.1)
+
+  ### Coordenadas normalizadas próprias da faixa. Os quadros usam 3 mm de
+  ### margem externa e não disputam espaço com feições representadas no mapa.
+  largura <- 1
+  altura <- 1
+  xmin_rgb <- 0
+  ymin_rgb <- 0
+  x_abs <- function(x) x
+  y_abs <- function(y) y
+  caixa_abs <- function(caixa) {
+    c(caixa[[1L]], caixa[[2L]], caixa[[3L]], caixa[[4L]])
+  }
+  margem_faixa_x <- margem_ndc_x
+  margem_faixa_y <- margem_ndc_y / 0.24
+  caixa_legenda <- c(
+    0.200,
+    0.425,
+    margem_faixa_y,
+    1 - margem_faixa_y
+  )
+  caixa_info <- c(
+    0.440,
+    0.820,
+    margem_faixa_y,
+    1 - margem_faixa_y
+  )
+  caixa_logos <- c(
+    0.835,
+    1 - margem_faixa_x,
+    margem_faixa_y,
+    1 - margem_faixa_y
+  )
+
+  desenhar_caixa <- function(caixa) {
+    area <- caixa_abs(caixa)
+    graphics::rect(
+      area[[1L]], area[[3L]], area[[2L]], area[[4L]],
+      col = grDevices::adjustcolor("#FFFFFF", alpha.f = 0.86),
+      border = "#52645B",
+      lwd = 1.0
+    )
+    area
+  }
+
+  area_info <- desenhar_caixa(caixa_info)
+  largura_area_info <- area_info[[2L]] - area_info[[1L]]
+  altura_area_info <- area_info[[4L]] - area_info[[3L]]
   graphics::text(
-    x0 + escala / 2,
-    y0 + 0.025 * altura,
-    labels = rotulo_escala,
-    cex = 0.69,
+    mean(area_info[1:2]),
+    area_info[[4L]] - 0.092 * altura_area_info,
+    labels = "Informações do mapa",
+    cex = 0.88,
     font = 2,
-    col = "#263238"
+    col = "#174B3B"
   )
-  xn <- xmax_rgb - 0.055 * largura
-  yn <- ymin_rgb + 0.12 * altura
-  graphics::arrows(
-    xn, yn, xn, yn + 0.07 * altura,
-    length = 0.12,
-    lwd = 2.2,
-    col = "white"
+  x_info_inicio <- area_info[[1L]] + 0.026 * largura_area_info
+  x_info_fim <- area_info[[2L]] - 0.026 * largura_area_info
+  quebrar_texto_largura <- function(texto, largura_maxima, cex = 0.615) {
+    palavras <- strsplit(trimws(texto), "[[:space:]]+", perl = TRUE)[[1L]]
+    linhas <- character()
+    linha_atual <- ""
+    for (palavra in palavras) {
+      candidata <- if (nzchar(linha_atual)) {
+        paste(linha_atual, palavra)
+      } else {
+        palavra
+      }
+      if (
+        nzchar(linha_atual) &&
+        graphics::strwidth(candidata, units = "user", cex = cex) > largura_maxima
+      ) {
+        linhas <- c(linhas, linha_atual)
+        linha_atual <- palavra
+      } else {
+        linha_atual <- candidata
+      }
+    }
+    c(linhas, linha_atual)
+  }
+  linhas_quadro_lista <- lapply(
+    paragrafos_quadro,
+    quebrar_texto_largura,
+    largura_maxima = x_info_fim - x_info_inicio,
+    cex = 0.615
   )
-  graphics::arrows(
-    xn, yn, xn, yn + 0.07 * altura,
-    length = 0.10,
-    lwd = 1.2,
-    col = "#263238"
+  linhas_quadro <- unlist(linhas_quadro_lista, use.names = FALSE)
+  ids_paragrafos_quadro <- rep(
+    seq_along(linhas_quadro_lista),
+    lengths(linhas_quadro_lista)
+  )
+  ultimas_linhas_quadro <- unlist(lapply(
+    lengths(linhas_quadro_lista),
+    function(n) seq_len(n) == n
+  ))
+  linhas_responsabilidade <- ids_paragrafos_quadro == length(paragrafos_quadro)
+  y_info <- seq(
+    area_info[[4L]] - 0.205 * altura_area_info,
+    area_info[[3L]] + 0.063 * altura_area_info,
+    length.out = length(linhas_quadro)
+  )
+  desenhar_linha_justificada <- function(
+    texto,
+    y,
+    justificar = FALSE,
+    negrito = FALSE
+  ) {
+    fonte <- if (isTRUE(negrito)) 2L else 1L
+    palavras <- strsplit(trimws(texto), "[[:space:]]+", perl = TRUE)[[1L]]
+    if (!isTRUE(justificar) || length(palavras) < 2L) {
+      graphics::text(
+        x_info_inicio,
+        y,
+        labels = texto,
+        adj = c(0, 0.5),
+        cex = 0.615,
+        font = fonte,
+        col = "#263238"
+      )
+      return(invisible(NULL))
+    }
+    larguras_palavras <- graphics::strwidth(
+      palavras,
+      units = "user",
+      cex = 0.615,
+      font = fonte
+    )
+    espaco <- (x_info_fim - x_info_inicio - sum(larguras_palavras)) /
+      (length(palavras) - 1L)
+    if (!is.finite(espaco) || espaco <= 0) {
+      graphics::text(
+        x_info_inicio,
+        y,
+        labels = texto,
+        adj = c(0, 0.5),
+        cex = 0.615,
+        font = fonte,
+        col = "#263238"
+      )
+      return(invisible(NULL))
+    }
+    posicoes <- x_info_inicio + c(
+      0,
+      cumsum(larguras_palavras[-length(larguras_palavras)] + espaco)
+    )
+    graphics::text(
+      posicoes,
+      rep(y, length(posicoes)),
+      labels = palavras,
+      adj = c(0, 0.5),
+      cex = 0.615,
+      font = fonte,
+      col = "#263238"
+    )
+    invisible(NULL)
+  }
+  for (ii in seq_along(linhas_quadro)) {
+    desenhar_linha_justificada(
+      linhas_quadro[[ii]],
+      y_info[[ii]],
+      justificar = !ultimas_linhas_quadro[[ii]],
+      negrito = linhas_responsabilidade[[ii]]
+    )
+  }
+
+  area_legenda <- desenhar_caixa(caixa_legenda)
+  largura_area_legenda <- area_legenda[[2L]] - area_legenda[[1L]]
+  altura_area_legenda <- area_legenda[[4L]] - area_legenda[[3L]]
+  x_legenda <- area_legenda[[1L]] + 0.077 * largura_area_legenda
+  x_simbolo <- area_legenda[[1L]] + 0.105 * largura_area_legenda
+  x_rotulo <- area_legenda[[1L]] + 0.209 * largura_area_legenda
+  graphics::text(
+    mean(area_legenda[1:2]),
+    area_legenda[[4L]] - 0.119 * altura_area_legenda,
+    labels = "Legenda",
+    cex = 1.05,
+    font = 2,
+    col = "#174B3B"
   )
   graphics::text(
-    xn,
-    yn + 0.09 * altura,
-    labels = "N",
-    font = 2,
-    cex = 0.85,
-    col = "white"
-  )
-  graphics::text(
-    xn,
-    yn + 0.09 * altura,
-    labels = "N",
-    font = 2,
+    x_legenda,
+    area_legenda[[4L]] - 0.247 * altura_area_legenda,
+    labels = "Continuidade do esforço\namostral nas UAs",
+    adj = c(0, 0.5),
     cex = 0.78,
+    font = 2,
+    col = "#263238"
+  )
+  y_continuidade <- area_legenda[[4L]] -
+    c(0.413, 0.519, 0.625) * altura_area_legenda
+  graphics::points(
+    rep(x_simbolo, 3L), y_continuidade,
+    pch = 21,
+    bg = unname(cores),
+    col = "#455A64",
+    lwd = 0.8,
+    cex = 1.22
+  )
+  graphics::text(
+    rep(x_rotulo, 3L), y_continuidade,
+    labels = names(cores),
+    adj = c(0, 0.5),
+    cex = 0.72,
+    col = "#263238"
+  )
+  graphics::text(
+    x_legenda,
+    area_legenda[[4L]] - 0.734 * altura_area_legenda,
+    labels = "Formação vegetacional",
+    adj = c(0, 0.5),
+    cex = 0.84,
+    font = 2,
+    col = "#263238"
+  )
+  y_formacao <- area_legenda[[4L]] -
+    c(0.844, 0.938) * altura_area_legenda
+  graphics::points(
+    rep(x_simbolo, 2L), y_formacao,
+    pch = c(21, 24),
+    bg = "#607D8B",
+    col = "#455A64",
+    lwd = 0.8,
+    cex = 1.22
+  )
+  graphics::text(
+    rep(x_rotulo, 2L), y_formacao,
+    labels = c("Campestre", "Savânica"),
+    adj = c(0, 0.5),
+    cex = 0.72,
     col = "#263238"
   )
 
-  graphics::par(mar = rep(0, 4L), family = "sans")
-  graphics::plot.new()
-  graphics::text(
-    0.5,
-    0.52,
-    paste0(
-      atribuicao,
-      " • O fundo representa a extensão da rede amostral, não o limite oficial da UC."
-    ),
-    cex = 0.64,
-    col = "#37474F"
+  ### Marcas institucionais embutidas no próprio script. A composição usa um
+  ### quarto quadro, sem caminho absoluto e sem materializar arquivo auxiliar.
+  area_logos <- desenhar_caixa(caixa_logos)
+  imagens_logos <- monitora_relatorios_analiticos_logos_embutidas()
+  desenhar_logo_ajustada <- function(imagem, area_disponivel) {
+    largura_disponivel <- area_disponivel[[2L]] - area_disponivel[[1L]]
+    altura_disponivel <- area_disponivel[[4L]] - area_disponivel[[3L]]
+    aspecto_imagem <- dim(imagem)[[2L]] / dim(imagem)[[1L]]
+    aspecto_fisico_faixa <- tamanho_dispositivo_pol[[1L]] /
+      (0.24 * tamanho_dispositivo_pol[[2L]])
+    aspecto_fisico_disponivel <- largura_disponivel /
+      altura_disponivel * aspecto_fisico_faixa
+    if (aspecto_fisico_disponivel > aspecto_imagem) {
+      altura_desenho <- altura_disponivel
+      largura_desenho <- aspecto_imagem * altura_desenho /
+        aspecto_fisico_faixa
+    } else {
+      largura_desenho <- largura_disponivel
+      altura_desenho <- largura_desenho * aspecto_fisico_faixa /
+        aspecto_imagem
+    }
+    centro_x <- mean(area_disponivel[1:2])
+    centro_y <- mean(area_disponivel[3:4])
+    graphics::rasterImage(
+      imagem,
+      centro_x - largura_desenho / 2,
+      centro_y - altura_desenho / 2,
+      centro_x + largura_desenho / 2,
+      centro_y + altura_desenho / 2,
+      interpolate = TRUE
+    )
+    invisible(NULL)
+  }
+  largura_area_logos <- area_logos[[2L]] - area_logos[[1L]]
+  altura_area_logos <- area_logos[[4L]] - area_logos[[3L]]
+  x_logo_esquerda <- area_logos[[1L]] + 0.075 * largura_area_logos
+  x_logo_direita <- area_logos[[2L]] - 0.075 * largura_area_logos
+  desenhar_logo_ajustada(
+    imagens_logos$monitora,
+    c(
+      x_logo_esquerda, x_logo_direita,
+      area_logos[[3L]] + 0.690 * altura_area_logos,
+      area_logos[[3L]] + 0.955 * altura_area_logos
+    )
   )
+  desenhar_logo_ajustada(
+    imagens_logos$cbc,
+    c(
+      x_logo_esquerda, x_logo_direita,
+      area_logos[[3L]] + 0.390 * altura_area_logos,
+      area_logos[[3L]] + 0.650 * altura_area_logos
+    )
+  )
+  desenhar_logo_ajustada(
+    imagens_logos$icmbio,
+    c(
+      x_logo_esquerda, x_logo_direita,
+      area_logos[[3L]] + 0.055 * altura_area_logos,
+      area_logos[[3L]] + 0.350 * altura_area_logos
+    )
+  )
+
+  ### Localizador integrado no canto superior esquerdo. O objeto vetorial
+  ### está em memória; ZIP e shapefile temporários já foram eliminados.
+  if (!is.null(limite_uc) && isTRUE(status_limite_uc$localizado[[1L]])) {
+    limite_localizador <- terra::project(limite_uc, crs_mapa$crs)
+    estados_localizador <- if (!is.null(estados) && nrow(estados)) {
+      terra::project(estados, crs_mapa$crs)
+    } else {
+      NULL
+    }
+    biomas_localizador <- if (!is.null(biomas) && nrow(biomas)) {
+      terra::project(biomas, crs_mapa$crs)
+    } else {
+      NULL
+    }
+    ext_contexto <- terra::ext(limite_localizador)
+    if (!is.null(estados_localizador)) {
+      relacao_estados <- as.matrix(terra::relate(
+        estados_localizador,
+        limite_localizador,
+        "intersects"
+      ))
+      indices_estados <- which(rowSums(relacao_estados) > 0L)
+      if (length(indices_estados)) {
+        ext_contexto <- terra::ext(estados_localizador[indices_estados, ])
+      }
+    }
+    largura_contexto <- as.numeric(ext_contexto$xmax - ext_contexto$xmin)
+    altura_contexto <- as.numeric(ext_contexto$ymax - ext_contexto$ymin)
+    ext_localizador <- terra::ext(
+      as.numeric(ext_contexto$xmin - 0.08 * largura_contexto),
+      as.numeric(ext_contexto$xmax + 0.08 * largura_contexto),
+      as.numeric(ext_contexto$ymin - 0.08 * altura_contexto),
+      as.numeric(ext_contexto$ymax + 0.28 * altura_contexto)
+    )
+    ### Evita um localizador excessivamente estreito quando a UF de contexto
+    ### é alongada. A extensão é ampliada com território real ao redor; não há
+    ### preenchimento artificial nem faixa vazia dentro do quadro.
+    largura_ext_localizador <- as.numeric(
+      ext_localizador$xmax - ext_localizador$xmin
+    )
+    altura_ext_localizador <- as.numeric(
+      ext_localizador$ymax - ext_localizador$ymin
+    )
+    if (largura_ext_localizador / altura_ext_localizador < 0.82) {
+      centro_x_localizador <- mean(c(
+        ext_localizador$xmin,
+        ext_localizador$xmax
+      ))
+      largura_ext_localizador <- 0.82 * altura_ext_localizador
+      ext_localizador <- terra::ext(
+        centro_x_localizador - largura_ext_localizador / 2,
+        centro_x_localizador + largura_ext_localizador / 2,
+        as.numeric(ext_localizador$ymin),
+        as.numeric(ext_localizador$ymax)
+      )
+    }
+    estados_recorte <- if (!is.null(estados_localizador)) {
+      tryCatch(
+        terra::crop(estados_localizador, ext_localizador),
+        error = function(e) NULL
+      )
+    } else {
+      NULL
+    }
+    biomas_recorte <- if (!is.null(biomas_localizador)) {
+      tryCatch(
+        terra::crop(biomas_localizador, ext_localizador),
+        error = function(e) NULL
+      )
+    } else {
+      NULL
+    }
+    nomes_biomas_recorte <- if (
+      !is.null(biomas_recorte) &&
+        nrow(biomas_recorte) &&
+        "NOM_BIOMA" %in% names(biomas_recorte)
+    ) {
+        monitora_relatorios_analiticos_normalizar_nome_uc(
+          as.character(biomas_recorte$NOM_BIOMA)
+        )
+    } else {
+      rep("", if (is.null(biomas_recorte)) 0L else nrow(biomas_recorte))
+    }
+    paleta_biomas <- c(
+      "AMAZONIA" = "#C6DFC5",
+      "CAATINGA" = "#EAD6B1",
+      "CERRADO" = "#DDE3B2",
+      "MATA ATLANTICA" = "#BFD8C8",
+      "PAMPA" = "#D5DFBB",
+      "PANTANAL" = "#C7DCE1"
+    )
+    cores_biomas <- unname(paleta_biomas[nomes_biomas_recorte])
+    cores_biomas[is.na(cores_biomas)] <- "#ECE8DC"
+
+    ### A proporção física do quadro acompanha a própria área plotada. O
+    ### localizador é ajustado ao primeiro compartimento da faixa inferior.
+    largura_localizador <- as.numeric(
+      ext_localizador$xmax - ext_localizador$xmin
+    )
+    altura_localizador_dados <- as.numeric(
+      ext_localizador$ymax - ext_localizador$ymin
+    )
+    proporcao_dados_localizador <- largura_localizador /
+      altura_localizador_dados
+    esquerda_slot_localizador <- margem_ndc_x
+    direita_slot_localizador <- 0.185
+    inferior_slot_localizador <- margem_ndc_y
+    superior_slot_localizador <- 0.24 - margem_ndc_y
+    largura_slot_localizador <- direita_slot_localizador -
+      esquerda_slot_localizador
+    altura_slot_localizador <- superior_slot_localizador -
+      inferior_slot_localizador
+    altura_fig_localizador <- altura_slot_localizador
+    largura_fig_localizador <- proporcao_dados_localizador *
+      altura_fig_localizador *
+      tamanho_dispositivo_pol[[2L]] / tamanho_dispositivo_pol[[1L]]
+    if (largura_fig_localizador > largura_slot_localizador) {
+      largura_fig_localizador <- largura_slot_localizador
+      altura_fig_localizador <- largura_fig_localizador /
+        proporcao_dados_localizador *
+        tamanho_dispositivo_pol[[1L]] / tamanho_dispositivo_pol[[2L]]
+    }
+    esquerda_fig_localizador <- esquerda_slot_localizador
+    inferior_fig_localizador <- inferior_slot_localizador
+    fig_localizador <- c(
+      esquerda_fig_localizador,
+      esquerda_fig_localizador + largura_fig_localizador,
+      inferior_fig_localizador,
+      inferior_fig_localizador + altura_fig_localizador
+    )
+    graphics::par(
+      fig = fig_localizador,
+      mar = c(0, 0, 0, 0),
+      new = TRUE,
+      xaxs = "i",
+      yaxs = "i",
+      family = "sans"
+    )
+    ### O primeiro desenho deve ser inicializado pelo próprio terra; somente
+    ### `plot.window()` não registra o contexto requerido por `add = TRUE`.
+    terra::plot(
+      limite_localizador,
+      col = NA,
+      border = NA,
+      axes = FALSE,
+      legend = FALSE,
+      xlim = c(ext_localizador$xmin, ext_localizador$xmax),
+      ylim = c(ext_localizador$ymin, ext_localizador$ymax),
+      mar = c(0, 0, 0, 0),
+      asp = 1
+    )
+    usr_fundo_localizador <- graphics::par("usr")
+    graphics::rect(
+      usr_fundo_localizador[[1L]],
+      usr_fundo_localizador[[3L]],
+      usr_fundo_localizador[[2L]],
+      usr_fundo_localizador[[4L]],
+      col = "#F7F5EF",
+      border = NA
+    )
+    if (!is.null(biomas_recorte) && nrow(biomas_recorte)) {
+      terra::plot(
+        biomas_recorte,
+        add = TRUE,
+        col = cores_biomas,
+        border = "#8A806D",
+        lwd = 0.65,
+        legend = FALSE
+      )
+    } else if (!is.null(estados_recorte) && nrow(estados_recorte)) {
+      terra::plot(
+        estados_recorte,
+        add = TRUE,
+        col = "#E9EEE9",
+        border = "#FFFFFF",
+        lwd = 0.8,
+        legend = FALSE
+      )
+    } else {
+      terra::plot(
+        limite_localizador,
+        add = TRUE,
+        col = "#E9EEE9",
+        border = "#174B3B",
+        lwd = 1.0,
+        legend = FALSE
+      )
+    }
+    if (!is.null(estados_recorte) && nrow(estados_recorte)) {
+      terra::plot(
+        estados_recorte,
+        add = TRUE,
+        col = grDevices::adjustcolor("white", alpha.f = 0.08),
+        border = "#FFFFFF",
+        lwd = 1.05,
+        legend = FALSE
+      )
+      if ("SIGLA_UF" %in% names(estados_recorte)) {
+        centros_estados <- suppressWarnings(terra::centroids(
+          estados_recorte,
+          inside = TRUE
+        ))
+        xy_estados <- terra::crds(centros_estados)
+        graphics::text(
+          xy_estados[, 1L],
+          xy_estados[, 2L],
+          labels = as.character(centros_estados$SIGLA_UF),
+          cex = 0.53,
+          font = 2,
+          col = "#455A64"
+        )
+      }
+    }
+    terra::plot(
+      limite_localizador,
+      add = TRUE,
+      col = grDevices::adjustcolor("#FFEB3B", alpha.f = 0.42),
+      border = "#F4C300",
+      lwd = 2.0,
+      legend = FALSE
+    )
+    usr_localizador <- graphics::par("usr")
+    altura_localizador <- usr_localizador[[4L]] - usr_localizador[[3L]]
+    graphics::rect(
+      usr_localizador[[1L]],
+      usr_localizador[[4L]] - 0.14 * altura_localizador,
+      usr_localizador[[2L]],
+      usr_localizador[[4L]],
+      col = grDevices::adjustcolor("white", alpha.f = 0.88),
+      border = NA
+    )
+    graphics::text(
+      mean(usr_localizador[1:2]),
+      usr_localizador[[4L]] - 0.060 * altura_localizador,
+      labels = "Localizador",
+      cex = 0.68,
+      font = 2,
+      col = "#174B3B"
+    )
+    ext_rede <- terra::ext(rgb)
+    centro_rede_x <- mean(c(ext_rede$xmin, ext_rede$xmax))
+    centro_rede_y <- mean(c(ext_rede$ymin, ext_rede$ymax))
+    largura_marcador <- max(
+      as.numeric(ext_rede$xmax - ext_rede$xmin),
+      0.035 * (usr_localizador[[2L]] - usr_localizador[[1L]])
+    )
+    altura_marcador <- max(
+      as.numeric(ext_rede$ymax - ext_rede$ymin),
+      0.050 * (usr_localizador[[4L]] - usr_localizador[[3L]])
+    )
+    graphics::points(
+      centro_rede_x,
+      centro_rede_y,
+      pch = 21,
+      bg = "#FFEB3B",
+      col = "#174B3B",
+      lwd = 0.8,
+      cex = 0.85
+    )
+    graphics::rect(
+      centro_rede_x - largura_marcador / 2,
+      centro_rede_y - altura_marcador / 2,
+      centro_rede_x + largura_marcador / 2,
+      centro_rede_y + altura_marcador / 2,
+      border = "#C62828",
+      lwd = 2.2
+    )
+    graphics::rect(
+      usr_fundo_localizador[[1L]],
+      usr_fundo_localizador[[3L]],
+      usr_fundo_localizador[[2L]],
+      usr_fundo_localizador[[4L]],
+      col = NA,
+      border = "#52645B",
+      lwd = 1.0
+    )
+  } else {
+    fig_localizador <- c(
+      margem_ndc_x,
+      0.185,
+      margem_ndc_y,
+      0.24 - margem_ndc_y
+    )
+    graphics::par(
+      fig = fig_localizador,
+      mar = c(0, 0, 0, 0),
+      new = TRUE,
+      family = "sans"
+    )
+    graphics::plot.new()
+    graphics::rect(
+      0.01, 0.01, 0.99, 0.99,
+      border = "#52645B",
+      col = grDevices::adjustcolor("#F3F6F4", alpha.f = 0.92),
+      lwd = 1.0
+    )
+    graphics::text(
+      0.5, 0.78,
+      labels = "Localização da rede na UC",
+      cex = 0.78,
+      font = 2,
+      col = "#174B3B"
+    )
+    graphics::text(
+      0.5, 0.45,
+      labels = "Limite oficial indisponível\nnesta execução",
+      cex = 0.70,
+      col = "#52645B"
+    )
+  }
+
   grDevices::dev.off()
   dispositivo_aberto <- FALSE
-  file.exists(destino) && file.info(destino)$size > 10000L
+  ok <- file.exists(destino) && file.info(destino)$size > 10000L
+  metadados <- if (isTRUE(ok)) {
+    monitora_relatorios_analiticos_metadados_cartograficos(
+      uas = uas,
+      crs_mapa = crs_mapa,
+      data_aquisicao = data_aquisicao,
+      nuvens_area_pct = nuvens_area_pct,
+      atribuicao = atribuicao,
+      cenas = cenas,
+      resolucao_origem_m = resolucao_origem_m,
+      status_limite_uc = status_limite_uc,
+      escala_numerica = escala_numerica
+    )
+  } else {
+    monitora_relatorios_analiticos_metadados_cartograficos_vazio()
+  }
+  attr(ok, "metadados_cartograficos") <- metadados
+  attr(ok, "crs_mapa") <- crs_mapa
+  ok
 }
-
 monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   uas,
   destino,
@@ -65060,7 +67377,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   if (!isTRUE(ativado) || !nrow(uas)) {
     return(list(status = status, candidatos = candidatos))
   }
-  dependencias <- c("terra", "httr", "jsonlite", "digest")
+  dependencias <- c("terra", "httr", "jsonlite", "digest", "png")
   ausentes <- dependencias[!vapply(
     dependencias,
     requireNamespace,
@@ -65261,6 +67578,11 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     ano_aquisicao,
     " • AWS Open Data / Earth Search"
   )
+  limite_uc_resultado <- monitora_relatorios_analiticos_limite_uc_oficial(
+    uas,
+    ativado = TRUE
+  )
+  resolucao_origem_m <- mean(terra::res(rgb))
   mapa_ok <- tryCatch(
     monitora_relatorios_analiticos_renderizar_sentinel2(
       rgb,
@@ -65268,7 +67590,13 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       destino,
       data_aquisicao = data_selecionada,
       nuvens_area_pct = selecionada$nuvens_area_pct[[1L]],
-      atribuicao = texto_atribuicao
+      atribuicao = texto_atribuicao,
+      cenas = paste(itens_selecionados$id, collapse = " | "),
+      resolucao_origem_m = resolucao_origem_m,
+      limite_uc = limite_uc_resultado$limite,
+      estados = limite_uc_resultado$estados,
+      biomas = limite_uc_resultado$biomas,
+      status_limite_uc = limite_uc_resultado$status
     ),
     error = function(e) {
       status[, motivo := paste0(
@@ -65280,8 +67608,15 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   )
   if (!isTRUE(mapa_ok)) {
     if (file.exists(destino)) unlink(destino, force = TRUE)
-    return(list(status = status, candidatos = candidatos))
+    return(list(
+      status = status,
+      candidatos = candidatos,
+      status_limite_uc = limite_uc_resultado$status,
+      metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
+    ))
   }
+  metadados_cartograficos <- attr(mapa_ok, "metadados_cartograficos")
+  crs_mapa <- attr(mapa_ok, "crs_mapa")
   nuvens_catalogo <- selecionada$nuvens_catalogo_max_pct[[1L]]
   status[, `:=`(
     gerado = TRUE,
@@ -65296,8 +67631,14 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     cobertura_area_pct = selecionada$cobertura_area_pct[[1L]],
     janela_busca_dias = as.integer(janela_busca_dias),
     limite_nuvens_area_pct = as.numeric(limite_nuvens_area_pct),
-    resolucao_m = mean(terra::res(rgb)),
+    resolucao_m = resolucao_origem_m,
     crs_imagem = terra::crs(rgb, proj = TRUE),
+    referencial_mapa = crs_mapa$referencial,
+    projecao_mapa = crs_mapa$projecao,
+    epsg_mapa = crs_mapa$epsg,
+    zona_utm = crs_mapa$zona_utm,
+    unidade_coordenadas = crs_mapa$unidade,
+    responsabilidade = "CBC/ICMBio",
     cache_reutilizado = cache_reutilizado,
     atribuicao = texto_atribuicao,
     legenda_relatorio = paste0(
@@ -65316,7 +67657,12 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       "."
     )
   )]
-  list(status = status, candidatos = candidatos)
+  list(
+    status = status,
+    candidatos = candidatos,
+    status_limite_uc = limite_uc_resultado$status,
+    metadados_cartograficos = metadados_cartograficos
+  )
 }
 
 monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
@@ -65334,7 +67680,9 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
         motivo = "opção N",
         n_uas = nrow(uas)
       ),
-      candidatos = data.table::data.table()
+      candidatos = data.table::data.table(),
+      status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
   if (identical(fonte, "GOOGLE_MAPS")) {
@@ -65344,16 +67692,28 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
         destino,
         ativado = TRUE
       ),
-      candidatos = data.table::data.table()
+      candidatos = data.table::data.table(),
+      status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
   if (identical(fonte, "SENTINEL2_PUBLICO")) {
-    return(monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2(
+    resultado <- monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2(
       uas,
       destino,
       dir_cache,
       ativado = TRUE
-    ))
+    )
+    if (is.null(resultado$status_limite_uc)) {
+      resultado$status_limite_uc <- monitora_relatorios_analiticos_status_limite_uc(
+        solicitado = TRUE,
+        motivo = "mapa orbital não gerado antes da consulta ao limite oficial"
+      )
+    }
+    if (is.null(resultado$metadados_cartograficos)) {
+      resultado$metadados_cartograficos <- monitora_relatorios_analiticos_metadados_cartograficos_vazio()
+    }
+    return(resultado)
   }
   list(
     status = monitora_relatorios_analiticos_status_mapa_satelite(
@@ -65362,7 +67722,9 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
       motivo = "fonte de mapa orbital não reconhecida",
       n_uas = nrow(uas)
     ),
-    candidatos = data.table::data.table()
+    candidatos = data.table::data.table(),
+    status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+    metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
   )
 }
 
@@ -65393,7 +67755,9 @@ monitora_relatorios_analiticos_mapas <- function(
         n_uas = 0L
       ),
       candidatos_satelite = data.table::data.table(),
-      resumo_espacial = data.table::data.table()
+      resumo_espacial = data.table::data.table(),
+      status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
   esp <- stat[, c("UC", "UA", "ANO", "COLETA", "form_veg", cols_coord), with = FALSE]
@@ -65427,7 +67791,9 @@ monitora_relatorios_analiticos_mapas <- function(
         n_uas = 0L
       ),
       candidatos_satelite = data.table::data.table(),
-      resumo_espacial = data.table::data.table()
+      resumo_espacial = data.table::data.table(),
+      status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
   esp[, `:=`(
@@ -65456,6 +67822,41 @@ monitora_relatorios_analiticos_mapas <- function(
     "Amostragem intermitente" = "#F9A825",
     "Amostrada em uma campanha" = "#C62828"
   )
+  parametros_cartograficos <- monitora_relatorios_analiticos_parametros_cartograficos(
+    c(esp$long_ini, esp$long_fin),
+    c(esp$lat_ini, esp$lat_fin),
+    largura_impressao_cm = 13.8
+  )
+  legenda_escala_numerica <- paste0(
+    "Escala numérica aproximada (figura a 13,8 cm): ",
+    monitora_relatorios_analiticos_fmt_escala_numerica(
+      parametros_cartograficos$escala_numerica
+    ),
+    " | moldura e grade: coordenadas geográficas WGS 84 (EPSG:4326) | norte geográfico"
+  )
+  ucs_resumo <- unique(trimws(as.character(ultima$UC)))
+  ucs_resumo <- ucs_resumo[!is.na(ucs_resumo) & nzchar(ucs_resumo)]
+  nome_uc_resumo <- if (length(ucs_resumo) == 1L) {
+    ucs_resumo[[1L]]
+  } else if (length(ucs_resumo) > 1L) {
+    "unidades de conservação representadas"
+  } else {
+    "unidade de conservação não informada"
+  }
+  preposicao_uc_resumo <- monitora_relatorios_analiticos_preposicao_uc(
+    nome_uc_resumo
+  )
+  titulo_mapa_resumo <- paste(
+    strwrap(
+      paste0(
+        "Distribuição espacial do esforço amostral do monitoramento de ",
+        "Plantas Herbáceas e Lenhosas, Nativas e Exóticas, ",
+        preposicao_uc_resumo, " ", nome_uc_resumo
+      ),
+      width = 58L
+    ),
+    collapse = "\n"
+  )
 
   p_resumo <- ggplot2::ggplot(ultima) +
     ggplot2::geom_segment(
@@ -65476,29 +67877,85 @@ monitora_relatorios_analiticos_mapas <- function(
       size = 3.2,
       alpha = 0.95
     ) +
+    monitora_relatorios_analiticos_camadas_cartograficas(
+      parametros_cartograficos,
+      compacto = FALSE
+    ) +
     ggplot2::scale_colour_manual(values = cores_continuidade, drop = FALSE) +
-    ggplot2::coord_quickmap() +
+    ggplot2::scale_x_continuous(
+      limits = parametros_cartograficos$xlim,
+      breaks = parametros_cartograficos$x_breaks,
+      labels = monitora_relatorios_analiticos_rotulo_longitude,
+      expand = c(0, 0)
+    ) +
+    ggplot2::scale_y_continuous(
+      limits = parametros_cartograficos$ylim,
+      breaks = parametros_cartograficos$y_breaks,
+      labels = monitora_relatorios_analiticos_rotulo_latitude,
+      expand = c(0, 0)
+    ) +
+    ggplot2::coord_quickmap(
+      xlim = parametros_cartograficos$xlim,
+      ylim = parametros_cartograficos$ylim,
+      expand = FALSE,
+      clip = "on"
+    ) +
     ggplot2::labs(
-      x = "Longitude",
-      y = "Latitude",
-      colour = "Continuidade",
-      shape = "Formação mais recente",
-      title = "Distribuição espacial e continuidade das UAs",
-      subtitle = "A continuidade compara a presença de cada UA nas campanhas da série"
+      x = NULL,
+      y = NULL,
+      colour = "Continuidade do esforço\namostral nas UAs",
+      shape = "Formação vegetacional",
+      title = titulo_mapa_resumo,
+      subtitle = "A continuidade compara a presença de cada UA nas campanhas da série",
+      caption = legenda_escala_numerica
     ) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
       panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        colour = grDevices::adjustcolor("white", alpha.f = 0.48),
+        linewidth = 0.18
+      ),
+      panel.background = ggplot2::element_rect(fill = "#DCE5E1", colour = NA),
+      panel.border = ggplot2::element_rect(
+        fill = NA,
+        colour = "#263238",
+        linewidth = 0.65
+      ),
+      axis.text = ggplot2::element_text(size = 8.4, colour = "#263238"),
+      axis.text.y = ggplot2::element_text(
+        angle = 90,
+        hjust = 0.5,
+        vjust = 0.5
+      ),
+      axis.ticks = ggplot2::element_line(colour = "#263238", linewidth = 0.35),
+      plot.caption = ggplot2::element_text(size = 7.8, colour = "#455A64", hjust = 0.5),
       legend.position = "bottom",
       legend.box = "vertical",
-      legend.text = ggplot2::element_text(size = 8),
-      legend.title = ggplot2::element_text(size = 8, face = "bold")
+      legend.text = ggplot2::element_text(size = 8.8),
+      legend.title = ggplot2::element_text(size = 8.8, face = "bold")
     ) +
     ggplot2::guides(
       colour = ggplot2::guide_legend(order = 1L, nrow = 1L, byrow = TRUE),
       shape = ggplot2::guide_legend(order = 2L, nrow = 1L, byrow = TRUE)
     )
+
+  ### Nos painéis anuais, somente coordenadas interiores são rotuladas. A
+  ### moldura e a grade permanecem completas, enquanto os rótulos das bordas
+  ### compartilhadas deixam de colidir quando há dois ou mais painéis.
+  x_breaks_paineis <- parametros_cartograficos$x_breaks[
+    parametros_cartograficos$x_breaks > parametros_cartograficos$xlim[[1L]] &
+      parametros_cartograficos$x_breaks < parametros_cartograficos$xlim[[2L]]
+  ]
+  if (length(x_breaks_paineis) > 3L) {
+    indices_breaks <- unique(as.integer(round(seq.int(
+      1L,
+      length(x_breaks_paineis),
+      length.out = 3L
+    ))))
+    x_breaks_paineis <- x_breaks_paineis[indices_breaks]
+  }
 
   p_paineis <- ggplot2::ggplot(esp) +
     ggplot2::geom_segment(
@@ -65514,19 +67971,59 @@ monitora_relatorios_analiticos_mapas <- function(
       ggplot2::aes(x = lon_meio, y = lat_meio, colour = formacao_label),
       size = 1.5
     ) +
+    monitora_relatorios_analiticos_camadas_cartograficas(
+      parametros_cartograficos,
+      compacto = TRUE
+    ) +
     ggplot2::facet_wrap(~ANO) +
-    ggplot2::coord_quickmap() +
+    ggplot2::scale_x_continuous(
+      limits = parametros_cartograficos$xlim,
+      breaks = x_breaks_paineis,
+      labels = monitora_relatorios_analiticos_rotulo_longitude,
+      expand = c(0, 0)
+    ) +
+    ggplot2::scale_y_continuous(
+      limits = parametros_cartograficos$ylim,
+      breaks = parametros_cartograficos$y_breaks,
+      labels = monitora_relatorios_analiticos_rotulo_latitude,
+      expand = c(0, 0)
+    ) +
+    ggplot2::coord_quickmap(
+      xlim = parametros_cartograficos$xlim,
+      ylim = parametros_cartograficos$ylim,
+      expand = FALSE,
+      clip = "on"
+    ) +
     ggplot2::labs(
-      x = "Longitude",
-      y = "Latitude",
+      x = NULL,
+      y = NULL,
       colour = "Formação",
       title = "Distribuição anual das UAs amostradas",
-      subtitle = "Cada painel representa as UAs com geometria válida naquela campanha"
+      subtitle = "Cada painel representa as UAs com geometria válida naquela campanha",
+      caption = legenda_escala_numerica
     ) +
     ggplot2::theme_minimal(base_size = 10) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
       panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        colour = grDevices::adjustcolor("white", alpha.f = 0.48),
+        linewidth = 0.16
+      ),
+      panel.background = ggplot2::element_rect(fill = "#DCE5E1", colour = NA),
+      panel.border = ggplot2::element_rect(
+        fill = NA,
+        colour = "#263238",
+        linewidth = 0.55
+      ),
+      axis.text = ggplot2::element_text(size = 7.5, colour = "#263238"),
+      axis.text.y = ggplot2::element_text(
+        angle = 90,
+        hjust = 0.5,
+        vjust = 0.5
+      ),
+      axis.ticks = ggplot2::element_line(colour = "#263238", linewidth = 0.3),
+      plot.caption = ggplot2::element_text(size = 7.6, colour = "#455A64", hjust = 0.5),
       legend.position = "bottom",
       strip.text = ggplot2::element_text(face = "bold")
     )
@@ -65539,6 +68036,9 @@ monitora_relatorios_analiticos_mapas <- function(
   arq_satelite <- file.path(dir_figuras, "mapa_continuidade_uas_satelite.png")
   resultado_satelite <- monitora_relatorios_analiticos_gerar_mapa_satelite(
     ultima[, .(
+      UC, ANO,
+      ANO_INICIAL = min(esp$ANO, na.rm = TRUE),
+      ANO_FINAL = max(esp$ANO, na.rm = TRUE),
       long_ini, lat_ini, long_fin, lat_fin, lon_meio, lat_meio,
       classe_continuidade_label = as.character(classe_continuidade_label),
       formacao_label
@@ -65567,7 +68067,9 @@ monitora_relatorios_analiticos_mapas <- function(
     mapa_satelite = arq_satelite,
     status_satelite = status_satelite[],
     candidatos_satelite = resultado_satelite$candidatos[],
-    resumo_espacial = resumo_espacial[]
+    resumo_espacial = resumo_espacial[],
+    status_limite_uc = resultado_satelite$status_limite_uc[],
+    metadados_cartograficos = resultado_satelite$metadados_cartograficos[]
   )
 }
 
@@ -66198,6 +68700,522 @@ monitora_relatorios_analiticos_garantir_favicon_local <- function(html) {
   invisible(list(ok = TRUE, inserido = TRUE, caminho = html))
 }
 
+monitora_relatorios_analiticos_referencia_docx_sha256 <- function() {
+  "68fa8b38724086946590eaa7b3ee36d4ad58169feb78d9c90df4edea57e2e54c"
+}
+
+monitora_relatorios_analiticos_referencia_docx_base64 <- function() {
+  paste0(
+    "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"
+  )
+}
+
+monitora_relatorios_analiticos_referencia_docx_materializar <- function(destino) {
+  bruto <- jsonlite::base64_dec(
+    monitora_relatorios_analiticos_referencia_docx_base64()
+  )
+  conexao <- file(destino, open = "wb")
+  on.exit(try(close(conexao), silent = TRUE), add = TRUE)
+  writeBin(bruto, conexao)
+  close(conexao)
+  on.exit(NULL, add = FALSE)
+  hash <- digest::digest(file = destino, algo = "sha256")
+  if (!identical(
+    hash,
+    monitora_relatorios_analiticos_referencia_docx_sha256()
+  )) {
+    stop(
+      "Integridade do modelo editorial DOCX embutido não comprovada.",
+      call. = FALSE
+    )
+  }
+  invisible(destino)
+}
+
+monitora_relatorios_analiticos_conteudo_docx <- function(conteudo) {
+  linhas <- unlist(lapply(as.character(conteudo), function(x) {
+    if (!nzchar(x)) return("")
+    strsplit(x, "\n", fixed = TRUE)[[1L]]
+  }), use.names = FALSE)
+  linhas <- sub("\r$", "", linhas)
+
+  yaml_aspas <- function(x) {
+    x <- gsub("\\", "\\\\", as.character(x), fixed = TRUE)
+    x <- gsub("\"", "\\\"", x, fixed = TRUE)
+    paste0("\"", x, "\"")
+  }
+  limpar_html <- function(x) {
+    x <- gsub("<strong>", "**", x, fixed = TRUE)
+    x <- gsub("</strong>", "**", x, fixed = TRUE)
+    x <- gsub("<br[[:space:]]*/?>", " ", x, ignore.case = TRUE, perl = TRUE)
+    x <- gsub("<[^>]+>", "", x, perl = TRUE)
+    trimws(x)
+  }
+  contar_regex <- function(x, padrao) {
+    achados <- gregexpr(padrao, x, perl = TRUE)[[1L]]
+    if (identical(achados[[1L]], -1L)) 0L else length(achados)
+  }
+
+  separadores <- which(trimws(linhas) == "---")
+  corpo <- if (length(separadores) >= 2L) {
+    linhas[(separadores[[2L]] + 1L):length(linhas)]
+  } else {
+    linhas
+  }
+
+  inicio_capa <- which(trimws(corpo) == '<div class="cover">')[1L]
+  fim_capa <- NA_integer_
+  capa <- character(0)
+  if (!is.na(inicio_capa)) {
+    profundidade <- 0L
+    for (ii in seq.int(inicio_capa, length(corpo))) {
+      profundidade <- profundidade +
+        contar_regex(corpo[[ii]], "<div(?:[[:space:]][^>]*)?>") -
+        contar_regex(corpo[[ii]], "</div>")
+      if (ii > inicio_capa && profundidade <= 0L) {
+        fim_capa <- ii
+        break
+      }
+    }
+    if (!is.na(fim_capa)) {
+      capa <- corpo[inicio_capa:fim_capa]
+      corpo <- corpo[-seq.int(inicio_capa, fim_capa)]
+    }
+  }
+
+  extrair_primeiro <- function(padrao, substituicao = "\\1") {
+    pos <- grep(padrao, capa, perl = TRUE)[1L]
+    if (is.na(pos)) return("")
+    limpar_html(sub(padrao, substituicao, capa[[pos]], perl = TRUE))
+  }
+  titulo <- extrair_primeiro("^<h1>(.*)</h1>$")
+  programa <- extrair_primeiro('^<div class="programa">(.*)</div>$')
+  uc <- extrair_primeiro('^<div class="uc">(.*)</div>$')
+  protocolo <- extrair_primeiro("^<div>(.*)</div>$")
+  if (!nzchar(titulo)) titulo <- "Relatório analítico"
+  if (!nzchar(programa)) programa <- "Programa Monitora - Componente Campestre Savânico"
+
+  meta_inicio <- grep('^<div class="meta">', capa, perl = TRUE)[1L]
+  meta_fim <- if (!is.na(meta_inicio)) {
+    candidatos <- which(seq_along(capa) >= meta_inicio & grepl("</div>", capa, fixed = TRUE))
+    if (length(candidatos)) candidatos[[1L]] else meta_inicio
+  } else {
+    NA_integer_
+  }
+  meta <- if (!is.na(meta_inicio)) {
+    vapply(capa[meta_inicio:meta_fim], limpar_html, character(1L))
+  } else {
+    character(0)
+  }
+  meta <- meta[nzchar(meta)]
+
+  cabecalho <- c(
+    "---",
+    paste0("title: ", yaml_aspas(titulo)),
+    paste0(
+      "subtitle: ",
+      yaml_aspas(paste(c(programa, protocolo[nzchar(protocolo)]), collapse = " | "))
+    ),
+    "author:",
+    paste0("  - ", yaml_aspas(if (nzchar(uc)) uc else "Instituto Chico Mendes de Conservação da Biodiversidade")),
+    "date: |",
+    if (length(meta)) paste0("  ", paste(meta, collapse = " · ")) else "  Programa Monitora",
+    "lang: pt-BR",
+    "toc-title: Sumário",
+    "---",
+    "",
+    "```{=openxml}",
+    '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+    "```",
+    ""
+  )
+
+  tabela_celulas <- function(linha) {
+    x <- trimws(linha)
+    x <- sub("^\\|", "", x)
+    x <- sub("\\|$", "", x)
+    trimws(strsplit(x, "\\|", perl = TRUE)[[1L]])
+  }
+  tabela_markdown <- function(cab, dados) {
+    cab <- gsub("\\|", "\\\\|", cab)
+    nr <- nrow(dados)
+    nc <- ncol(dados)
+    dados <- matrix(
+      gsub("\\|", "\\\\|", as.character(dados)),
+      nrow = nr,
+      ncol = nc,
+      dimnames = dimnames(dados)
+    )
+    c(
+      paste0("| ", paste(cab, collapse = " | "), " |"),
+      paste0("| ", paste(rep("---", length(cab)), collapse = " | "), " |"),
+      if (nrow(dados)) apply(
+        dados,
+        1L,
+        function(x) paste0("| ", paste(x, collapse = " | "), " |")
+      ) else character(0)
+    )
+  }
+  tabela_docx <- function(bloco) {
+    if (length(bloco) < 2L) return(bloco)
+    cab <- tabela_celulas(bloco[[1L]])
+    linhas_dados <- bloco[-c(1L, 2L)]
+    dados <- if (length(linhas_dados)) {
+      lista <- lapply(linhas_dados, tabela_celulas)
+      largura <- length(cab)
+      lista <- lapply(lista, function(x) {
+        length(x) <- largura
+        x[is.na(x)] <- ""
+        x
+      })
+      do.call(rbind, lista)
+    } else {
+      matrix(character(0), nrow = 0L, ncol = length(cab))
+    }
+    colnames(dados) <- cab
+
+    if (all(c("UC", "Ano", "Formação", "UAs amostradas", "Nº de pontos amostrais") %in% cab)) {
+      manter <- c("Ano", "Formação", "UAs amostradas", "Nº de pontos amostrais")
+      return(c("", tabela_markdown(
+        c("Ano", "Formação", "UAs", "Nº de pontos amostrais"),
+        dados[, manter, drop = FALSE]
+      ), ""))
+    }
+
+    if (all(c("Formação", "Indicador", "Período", "Nº de UAs pareadas", "Diferença (p.p.)", "IC95% (p.p.)", "Valor de p ajustado", "Interpretação", "Consistência") %in% cab)) {
+      saida <- character(0)
+      for (ii in seq_len(nrow(dados))) {
+        d <- as.list(dados[ii, , drop = TRUE])
+        saida <- c(
+          saida,
+          "",
+          paste0("**", d[["Formação"]], " — ", d[["Indicador"]], " (", d[["Período"]], ")**"),
+          "",
+          paste0("- **UAs pareadas:** ", d[["Nº de UAs pareadas"]], "."),
+          paste0("- **Resultado:** ", d[["Diferença (p.p.)"]], " p.p. (IC95%: ", d[["IC95% (p.p.)"]], "); valor de p ajustado: ", d[["Valor de p ajustado"]], "."),
+          paste0("- **Leitura:** ", d[["Interpretação"]], "; ", d[["Consistência"]], "."),
+          ""
+        )
+      }
+      return(saida)
+    }
+
+    if (all(c("Natureza", "Recomendação", "Fundamento") %in% cab)) {
+      saida <- character(0)
+      for (ii in seq_len(nrow(dados))) {
+        d <- as.list(dados[ii, , drop = TRUE])
+        titulo_recomendacao <- if ("Prioridade" %in% cab) {
+          paste0(d[["Prioridade"]], " — ", d[["Natureza"]])
+        } else {
+          d[["Natureza"]]
+        }
+        saida <- c(
+          saida,
+          "",
+          paste0("**", titulo_recomendacao, "**"),
+          "",
+          paste0("- **Recomendação:** ", d[["Recomendação"]]),
+          paste0("- **Fundamento:** ", d[["Fundamento"]]),
+          ""
+        )
+      }
+      return(saida)
+    }
+
+    if (all(c("Formação", "Grupo", "Métrica", "Ano", "Nº de UAs pareadas", "Distância de Hellinger", "Bray-Curtis médio", "Valor de p ajustado", "Interpretação") %in% cab)) {
+      saida <- character(0)
+      for (ii in seq_len(nrow(dados))) {
+        d <- as.list(dados[ii, , drop = TRUE])
+        saida <- c(
+          saida,
+          "",
+          paste0("**", d[["Formação"]], " — ", d[["Grupo"]], " — ", d[["Métrica"]], " (", d[["Ano"]], ")**"),
+          "",
+          paste0("- **UAs pareadas:** ", d[["Nº de UAs pareadas"]], "."),
+          paste0("- **Distâncias:** Hellinger = ", d[["Distância de Hellinger"]], "; Bray-Curtis médio = ", d[["Bray-Curtis médio"]], "."),
+          paste0("- **Resultado:** valor de p ajustado = ", d[["Valor de p ajustado"]], "; ", d[["Interpretação"]], "."),
+          ""
+        )
+      }
+      return(saida)
+    }
+    bloco
+  }
+
+  corpo_tabelas <- character(0)
+  ii <- 1L
+  while (ii <= length(corpo)) {
+    if (grepl("^\\s*\\|", corpo[[ii]], perl = TRUE)) {
+      jj <- ii
+      while (jj <= length(corpo) && grepl("^\\s*\\|", corpo[[jj]], perl = TRUE)) jj <- jj + 1L
+      corpo_tabelas <- c(corpo_tabelas, tabela_docx(corpo[ii:(jj - 1L)]))
+      ii <- jj
+    } else {
+      corpo_tabelas <- c(corpo_tabelas, corpo[[ii]])
+      ii <- ii + 1L
+    }
+  }
+
+  transformar <- function(linha) {
+    if (grepl(
+      "^<figure><img src=\\\"[^\\\"]+\\\" style=\\\"width:[^;]+;\\\"><figcaption>.*</figcaption></figure>$",
+      linha,
+      perl = TRUE
+    )) {
+      origem <- sub(
+        "^<figure><img src=\\\"([^\\\"]+)\\\".*$",
+        "\\1",
+        linha,
+        perl = TRUE
+      )
+      legenda <- sub(
+        "^.*<figcaption>(.*)</figcaption></figure>$",
+        "\\1",
+        linha,
+        perl = TRUE
+      )
+      return(paste0("![", legenda, "](", origem, "){width=6.20in}"))
+    }
+    if (identical(linha, '<div class="page-break"></div>')) {
+      return(paste0(
+        "\n```{=openxml}\n",
+        '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+        "\n```\n"
+      ))
+    }
+    chamada <- grepl(
+      '^<div class="callout(?: warning)?">',
+      linha,
+      perl = TRUE
+    )
+    if (isTRUE(chamada)) {
+      x <- sub(
+        '^<div class="callout(?: warning)?">',
+        "",
+        linha,
+        perl = TRUE
+      )
+      x <- sub("</div>$", "", x, perl = TRUE)
+      x <- gsub("<strong>", "**", x, fixed = TRUE)
+      x <- gsub("</strong>", "**", x, fixed = TRUE)
+      x <- gsub("<br><br>", "\n>\n> ", x, fixed = TRUE)
+      x <- gsub("<br>", "  \n> ", x, fixed = TRUE)
+      x <- gsub("<[^>]+>", "", x, perl = TRUE)
+      paragrafos <- trimws(strsplit(x, "\n>\n> ", fixed = TRUE)[[1L]])
+      paragrafos <- paragrafos[nzchar(paragrafos)]
+      return(c(paste0("> ", paragrafos), ""))
+    }
+    x <- linha
+    x <- sub(
+      '^<div class="programa">(.*)</div>$',
+      '*\\1*',
+      x,
+      perl = TRUE
+    )
+    x <- sub("^<h1>(.*)</h1>$", "# \\1", x, perl = TRUE)
+    x <- sub(
+      '^<div class="uc">(.*)</div>$',
+      '**\\1**',
+      x,
+      perl = TRUE
+    )
+    x <- sub(
+      '^<p class="small">(.*)</p>$',
+      '*\\1*',
+      x,
+      perl = TRUE
+    )
+    x <- gsub("<strong>", "**", x, fixed = TRUE)
+    x <- gsub("</strong>", "**", x, fixed = TRUE)
+    x <- gsub("<br><br>", "\n\n", x, fixed = TRUE)
+    x <- gsub("<br>", "  \n", x, fixed = TRUE)
+    x <- gsub("<[^>]+>", "", x, perl = TRUE)
+    partes <- trimws(strsplit(x, " - ", fixed = TRUE)[[1L]])
+    if (length(partes) >= 3L && !grepl("^[-*] ", x)) {
+      return(c(partes[[1L]], "", paste0("- ", partes[-1L]), ""))
+    }
+    x
+  }
+  corpo_transformado <- unlist(
+    lapply(corpo_tabelas, transformar),
+    use.names = FALSE
+  )
+  corpo_normalizado <- character(0)
+  for (linha in corpo_transformado) {
+    anterior <- if (length(corpo_normalizado)) tail(corpo_normalizado, 1L) else ""
+    anterior_e_lista <- grepl("^[-*][[:space:]]+", anterior, perl = TRUE)
+    inicia_lista <- grepl("^[-*][[:space:]]+", linha, perl = TRUE)
+    if (isTRUE(inicia_lista) && nzchar(trimws(anterior)) && !isTRUE(anterior_e_lista)) {
+      corpo_normalizado <- c(corpo_normalizado, "")
+    }
+    corpo_normalizado <- c(corpo_normalizado, linha)
+  }
+  c(cabecalho, corpo_normalizado)
+}
+
+
 monitora_relatorios_analiticos_renderizar <- function(
   conteudo,
   base_nome,
@@ -66208,11 +69226,12 @@ monitora_relatorios_analiticos_renderizar <- function(
 ) {
   formatos <- intersect(
     unique(tolower(as.character(formatos))),
-    c("rmd", "md", "html", "pdf")
+    c("rmd", "md", "html", "docx", "pdf")
   )
   rmd <- file.path(dir_relatorio, paste0(base_nome, ".Rmd"))
   md <- file.path(dir_relatorio, paste0(base_nome, ".md"))
   html <- file.path(dir_relatorio, paste0(base_nome, ".html"))
+  docx <- file.path(dir_relatorio, paste0(base_nome, ".docx"))
   pdf <- file.path(dir_relatorio, paste0(base_nome, ".pdf"))
   erros <- list()
   registrar_erro <- function(formato, etapa, mensagem) {
@@ -66246,6 +69265,67 @@ monitora_relatorios_analiticos_renderizar <- function(
     writeLines(corpo, md, useBytes = TRUE),
     error = function(e) registrar_erro("md", "gravacao_markdown", conditionMessage(e))
   )
+
+  if ("docx" %in% formatos) {
+    remover_alvo_anterior(docx)
+    if (!file.exists(rmd)) {
+      registrar_erro(
+        "docx",
+        "dependencia_rmd",
+        "DOCX não gerado porque o arquivo Rmd desta execução está ausente."
+      )
+    } else {
+      rmd_docx <- tempfile(
+        pattern = paste0(".", base_nome, "_docx_"),
+        tmpdir = dir_relatorio,
+        fileext = ".Rmd"
+      )
+      referencia_docx <- tempfile(
+        pattern = ".monitora_referencia_docx_",
+        tmpdir = dir_relatorio,
+        fileext = ".docx"
+      )
+      on.exit({
+        if (file.exists(rmd_docx)) unlink(rmd_docx, force = TRUE)
+        if (file.exists(referencia_docx)) unlink(referencia_docx, force = TRUE)
+      }, add = TRUE)
+      tryCatch({
+        writeLines(
+          monitora_relatorios_analiticos_conteudo_docx(conteudo),
+          rmd_docx,
+          useBytes = TRUE
+        )
+        monitora_relatorios_analiticos_referencia_docx_materializar(
+          referencia_docx
+        )
+        antigo <- getwd()
+        on.exit(setwd(antigo), add = TRUE)
+        setwd(dir_relatorio)
+        rmarkdown::render(
+          input = basename(rmd_docx),
+          output_format = rmarkdown::word_document(
+            toc = FALSE,
+            number_sections = FALSE,
+            fig_width = 6.2,
+            fig_height = 4.5,
+            reference_docx = normalizePath(
+              referencia_docx,
+              winslash = "/",
+              mustWork = TRUE
+            ),
+            pandoc_args = "--wrap=none"
+          ),
+          output_file = basename(docx),
+          output_dir = dir_relatorio,
+          quiet = TRUE,
+          clean = TRUE,
+          envir = new.env(parent = globalenv())
+        )
+      }, error = function(e) {
+        registrar_erro("docx", "renderizacao_docx", conditionMessage(e))
+      })
+    }
+  }
 
   precisa_html <- any(c("html", "pdf") %in% formatos)
   if (isTRUE(precisa_html)) {
@@ -66326,7 +69406,7 @@ monitora_relatorios_analiticos_renderizar <- function(
     }
   }
 
-  todos <- c(rmd = rmd, md = md, html = html, pdf = pdf)
+  todos <- c(rmd = rmd, md = md, html = html, docx = docx, pdf = pdf)
   manter <- unique(c("rmd", "md", formatos))
   todos <- todos[names(todos) %in% manter & file.exists(todos)]
   produtos <- data.table::data.table(
@@ -66403,7 +69483,7 @@ monitora_relatorios_analiticos_gerar <- function(
   cob_nat,
   cob_exot,
   output_dir,
-  formatos = c("rmd", "md", "html", "pdf"),
+  formatos = c("rmd", "md", "html", "docx", "pdf"),
   mapa_satelite = FALSE,
   fonte_mapa_satelite = "SENTINEL2_PUBLICO",
   status_validacao = "CONSULTAR AUDITORIAS"
@@ -66411,7 +69491,7 @@ monitora_relatorios_analiticos_gerar <- function(
   inicio <- proc.time()[["elapsed"]]
   formatos <- intersect(
     unique(tolower(as.character(formatos))),
-    c("rmd", "md", "html", "pdf")
+    c("rmd", "md", "html", "docx", "pdf")
   )
   navegador_pdf <- if ("pdf" %in% formatos) {
     monitora_relatorios_analiticos_resolver_navegador()
@@ -66554,6 +69634,17 @@ monitora_relatorios_analiticos_gerar <- function(
     bom = TRUE,
     na = ""
   )
+  data.table::fwrite(
+    mapas$status_limite_uc,
+    file.path(dir_relatorio, "auditoria_limite_uc_oficial.csv"),
+    bom = TRUE,
+    na = ""
+  )
+  arquivos_metadados_cartograficos <-
+    monitora_relatorios_analiticos_gravar_metadados_cartograficos(
+      mapas$metadados_cartograficos,
+      dir_relatorio
+    )
   if (nrow(mapas$candidatos_satelite)) {
     data.table::fwrite(
       mapas$candidatos_satelite,
@@ -67170,29 +70261,31 @@ monitora_relatorios_analiticos_gerar <- function(
   conteudo_sintetico <- c(
     yaml(paste0("Relatório analítico sintético - ", uc)),
     capa("sintético"),
-    "# Síntese executiva",
+    "# Resumo executivo",
     paste0('<div class="callout">', paste(resumo_exec, collapse = "<br><br>"), "</div>"),
-    "## Mensagens principais",
+    "## Achados prioritários",
     paste0("- ", frases_sintese),
     "",
-    "# Esforço amostral",
+    "# Esforço amostral por UC, formação e ano",
     "A tabela contabiliza UAs e pontos amostrais efetivamente observados. UAs não são duplicadas como “transecções”, e o número de pontos não é estimado pelo desenho potencial de 101 posições.",
-    monitora_relatorios_analiticos_kable(tabela_esforco_total),
+    monitora_relatorios_analiticos_kable(tabela_esforco_formacao),
     "",
-    fig_sint(rel_mapa_resumo, "Distribuição espacial e continuidade das UAs. A formação indicada é a classificação mais recente; mudanças históricas de classificação constam na matriz editável."),
+    fig_sint(rel_mapa_resumo, "Distribuição espacial do esforço amostral nas UAs. A formação indicada é a classificação mais recente; mudanças históricas de classificação constam na matriz editável."),
     if (!is.na(rel_mapa_satelite)) fig_sint(
       rel_mapa_satelite,
       legenda_mapa_satelite
     ) else "",
     fig_sint("figuras/esforco_amostral_temporal.png", "Esforço amostral anual por formação vegetacional."),
     "",
-    "# Estado recente da vegetação",
+    "# Estado da cobertura vegetal",
+    "## Categorias gerais na campanha mais recente",
     paste0("Cobertura observada na campanha mais recente (**", max(anos), "**):"),
     monitora_relatorios_analiticos_kable(estado_atual),
     "",
     fig_sint(fig_por_id("categorias_temporal"), "Série descritiva das categorias gerais. Diferenças de esforço devem ser consideradas na leitura."),
     "",
-    "# Mudanças temporais prioritárias",
+    "# Resultados temporais",
+    "## Mudanças temporais prioritárias",
     monitora_relatorios_analiticos_kable(tabela_achados(8L)),
     "",
     fig_sint(fig_por_id("mudancas_prioritarias"), "Diferenças pareadas e intervalos de confiança dos resultados temporais priorizados."),
@@ -67202,7 +70295,8 @@ monitora_relatorios_analiticos_gerar <- function(
     "",
     '<div class="callout warning"><strong>Limite inferencial.</strong> As hipóteses são mecanismos plausíveis, não causas demonstradas. Registros independentes de fogo, clima, manejo, invasão, uso e animais são necessários para testar associação temporal e espacial.</div>',
     "",
-    "# Recomendações prioritárias",
+    "# Recomendações para a UC",
+    "## Recomendações de maior prioridade",
     monitora_relatorios_analiticos_kable(head(recomendacoes[, .(
       Prioridade = prioridade,
       Natureza = natureza,
@@ -67210,10 +70304,10 @@ monitora_relatorios_analiticos_gerar <- function(
       Fundamento = fundamento
     )], 5L)),
     "",
-    "# Nota metodológica",
+    "# Escopo e método",
     paste0("- ", linhas_metodo),
     "",
-    "# Fontes e rastreabilidade",
+    "# Produtos e rastreabilidade",
     "- Base analítica: `01_produtos_dados/registros_corrig_stat.csv`.",
     "- Pontos amostrais: `01_produtos_dados/registros_corrig.csv`.",
     "- Estatísticas: arquivos de `05_estatisticas/`.",
@@ -67221,6 +70315,11 @@ monitora_relatorios_analiticos_gerar <- function(
     "- Evidências: `indice_evidencias_relatorio.csv`.",
     "- Esforço: `esforco_amostral_por_uc_formacao_ano.csv`.",
     "- Continuidade: `continuidade_uas.csv` e `matriz_anuidades_amostrais.csv`.",
+    if (length(arquivos_metadados_cartograficos)) {
+      "- Cartografia: `metadados_cartograficos_mgb2.csv`, `metadados_cartograficos_mgb2.json` e `auditoria_limite_uc_oficial.csv`."
+    } else {
+      "- Cartografia orbital: não solicitada nesta execução; a auditoria da opção foi preservada."
+    },
     "",
     paste0(
       '<p class="small">Relatório analítico ',
@@ -67256,6 +70355,7 @@ monitora_relatorios_analiticos_gerar <- function(
     "",
     "# Escopo e método",
     "O protocolo caracteriza a cobertura por interceptação de pontos ao longo das UAs. O desenho prevê até 101 posições potenciais, mas este relatório contabiliza somente os pontos válidos efetivamente registrados.",
+    "",
     paste0("- ", linhas_metodo),
     "",
     "# Esforço amostral por UC, formação e ano",
@@ -67269,7 +70369,7 @@ monitora_relatorios_analiticos_gerar <- function(
       " UA(s)** apresenta(m) mudança de classificação da formação entre anos; isso não representa, por si só, substituição ou perda da UA."
     ),
     "",
-    fig_det(rel_mapa_resumo, "Distribuição espacial e continuidade das UAs. O mapa representa a rede amostral, não o limite oficial da UC."),
+    fig_det(rel_mapa_resumo, "Distribuição espacial do esforço amostral nas UAs. O mapa representa a rede amostral, não o limite oficial da UC."),
     if (!is.na(rel_mapa_satelite)) fig_det(
       rel_mapa_satelite,
       legenda_mapa_satelite
@@ -67324,14 +70424,15 @@ monitora_relatorios_analiticos_gerar <- function(
     "- Resultado inconclusivo não significa estabilidade.",
     "- Cobertura e proporção relativa respondem a perguntas diferentes.",
     "- Formações campestre e savânica são interpretadas separadamente.",
-    "- Os mapas representam a rede amostral e não substituem o limite oficial da UC.",
+    "- O mapa principal representa a rede amostral; o limite oficial da UC é usado somente no localizador e não substitui produto cartográfico oficial.",
     "- A série de vegetação, isoladamente, não demonstra o mecanismo causal das mudanças.",
     "",
     "# Produtos e rastreabilidade",
     monitora_relatorios_analiticos_kable(data.table::data.table(
       Componente = c(
         "Base analítica", "Pontos", "Esforço", "Continuidade",
-        "Estado", "Mudanças", "Composição", "Gráficos", "Espacial"
+        "Estado", "Mudanças", "Composição", "Gráficos", "Espacial",
+        "Metadados cartográficos"
       ),
       Produto = c(
         "01_produtos_dados/registros_corrig_stat.csv",
@@ -67342,13 +70443,20 @@ monitora_relatorios_analiticos_gerar <- function(
         "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
         "05_estatisticas/estatisticas_composicao_*.csv",
         "indice_selecao_graficos.csv e PNGs editoriais",
-        "resumo_espacial_continuidade_uas.csv"
+        "resumo_espacial_continuidade_uas.csv",
+        if (length(arquivos_metadados_cartograficos)) {
+          "metadados_cartograficos_mgb2.csv/json e auditoria_limite_uc_oficial.csv"
+        } else {
+          "não gerados; mapa orbital desativado nesta execução"
+        }
       )
     )),
     "",
     "# Referências metodológicas",
     "- [Componente Campestre Savânico - ICMBio](https://www.gov.br/icmbio/pt-br/assuntos/centros-de-pesquisa/biodiversidade-e-restauracao-ecologica/monitoramento-da-biodiversidade-e).",
-    "- [Guia para amostragem das formas de vida](https://www.gov.br/icmbio/pt-br/assuntos/monitoramento/conteudo/Materiais-de-Apoio/Guiaparaamostragemdasformasdevida.pdf)."
+    "- [Guia para amostragem das formas de vida](https://www.gov.br/icmbio/pt-br/assuntos/monitoramento/conteudo/Materiais-de-Apoio/Guiaparaamostragemdasformasdevida.pdf).",
+    "- [Dados geoespaciais oficiais do ICMBio](https://www.gov.br/icmbio/pt-br/dados-icmbio/dados_geoespaciais/mapa-tematico-e-dados-geoestatisticos-das-unidades-de-conservacao-federais).",
+    "- [Perfil de Metadados Geoespaciais do Brasil - MGB 2.0](https://www.inde.gov.br/pdf/liv101802.pdf)."
   )
 
   monitora_relatorios_analiticos_validar_editorial(list(
@@ -68569,7 +71677,7 @@ monitora_auditar_produtos_finais <- function() {
     produto_linha("registros_importados_bruto.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_importados_bruto.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_importados_bruto.csv"), "arquivo", espera_registros_importados, FALSE, 1L, "snapshot técnico bruto da leitura/montagem dos arquivos de entrada"),
     produto_linha("registros_corrig.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig.csv"), "arquivo", TRUE, TRUE, 1L, "base corrigida final"),
     produto_linha("registros_validados.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_validados.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_validados.csv"), "arquivo", espera_registros_validados, espera_registros_validados, 1L, "produto opcional no schema SISMONITORA 21FEV25"),
-    produto_linha("registros_validados_importacao_sismonitora*.xlsx", file.path(out_dir, "00_manifesto_execucao", "manifesto_planilha_importacao_sismonitora.csv"), "arquivo", espera_registros_validados_importacao_sismonitora, espera_registros_validados_importacao_sismonitora, 1L, "Conjunto opcional de um XLSX por contexto UC + ciclo + campanha, em modo de inclusão de registros novos, com as três abas do modelo 21FEV25 e coluna uc explícita, derivado exclusivamente de registros_validados.csv gerado e validado nesta execução. O manifesto auditado neste caminho enumera e traz o hash de cada planilha; colunas uuid e amostragem/registro/uuid são mantidas com células vazias, preservando os identificadores na fonte e na auditoria; observacoes_gerais é omitido da carga e preservado na auditoria devido a XPath regex não suportado pelo importador."),
+    produto_linha("registros_validados_importacao_sismonitora*.xlsx", file.path(out_dir, "00_manifesto_execucao", "manifesto_planilha_importacao_sismonitora.csv"), "arquivo", espera_registros_validados_importacao_sismonitora, espera_registros_validados_importacao_sismonitora, 1L, "Conjunto opcional de um XLSX por contexto UC + ciclo + campanha, com as três abas do modelo 21FEV25 e coluna uc explícita, derivado exclusivamente de registros_validados.csv gerado e validado nesta execução. O manifesto enumera e traz o hash de cada planilha e registra a política aplicada: UUID removido para inclusão ou preservado, por opção explícita, para eventual atualização dependente de homologação do SISMONITORA. A fonte permanece intocada; observacoes_gerais é omitido da carga e preservado na auditoria devido a XPath regex não suportado pelo importador."),
     produto_linha("registros_corrig_stat.csv", if (exists("monitora_produtos_path_canonico", mode = "function")) monitora_produtos_path_canonico("registros_corrig_stat.csv", out_dir) else file.path(out_dir, "01_produtos_dados", "registros_corrig_stat.csv"), "arquivo", TRUE, TRUE, 1L, "base estatística final"),
     produto_linha("relatorio_execucao_ultima_execucao.csv", caminho_raiz_ou_organizado("relatorio_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "log consolidado da última execução"),
     produto_linha("performance_execucao_ultima_execucao.csv", caminho_raiz_ou_organizado("performance_execucao_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "performance consolidada da última execução"),
@@ -68581,7 +71689,7 @@ monitora_auditar_produtos_finais <- function() {
     produto_linha("relatorio_textual_estatistico.txt", caminho_raiz_ou_organizado("relatorio_textual_estatistico.txt"), "arquivo", TRUE, FALSE, 1L, "relatório textual estatístico"),
     produto_linha("indice_graficos.csv", caminho_raiz_ou_organizado("indice_graficos.csv"), "arquivo", TRUE, FALSE, 1L, "índice dos gráficos"),
     produto_linha("plots_png", png_dir, "diretorio", espera_png, TRUE, 1L, paste0("MONITORA_EXPORTAR_PNG_MODO=", modo_png)),
-    produto_linha("relatorios_analiticos", file.path(out_dir, "08_relatorios_analiticos"), "diretorio", espera_relatorios_analiticos, espera_relatorios_analiticos, 1L, "relatórios sintético e detalhado por UC, formatos editáveis, PDFs, índices de evidências, esforço real e continuidade espacial"),
+    produto_linha("relatorios_analiticos", file.path(out_dir, "08_relatorios_analiticos"), "diretorio", espera_relatorios_analiticos, espera_relatorios_analiticos, 1L, "relatórios sintético e detalhado por UC em Rmd, Markdown, HTML, DOCX e PDF, índices de evidências, esforço real e mapas com elementos cartográficos profissionais"),
     produto_linha("UAs_registros_corrig_stat.kml", caminho_raiz_ou_organizado("UAs_registros_corrig_stat.kml"), "arquivo", espera_kml, FALSE, 1L, "KML linhas inicial-final"),
     produto_linha("UAs_verg_ini_verg_fin.kml", caminho_raiz_ou_organizado("UAs_verg_ini_verg_fin.kml"), "arquivo", espera_kml, FALSE, 1L, "KML pontos inicial/final"),
     produto_linha("relatorios_pre_painel", file.path(out_dir, "02_painel_correcoes", "relatorios_apoio_tematicos", "pre_painel"), "diretorio", espera_rel_painel, FALSE, 1L, "relatórios de apoio antes do painel"),
