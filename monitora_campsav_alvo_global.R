@@ -1,8 +1,22 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.2
-### Base pública preservada: v2.9.1
+### Versão do script: 2.9.3
+### Baseline pública de origem: v2.9.2
+### Conteúdo acumulado da versão — repetições de coletores/impactos, justificativas em
+### lote, sanitização contratual de coletores, manual atualizado, diagnóstico
+### não impeditivo de seca/morta, núcleo ecológico dos relatórios analíticos e
+### integração inferencial auditável nos gráficos dos relatórios. As séries
+### anuais usam a UA como unidade analítica, com média, IC95% e esforço; os
+### painéis estatísticos incorporam mudanças pareadas entre medições, comparação
+### com linha de base, FDR-BH, equivalência e mudança de composição. Pendências e
+### alertas espaciais passam a integrar a justificativa auditável em lote, com
+### reavaliação pós-correção; relatórios recebem texto agrupado, alinhamento
+### editorial externo, justificativa tipográfica e símbolos inferenciais nas
+### médias anuais, sempre derivados dos testes pareados já materializados.
+### A interpretação distingue resultado observado, hipótese compatível,
+### explicações alternativas e evidência necessária; nenhum vetor de mudança é
+### atribuído como causa somente a partir da série de vegetação.
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -144,8 +158,11 @@
 ### precisa enfileirar e reproduzir milhares de expressões no console. O corpo é
 ### avaliado no ambiente global, preservando a semântica histórica do script,
 ### sem depender de iniciador, .Rprofile, projeto RStudio ou arquivo auxiliar.
-### A versão 2.9.2 remove marcações HTML dos rótulos exibidos na tabela de
-### justificativas sem modificar a ocorrência, seu identificador ou a trilha.
+### A versão 2.9.3 acrescenta edição transacional e sanitização determinística
+### do repeat de coletores, preserva o CPF como opcional, explicita labels/names
+### e dependências dos atributos de impactos, permite justificar pendências em
+### lote e atualiza integralmente o manual e o relatório consolidado, sem alterar
+### os demais módulos congelados.
 ###
 base::evalq({
 
@@ -209,8 +226,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.2"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.2-20260807.1"
+MONITORA_SCRIPT_VERSAO <- "2.9.3"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.3-20260807.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1747,7 +1764,7 @@ monitora_doc_rmd_setup <- function() {
     "    }",
     "    return(invisible())",
     "  }",
-    "  x[] <- lapply(x, .monitora_doc_wrap_cell, width = largura, html = TRUE)",
+    "  x[] <- lapply(x, function(v) { v <- as.character(v); v[is.na(v)] <- ''; v })",
     "  print(knitr::kable(x, format='html', escape=FALSE, table.attr='class=\"monitora-tabela\"'))",
     "}",
     "```",
@@ -1921,6 +1938,22 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "docs") {
   )
 }
 
+monitora_manual_usuario_cobertura_validar <- function(conteudo) {
+  texto <- paste(as.character(conteudo), collapse = "\n")
+  marcadores <- c(
+    "Início rápido", "Equipe da COLETA", "CPF é opcional", "Impactos de manejo e uso",
+    "Justificar pendências", "justificativa em lote", "Validação espacial",
+    "mudança de formação vegetacional", "registros_validados_importacao_sismonitora",
+    "Sanitizações automáticas", "Solução de problemas", "Proteção de dados",
+    "output/03_auditorias/relatorios_validacao/"
+  )
+  ausentes <- marcadores[!vapply(marcadores, grepl, logical(1L), x = texto, fixed = TRUE)]
+  if (length(ausentes)) {
+    stop("Manual do usuário incompleto; tópicos obrigatórios ausentes: ", paste(ausentes, collapse = "; "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "indefinida", inherits = TRUE), formatos = c("html", "pdf")) {
   dir.create(docs_dir, recursive = TRUE, showWarnings = FALSE)
   dados_dir <- file.path(docs_dir, paste0("manual_usuario_v", versao, "_dados"))
@@ -1930,7 +1963,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
   cfg <- data.table::data.table(
     variavel = c("MONITORA_MODO_EXECUCAO", "MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES", "MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS", "MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", "MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", "MONITORA_OPCAO_GERAR_MANUAL_USUARIO", "MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", "MONITORA_FORMATOS_RELATORIO_VALIDACAO", "MONITORA_RESPONSAVEL_CORRECAO", "MONITORA_INSTITUICAO_RESPONSAVEL", "MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES", "MONITORA_ARQUIVO_CORRECOES_ANTERIORES", "MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES", "MONITORA_OPCAO_REABRIR_PAINEL_DO_CACHE", "MONITORA_CACHE_PAINEL_DIR", "MONITORA_CACHE_PAINEL_ARQUIVO"),
     valores = c("completo; sem_png; estatisticas_sem_graficos; ate_registros_corrig; painel_e_parar; abrir_painel_cache; registros_corrig_completo; registros_corrig_sem_png; registros_corrig_estatisticas_sem_graficos; painel_incremental_registros_corrig; painel_incremental_completo; painel_incremental_sem_png; painel_incremental_estatisticas_sem_graficos", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "html, pdf, md, rmd", "texto livre ou variável de ambiente", "texto livre; padrão ICMBio", "S ou N", "caminho para correcoes_semanticas.csv ou correcoes_campos.csv", "S ou N", "S ou N; compatibilidade histórica com reabertura de cache", "caminho opcional para pasta de cache", "arquivo opcional de cache"),
-    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em docs/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/relatorios_validacao/ após a materialização de registros_corrig.csv.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o ledger a reaplicar; se vazio, procura a trilha consolidada em input/linhagem/ e input/, depois os nomes legados aceitos.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
+    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em docs/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/03_auditorias/relatorios_validacao/ após a organização final do output.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o ledger a reaplicar; se vazio, procura a trilha consolidada em input/linhagem/ e input/, depois os nomes legados aceitos.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
     cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N impede o painel. Em painel_e_parar, abrir_painel_cache e painel_incremental_*, o painel abre mesmo se estiver N.", "Produto sensível; não publicar. Em modos com painel a geração bruta/saneada pode ser obrigatória para auditoria pré-painel.", "Não é substituto de revisão humana; depende de registros_corrig consistente e sem bloqueios impeditivos.", "A validação espacial depende de coordenadas detectáveis e deve ser interpretada junto com relatórios específicos.", "Se leaflet não estiver instalado, o script mantém tabela e relatórios, mas pode omitir mapa interativo.", "Não depende de dados reais e pode ser gerado isoladamente, mas em execução com painel fica disponível antes da edição.", "Produto local de governança; pode conter nomes de arquivos e caminhos locais.", "HTML é o formato técnico principal; PDF é preferencialmente gerado via HTML/pagedown para evitar tabelas largas.", "Preencha no painel ou por variável de ambiente. O valor digitado no painel tem prioridade.", "Evite deixar vazio em execução institucional.", "Use deliberadamente: replay muda o estado da base antes do painel. O relatório audita o arquivo reaplicado.", "Prefira correcoes_semanticas_consolidada.csv exportado pelo script; correcoes_campos.csv legado é aceito, mas pode depender mais da estrutura da rodada original.", "Mantenha ligado para preservar a intenção das operações independentemente da evolução posterior do script.", "Mantida para compatibilidade; o modo explícito é mais claro e auditável.", "Só use se souber qual cache pertence ao input atual.", "O uso de cache incorreto pode aplicar correções fora de contexto.")
   )
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
@@ -1962,13 +1995,13 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
       "SENTINEL2_PUBLICO ou GOOGLE_MAPS; padrão SENTINEL2_PUBLICO"
     ),
     finalidade = c(
-      "Gera relatórios analíticos sintético e detalhado por UC em output/08_relatorios_analiticos/, com tabelas editáveis de evidências, esforço real e continuidade.",
+      "Gera relatórios analíticos sintético e detalhado por UC em output/08_relatorios_analiticos/, com tabelas editáveis, esforço real, continuidade, séries anuais por UA e painéis inferenciais auditáveis.",
       "Define os formatos documentais. Rmd e Markdown preservam fontes editáveis; DOCX é editável em processadores de texto; HTML e PDF são produtos de leitura/publicação.",
       "Acrescenta ao relatório um mapa de continuidade sobre imagem orbital em cor natural.",
       "Seleciona a fonte do fundo orbital. SENTINEL2_PUBLICO consulta imagens Sentinel-2 L2A recentes, sem chave, conta ou cobrança; GOOGLE_MAPS mantém a alternativa autenticada."
     ),
     cuidados = c(
-      "Exige exatamente uma UC na execução. Quando N, não executa cálculos, leitura de produtos nem renderização do módulo.",
+      "Exige exatamente uma UC na execução. Quando N, não executa cálculos, leitura de produtos nem renderização do módulo. Quando S, reutiliza as estatísticas já calculadas e acrescenta somente a agregação anual por UA e a renderização dos relatórios.",
       "PDF requer pagedown e navegador Chrome/Chromium. Os produtos estatísticos e de dados não são modificados.",
       "Quando N, nenhuma consulta remota, leitura orbital, criação de cache ou renderização adicional é executada.",
       "SENTINEL2_PUBLICO seleciona a aquisição mais recente com cobertura adequada e avalia nuvens/sombras na extensão do mapa; depende de internet. GOOGLE_MAPS exige MONITORA_GOOGLE_MAPS_API_KEY, API habilitada e faturamento. Credenciais nunca são gravadas e a atribuição da fonte deve ser preservada."
@@ -2010,6 +2043,43 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     quando_usar = c("Sempre antes de salvar operações.", "Antes de qualquer operação que possa afetar mais de uma linha.", "Quando a curadoria for por coleta ou quando a pré-visualização global estiver pesada.", "Em correções simples ou assistidas.", "Quando houver valor correto definido tecnicamente.", "Sempre que uma operação alterar dados.", "Correções pontuais.", "Correções repetitivas com mesmo critério e escopo seguro.", "Exótica marcada por engano como nativa.", "Pendências de desconhecida em Encostam ou campos inferiores.", "Pendências de outra forma de vida sem compatibilidade com contrato.", "Alertas de coordenada, duplicidade espacial ou inconsistência de coleta.", "Após filtros, mudanças manuais ou operações em lote.", "Encerramento normal da curadoria.", "Sessão exploratória ou erro de seleção."),
     auditoria_efeito = c("Valor resgatado no relatório consolidado.", "Escopo fica registrado nas operações e reduz risco de alteração indevida.", "Opera sobre subconjunto auditável.", "Atributo/documento aparece nos relatórios de modificação.", "Valor anterior e novo compõem a trilha de auditoria quando disponíveis.", "Justificativa acompanha CSVs e relatório consolidado.", "Gera receita/registro de correção.", "Gera múltiplas operações rastreáveis.", "Atualiza superiores/inferiores relacionados conforme regras do script.", "Atualiza pendências e relatórios pré/pós-painel.", "Reduz pendências contratuais e registra operação.", "Alimenta output/validacao_espacial e mapa quando possível.", "Não deve alterar dados sozinho; atualiza visualização/diagnóstico.", "Materializa registros_corrig.csv e auditorias.", "Não deve materializar operações novas não salvas.")
   )
+  painel <- data.table::rbindlist(list(painel, data.table::data.table(
+    controle = c(
+      "Equipe da COLETA", "CPF do coletor", "Impactos de manejo e uso",
+      "Justificar pendências", "Selecionar pendências filtradas", "Confirmar justificativa em lote",
+      "Mudança de formação vegetacional", "Limpar filtros espaciais"
+    ),
+    funcao = c(
+      "Inclui, edita ou exclui um integrante específico do repeat de coletores, sem replicar a alteração nas 101 linhas.",
+      "Mantém a associação posicional com o nome quando o CPF é conhecido e válido.",
+      "Edita a resposta superior e os tokens da lista condicional de tipos de impacto.",
+      "Registra explicação auditável para uma pendência que permanece sem alterar, ocultar ou liberar a ocorrência.",
+      "Seleciona de uma só vez as ocorrências visíveis após os filtros da tabela.",
+      "Autoriza conscientemente a mesma classificação e justificativa para todas as pendências selecionadas.",
+      "Exibe a ocorrência diagnóstica não impeditiva quando uma UA apresenta formações diferentes entre anos.",
+      "Reinicia todas as escolhas, coordenadas e COLETAS de origem/destino do módulo espacial."
+    ),
+    quando_usar = c(
+      "Quando a composição da equipe estiver incorreta; selecione o integrante, não um ponto amostral.",
+      "Somente quando houver CPF confiável. CPF é opcional; nome é obrigatório para cada integrante.",
+      "Use Sim/Não no campo pai e adicionar/remover/substituir token em Quais?.",
+      "Quando a pendência for legítima, não puder ser resolvida nesta rodada ou depender de evidência externa.",
+      "Quando várias ocorrências filtradas tiverem a mesma justificativa.",
+      "Obrigatório para lotes com mais de uma pendência; revise a abrangência antes de confirmar.",
+      "Revisar possível erro de classificação ou mudança ecológica legítima de longo prazo/impacto severo.",
+      "Antes de iniciar outra correção espacial ou se restarem artefatos de uma seleção anterior."
+    ),
+    auditoria_efeito = c(
+      "Gera operações atômicas por linha do repeat e preserva os demais integrantes.",
+      "CPF inválido, parcial ou ambiguamente associado é removido sem inferência e documentado.",
+      "Registra operações de tokens e limpa campos filhos somente quando o pai passa para Não.",
+      "Alimenta justificativas_pendencias_consolidada.csv e pendencias_remanescentes_com_justificativas.csv.",
+      "Não altera dados; apenas define a seleção corrente.",
+      "Cada ocorrência recebe evento próprio e todas compartilham evento_lote_id, autoria e horário.",
+      "Permanece no relatório específico e pode receber justificativa individual ou em lote.",
+      "Não altera dados nem receitas já adicionadas; limpa somente o estado de filtros espaciais."
+    )
+  )), use.names = TRUE, fill = TRUE)
 
   arq_cfg <- file.path(dados_dir, "configuracao_inicial.csv"); monitora_doc_fwrite(cfg, arq_cfg)
   arq_modos <- file.path(dados_dir, "modos_operacao.csv"); monitora_doc_fwrite(modos, arq_modos)
@@ -2026,8 +2096,10 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     paste0("subtitle: 'Versão ", versao, "'"),
     "output:", "  html_document:", "    toc: true", "    toc_depth: 3", "    number_sections: true", "  pdf_document:", "    toc: true", "    number_sections: true", "header-includes:", "  - \\usepackage{longtable}", "  - \\usepackage{booktabs}", "geometry: margin=1.2cm", "fontsize: 10pt", "---", "",
     monitora_doc_rmd_setup(), "",
-    "# Finalidade", "", "Este manual descreve a operação do script do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico. O foco é orientar a configuração inicial, a escolha do modo de execução, a interpretação dos produtos de dados e o uso do painel de correções assistidas.", "",
+    "# Finalidade", "", "Este manual descreve a operação do script do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico. O foco é permitir que uma pessoa recém-chegada à equipe prepare a entrada, execute o fluxo, opere o painel, interprete diagnósticos e confira todos os produtos sem editar manualmente as bases.", "",
     "O manual é materializado antes da abertura do painel sempre que o modo de execução for orientado a painel ou quando `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'`. Assim, o usuário pode consultar o documento durante a curadoria.", "",
+    "# Início rápido", "", "1. Crie uma pasta exclusiva para a rodada, coloque o `.R` na raiz e os arquivos de entrada dentro de `input/`. Não misture campanhas ou sidecars de runs diferentes sem seguir o fluxo incremental descrito neste manual.", "2. No bloco inicial do script, escolha `MONITORA_MODO_EXECUCAO`, informe o responsável e ative somente os produtos necessários. Para uma primeira curadoria, use `painel_e_parar`; para gerar tudo após a curadoria, use um modo `painel_incremental_*` com o `registros_corrig.csv` e a pasta de linhagem correspondentes.", "3. Execute o arquivo inteiro. No RStudio, confirme a execução do script grande quando solicitado. Aguarde os checkpoints no console; não clique repetidamente nos botões do painel.", "4. No painel, filtre a COLETA, confira a prévia, registre motivo e abrangência e só então adicione a operação. Use **Salvar e fechar** para materializar a sessão.", "5. Confira a auditoria de produtos finais, as ocorrências pós-painel, a linhagem, as justificativas remanescentes e os produtos opcionais habilitados.", "",
+    "## Preparação da entrada", "", "O script aceita downloads diretos, CSV, XLSX/XLS, ZIP e lotes compatíveis. Preserve os arquivos originais sem edição. Uma rodada incremental deve receber exatamente o checkpoint e a linhagem da mesma run. O script diferencia ausência de evidência de ausência de correção e bloqueia combinações incompatíveis.", "",
     "# Configuração inicial", "", "As variáveis abaixo ficam no bloco operacional inicial do script. Elas também podem ser sobrescritas por variáveis de ambiente. Em caso de conflito, os modos orientados a painel prevalecem sobre a chave manual de abertura do painel.", "",
     monitora_doc_rmd_table_chunk(arq_cfg, "manual-config", 100L, c("variavel", "valores", "finalidade", "cuidados"), 42L), "",
     "# Modos de operação", "", "A escolha do modo define a origem dos dados, se o painel será aberto, onde o script para e quais produtos finais serão gerados. Os modos `painel_e_parar`, `abrir_painel_cache` e todos os `painel_incremental_*` forçam a abertura do painel mesmo quando `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'N'`.", "",
@@ -2035,16 +2107,101 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
     "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
     "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade canônica não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/auditorias_operacionais/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
-    "# Produtos de dados", "", "Os cinco produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
+    "# Produtos de dados", "", "Os produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
     "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_importados_operacional_pre_painel.csv` documenta a camada operacional pós-tokenização/pré-painel e não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
+    "## Planilha para o SISMONITORA", "", "`registros_validados_importacao_sismonitora*.xlsx` só pode ser criado quando `registros_validados.csv` foi gerado e aprovado na mesma execução. O script produz um arquivo por contexto UC + ciclo + campanha, preserva o modelo 21FEV25 e representa atributos superiores apenas na primeira linha do bloco quando o template assim exige. A opção de UUID afeta somente o XLSX: use remoção para inclusão de registros novos; preserve UUID apenas após homologação da atualização pela equipe do SISMONITORA.", "",
     "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atributo, valor novo e justificativa. Ao salvar, o script aplica as operações, recalcula campos superiores quando necessário, atualiza diagnósticos e materializa os produtos pós-painel.", "", monitora_doc_rmd_table_chunk(arq_painel, "manual-painel", 100L, c("controle", "funcao", "quando_usar", "auditoria_efeito"), 40L), "",
+    "## Equipe da COLETA", "", "Coletores formam um repeat: cada integrante ocupa uma linha, com o CPF correspondente na mesma posição. A edição é feita no controle **Equipe da COLETA**, e não pela seleção de ponto amostral nem pela edição genérica de atributo superior. Nome é obrigatório para o integrante; CPF é opcional. Para excluir uma pessoa, selecione somente a linha dessa pessoa. O script não deve replicar um nome nas 101 linhas nem deslocar o CPF de outro integrante.", "",
+    "## Impactos de manejo e uso", "", "`impact_manejo_uso` é a pergunta superior Sim/Não. `tipos_impacto_manejo_uso` é a lista condicional **Quais?** e deve ser editada por operações de tokens: adicionar, remover ou substituir. Os seletores mostram `label — name`, mas os arquivos armazenam os names do contrato único. Ao mudar o pai para Não, os tipos e descritores filhos tornam-se irrelevantes e são limpos de forma auditável; ao mudar para Sim, o usuário escolhe quantos tokens forem necessários.", "",
+    "## Justificar pendências", "", "A aba **Justificar pendências** documenta ocorrências que permanecem após a revisão por motivo legítimo. A justificativa não corrige, não oculta e não libera uma pendência impeditiva. Para justificar várias ocorrências iguais, filtre a tabela, use **Selecionar pendências filtradas**, revise o total, marque a confirmação e aplique a mesma classificação e justificativa em lote. Cada ocorrência conserva identificador próprio; o lote compartilha `evento_lote_id`, responsável e horário. Use texto específico, verificável e com pelo menos 20 caracteres.", "",
+    "## Validação espacial", "", "A aba de Validação espacial trabalha sempre no escopo integral da COLETA. Os filtros identificam origem e destino; quando o conjunto de filtros define uma única COLETA destino, ela é preenchida automaticamente. A prévia mostra somente as coordenadas realmente afetadas pela operação. **Limpar filtros** reinicia COLETAS, listas, coordenadas e seleções do módulo. Confira os CSVs e mapas em `output/04_validacao_espacial/` antes de salvar.", "",
+    "## Situação dos dados e diagnósticos", "", "O status apresentado ao usuário é **não validado**, **em validação** ou **validado**. Ocorrências impeditivas precisam ser corrigidas antes de `registros_validados.csv`. Ocorrências de revisão podem permanecer, desde que avaliadas e justificadas. A mudança de formação vegetacional entre anos na mesma UA é uma ocorrência diagnóstica não impeditiva: pode decorrer de classificação inconsistente ou ser compatível com mudança ecológica, como adensamento lenhoso ou supressão, mas o diagnóstico isolado não demonstra causa e deve orientar verificação de campo e análise temporal. A ocorrência de vegetação seca ou morta também é registrada como revisão não impeditiva, por linha e forma de vida, com resumo por UC, EA, UA, ANO e COLETA. Ela pode refletir fenologia, seca, fogo, herbivoria ou outros processos; nenhuma dessas hipóteses é atribuída causalmente sem evidência independente.", "",
+    "# Sanitizações automáticas", "", "As sanitizações automáticas ocorrem antes do painel e são repetidas como gate idempotente antes dos produtos finais. Elas não substituem decisões ecológicas. Para coletores, o script reconhece somente formatos legados comprovados, transforma a equipe em repeat esparso e preserva CPF apenas quando um CPF válido está inequivocamente associado a um único nome. CPF parcial, inválido ou único para vários nomes é removido sem tentativa de adivinhação. A auditoria fica em `output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv`; ela registra contagens e motivos, sem expor nomes ou CPFs.", "",
+    "# Relatórios e auditorias", "", "O relatório consolidado documenta entrada, produtos, modificações, sanitizações, linhagem, justificativas remanescentes e validação espacial. Os relatórios analíticos são opcionais e não executam quando a opção inicial está em N. Eles apresentam cobertura e proporção relativa da estrutura herbácea/lenhosa viva, categorias gerais, formas nativas, formas exóticas, vegetação seca ou morta e material botânico em decomposição. As séries anuais usam a UA como unidade analítica e mostram média, IC95% e n de UAs disponíveis. Os painéis inferenciais usam UAs pareadas, efeito com IC95% bootstrap, q ajustado por FDR-BH, comparação com linha de base e teste multivariado da composição. Aumento, redução, estabilidade/equivalência, inconclusão e insuficiência de pares são resultados distintos; ausência de significância não é chamada de estabilidade. Para proporções, os componentes são testados ao longo do tempo e a composição é testada conjuntamente; não se comparam categorias dependentes no mesmo ano como se fossem independentes. `auditoria_integracao_estatistica_graficos_relatorio.csv` reproduz cada célula dos painéis e `auditoria_robustez_inferencial_relatorio.csv` declara os limites: não há modelo longitudinal global, ajuste espacial nem sensibilidade restrita às UAs com formação invariável nesta versão, e as margens ecológicas globais precisam de validação por indicador. Achados observados, hipóteses compatíveis e linhas prioritárias de pesquisa são separados explicitamente: presença de exótica não equivale por si só a invasão; aumento lenhoso não comprova adensamento; seca/morte, material em decomposição e solo exposto não identificam isoladamente fogo, degradação ou desertificação. Quando o mapa Sentinel é gerado, ele substitui a representação espacial simples equivalente. Relatórios, auditorias e tabelas editáveis devem ser preservados junto com a run.", "",
     "# Roteiro operacional do usuário", "", "A tabela abaixo indica quais arquivos consultar antes de cada operação, como operar no painel e quais produtos verificar depois para confirmar o efeito da correção. Os links são relativos à pasta `docs/`; se o manual for movido, abra-o a partir da pasta da execução para preservar os hiperlinks.", "", monitora_doc_rmd_table_chunk(arq_roteiro, "manual-roteiro-usuario", 100L, c("situacao", "consultar_antes", "operacao_no_painel", "conferir_depois", "criterio_sucesso"), 36L), "",
-    "# Conferência final", "", "Após uma execução com painel, conferir `output/01_produtos_dados/registros_corrig.csv`, relatórios pós-painel em `output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/`, produtos espaciais em `output/04_validacao_espacial/` quando materializados, `output/01_produtos_dados/registros_validados.csv` quando habilitado, `output/01_produtos_dados/registros_corrig_stat.csv` (base das estatísticas e dos gráficos PNG, quando habilitados), a linhagem em `output/02_painel_correcoes/linhagem/` e o relatório consolidado em `output/03_auditorias/relatorios_validacao/`. Produtos locais podem conter dados sensíveis, nomes de arquivos e caminhos de trabalho; não devem ser publicados sem triagem."
+    "# Solução de problemas", "", "Se o script não iniciar pelo botão Source, confirme a execução do arquivo grande na caixa exibida pelo RStudio; o código não depende de arquivos auxiliares. Se um produto opcional falhar, consulte `auditoria_produtos_finais_ultima_execucao.csv` e o log específico. Se a planilha SISMONITORA falhar, confira contexto UC/ciclo/campanha, cardinalidade de 101 pontos e política de UUID. Se a sanitização de coletores bloquear, não edite a associação manualmente por hipótese: consulte a auditoria e corrija a fonte somente com evidência. Avisos de pacote compilado em outra versão do R não equivalem, por si só, a erro do produto.", "",
+    "# Proteção de dados", "", "Nome, CPF, UUID, caminhos locais e referências a fotografias podem ser dados sensíveis ou operacionais. Não publique `input/`, produtos de dados, caches, relatórios de validação ou logs sem triagem. As auditorias de sanitização de coletores não registram os valores pessoais. Compartilhe somente pelo diretório institucional autorizado e preserve a rastreabilidade da run.", "",
+    "# Conferência final", "", "Após uma execução com painel, conferir: `output/01_produtos_dados/registros_corrig.csv`; ocorrências pós-painel; `pendencias_remanescentes_com_justificativas.csv`; auditoria de sanitização de coletores; produtos espaciais quando habilitados; `registros_validados.csv` e seus XLSX opcionais; `registros_corrig_stat.csv`; toda a linhagem; o relatório consolidado em `output/03_auditorias/relatorios_validacao/`; e `auditoria_produtos_finais_ultima_execucao.csv`. Todos os produtos obrigatórios devem constar como presentes, não vazios e completos.", ""
   )
+  monitora_manual_usuario_cobertura_validar(conteudo)
   writeLines(conteudo, rmd, useBytes = TRUE)
   renderizados <- monitora_doc_render_rmd(rmd, formatos = formatos)
   assign("MONITORA_MANUAL_USUARIO_ULTIMO", c(rmd, renderizados), envir = .GlobalEnv)
   invisible(c(rmd, renderizados))
+}
+
+monitora_doc_pendencias_justificadas_dt <- function(output_dir = "output") {
+  obj <- get0("MONITORA_PENDENCIAS_JUSTIFICATIVAS_ULTIMO", ifnotfound = NULL, inherits = TRUE)
+  x <- if (is.list(obj) && !is.null(obj$pendencias_remanescentes)) data.table::as.data.table(obj$pendencias_remanescentes) else data.table::data.table()
+  if (!nrow(x)) {
+    candidatos <- unique(c(
+      file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(output_dir, "correcoes_campos"), inherits = TRUE), "pendencias_remanescentes_com_justificativas.csv"),
+      file.path(output_dir, "correcoes_campos", "pendencias_remanescentes_com_justificativas.csv"),
+      file.path(output_dir, "02_painel_correcoes", "operacoes_sessao", "pendencias_remanescentes_com_justificativas.csv")
+    ))
+    hit <- candidatos[file.exists(candidatos)][1L]
+    if (length(hit) && !is.na(hit)) {
+      x <- tryCatch(data.table::fread(hit, encoding = "UTF-8", na.strings = NULL, colClasses = "character", showProgress = FALSE), error = function(e) data.table::data.table())
+    }
+  }
+  if (!nrow(x)) {
+    detalhe <- data.table::data.table(
+      ocorrencia_id = character(), tipo_ocorrencia = character(), COLETA = character(), UC = character(),
+      EA = character(), UA = character(), ANO = character(), status_justificativa = character(),
+      evento_justificativa_id = character(), evento_lote_id = character(), ordem_no_lote = integer(),
+      n_ocorrencias_lote = integer(),
+      tipo_justificativa = character(), justificativa = character(), responsavel_justificativa = character(),
+      timestamp_justificativa = character()
+    )
+    resumo <- data.table::data.table(status_justificativa = "sem_pendencias_materializadas", tipo_justificativa = "", n_ocorrencias = 0L, n_coletas = 0L)
+    return(list(detalhe = detalhe, resumo = resumo))
+  }
+  if (!("status_justificativa" %in% names(x))) x[, status_justificativa := "sem_justificativa"]
+  if (!("tipo_justificativa" %in% names(x))) x[, tipo_justificativa := ""]
+  if (!("COLETA" %in% names(x))) x[, COLETA := ""]
+  resumo <- x[, .(
+    n_ocorrencias = .N,
+    n_coletas = data.table::uniqueN(as.character(COLETA)[!is.na(COLETA) & nzchar(as.character(COLETA))])
+  ), by = .(status_justificativa = as.character(status_justificativa), tipo_justificativa = as.character(tipo_justificativa))]
+  data.table::setorder(resumo, status_justificativa, tipo_justificativa)
+  list(detalhe = x, resumo = resumo)
+}
+
+monitora_doc_sanitizacao_coletores_dt <- function(output_dir = "output") {
+  x <- data.table::as.data.table(get0("MONITORA_AUDITORIA_SANITIZACAO_COLETORES_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
+  if (!nrow(x)) {
+    candidatos <- c(
+      file.path(output_dir, "03_auditorias", "cadastro", "auditoria_sanitizacao_coletores.csv"),
+      file.path(output_dir, "auditorias", "cadastro", "auditoria_sanitizacao_coletores.csv")
+    )
+    hit <- candidatos[file.exists(candidatos)][1L]
+    if (length(hit) && !is.na(hit)) {
+      x <- tryCatch(data.table::fread(hit, encoding = "UTF-8", na.strings = NULL, colClasses = "character", showProgress = FALSE), error = function(e) data.table::data.table())
+    }
+  }
+  if (!nrow(x)) {
+    detalhe <- data.table::data.table(
+      contexto = character(), COLETA = character(), formato_origem = character(), status = character(),
+      n_nomes_recuperados = integer(), n_cpfs_observados = integer(), n_cpfs_preservados = integer(),
+      n_cpfs_descartados = integer(), motivo_cpf = character(), cpf_inferido = logical()
+    )
+    resumo <- data.table::data.table(formato_origem = "nao_necessaria", status = "sem_formato_legado_detectado", motivo_cpf = "", n_coletas = 0L, n_nomes_recuperados = 0L, n_cpfs_preservados = 0L, n_cpfs_descartados = 0L)
+    return(list(detalhe = detalhe, resumo = resumo))
+  }
+  inteiro <- function(cc) if (cc %in% names(x)) suppressWarnings(as.integer(x[[cc]])) else rep(0L, nrow(x))
+  x[, `:=`(
+    n_nomes_recuperados = inteiro("n_nomes_recuperados"),
+    n_cpfs_preservados = inteiro("n_cpfs_preservados"),
+    n_cpfs_descartados = inteiro("n_cpfs_descartados")
+  )]
+  resumo <- x[, .(
+    n_coletas = data.table::uniqueN(as.character(COLETA)),
+    n_nomes_recuperados = sum(n_nomes_recuperados, na.rm = TRUE),
+    n_cpfs_preservados = sum(n_cpfs_preservados, na.rm = TRUE),
+    n_cpfs_descartados = sum(n_cpfs_descartados, na.rm = TRUE)
+  ), by = .(formato_origem = as.character(formato_origem), status = as.character(status), motivo_cpf = as.character(motivo_cpf))]
+  data.table::setorder(resumo, formato_origem, status, motivo_cpf)
+  list(detalhe = x, resumo = resumo)
 }
 
 monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
@@ -2076,6 +2233,8 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   resumo_operacoes <- monitora_doc_resumo_operacoes(operacoes)
   operacoes_amostra <- monitora_doc_operacoes_amostra(operacoes, 30L)
   sanitizacoes_auto <- monitora_doc_sanitizacoes_automaticas_dt(output_dir, log_dir)
+  pendencias_justificadas <- monitora_doc_pendencias_justificadas_dt(output_dir)
+  sanitizacao_coletores <- monitora_doc_sanitizacao_coletores_dt(output_dir)
   replay_contrato <- monitora_doc_replay_contrato_dt()
   linhagem_resumo <- if (exists("monitora_linhagem_resumo_dt", mode = "function", inherits = TRUE)) monitora_linhagem_resumo_dt() else data.table::data.table(componente = "estado da proveniência", valor = "não disponível")
   mapa <- tryCatch(monitora_doc_mapa_coletas(registros_corrig, output_dir, exec_id), error = function(e) NA_character_)
@@ -2094,6 +2253,10 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   arq_ops_amostra <- file.path(data_dir, paste0("modificacoes_amostra_relatorio_", exec_id, ".csv")); monitora_doc_fwrite(operacoes_amostra, arq_ops_amostra)
   arq_resumo_ops <- file.path(data_dir, paste0("resumo_modificacoes_", exec_id, ".csv")); monitora_doc_fwrite(resumo_operacoes, arq_resumo_ops)
   arq_sanit_auto <- file.path(data_dir, paste0("sanitizacoes_automaticas_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacoes_auto, arq_sanit_auto)
+  arq_pend_just <- file.path(data_dir, paste0("pendencias_remanescentes_com_justificativas_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$detalhe, arq_pend_just)
+  arq_pend_just_resumo <- file.path(data_dir, paste0("resumo_pendencias_remanescentes_com_justificativas_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$resumo, arq_pend_just_resumo)
+  arq_coletores <- file.path(data_dir, paste0("auditoria_sanitizacao_coletores_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacao_coletores$detalhe, arq_coletores)
+  arq_coletores_resumo <- file.path(data_dir, paste0("resumo_sanitizacao_coletores_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacao_coletores$resumo, arq_coletores_resumo)
   arq_replay_contrato <- file.path(data_dir, paste0("contrato_rollforward_semantico_", exec_id, ".csv")); monitora_doc_fwrite(replay_contrato, arq_replay_contrato)
   arq_linhagem <- file.path(data_dir, paste0("resumo_linhagem_correcoes_", exec_id, ".csv")); monitora_doc_fwrite(linhagem_resumo, arq_linhagem)
   arq_refs <- file.path(data_dir, paste0("referencias_relatorios_especificos_", exec_id, ".csv")); monitora_doc_fwrite(relatorios_ref, arq_refs)
@@ -2109,7 +2272,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     oraculo_info <- data.table::data.table(arquivo = character(), extensao = character(), tamanho_bytes = numeric(), data_modificacao = character(), tipo_diagnostico = character(), interpretacao = character())
   }
   arq_oraculo <- file.path(data_dir, paste0("diagnostico_oraculo_replay_", exec_id, ".csv")); monitora_doc_fwrite(oraculo_info, arq_oraculo)
-  if (requireNamespace("jsonlite", quietly = TRUE)) jsonlite::write_json(list(metadados = meta, produtos_dados = produtos_dados, resumo_input = input_resumo, resumo_output = output_resumo, sanitizacoes_automaticas = sanitizacoes_auto, replay_contrato = replay_contrato, linhagem_correcoes = linhagem_resumo, mapa = mapa, diagnostico_oraculo = oraculo_info), path = file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".json")), pretty = TRUE, auto_unbox = TRUE, na = "null")
+  if (requireNamespace("jsonlite", quietly = TRUE)) jsonlite::write_json(list(metadados = meta, produtos_dados = produtos_dados, resumo_input = input_resumo, resumo_output = output_resumo, sanitizacoes_automaticas = sanitizacoes_auto, resumo_sanitizacao_coletores = sanitizacao_coletores$resumo, resumo_pendencias_remanescentes = pendencias_justificadas$resumo, replay_contrato = replay_contrato, linhagem_correcoes = linhagem_resumo, mapa = mapa, diagnostico_oraculo = oraculo_info), path = file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".json")), pretty = TRUE, auto_unbox = TRUE, na = "null")
   rmd <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".Rmd"))
   md <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".md"))
   mapa_bloco <- if (file.exists(mapa) && grepl("\\.png$", mapa, ignore.case = TRUE)) c("```{r mapa-coletas, echo=FALSE, out.width='100%'}", paste0("knitr::include_graphics(", shQuote(normalizePath(mapa, winslash = "/", mustWork = FALSE)), ")"), "```") else paste0("Mapa automático: `", monitora_doc_chr(mapa, "não gerado"), "`.")
@@ -2120,6 +2283,8 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     "# Descrição dos arquivos de entrada", "", paste0("Arquivos detectados em `input/`: **", nrow(input_info), "**. A tabela completa está em `dados/", basename(arq_input), "`."), "", "## Sumário por tipo", "", monitora_doc_rmd_table_chunk(arq_input_resumo, "tab-input-resumo", 50L, c("extensao", "n_arquivos", "tamanho_total_bytes"), 55L), "", "## Arquivos de entrada", "", monitora_doc_rmd_table_chunk(arq_input, "tab-input-arqs", 60L, c("arquivo", "extensao", "tamanho_bytes", "origem_provavel", "descricao"), 55L), "", "## Conteúdo interno de ZIPs", "", "Lista os arquivos internos de ZIPs em `input/`, inclusive ZIPs aninhados extraíveis, para casos como `input/pnb_input.zip`.", "", monitora_doc_rmd_table_chunk(arq_zip, "tab-zips", 100L, c("zip_raiz", "zip_pai", "nivel", "arquivo_interno", "extensao", "tamanho_bytes", "descricao"), 45L), "",
     "# Descrição das bases de dados produzidas", "", monitora_doc_rmd_table_chunk(arq_produtos, "tab-produtos", 20L, c("produto", "materializado", "arquivo_detectado", "linhas", "colunas", "como_e_criado", "finalidade", "subsidia"), 48L), "", monitora_doc_rmd_table_chunk(arq_resumo_base, "tab-resumo-base", 10L, NULL, 60L), "",
     "# Descrição detalhada das modificações", "", "Esta seção registra a cadeia de modificação desde os arquivos de input até `registros_corrig.csv` e, quando habilitado, `registros_validados.csv`. Inclui operações do painel, replay semântico, sanitizações automáticas, normalizações, deduplicações e fechamentos contratuais documentados em auditorias.", "", paste0("Operações/auditorias consolidadas: **", nrow(operacoes), "**. A tabela detalhada completa, inclusive campos técnicos preservados para rastreabilidade, está em `dados/", basename(arq_ops), "`."), "", monitora_doc_rmd_table_chunk(arq_resumo_ops, "tab-resumo-ops", 80L, c("origem_documental", "tipo_documental", "acao_documental", "atributo_documental", "n_operacoes"), 45L), "", "## Sanitizações automáticas e transformações internas", "", "As linhas abaixo documentam modificações automáticas feitas pelo script, sem edição manual no painel. Elas incluem normalizações, deduplicações, fechamento de campos derivados, sincronizações condicionais e validações contratuais. Consulte os CSVs de auditoria indicados para rastreabilidade completa.", "", monitora_doc_rmd_table_chunk(arq_sanit_auto, "tab-sanit-auto", 200L, c("etapa", "tipo_modificacao", "arquivo_auditoria", "descricao", "escopo", "finalidade"), 42L), "", "## Amostra legível das modificações detalhadas", "", paste0("A tabela abaixo mostra só um recorte compacto e as primeiras linhas, para manter o relatório legível. A amostra completa (até 30 operações, mais colunas) está em `dados/", basename(arq_ops_amostra), "`, e o detalhe técnico completo (todas as operações, todos os campos, inclusive `uuid_registro` e caminhos de arquivo) está em `dados/", basename(arq_ops), "`."), "", monitora_doc_rmd_table_chunk(arq_ops_amostra, "tab-ops", 15L, c("id_correcao", "status", "atributo", "atributo_coluna_registros_corrig", "valor_antes", "valor_depois", "COLETA", "UA", "origem_documental"), 30L), "",
+    "# Pendências remanescentes e justificativas", "", "Justificativas documentam por que uma ocorrência permaneceu; elas não alteram o dado, não ocultam a pendência e não liberam gates impeditivos. Eventos aplicados em lote continuam individualizados por `ocorrencia_id` e compartilham um `evento_lote_id`. O CSV detalhado preserva autoria, classificação, texto e horário.", "", monitora_doc_rmd_table_chunk(arq_pend_just_resumo, "tab-pend-just-resumo", 100L, c("status_justificativa", "tipo_justificativa", "n_ocorrencias", "n_coletas"), 55L), "", monitora_doc_rmd_table_chunk(arq_pend_just, "tab-pend-just", 100L, c("evento_lote_id", "ordem_no_lote", "n_ocorrencias_lote", "tipo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "status_justificativa", "tipo_justificativa", "justificativa", "responsavel_justificativa", "timestamp_justificativa"), 38L), "",
+    "# Sanitização automática do repeat de coletores", "", "A rotina converte somente formatos legados reconhecidos para a representação esparsa do template SISMONITORA. CPF é opcional e só é preservado quando válido e inequivocamente associado a um único nome. Nenhum CPF é inferido. A auditoria desta seção contém contagens e motivos, mas não contém nomes nem valores de CPF.", "", monitora_doc_rmd_table_chunk(arq_coletores_resumo, "tab-coletores-resumo", 100L, c("formato_origem", "status", "motivo_cpf", "n_coletas", "n_nomes_recuperados", "n_cpfs_preservados", "n_cpfs_descartados"), 48L), "",
     "# Linhagem incremental e roll-forward semântico", "", "O histórico de correções é cumulativo: distingue eventos herdados já materializados no registros_corrig de entrada, eventos aplicados nesta sessão e o total acumulado. Uma entrada incremental sem sidecar de linhagem é marcada como proveniência histórica incompleta; ausência de evidência nunca é interpretada como ausência de correções.", "", monitora_doc_rmd_table_chunk(arq_linhagem, "tab-linhagem", 20L, c("componente", "valor"), 70L), "", "Quando `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`, o relatório registra o arquivo de intenções reaplicado sobre input bruto/original. O replay v2 migra versões conhecidas, resolve atributos pelo contrato único, valida o plano e executa preflight antes da mutação; schema, operação ou alvo desconhecido bloqueiam a aplicação.", "", "Mudanças futuras do script devem preservar compatibilidade com o contrato semântico abaixo ou fornecer migração explícita. O oráculo é apenas evidência suplementar de convergência.", "", monitora_doc_rmd_table_chunk(arq_replay_contrato, "tab-replay-contrato", 100L, c("item", "valor"), 70L), "", monitora_doc_rmd_table_chunk(arq_oraculo, "tab-oraculo", 100L, c("arquivo", "tipo_diagnostico", "interpretacao"), 46L), "",
     "# Validação espacial", "", "A validação espacial deve ser interpretada junto com os produtos específicos em `output/04_validacao_espacial/`. O mapa abaixo é gerado quando há coordenadas detectáveis em `registros_corrig`.", "", mapa_bloco, "",
     "# Descrição dos arquivos de saída", "", paste0("Arquivos descritos em `output/`: **", nrow(output_info), "**. A tabela completa está em `dados/", basename(arq_output), "`."), "", "## Sumário por tipo", "", monitora_doc_rmd_table_chunk(arq_output_resumo, "tab-output-resumo", 60L, c("extensao", "n_arquivos", "tamanho_total_bytes"), 55L), "", "## Arquivos de saída e o que tratam", "", monitora_doc_rmd_table_chunk(arq_output, "tab-output-arqs", 100L, c("arquivo", "extensao", "descricao", "conteudo_tratado", "serve_de_subsidio_para"), 43L), "",
@@ -7814,7 +7979,7 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
       perfil_oper[, chave_consulta_perfil := NULL]
       cols_oper <- intersect(c(
         "atributo_coluna_registros_corrig", "atributo_canonico_2025", "caminho_registro",
-        "name_curto", "tipo_base_contrato_unico", "cardinalidade_operacional_contrato_unico",
+        "name_curto", "list_name_contrato_unico", "tipo_base_contrato_unico", "cardinalidade_operacional_contrato_unico",
         "relevant_contrato_unico", "campo_pai_contrato_unico",
         "nivel_schema129_contrato_unico", "posicao_schema129_contrato_unico",
         "escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico",
@@ -7826,6 +7991,25 @@ monitora_correcao_dicionario_atributos <- function(dt, meta_xls = NULL) {
       out <- merge(out, perfil_oper[, ..cols_oper], by = "atributo_coluna_registros_corrig", all.x = TRUE, sort = FALSE)
       out[escopo_operacional_contrato_unico %in% c("ponto"), escopo_sugerido := "ponto"]
       out[escopo_operacional_contrato_unico %in% c("coleta_inteira"), escopo_sugerido := "coleta_inteira"]
+
+ ### Preserva no dicionário consumido pelo motor o tipo e o list_name
+ ### resolvidos pelo contrato único. Sem esta ponte, a segunda validação
+ ### defensiva de uma operação recomputava campos físicos rotulados como
+ ### texto e rebaixava select_one/select_multiple para text.
+      idx_meta_cu <- which(
+        !is.na(out$tipo_base_contrato_unico) &
+          nzchar(as.character(out$tipo_base_contrato_unico))
+      )
+      if (length(idx_meta_cu)) {
+        data.table::set(out, i = idx_meta_cu, j = "tipo_valor_inferido", value = as.character(out$tipo_base_contrato_unico[idx_meta_cu]))
+      }
+      idx_lista_cu <- which(
+        !is.na(out$list_name_contrato_unico) &
+          nzchar(as.character(out$list_name_contrato_unico))
+      )
+      if (length(idx_lista_cu)) {
+        data.table::set(out, i = idx_lista_cu, j = "xlsform_list_name", value = as.character(out$list_name_contrato_unico[idx_lista_cu]))
+      }
 
  ### O tipo do contrato único tem precedência sobre inferências pelo texto do
  ### rótulo. Isso impede, por exemplo, que a palavra "data" dentro de uma
@@ -14858,6 +15042,34 @@ monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo,
   col <- as.character(col)[1L]
   acao_norm <- monitora_correcao_acao_normalizar(acao)
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) return(list(ok = FALSE, status = "falha", mensagem = "coluna de destino inexistente"))
+ ### O repeat de coletores é deliberadamente bloqueado no editor genérico e
+ ### só pode entrar por uma operação dedicada, ancorada em uma única linha.
+ ### A operação dedicada sincroniza também aliases físicos históricos do nome;
+ ### CPF permanece opcional e nunca é inferido.
+  tipo_corr <- if (!is.null(corr_linha) && "tipo_correcao" %in% names(corr_linha)) as.character(corr_linha$tipo_correcao[1L]) else ""
+  if (identical(tipo_corr, "edicao_repeat_coletor")) {
+    cols_repeat <- monitora_coletores_repeat_colunas_visiveis(dt)
+    cols_nome <- cols_repeat$nome_aliases
+    cols_cpf <- cols_repeat$cpf_aliases
+    escopo_repeat <- if (!is.null(corr_linha) && "escopo_aplicacao" %in% names(corr_linha)) as.character(corr_linha$escopo_aplicacao[1L]) else ""
+    n_esperado_repeat <- if (!is.null(corr_linha) && "n_linhas_esperado" %in% names(corr_linha)) suppressWarnings(as.integer(corr_linha$n_linhas_esperado[1L])) else NA_integer_
+    n_alvo_repeat <- if (!is.null(corr_linha) && "n_linhas_alvo" %in% names(corr_linha)) suppressWarnings(as.integer(corr_linha$n_linhas_alvo[1L])) else NA_integer_
+    id_estavel_repeat <- if (!is.null(corr_linha) && "monitora_row_id" %in% names(corr_linha)) as.character(corr_linha$monitora_row_id[1L]) else ""
+    linha_repeat <- if (!is.null(corr_linha) && "linha_indice" %in% names(corr_linha)) suppressWarnings(as.integer(corr_linha$linha_indice[1L])) else NA_integer_
+    alvo_valido <- col %in% c(cols_nome, cols_cpf)
+    ancora_valida <- nzchar(id_estavel_repeat) || (!is.na(linha_repeat) && linha_repeat >= 1L && linha_repeat <= nrow(dt))
+    if (!isTRUE(alvo_valido) || !identical(escopo_repeat, "uuid_registro") ||
+        !identical(n_esperado_repeat, 1L) || !identical(n_alvo_repeat, 1L) || !isTRUE(ancora_valida)) {
+      return(list(ok = FALSE, status = "bloqueada_repeat_coletor_inseguro", mensagem = "Edição do repeat de coletores exige coluna reconhecida de nome/CPF, escopo de uma linha e identidade estável."))
+    }
+    if (!(acao_norm %in% c("update", "clear"))) {
+      return(list(ok = FALSE, status = "bloqueada_acao_incompativel", mensagem = "Repeat de coletores aceita somente atualizar ou limpar a célula do integrante selecionado."))
+    }
+    if (identical(acao_norm, "update") && monitora_correcao_vazio(valor_novo)) {
+      return(list(ok = FALSE, status = "bloqueada_valor_vazio", mensagem = "Valor vazio deve usar a ação de limpeza do integrante."))
+    }
+    return(list(ok = TRUE, status = "ok", mensagem = if (col %in% cols_cpf) "CPF opcional validado no repeat de coletores" else "nome validado no repeat de coletores"))
+  }
  ### Campos de hábito podem estar materializados sob rótulos físicos
  ### históricos desambiguados (.1/.2), enquanto o perfil genérico do painel
  ### os mantém deliberadamente fora da lista "Atributos a corrigir". As
@@ -23790,6 +24002,37 @@ monitora_espacial_aplicar_correcoes_atomicas <- function(registros_corrig, arqui
   list(registros_corrig = dt[], auditoria = aud)
 }
 
+### Simulação sem efeitos colaterais para o checkpoint integral do painel.
+### Aplica exatamente o mesmo contrato atômico da persistência final, mas não
+### grava arquivos nem altera objetos globais. O resultado serve somente para
+### revalidar as ocorrências espaciais que serão oferecidas para justificativa.
+monitora_espacial_preview_pos_operacoes <- function(registros_corrig, ops = NULL, coletas_excluidas = character()) {
+  dt <- data.table::as.data.table(data.table::copy(registros_corrig))
+  ops0 <- monitora_esp_correcoes_schema(ops)
+  if (!nrow(ops0)) return(dt[])
+  san <- monitora_esp_sanitizar_ops_contra_base(ops0, dt, coletas_excluidas = coletas_excluidas)
+  if (nrow(data.table::as.data.table(san$conflitos))) {
+    stop("A prévia contém correções espaciais conflitantes de mesma precedência.", call. = FALSE)
+  }
+  ops1 <- data.table::as.data.table(data.table::copy(san$ops))
+  if (!nrow(ops1)) return(dt[])
+  ch <- monitora_esp_colunas_chave(dt)
+  data.table::setorder(ops1, id_operacao, item_operacao)
+  for (idg in unique(as.character(ops1$id_operacao))) {
+    grupo <- ops1[id_operacao == idg]
+    dt_tmp <- data.table::copy(dt)
+    for (ii in seq_len(nrow(grupo))) {
+      aud <- monitora_esp_aplicar_uma_operacao(dt_tmp, grupo[ii], ch)
+      if (!nrow(aud) || !identical(as.character(aud$status[1L]), "aplicada")) {
+        motivo <- if (nrow(aud) && "motivo_falha" %in% names(aud)) as.character(aud$motivo_falha[1L]) else "falha não especificada"
+        stop("Falha na prévia da correção espacial ", idg, ": ", motivo, call. = FALSE)
+      }
+    }
+    dt <- dt_tmp
+  }
+  dt[]
+}
+
 ### Helpers mínimos para aba Shiny espacial ----------------------------------
 monitora_espacial_painel_ui <- function() {
   if (!requireNamespace("shiny", quietly = TRUE)) return(NULL)
@@ -25164,13 +25407,120 @@ monitora_diag_formacao_vegetacional_temporal <- function(dt) {
 monitora_diag_rel_catalogo_ocorrencias_base <- function() {
   data.table::data.table(
     tipo_ocorrencia = c(
-      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "solo_nu_com_outra_categoria", "habito_obrigatorio_ausente", "formacao_vegetacional_inconsistente_ua"
+      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "solo_nu_com_outra_categoria", "habito_obrigatorio_ausente", "formacao_vegetacional_inconsistente_ua", "seca_morta_em_revisao"
     ),
     rotulo_ocorrencia = c(
-      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie", "Solo nu com outra categoria (exclusividade violada)", "Hábito obrigatório ausente", "Revisão: formação vegetacional inconsistente na mesma UA"
+      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie", "Solo nu com outra categoria (exclusividade violada)", "Hábito obrigatório ausente", "Revisão: formação vegetacional inconsistente na mesma UA", "Revisão: vegetação seca ou morta registrada"
     ),
-    severidade = c(rep("impeditiva", 7L), rep("revisao", 3L), rep("impeditiva", 2L), "revisao")
+    severidade = c(rep("impeditiva", 7L), rep("revisao", 3L), rep("impeditiva", 2L), rep("revisao", 2L))
   )
+}
+
+### Ocorrência diagnóstica não impeditiva de seca/morta. A unidade é
+### linha×forma de vida; registros válidos não são alterados nem tratados como
+### erro. A revisão existe para confrontar picos com fenologia, seca, fogo e
+### outros eventos independentes antes de qualquer interpretação causal.
+monitora_diag_seca_morta_ocorrencias_revisao <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  vazio <- data.table::data.table(
+    linha_indice = integer(), monitora_row_id = character(),
+    forma_de_vida_detectada = character(), atributo_forma_vida = character(),
+    valor_forma_vida_atual_detalhe = character()
+  )
+  if (!nrow(dt)) return(vazio)
+  nomes_norm <- tryCatch(monitora_correcao_normalizar_nome_coluna(names(dt)), error = function(e) tolower(gsub("[^[:alnum:]]+", "_", names(dt))))
+  chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list(tipo_forma_vida = NA_character_))
+  tipo_col <- as.character(chaves$tipo_forma_vida)[1L]
+  if (is.na(tipo_col) || !nzchar(tipo_col) || !(tipo_col %in% names(dt))) {
+    cand_tipo <- which(grepl("encostam", nomes_norm, fixed = TRUE))
+    tipo_col <- if (length(cand_tipo)) names(dt)[cand_tipo[[1L]]] else NA_character_
+  }
+  if (is.na(tipo_col) || !nzchar(tipo_col) || !(tipo_col %in% names(dt))) return(vazio)
+  tem_seca <- tryCatch(
+    monitora_relatorio_exoticas_tem_token(
+      dt[[tipo_col]],
+      c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")
+    ),
+    error = function(e) rep(FALSE, nrow(dt))
+  )
+  tem_seca[is.na(tem_seca)] <- FALSE
+  candidatos <- which(tem_seca)
+  if (!length(candidatos)) return(vazio)
+  cols <- tryCatch(monitora_correcao_colunas_forma_vida_categoria(dt, "seca_morta"), error = function(e) character(0))
+  cols <- unique(cols[!is.na(cols) & nzchar(cols) & cols %in% names(dt)])
+  if (!length(cols)) {
+    cand_lista <- which(
+      grepl("formas?_de_vida_de_plantas?.*(secas|mortas)", nomes_norm, perl = TRUE) |
+        grepl("(^|_)registro_forma_vida_seca_morta$|^forma_vida_seca_morta$", nomes_norm, perl = TRUE)
+    )
+    cols <- names(dt)[cand_lista]
+  }
+  if (!length(cols)) return(vazio)
+  partes <- list()
+  for (cc in cols) {
+    valores <- as.character(dt[[cc]][candidatos]); valores[is.na(valores)] <- ""
+    tokens <- strsplit(trimws(gsub("[,;|]+", " ", valores)), "[[:space:]]+")
+    lens <- lengths(tokens)
+    keep <- which(lens > 0L & nzchar(trimws(valores)))
+    if (!length(keep)) next
+    formas <- unlist(tokens[keep], use.names = FALSE)
+    linhas <- rep(candidatos[keep], lens[keep])
+    formas <- monitora_relatorio_exoticas_normalizar_token(formas)
+    ok <- !is.na(formas) & nzchar(formas)
+    if (!any(ok)) next
+    linhas <- linhas[ok]; formas <- formas[ok]
+    row_id_col <- get0("MONITORA_COL_ROW_ID", ifnotfound = ".monitora_row_id", inherits = TRUE)
+    partes[[length(partes) + 1L]] <- data.table::data.table(
+      linha_indice = linhas,
+      monitora_row_id = if (row_id_col %in% names(dt)) as.character(dt[[row_id_col]][linhas]) else NA_character_,
+      forma_de_vida_detectada = formas,
+      atributo_forma_vida = cc,
+      valor_forma_vida_atual_detalhe = as.character(dt[[cc]][linhas])
+    )
+  }
+  if (!length(partes)) return(vazio)
+  unique(data.table::rbindlist(partes, fill = TRUE, use.names = TRUE))[]
+}
+
+monitora_diag_seca_morta_gravar_resumo <- function(dt, ocorrencias, base_dir, fase) {
+  ocorrencias <- data.table::as.data.table(ocorrencias)
+  if (!nrow(ocorrencias)) {
+    resumo <- data.table::data.table(
+      etapa = character(), UC = character(), EA = character(), UA = character(),
+      ANO = character(), COLETA = character(), forma_de_vida_detectada = character(),
+      n_pontos_com_ocorrencia = integer(), n_pontos_validos_coleta = integer(),
+      percentual_pontos_validos = numeric(), natureza_diagnostico = character()
+    )
+  } else {
+    nomes_norm <- tryCatch(monitora_correcao_normalizar_nome_coluna(names(dt)), error = function(e) tolower(gsub("[^[:alnum:]]+", "_", names(dt))))
+    chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list())
+    chave <- function(nm) {
+      cc <- as.character(chaves[[nm]])[1L]
+      if (is.na(cc) || !nzchar(cc) || !(cc %in% names(dt))) {
+        alvo <- switch(nm, uc = "^uc$", ea = "^ea$", ua = "^ua$", ano = "^ano$", coleta = "^coleta$", paste0("^", nm, "$"))
+        cand <- which(grepl(alvo, nomes_norm, ignore.case = TRUE, perl = TRUE))
+        cc <- if (length(cand)) names(dt)[cand[[1L]]] else NA_character_
+      }
+      if (is.na(cc) || !nzchar(cc) || !(cc %in% names(dt))) rep(NA_character_, nrow(dt)) else as.character(dt[[cc]])
+    }
+    contexto <- data.table::data.table(
+      linha_indice = seq_len(nrow(dt)), UC = chave("uc"), EA = chave("ea"),
+      UA = chave("ua"), ANO = chave("ano"), COLETA = chave("coleta")
+    )
+    denominador <- contexto[, .(n_pontos_validos_coleta = data.table::uniqueN(linha_indice)), by = .(UC, EA, UA, ANO, COLETA)]
+    det <- merge(ocorrencias[, .(linha_indice, forma_de_vida_detectada)], contexto, by = "linha_indice", all.x = TRUE, sort = FALSE)
+    resumo <- det[, .(n_pontos_com_ocorrencia = data.table::uniqueN(linha_indice)), by = .(UC, EA, UA, ANO, COLETA, forma_de_vida_detectada)]
+    resumo <- denominador[resumo, on = .(UC, EA, UA, ANO, COLETA)]
+    resumo[, `:=`(
+      etapa = fase,
+      percentual_pontos_validos = data.table::fifelse(n_pontos_validos_coleta > 0L, 100 * n_pontos_com_ocorrencia / n_pontos_validos_coleta, NA_real_),
+      natureza_diagnostico = "revisao_nao_impeditiva_sem_inferencia_causal"
+    )]
+    data.table::setcolorder(resumo, c("etapa", "UC", "EA", "UA", "ANO", "COLETA", "forma_de_vida_detectada", "n_pontos_com_ocorrencia", "n_pontos_validos_coleta", "percentual_pontos_validos", "natureza_diagnostico"))
+    data.table::setorder(resumo, UC, EA, UA, ANO, COLETA, forma_de_vida_detectada)
+  }
+  monitora_diag_rel_write_dt(resumo, file.path(base_dir, paste0("resumo_seca_morta_em_revisao_", fase, ".csv")))
+  invisible(resumo)
 }
 
 ### Resume somente ocorrências não impeditivas usando o mesmo catálogo e o
@@ -25394,9 +25744,82 @@ monitora_pendencias_ocorrencia_id <- function(x) {
   paste0("occ_", vapply(assinatura, function(z) substr(monitora_correcao_hash_texto(z), 1L, 24L), character(1L)))
 }
 
+monitora_pendencias_espaciais_indice <- function(validacao_espacial) {
+  v <- tryCatch(data.table::as.data.table(data.table::copy(validacao_espacial)), error = function(e) data.table::data.table())
+  if (!nrow(v)) return(data.table::data.table())
+  ocorr <- tryCatch(
+    monitora_esp_ocorrencias_diagnosticas(list(validacao = v)),
+    error = function(e) data.table::data.table()
+  )
+  if (!nrow(ocorr)) return(data.table::data.table())
+  for (cc in c("id_coleta_espacial", "UC", "EA", "UA", "ANO", "COLETA", "codigo_ocorrencia", "classe_ocorrencia", "status_espacial", "motivo")) {
+    if (!(cc %in% names(ocorr))) ocorr[, (cc) := NA_character_]
+  }
+  sugestao <- if ("sugestao_operacional" %in% names(v) && "id_coleta_espacial" %in% names(v)) {
+    unique(v[, .(
+      id_coleta_espacial = as.character(id_coleta_espacial),
+      sugestao_operacional = as.character(sugestao_operacional)
+    )], by = "id_coleta_espacial")
+  } else {
+    data.table::data.table(id_coleta_espacial = character(), sugestao_operacional = character())
+  }
+  if (nrow(sugestao)) ocorr <- sugestao[ocorr, on = "id_coleta_espacial"]
+  if (!("sugestao_operacional" %in% names(ocorr))) ocorr[, sugestao_operacional := NA_character_]
+  rotulos_status <- c(
+    coordenada_invalida_ou_ausente = "Coordenada inválida ou ausente",
+    coordenadas_conflitantes_na_coleta = "Coordenadas conflitantes dentro da COLETA",
+    referencia_insuficiente = "Referência espacial insuficiente",
+    referencia_temporal_ambigua = "Referência temporal espacial ambígua",
+    pendencia_inicio_divergente = "Vergalhão inicial divergente",
+    pendencia_fim_divergente = "Vergalhão final divergente",
+    pendencia_ambos_divergentes = "Vergalhões inicial e final divergentes",
+    possivel_transecto_invertido = "Possível transecto invertido",
+    possivel_ua_trocada = "Possível UA trocada"
+  )
+  rotulos_alerta <- c(
+    alerta_raio_rigoroso = "Alerta de distância espacial",
+    alerta_acuracia_gps = "Alerta de acurácia do GPS",
+    alerta_comprimento_transecto = "Alerta de comprimento do transecto",
+    alerta_referencia_limitada = "Alerta de referência temporal limitada",
+    alerta_proximidade_outra_ua = "Alerta de proximidade de outra UA",
+    alerta_serie_temporal_secundaria = "Alerta de série espacial secundária",
+    alerta_ua_consenso_coincidente = "Alerta de consensos espaciais coincidentes"
+  )
+  eh_pend <- as.character(ocorr$classe_ocorrencia) == "pendencia"
+  status <- trimws(as.character(ocorr$status_espacial))
+  codigo <- trimws(as.character(ocorr$codigo_ocorrencia))
+  tipo <- ifelse(eh_pend, paste0("pendencia_espacial__", status), paste0("alerta_espacial__", codigo))
+  rot <- ifelse(eh_pend, unname(rotulos_status[status]), unname(rotulos_alerta[codigo]))
+  faltante <- is.na(rot) | !nzchar(rot)
+  rot[faltante] <- tools::toTitleCase(gsub("_", " ", ifelse(eh_pend[faltante], status[faltante], codigo[faltante])))
+  motivo <- trimws(as.character(ocorr$motivo)); motivo[is.na(motivo)] <- ""
+  sugestao_txt <- trimws(as.character(ocorr$sugestao_operacional)); sugestao_txt[is.na(sugestao_txt)] <- ""
+  detalhe <- ifelse(
+    nzchar(sugestao_txt),
+    paste0(motivo, "; orientação: ", sugestao_txt),
+    motivo
+  )
+  data.table::data.table(
+    tipo_ocorrencia = tipo,
+    rotulo_ocorrencia = paste0(ifelse(eh_pend, "Pendência espacial: ", "Alerta espacial: "), rot),
+    COLETA = as.character(ocorr$COLETA),
+    linha_indice = NA_integer_,
+    monitora_row_id = paste0("ESP::", as.character(ocorr$id_coleta_espacial)),
+    UC = as.character(ocorr$UC), EA = as.character(ocorr$EA), UA = as.character(ocorr$UA),
+    CICLO = NA_character_, CAMPANHA = NA_character_, ANO = as.character(ocorr$ANO),
+    ocorrencia_token = ifelse(eh_pend, status, codigo),
+    ocorrencia_atributo = "coordenadas da COLETA",
+    ocorrencia_categoria = as.character(ocorr$classe_ocorrencia),
+    ocorrencia_status = ifelse(eh_pend, status, codigo),
+    ocorrencia_detalhe = detalhe,
+    fonte_indice = "validacao_espacial"
+  )
+}
+
 monitora_pendencias_justificativas_template <- function() {
   data.table::data.table(
-    evento_justificativa_id = character(), ocorrencia_id = character(), status_evento = character(),
+    evento_justificativa_id = character(), evento_lote_id = character(), ordem_no_lote = integer(),
+    n_ocorrencias_lote = integer(), ocorrencia_id = character(), status_evento = character(),
     timestamp_evento = character(), exec_id = character(), script_versao = character(),
     responsavel = character(), tipo_justificativa = character(), justificativa = character(),
     tipo_ocorrencia = character(), COLETA = character(), UC = character(), EA = character(),
@@ -25480,16 +25903,29 @@ monitora_pendencias_justificativas_persistir <- function(ocorrencias_atuais, eve
   if (nrow(hist)) {
     data.table::setorder(hist, timestamp_evento, evento_justificativa_id)
     ult <- hist[, .SD[.N], by = ocorrencia_id]
-    ult <- ult[, .(ocorrencia_id, status_justificativa = status_evento, responsavel_justificativa = responsavel, tipo_justificativa, justificativa, timestamp_justificativa = timestamp_evento)]
+    ult <- ult[, .(
+      ocorrencia_id, evento_justificativa_id, evento_lote_id, ordem_no_lote,
+      n_ocorrencias_lote, status_justificativa = status_evento,
+      responsavel_justificativa = responsavel, tipo_justificativa, justificativa,
+      timestamp_justificativa = timestamp_evento
+    )]
     snapshot <- merge(atual, ult, by = "ocorrencia_id", all.x = TRUE, sort = FALSE)
   } else {
     snapshot <- data.table::copy(atual)
-    snapshot[, `:=`(status_justificativa = "sem_justificativa", responsavel_justificativa = NA_character_, tipo_justificativa = NA_character_, justificativa = NA_character_, timestamp_justificativa = NA_character_)]
+    snapshot[, `:=`(
+      evento_justificativa_id = NA_character_, evento_lote_id = NA_character_,
+      ordem_no_lote = NA_integer_, n_ocorrencias_lote = NA_integer_,
+      status_justificativa = "sem_justificativa", responsavel_justificativa = NA_character_,
+      tipo_justificativa = NA_character_, justificativa = NA_character_,
+      timestamp_justificativa = NA_character_
+    )]
   }
   if (nrow(snapshot)) snapshot[is.na(status_justificativa) | !nzchar(status_justificativa), status_justificativa := "sem_justificativa"]
   arq_snapshot <- file.path(dir_saida, "pendencias_remanescentes_com_justificativas.csv")
   monitora_fwrite(snapshot, arq_snapshot, na = "")
-  invisible(list(historico = hist, pendencias_remanescentes = snapshot, arquivo_historico = arq_hist, arquivo_pendencias = arq_snapshot))
+  resultado <- list(historico = hist, pendencias_remanescentes = snapshot, arquivo_historico = arq_hist, arquivo_pendencias = arq_snapshot)
+  assign("MONITORA_PENDENCIAS_JUSTIFICATIVAS_ULTIMO", resultado, envir = .GlobalEnv)
+  invisible(resultado)
 }
 
 monitora_diag_validar_ocorrencias_materializadas <- function(todos, fase, base_dir) {
@@ -25677,7 +26113,8 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
     solo_nu_com_outra_categoria = "registros_solo_nu_com_outra_categoria_",
     habito_obrigatorio_ausente = "registros_habito_obrigatorio_ausente_",
-    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_"
+    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_",
+    seca_morta_em_revisao = "registros_seca_morta_em_revisao_"
   )
   catalogo[, arquivo := paste0(prefixos_arquivo_catalogo[tipo_ocorrencia], fase, ".csv")]
 
@@ -25834,6 +26271,26 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
 
   idx_sec <- idx_pre("seca_morta_sem_forma_vida", function() which(tem_token(c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")) & !tem_forma_categoria("seca_morta")))
   rels[["seca_morta_sem_forma_vida"]] <- add_rows("seca_morta_sem_forma_vida", idx = idx_sec, token = "seca_morta/seca/morta", campo_forma = paste(cols_sec, collapse = " | "), valor_forma = collapse_cols_linha(cols_sec, idx_sec), dependentes = dependentes_categoria("seca_morta", idx_sec, cols_sec), acao = "Conferir a planilha original. Se a forma de vida constar na planilha, preencher o campo inferior correspondente; se não foi registrada em campo, excluir a COLETA.")
+
+  det_seca_revisao <- monitora_diag_seca_morta_ocorrencias_revisao(dt)
+  idx_seca_revisao <- idx_pre("seca_morta_em_revisao", function() unique(det_seca_revisao$linha_indice))
+  rels[["seca_morta_em_revisao"]] <- add_rows(
+    "seca_morta_em_revisao", idx = idx_seca_revisao,
+    token = "seca_morta", campo_forma = paste(cols_sec, collapse = " | "),
+    valor_forma = collapse_cols_linha(cols_sec, idx_seca_revisao),
+    acao = paste(
+      "Revisar o registro sem alterá-lo automaticamente. Confrontar padrões espaciais e temporais com fenologia,",
+      "precipitação, seca, histórico de fogo e manejo independentes. A ocorrência não demonstra causa e não bloqueia registros_validados.csv."
+    )
+  )
+  if (nrow(rels[["seca_morta_em_revisao"]]) && nrow(det_seca_revisao)) {
+    by_seca <- "linha_indice"
+    if ("monitora_row_id" %in% names(rels[["seca_morta_em_revisao"]]) && "monitora_row_id" %in% names(det_seca_revisao)) by_seca <- c("linha_indice", "monitora_row_id")
+    rels[["seca_morta_em_revisao"]] <- merge(
+      rels[["seca_morta_em_revisao"]], det_seca_revisao,
+      by = by_seca, all.x = TRUE, allow.cartesian = TRUE, sort = FALSE
+    )
+  }
 
   mask_outra <- rep(FALSE, n); cols_outra_hit <- character(0)
   cols_info <- tryCatch(monitora_correcao_colunas_limpeza_outras_formas(dt, NULL), error = function(e) data.table::data.table())
@@ -26089,6 +26546,12 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     write_dt(x, arq)
   }
   write_dt(todos, file.path(base_dir, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv")))
+  monitora_diag_seca_morta_gravar_resumo(
+    dt,
+    if (nrow(todos)) todos[tipo_ocorrencia == "seca_morta_em_revisao"] else data.table::data.table(),
+    base_dir,
+    fase
+  )
 
   resumo <- if (nrow(todos)) {
     todos[, .(
@@ -26185,7 +26648,8 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
     forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
     solo_nu_com_outra_categoria = "registros_solo_nu_com_outra_categoria_",
     habito_obrigatorio_ausente = "registros_habito_obrigatorio_ausente_",
-    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_"
+    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_",
+    seca_morta_em_revisao = "registros_seca_morta_em_revisao_"
   )
   catalogo[, arquivo := paste0(prefixos[tipo_ocorrencia], fase, ".csv")]
   chaves <- monitora_correcao_colunas_chave(dt)
@@ -26203,6 +26667,7 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
   det_exoticas <- monitora_diag_exoticas_ocorrencias_detalhadas(dt)
   det_desconhecida <- tryCatch(monitora_correcao_classificar_desconhecida(dt, chaves = chaves, dicionario = NULL), error = function(e) data.table::data.table())
   det_formveg <- monitora_diag_formacao_vegetacional_temporal(dt)
+  det_seca_revisao <- monitora_diag_seca_morta_ocorrencias_revisao(dt)
   for (tp in catalogo$tipo_ocorrencia) {
     det_tp <- if (tp %in% c("forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie")) {
       det_exoticas[tipo_ocorrencia == tp]
@@ -26210,6 +26675,8 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
       det_desconhecida[tipo_ocorrencia == tp]
     } else if (identical(tp, "formacao_vegetacional_inconsistente_ua") && nrow(det_formveg)) {
       det_formveg
+    } else if (identical(tp, "seca_morta_em_revisao") && nrow(det_seca_revisao)) {
+      det_seca_revisao
     } else data.table::data.table()
     idx <- if (nrow(det_tp)) as.integer(det_tp$linha_indice) else idx_tipo(tp)
     coletas_tp <- if (is.list(coletas_triagem_por_tipo) && tp %in% names(coletas_triagem_por_tipo)) unique(as.character(coletas_triagem_por_tipo[[tp]])) else character(0)
@@ -26249,6 +26716,12 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
     monitora_diag_rel_write_dt(x, file.path(base_dir, catalogo$arquivo[ii]))
   }
   monitora_diag_rel_write_dt(todos, file.path(base_dir, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv")))
+  monitora_diag_seca_morta_gravar_resumo(
+    dt,
+    if (nrow(todos)) todos[tipo_ocorrencia == "seca_morta_em_revisao"] else data.table::data.table(),
+    base_dir,
+    fase
+  )
   resumo <- if (nrow(todos)) todos[, .(
     n_linhas = data.table::uniqueN(linha_indice), n_ocorrencias_detalhadas = .N,
     n_coletas = data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)]),
@@ -26546,6 +27019,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     info <- contrato_edicao[atributo_coluna_registros_corrig == as.character(atributo)[1L]]
     if (!nrow(info)) return(stats::setNames(character(0), character(0)))
     acoes <- monitora_correcao_split_serial(info$acoes_permitidas[1L])
+    tipo_impacto <- tryCatch(monitora_painel_impacto_tipo_atributo(atributo), error = function(e) "")
+    if (identical(tipo_impacto, "pai")) acoes <- intersect(acoes, "update")
+    if (identical(tipo_impacto, "tipos")) acoes <- intersect(acoes, c("append_token", "remove_token", "replace_token"))
     rot <- monitora_correcao_acoes_rotulos()
     rot <- rot[unname(rot) %in% acoes]
     if (!length(rot)) stats::setNames(character(0), character(0)) else rot
@@ -26664,6 +27140,20 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     labels <- monitora_painel_limpar_html_rotulo(paste0(labels, extras))
     stats::setNames(vals, labels)
   }
+
+  monitora_painel_choices_label_name_explicito <- function(choices) {
+    vals <- as.character(unname(choices))
+    labs <- names(choices)
+    if (is.null(labs)) labs <- vals
+    labs <- monitora_painel_limpar_html_rotulo(labs)
+    labs[is.na(labs) | !nzchar(labs)] <- vals[is.na(labs) | !nzchar(labs)]
+    for (ii in seq_along(vals)) {
+      sufixo <- paste0("— ", vals[ii])
+      if (!endsWith(trimws(labs[ii]), sufixo)) labs[ii] <- paste0(labs[ii], " — ", vals[ii])
+    }
+    stats::setNames(vals, labs)
+  }
+
  ### oculta do seletor "Atributo a corrigir" as colunas
  ### que são aliases históricos de hábito (rótulos herdados de versões
  ### antigas do XLSForm para o mesmo atributo definitivo, incluindo variantes
@@ -26710,7 +27200,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     } else if (!is.na(info$col) && nzchar(info$col) && info$col %in% names(dt)) {
       fallback <- unique(c(fallback, as.character(dt[[info$col]])))
     }
-    monitora_painel_choices_dominio_xlsform(info$list_name, meta_xls, fallback = fallback)
+    escolhas <- monitora_painel_choices_dominio_xlsform(info$list_name, meta_xls, fallback = fallback)
+    if (info$list_name %in% c("impacto_manejo_uso", "tipos_impacto_manejo_uso")) {
+      escolhas <- monitora_painel_choices_label_name_explicito(escolhas)
+    }
+    escolhas
   }
 
   monitora_painel_widget_valor_atributo <- function(atributo, acao = NULL) {
@@ -27013,16 +27507,50 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     info <- contrato_edicao[atributo_coluna_registros_corrig == col]
     if (!nrow(info)) return(list(col = col, tipo = NA_character_, list_name = NA_character_, papel = NA_character_, categoria = NA_character_, escolhas = character(0)))
     info <- info[1L]
-    escolhas <- monitora_correcao_choices_xlsform(info$xlsform_list_name, meta_xls)
+    list_name <- as.character(info$xlsform_list_name[1L])
+    if (is.na(list_name) || !nzchar(list_name)) {
+      z <- monitora_correcao_normalizar_nome_coluna(col)
+      if (grepl("ocorreram_impactos", z, fixed = TRUE) && grepl("impact_manejo_uso", z, fixed = TRUE)) {
+        list_name <- "impacto_manejo_uso"
+      } else if (grepl("qual_is", z, fixed = TRUE) && grepl("impact_manejo_uso", z, fixed = TRUE)) {
+        list_name <- "tipos_impacto_manejo_uso"
+      }
+    }
+    escolhas <- monitora_correcao_choices_xlsform(list_name, meta_xls)
     list(
       col = col,
       tipo = as.character(info$tipo_base_edicao[1L]),
-      list_name = as.character(info$xlsform_list_name[1L]),
+      list_name = list_name,
       papel = as.character(info$papel_coluna[1L]),
       categoria = as.character(info$categoria_coluna[1L]),
       escolhas = escolhas
     )
   }
+
+  monitora_painel_impacto_tipo_atributo <- function(atributo) {
+    info <- tryCatch(monitora_painel_info_contrato_atributo(atributo), error = function(e) list(list_name = "", tipo = ""))
+    lista <- as.character(info$list_name)[1L]
+    tipo <- as.character(info$tipo)[1L]
+    if (identical(lista, "impacto_manejo_uso") && identical(tipo, "select_one")) return("pai")
+    if (identical(lista, "tipos_impacto_manejo_uso") && identical(tipo, "select_multiple")) return("tipos")
+    z <- monitora_correcao_normalizar_nome_coluna(atributo)
+    if (grepl("outros_tipos_de_manejo_ou_uso", z, fixed = TRUE) || grepl("tipos_impacto_manejo_uso_outro", z, fixed = TRUE)) return("outro")
+    if (grepl("descreva_os_impactos", z, fixed = TRUE) || grepl("tipos_impacto_manejo_uso_descricao", z, fixed = TRUE)) return("descricao")
+    ""
+  }
+
+  monitora_painel_impacto_colunas <- function() {
+    attrs <- unique(as.character(contrato_edicao$atributo_coluna_registros_corrig))
+    attrs <- attrs[!is.na(attrs) & nzchar(attrs) & attrs %in% names(dt)]
+    tipos <- vapply(attrs, monitora_painel_impacto_tipo_atributo, character(1L))
+    pegar <- function(tipo) {
+      hit <- attrs[tipos == tipo]
+      if (length(hit)) hit[1L] else NA_character_
+    }
+    list(pai = pegar("pai"), tipos = pegar("tipos"), outro = pegar("outro"), descricao = pegar("descricao"))
+  }
+
+  MONITORA_PAINEL_IMPACTO_COLUNAS <- monitora_painel_impacto_colunas()
 
  ### ### domínio de hábito (terrestre/epifita/rupicola) deixa de vir da constante
  ### hard-coded MONITORA_TRIAGEM_HABITO_CHOICES e passa a ser resolvido a
@@ -27760,6 +28288,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     mask_nativa <- tem_token_tipo(c("nativa", "nativas", "nativo", "nativos")) & !tem_forma_categoria("nativa")
     mask_exotica <- tem_token_tipo(c("exotica", "exoticas", "exotico", "exoticos")) & !tem_forma_categoria("exotica")
     mask_seca <- tem_token_tipo(c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")) & !tem_forma_categoria("seca_morta")
+    mask_seca_revisao <- tem_token_tipo(c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")) & tem_forma_categoria("seca_morta")
     mask_solo <- tryCatch(monitora_correcao_mask_solo_nu_incompativel(dt, chaves), error = function(e) rep(FALSE, nrow(dt)))
     habito_cache <- tryCatch(monitora_correcao_mask_habito_obrigatorio_ausente(dt), error = function(e) list(mask = rep(FALSE, nrow(dt)), detalhes = data.table::data.table()))
     mask_habito <- as.logical(habito_cache$mask); mask_habito[is.na(mask_habito)] <- FALSE
@@ -27782,6 +28311,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     indices_precomputados <- list(
       ponto_sem_interceptacao = which(mask_ponto), nativa_sem_forma_vida = which(mask_nativa),
       exotica_sem_forma_vida = which(mask_exotica), seca_morta_sem_forma_vida = which(mask_seca),
+      seca_morta_em_revisao = which(mask_seca_revisao),
       outra_forma_vida = idx_tri_tipo("outras_formas_vida"),
       forma_vida_desconhecida_invalida = idx_desc_tipo("forma_vida_desconhecida_invalida"),
       forma_vida_desconhecida = idx_desc_tipo("forma_vida_desconhecida"),
@@ -27803,6 +28333,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       seca_morta_sem_forma_vida = coleta_vals_mask(
         mask_seca
       ),
+      seca_morta_em_revisao = coleta_vals_mask(mask_seca_revisao),
       outra_forma_vida = coleta_vals(tri[tipo_triagem == "outras_formas_vida"]),
       forma_vida_desconhecida_invalida = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_desc_tipo("forma_vida_desconhecida_invalida")),
       forma_vida_desconhecida = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_desc_tipo("forma_vida_desconhecida")),
@@ -27854,6 +28385,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$nativa_sem_forma_vida), " com nativa sem forma de vida; ",
     length(coletas_triagem_por_tipo$exotica_sem_forma_vida), " com exótica sem forma de vida; ",
     length(coletas_triagem_por_tipo$seca_morta_sem_forma_vida), " com seca ou morta sem forma de vida; ",
+    length(coletas_triagem_por_tipo$seca_morta_em_revisao), " em revisão não impeditiva de seca ou morta; ",
     length(coletas_triagem_por_tipo$outra_forma_vida), " com outra forma de vida; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida_invalida), " com forma de vida desconhecida inválida; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida), " em revisão não impeditiva de forma de vida desconhecida; ",
@@ -27956,13 +28488,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "forma_vida_desconhecida",
           "forma_vida_exotica_sem_especie",
           "forma_vida_exotica_com_especie",
-          "formacao_vegetacional_inconsistente_ua"
+          "formacao_vegetacional_inconsistente_ua",
+          "seca_morta_em_revisao"
         ),
         c(
           paste0("Forma de vida desconhecida (", n_tipo("forma_vida_desconhecida"), " coletas com ocorrência)"),
           paste0("Revisão: forma de vida exótica sem espécie (", n_tipo("forma_vida_exotica_sem_especie"), " coletas com ocorrência)"),
           paste0("Revisão: forma de vida exótica com espécie (", n_tipo("forma_vida_exotica_com_especie"), " coletas com ocorrência)"),
-          paste0("Revisão: formação vegetacional inconsistente na mesma UA (", n_tipo("formacao_vegetacional_inconsistente_ua"), " coletas com ocorrência)")
+          paste0("Revisão: formação vegetacional inconsistente na mesma UA (", n_tipo("formacao_vegetacional_inconsistente_ua"), " coletas com ocorrência)"),
+          paste0("Revisão: vegetação seca ou morta registrada (", n_tipo("seca_morta_em_revisao"), " coletas com ocorrência)")
         )
       )
     )
@@ -27970,7 +28504,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
   choices_triagem_coleta <- monitora_painel_choices_triagem_coleta(valores_coleta)
 
-  monitora_painel_ocorrencias_idx_leve <- function(triagem, coletas_por_tipo, usar_relatorio_pre = TRUE, dt_estado = NULL) {
+  monitora_painel_ocorrencias_idx_leve <- function(triagem, coletas_por_tipo, usar_relatorio_pre = TRUE, dt_estado = NULL, validacao_espacial = NULL) {
     out <- list()
     primeiro_preenchido <- function(...) {
       candidatos <- list(...)
@@ -28108,15 +28642,18 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         )
       }
     }
+    idx_espacial <- monitora_pendencias_espaciais_indice(validacao_espacial)
+    if (nrow(idx_espacial)) out[[length(out) + 1L]] <- idx_espacial
     idx <- if (length(out)) data.table::rbindlist(out, fill = TRUE, use.names = TRUE) else data.table::data.table(
       tipo_ocorrencia = character(), COLETA = character(), linha_indice = integer(),
       UC = character(), EA = character(), UA = character(), CICLO = character(), CAMPANHA = character(),
       ANO = character(), fonte_indice = character()
     )
     if (nrow(idx)) {
-      for (cc in c("monitora_row_id", "ocorrencia_token", "ocorrencia_atributo", "ocorrencia_categoria", "ocorrencia_status", "ocorrencia_detalhe")) {
+      for (cc in c("monitora_row_id", "rotulo_ocorrencia", "ocorrencia_token", "ocorrencia_atributo", "ocorrencia_categoria", "ocorrencia_status", "ocorrencia_detalhe")) {
         if (!(cc %in% names(idx))) idx[, (cc) := NA_character_]
       }
+      idx[is.na(rotulo_ocorrencia) | !nzchar(trimws(as.character(rotulo_ocorrencia))), rotulo_ocorrencia := tools::toTitleCase(gsub("_", " ", as.character(tipo_ocorrencia)))]
  ### identidade física estável é transportada separadamente do
  ### texto de exibição. Isso impede que uma mudança em ocorrencia_detalhe
  ### quebre consumidores como SANHAB ou colapse tokens irmãos na mesma linha.
@@ -28188,12 +28725,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     out[]
   }
 
-  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), correcoes_solicitadas = monitora_correcao_template(), correcoes_historico_intencoes = monitora_correcao_template(), auditoria_conciliacao_semantica = data.table::data.table(), conflitos_semanticos = data.table::data.table(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0), correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0), auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table(), ocorrencias_idx = data.table::data.table(), ocorrencias_resumo = data.table::data.table(), justificativas_sessao = monitora_pendencias_justificativas_template(), acao_choices_atuais = character(0), preview_estado = NULL, preview_triagem = data.table::copy(triagem_painel_unificada), preview_coletas = coletas_triagem_por_tipo, preview_coletas_lateral = coletas_triagem_por_tipo, preview_resumo_impeditivas = data.table::data.table(), preview_dirty = FALSE, preview_revision = 0L, preview_atualizado_em = NA_character_, reset_painel_em_andamento = FALSE)
-  ocorrencias_idx_base_painel <- monitora_painel_ocorrencias_idx_leve(triagem_painel_unificada, coletas_triagem_por_tipo)
-  rv$ocorrencias_idx <- data.table::copy(ocorrencias_idx_base_painel)
-  ocorrencias_resumo_base_painel <- monitora_painel_ocorrencias_resumo_leve(ocorrencias_idx_base_painel)
-  rv$ocorrencias_resumo <- data.table::copy(ocorrencias_resumo_base_painel)
-  rv$preview_resumo_impeditivas <- monitora_painel_resumo_impeditivas_do_indice(ocorrencias_resumo_base_painel)
   validacao_esp_painel <- data.table::data.table()
   if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
     res_esp_pre_painel <- get0("MONITORA_VALIDACAO_ESPACIAL_PRE_PAINEL_RESULTADO", ifnotfound = NULL, inherits = TRUE)
@@ -28201,6 +28732,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       validacao_esp_painel <- data.table::as.data.table(data.table::copy(res_esp_pre_painel$validacao))
     }
   }
+  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), correcoes_solicitadas = monitora_correcao_template(), correcoes_historico_intencoes = monitora_correcao_template(), auditoria_conciliacao_semantica = data.table::data.table(), conflitos_semanticos = data.table::data.table(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0), correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0), auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table(), ocorrencias_idx = data.table::data.table(), ocorrencias_resumo = data.table::data.table(), justificativas_sessao = monitora_pendencias_justificativas_template(), acao_choices_atuais = character(0), preview_estado = NULL, preview_triagem = data.table::copy(triagem_painel_unificada), preview_coletas = coletas_triagem_por_tipo, preview_coletas_lateral = coletas_triagem_por_tipo, preview_validacao_espacial = data.table::copy(validacao_esp_painel), preview_resumo_impeditivas = data.table::data.table(), preview_dirty = FALSE, preview_revision = 0L, preview_atualizado_em = NA_character_, reset_painel_em_andamento = FALSE)
+  ocorrencias_idx_base_painel <- monitora_painel_ocorrencias_idx_leve(
+    triagem_painel_unificada, coletas_triagem_por_tipo,
+    validacao_espacial = validacao_esp_painel
+  )
+  rv$ocorrencias_idx <- data.table::copy(ocorrencias_idx_base_painel)
+  ocorrencias_resumo_base_painel <- monitora_painel_ocorrencias_resumo_leve(ocorrencias_idx_base_painel)
+  rv$ocorrencias_resumo <- data.table::copy(ocorrencias_resumo_base_painel)
+  rv$preview_resumo_impeditivas <- monitora_painel_resumo_impeditivas_do_indice(ocorrencias_resumo_base_painel)
   escolhas_esp_status <- if ("status_espacial" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$status_espacial))) else character(0)
   escolhas_esp_ua <- if ("UA" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$UA))) else character(0)
   escolhas_esp_ano <- if ("ANO" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$ANO))) else character(0)
@@ -28627,6 +29167,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         shiny::helpText("A ação disponível depende do tipo do atributo. Campos de lista múltipla usam ações por token; campos descritivos permitem substituir ou acrescentar texto."),
         shiny::textAreaInput("valor_original", "Valor original esperado / token origem (trava; opcional, mas recomendado)", value = "", rows = 2),
         shiny::uiOutput("ui_valor_novo_controle"),
+        shiny::uiOutput("ui_impactos_dependencia"),
         shiny::uiOutput("ui_contrato_entrada_info"),
         shiny::uiOutput("ui_habito_correcao_contratual"),
         shiny::uiOutput("ui_n_esperado_contextual"),
@@ -28712,6 +29253,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       ),
       shiny::mainPanel(
         shiny::tabsetPanel(
+          shiny::tabPanel(
+            "Equipe da COLETA",
+            shiny::h3("Coletores da COLETA selecionada"),
+            shiny::helpText("Nome e CPF pertencem ao repeat de coletores: cada linha da tabela representa uma pessoa, não um ponto amostral. As ações desta aba alteram somente o integrante selecionado. O CPF é opcional no contrato único e nunca será inferido."),
+            shiny::uiOutput("coletores_contexto_ui"),
+            monitora_painel_dt_output("coletores_tabela"),
+            shiny::fluidRow(
+              shiny::column(7, shiny::textInput("coletor_nome", "Nome do coletor (obrigatório para o integrante)", value = "")),
+              shiny::column(5, shiny::textInput("coletor_cpf", "CPF do coletor (opcional)", value = ""))
+            ),
+            shiny::textAreaInput("coletor_motivo", "Justificativa auditável", value = "", rows = 2),
+            shiny::checkboxInput("coletor_confirmar", "Confirmo a alteração deste integrante da equipe", value = FALSE),
+            shiny::fluidRow(
+              shiny::column(4, shiny::actionButton("coletor_adicionar", "Adicionar integrante", class = "btn-info")),
+              shiny::column(4, shiny::actionButton("coletor_atualizar", "Atualizar selecionado", class = "btn-warning")),
+              shiny::column(4, shiny::actionButton("coletor_excluir", "Excluir selecionado", class = "btn-danger"))
+            ),
+            shiny::helpText("Para atualizar ou excluir, selecione exatamente uma linha da tabela. A exclusão remove conjuntamente nome e CPF daquele integrante. As demais pessoas e os 101 registros da COLETA são preservados.")
+          ),
           shiny::tabPanel(
             "Correções de registros",
             shiny::h4("Diagnóstico dos registros selecionados"),
@@ -28869,9 +29429,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           shiny::tabPanel(
             "Justificar pendências",
             shiny::h3("Justificativas para pendências remanescentes"),
-            shiny::helpText("Selecione uma ocorrência, classifique e registre a justificativa. A justificativa não corrige dados, não encerra ocorrências e nunca libera produtos bloqueados; serve somente à auditoria e à rastreabilidade."),
+            shiny::helpText("Selecione uma ou várias ocorrências, classifique e registre uma justificativa comum. A justificativa não corrige dados, não encerra ocorrências e nunca libera produtos bloqueados; serve somente à auditoria e à rastreabilidade."),
             shiny::actionButton("just_atualizar_ocorrencias", "Atualizar ocorrências após as correções pendentes", class = "btn-default"),
             monitora_painel_dt_output("just_tabela_ocorrencias"),
+            shiny::fluidRow(
+              shiny::column(4, shiny::actionButton("just_selecionar_filtradas", "Selecionar pendências filtradas", class = "btn-default")),
+              shiny::column(4, shiny::actionButton("just_limpar_selecao", "Limpar seleção", class = "btn-default")),
+              shiny::column(4, shiny::uiOutput("just_selecao_info"))
+            ),
             shiny::selectInput(
               "just_tipo", "Classificação da justificativa",
               choices = c(
@@ -28884,7 +29449,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
               ), selected = ""
             ),
             shiny::textAreaInput("just_texto", "Justificativa auditável", value = "", rows = 4),
-            shiny::actionButton("just_adicionar", "Adicionar justificativa à ocorrência selecionada", class = "btn-info"),
+            shiny::checkboxInput("just_confirmar_lote", "Confirmo aplicar a mesma justificativa a todas as pendências selecionadas", value = FALSE),
+            shiny::actionButton("just_adicionar", "Adicionar justificativa às pendências selecionadas", class = "btn-info"),
             shiny::h4("Justificativas adicionadas nesta sessão"),
             monitora_painel_dt_output("just_tabela_sessao")
           ),
@@ -28902,6 +29468,356 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   server <- function(input, output, session) {
     dicionario_painel <- if (!is.null(meta_xls) && !is.null(meta_xls$campos)) meta_xls$campos else NULL
 
+    coletores_estado_efetivo <- shiny::reactive({
+      coleta_val <- monitora_painel_valor(input$coleta)
+      if (!nzchar(coleta_val) || !monitora_painel_coluna_ok(chaves$coleta, dt)) {
+        return(list(linhas = integer(), cols = list(nome = NA_character_, cpf = NA_character_), membros = data.table::data.table(), nomes = character(), cpfs = character()))
+      }
+      linhas <- which(as.character(dt[[chaves$coleta]]) == coleta_val)
+      if (!length(linhas)) {
+        return(list(linhas = integer(), cols = list(nome = NA_character_, cpf = NA_character_), membros = data.table::data.table(), nomes = character(), cpfs = character()))
+      }
+      cols <- monitora_coletores_repeat_colunas_visiveis(dt[linhas])
+      nomes <- if (!is.na(cols$nome)) monitora_coletores_repeat_limpar(dt[[cols$nome]][linhas]) else rep("", length(linhas))
+      cpfs <- if (!is.na(cols$cpf)) monitora_coletores_repeat_limpar(dt[[cols$cpf]][linhas]) else rep("", length(linhas))
+
+      pend <- data.table::copy(data.table::as.data.table(rv$correcoes))
+      if (nrow(pend) && all(c("tipo_correcao", "atributo_coluna_registros_corrig", "acao") %in% names(pend))) {
+        pend <- pend[as.character(tipo_correcao) == "edicao_repeat_coletor"]
+        if (nrow(pend)) {
+          ids_base <- if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas]) else rep(NA_character_, length(linhas))
+          for (ii in seq_len(nrow(pend))) {
+            pos <- integer()
+            id_op <- if ("monitora_row_id" %in% names(pend)) as.character(pend$monitora_row_id[ii]) else ""
+            if (!is.na(id_op) && nzchar(id_op)) pos <- which(ids_base == id_op)
+            if (!length(pos) && "linha_indice" %in% names(pend)) pos <- match(suppressWarnings(as.integer(pend$linha_indice[ii])), linhas, nomatch = 0L)
+            pos <- pos[pos > 0L]
+            if (length(pos) != 1L) next
+            attr <- as.character(pend$atributo_coluna_registros_corrig[ii])
+            acao <- monitora_correcao_acao_normalizar(pend$acao[ii])
+            novo <- if (acao %in% c("clear", "limpar")) "" else monitora_coletores_repeat_limpar(pend$valor_novo[ii])[1L]
+            attr_norm <- monitora_correcao_normalizar_nome_coluna(attr)
+            if (attr %in% cols$nome_aliases || grepl("(^|_)coletor_nome$|(^|_)nome_coletor$", attr_norm)) nomes[pos] <- novo
+            if (attr %in% cols$cpf_aliases || grepl("(^|_)coletor_cpf$|(^|_)cpf_coletor$", attr_norm)) cpfs[pos] <- novo
+          }
+        }
+      }
+      usados <- which(nzchar(nomes) | nzchar(cpfs))
+      membros <- if (length(usados)) data.table::data.table(
+        integrante = seq_along(usados),
+        posicao_local = usados,
+        linha_indice = linhas[usados],
+        monitora_row_id = if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas[usados]]) else NA_character_,
+        nome = nomes[usados],
+        cpf = cpfs[usados]
+      ) else data.table::data.table(
+        integrante = integer(), posicao_local = integer(), linha_indice = integer(),
+        monitora_row_id = character(), nome = character(), cpf = character()
+      )
+      list(linhas = linhas, cols = cols, membros = membros, nomes = nomes, cpfs = cpfs)
+    })
+
+    output$coletores_contexto_ui <- shiny::renderUI({
+      estado <- coletores_estado_efetivo()
+      coleta_val <- monitora_painel_valor(input$coleta)
+      if (!nzchar(coleta_val)) return(shiny::div(class = "alert alert-warning", "Selecione uma COLETA no painel lateral para editar a equipe."))
+      shiny::div(
+        class = "alert alert-info",
+        shiny::strong(paste0("COLETA ", coleta_val, ": ")),
+        paste0(nrow(estado$membros), " integrante(s) no estado atual, incluindo alterações pendentes desta sessão. CPF é opcional.")
+      )
+    })
+
+    output$coletores_tabela <- DT::renderDT({
+      estado <- coletores_estado_efetivo()
+      tab <- data.table::copy(estado$membros)
+      if (!nrow(tab)) {
+        return(DT::datatable(data.table::data.table(mensagem = "Nenhum integrante preenchido nesta COLETA."), selection = "none", rownames = FALSE, options = list(dom = "t")))
+      }
+      tab[, cpf := data.table::fifelse(nzchar(cpf), cpf, "(não informado — opcional)")]
+      DT::datatable(tab[, .(Integrante = integrante, Nome = nome, `CPF (opcional)` = cpf)], selection = "single", rownames = FALSE, options = list(dom = "t", pageLength = 15L, scrollX = TRUE))
+    }, server = FALSE)
+
+    shiny::observeEvent(input$coletores_tabela_rows_selected, {
+      sel <- as.integer(input$coletores_tabela_rows_selected)
+      estado <- coletores_estado_efetivo()
+      if (length(sel) != 1L || sel < 1L || sel > nrow(estado$membros)) return(NULL)
+      membro <- estado$membros[sel]
+      shiny::updateTextInput(session, "coletor_nome", value = as.character(membro$nome[1L]))
+      shiny::updateTextInput(session, "coletor_cpf", value = as.character(membro$cpf[1L]))
+      shiny::updateCheckboxInput(session, "coletor_confirmar", value = FALSE)
+    }, ignoreInit = TRUE)
+
+    monitora_painel_coletor_criar_ops <- function(linha_indice, nome_novo, cpf_novo, motivo, modo) {
+      estado <- coletores_estado_efetivo()
+      pos <- match(as.integer(linha_indice), estado$linhas, nomatch = 0L)
+      if (pos < 1L) return(data.table::data.table())
+      if (is.na(estado$cols$nome) || !(estado$cols$nome %in% names(dt))) {
+        stop("A coluna física de nome do repeat de coletores não foi localizada.", call. = FALSE)
+      }
+      nome_novo <- monitora_coletores_repeat_limpar(nome_novo)[1L]
+      cpf_novo <- monitora_coletores_repeat_limpar(cpf_novo)[1L]
+      nome_atual <- estado$nomes[pos]
+      cpf_atual <- estado$cpfs[pos]
+      id <- monitora_correcao_novo_id("COLREP")
+      ordem_atual <- 0L
+      criar_celula <- function(atributo, antes, depois, ordem) {
+        if (is.na(atributo) || !nzchar(atributo) || identical(antes, depois)) return(NULL)
+        op <- monitora_correcao_criar_operacao(
+          id = id, responsavel = input$responsavel, tipo = "edicao_repeat_coletor", ordem = ordem,
+          escopo = "uuid_registro", coleta = monitora_painel_valor(input$coleta),
+          linha_indice = as.integer(linha_indice), atributo = atributo,
+          acao = if (nzchar(depois)) "update" else "clear",
+          valor_original = if (nzchar(antes)) antes else NA_character_,
+          valor_novo = if (nzchar(depois)) depois else NA_character_,
+          n_esperado = 1L, n_alvo = 1L,
+          motivo = paste0(motivo, " [REPEAT_COLETOR: ", modo, "; CPF opcional; pareamento nome-CPF preservado]")
+        )
+        op <- monitora_correcao_anexar_contexto_operacao(op, dt, as.integer(linha_indice), chaves)
+        if (MONITORA_COL_ROW_ID %in% names(dt)) op[, monitora_row_id := as.character(dt[[MONITORA_COL_ROW_ID]][as.integer(linha_indice)])]
+        op
+      }
+      ops <- list()
+      for (atributo_nome in estado$cols$nome_aliases) {
+        ordem_atual <- ordem_atual + 1L
+        ops[[length(ops) + 1L]] <- criar_celula(atributo_nome, nome_atual, nome_novo, ordem_atual)
+      }
+      for (atributo_cpf in estado$cols$cpf_aliases) {
+        ordem_atual <- ordem_atual + 1L
+        ops[[length(ops) + 1L]] <- criar_celula(atributo_cpf, cpf_atual, cpf_novo, ordem_atual)
+      }
+      ops <- ops[!vapply(ops, is.null, logical(1L))]
+      if (!length(ops)) data.table::data.table() else data.table::rbindlist(ops, fill = TRUE, use.names = TRUE)
+    }
+
+    monitora_painel_coletor_validar_comum <- function(acao) {
+      estado <- coletores_estado_efetivo()
+      if (!length(estado$linhas)) return(list(ok = FALSE, mensagem = "Selecione uma COLETA válida antes de editar a equipe."))
+      if (!isTRUE(input$coletor_confirmar)) return(list(ok = FALSE, mensagem = "Confirme explicitamente a alteração do integrante."))
+      motivo <- monitora_painel_valor(input$coletor_motivo)
+      if (!nzchar(motivo)) return(list(ok = FALSE, mensagem = "Informe uma justificativa auditável para a alteração da equipe."))
+      list(ok = TRUE, estado = estado, motivo = motivo, acao = acao)
+    }
+
+    monitora_painel_coletor_finalizar_acao <- function(ops, descricao) {
+      if (!nrow(ops)) {
+        monitora_painel_notificar("Nenhuma mudança efetiva foi identificada no integrante.", type = "warning", duration = 8)
+        return(invisible(0L))
+      }
+      n_add <- monitora_painel_adicionar_ops_pendentes(ops, origem = "editor dedicado do repeat de coletores")
+      if (n_add > 0L) {
+        shiny::updateTextInput(session, "coletor_nome", value = "")
+        shiny::updateTextInput(session, "coletor_cpf", value = "")
+        shiny::updateTextAreaInput(session, "coletor_motivo", value = "")
+        shiny::updateCheckboxInput(session, "coletor_confirmar", value = FALSE)
+      }
+      monitora_painel_notificar(paste0(descricao, ": ", n_add, " célula(s) auditável(is) adicionada(s) à fila."), type = if (n_add > 0L) "message" else "warning", duration = 10)
+      invisible(n_add)
+    }
+
+    shiny::observeEvent(input$coletor_adicionar, {
+      if (!monitora_painel_iniciar_botao("coletor_adicionar", "adicionar integrante da equipe")) return(NULL)
+      on.exit(monitora_painel_liberar_botao("coletor_adicionar"), add = TRUE)
+      val <- monitora_painel_coletor_validar_comum("adicionar")
+      if (!isTRUE(val$ok)) return(monitora_painel_bloquear_operacao(val$mensagem, etapa = "repeat_coletor_adicionar"))
+      nome <- monitora_coletores_repeat_limpar(input$coletor_nome)[1L]
+      cpf <- monitora_coletores_repeat_limpar(input$coletor_cpf)[1L]
+      if (!nzchar(nome)) return(monitora_painel_bloquear_operacao("O nome é obrigatório para adicionar um integrante; o CPF pode permanecer vazio.", etapa = "repeat_coletor_adicionar"))
+      if (nzchar(cpf) && is.na(val$estado$cols$cpf)) return(monitora_painel_bloquear_operacao("O CPF foi informado, mas a coluna correspondente do repeat não foi localizada. A operação foi bloqueada sem descartar o valor digitado.", etapa = "repeat_coletor_adicionar"))
+      livres <- which(!nzchar(val$estado$nomes) & !nzchar(val$estado$cpfs))
+      if (!length(livres)) return(monitora_painel_bloquear_operacao("Não há linha disponível na COLETA para acrescentar outro integrante sem alterar o número de registros.", etapa = "repeat_coletor_adicionar"))
+      ops <- monitora_painel_coletor_criar_ops(val$estado$linhas[livres[1L]], nome, cpf, val$motivo, "adicionar_integrante")
+      monitora_painel_coletor_finalizar_acao(ops, "Integrante adicionado")
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$coletor_atualizar, {
+      if (!monitora_painel_iniciar_botao("coletor_atualizar", "atualizar integrante da equipe")) return(NULL)
+      on.exit(monitora_painel_liberar_botao("coletor_atualizar"), add = TRUE)
+      val <- monitora_painel_coletor_validar_comum("atualizar")
+      if (!isTRUE(val$ok)) return(monitora_painel_bloquear_operacao(val$mensagem, etapa = "repeat_coletor_atualizar"))
+      sel <- as.integer(input$coletores_tabela_rows_selected)
+      if (length(sel) != 1L || sel < 1L || sel > nrow(val$estado$membros)) return(monitora_painel_bloquear_operacao("Selecione exatamente um integrante na tabela.", etapa = "repeat_coletor_atualizar"))
+      nome <- monitora_coletores_repeat_limpar(input$coletor_nome)[1L]
+      cpf <- monitora_coletores_repeat_limpar(input$coletor_cpf)[1L]
+      if (!nzchar(nome)) return(monitora_painel_bloquear_operacao("O nome do integrante não pode ficar vazio. Para remover a pessoa, use 'Excluir selecionado'. O CPF pode ficar vazio.", etapa = "repeat_coletor_atualizar"))
+      if (nzchar(cpf) && is.na(val$estado$cols$cpf)) return(monitora_painel_bloquear_operacao("O CPF foi informado, mas a coluna correspondente do repeat não foi localizada. A operação foi bloqueada sem descartar o valor digitado.", etapa = "repeat_coletor_atualizar"))
+      ops <- monitora_painel_coletor_criar_ops(val$estado$membros$linha_indice[sel], nome, cpf, val$motivo, "atualizar_integrante")
+      monitora_painel_coletor_finalizar_acao(ops, "Integrante atualizado")
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$coletor_excluir, {
+      if (!monitora_painel_iniciar_botao("coletor_excluir", "excluir integrante da equipe")) return(NULL)
+      on.exit(monitora_painel_liberar_botao("coletor_excluir"), add = TRUE)
+      val <- monitora_painel_coletor_validar_comum("excluir")
+      if (!isTRUE(val$ok)) return(monitora_painel_bloquear_operacao(val$mensagem, etapa = "repeat_coletor_excluir"))
+      sel <- as.integer(input$coletores_tabela_rows_selected)
+      if (length(sel) != 1L || sel < 1L || sel > nrow(val$estado$membros)) return(monitora_painel_bloquear_operacao("Selecione exatamente um integrante na tabela.", etapa = "repeat_coletor_excluir"))
+      ops <- monitora_painel_coletor_criar_ops(val$estado$membros$linha_indice[sel], "", "", val$motivo, "excluir_integrante")
+      monitora_painel_coletor_finalizar_acao(ops, "Integrante excluído")
+    }, ignoreInit = TRUE)
+
+    monitora_painel_impacto_contexto_efetivo <- shiny::reactive({
+      cols <- MONITORA_PAINEL_IMPACTO_COLUNAS
+      coletas <- if (isTRUE(tryCatch(monitora_painel_usar_lote_coletas(), error = function(e) FALSE))) {
+        tryCatch(coletas_lote_selecionadas(), error = function(e) character())
+      } else {
+        monitora_painel_valores_input(input$coleta)
+      }
+      coletas <- unique(as.character(coletas))
+      coletas <- coletas[!is.na(coletas) & nzchar(coletas)]
+      xprev <- tryCatch(monitora_painel_estado_preview_reativo(), error = function(e) dt)
+      if (!length(coletas) || !monitora_painel_coluna_ok(chaves$coleta, xprev) || is.na(cols$pai) || !(cols$pai %in% names(xprev))) {
+        return(list(ok = FALSE, permitido_tipos = FALSE, motivo = "Selecione uma ou mais COLETAS com o atributo de impactos disponível.", coletas = coletas, valores_pai = character(), valores_tipos = character(), cols = cols))
+      }
+      cols_estado <- unique(c(chaves$coleta, cols$pai, cols$tipos))
+      cols_estado <- cols_estado[!is.na(cols_estado) & nzchar(cols_estado) & cols_estado %in% names(xprev)]
+      alvo <- data.table::copy(xprev[as.character(get(chaves$coleta)) %chin% coletas, ..cols_estado])
+ ### A prévia integral é deliberadamente manual para preservar a performance
+ ### do painel. Para a dependência pai->filho, aplica somente as operações
+ ### pendentes destes dois campos sobre as poucas linhas das COLETAS
+ ### selecionadas. Assim escolher Sim habilita imediatamente "Quais?" sem
+ ### varrer ou copiar registros_corrig inteiro.
+      pend_imp <- data.table::copy(data.table::as.data.table(rv$correcoes))
+      if (nrow(pend_imp) && all(c("atributo_coluna_registros_corrig", "acao", "coleta") %in% names(pend_imp))) {
+        pend_imp <- pend_imp[atributo_coluna_registros_corrig %in% c(cols$pai, cols$tipos)]
+        if (nrow(pend_imp)) {
+          if ("ordem_operacao" %in% names(pend_imp)) data.table::setorder(pend_imp, ordem_operacao, na.last = TRUE)
+          for (ii in seq_len(nrow(pend_imp))) {
+            atributo_imp <- as.character(pend_imp$atributo_coluna_registros_corrig[ii])
+            if (!(atributo_imp %in% names(alvo))) next
+            coletas_imp <- monitora_correcao_parse_lista_serializada(pend_imp$coleta[ii])
+            coletas_imp <- unique(as.character(coletas_imp))
+            coletas_imp <- coletas_imp[!is.na(coletas_imp) & nzchar(coletas_imp)]
+            pos_imp <- which(as.character(alvo[[chaves$coleta]]) %chin% coletas_imp)
+            if (!length(pos_imp)) next
+            alvo[[atributo_imp]][pos_imp] <- monitora_correcao_aplicar_operacao(
+              alvo[[atributo_imp]][pos_imp], pend_imp$acao[ii], pend_imp$valor_novo[ii]
+            )
+          }
+        }
+      }
+      valores_pai <- unique(monitora_coletores_repeat_limpar(alvo[[cols$pai]]))
+      valores_pai <- valores_pai[nzchar(valores_pai)]
+      pai_norm <- monitora_correcao_normalizar_nome_coluna(valores_pai)
+      permitido <- length(valores_pai) == 1L && identical(pai_norm, "sim")
+      valores_tipos <- if (!is.na(cols$tipos) && cols$tipos %in% names(alvo)) {
+        unique(unlist(lapply(as.character(alvo[[cols$tipos]]), monitora_correcao_tokenizar), use.names = FALSE))
+      } else character()
+      valores_tipos <- valores_tipos[!is.na(valores_tipos) & nzchar(valores_tipos)]
+      tokens_por_coleta <- if (!is.na(cols$tipos) && cols$tipos %in% names(alvo)) {
+        alvo[, .(tokens = list(unique(unlist(lapply(as.character(get(cols$tipos)), monitora_correcao_tokenizar), use.names = FALSE)))),
+          by = list(coleta = as.character(get(chaves$coleta)))]
+      } else data.table::data.table()
+      motivo <- if (isTRUE(permitido)) {
+        "O campo pai está em Sim no estado efetivo das COLETAS selecionadas; a lista de tipos está habilitada."
+      } else if (!length(valores_pai)) {
+        "A lista 'Quais?' permanece bloqueada porque 'Ocorreram impactos?' está vazia no estado efetivo."
+      } else if (length(valores_pai) > 1L) {
+        "A lista 'Quais?' permanece bloqueada porque as COLETAS selecionadas têm respostas distintas no campo pai."
+      } else {
+        "A lista 'Quais?' só é relevante quando 'Ocorreram impactos?' = Sim."
+      }
+      list(ok = TRUE, permitido_tipos = permitido, motivo = motivo, coletas = coletas, valores_pai = valores_pai, valores_tipos = valores_tipos, tokens_por_coleta = tokens_por_coleta, cols = cols)
+    })
+
+    monitora_painel_impacto_rotular_valores <- function(valores, list_name, tokenizado = FALSE) {
+      vals <- if (isTRUE(tokenizado)) unique(unlist(lapply(valores, monitora_correcao_tokenizar), use.names = FALSE)) else unique(as.character(valores))
+      vals <- vals[!is.na(vals) & nzchar(trimws(vals))]
+      if (!length(vals)) return("(sem valor preenchido)")
+      dom <- monitora_painel_choices_label_name_explicito(monitora_painel_choices_dominio_xlsform(list_name, meta_xls))
+      labs <- names(dom); names(labs) <- unname(dom)
+      paste(vapply(vals, function(v) {
+        lab <- unname(labs[v])
+        if (!length(lab) || is.na(lab) || !nzchar(lab)) monitora_painel_rotulo_token(v, v) else lab
+      }, character(1L)), collapse = "; ")
+    }
+
+    output$ui_impactos_dependencia <- shiny::renderUI({
+      atributo <- monitora_painel_valor(input$atributo)
+      tipo_imp <- monitora_painel_impacto_tipo_atributo(atributo)
+      if (!(tipo_imp %in% c("pai", "tipos"))) return(NULL)
+      ctx <- monitora_painel_impacto_contexto_efetivo()
+      pai_txt <- monitora_painel_impacto_rotular_valores(ctx$valores_pai, "impacto_manejo_uso", tokenizado = FALSE)
+      tipos_txt <- monitora_painel_impacto_rotular_valores(ctx$valores_tipos, "tipos_impacto_manejo_uso", tokenizado = TRUE)
+      classe <- if (tipo_imp == "tipos" && !isTRUE(ctx$permitido_tipos)) "alert alert-warning" else "alert alert-info"
+      shiny::div(
+        class = classe,
+        shiny::strong("Dependência contratual de impactos. "),
+        shiny::tags$div(paste0("Ocorreram impactos?: ", pai_txt)),
+        shiny::tags$div(paste0("Quais?: ", tipos_txt)),
+        shiny::tags$div(ctx$motivo),
+        shiny::tags$div("Os seletores exibem label — name; o arquivo continua armazenando somente os names contratuais.")
+      )
+    })
+
+    monitora_painel_impacto_expandir_pai_nao <- function(ops_pai) {
+      ops_pai <- data.table::copy(data.table::as.data.table(ops_pai))
+      if (!nrow(ops_pai)) return(ops_pai)
+      cols <- MONITORA_PAINEL_IMPACTO_COLUNAS
+      if (is.na(cols$pai) || is.na(cols$tipos)) return(ops_pai)
+      estado <- tryCatch(monitora_painel_estado_preview_reativo(), error = function(e) dt)
+      estado <- data.table::as.data.table(estado)
+      indice <- tryCatch(monitora_correcao_criar_indice_linhas(estado, chaves), error = function(e) NULL)
+      extras <- list()
+      kk <- 0L
+      ordem <- suppressWarnings(max(as.integer(ops_pai$ordem_operacao), na.rm = TRUE))
+      if (!is.finite(ordem)) ordem <- 0L
+      criar <- function(op_pai, linhas, atributo, acao, antes, novo = NA_character_, detalhe) {
+        ordem <<- ordem + 1L
+        op <- monitora_correcao_criar_operacao(
+          id = as.character(op_pai$id_correcao[1L]), responsavel = as.character(op_pai$responsavel[1L]),
+          tipo = "impactos_condicionais_atomico", ordem = ordem,
+          escopo = if (length(linhas) == 1L) "uuid_registro" else "coleta_inteira",
+          coleta = as.character(op_pai$coleta[1L]), linha_indice = if (length(linhas) == 1L) linhas else NA_integer_,
+          atributo = atributo, acao = acao, valor_original = antes, valor_novo = novo,
+          n_esperado = length(linhas), n_alvo = length(linhas),
+          motivo = paste0(as.character(op_pai$motivo[1L]), " [DEPENDENCIA_IMPACTOS: ", detalhe, "]")
+        )
+        monitora_correcao_anexar_contexto_operacao(op, estado, linhas, chaves)
+      }
+      for (ii in seq_len(nrow(ops_pai))) {
+        op_pai <- ops_pai[ii]
+        if (!identical(monitora_correcao_normalizar_nome_coluna(op_pai$valor_novo[1L]), "nao")) next
+        linhas <- tryCatch(monitora_correcao_linhas_alvo_operacao(estado, op_pai, chaves = chaves, indice = indice), error = function(e) integer())
+        linhas <- unique(as.integer(linhas))
+        linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(estado)]
+        if (!length(linhas)) next
+        valores_tipos <- as.character(estado[[cols$tipos]][linhas])
+        nao_vazios <- which(!monitora_correcao_vazio_vec(valores_tipos))
+        if (length(nao_vazios)) {
+          uniformes <- length(nao_vazios) == length(linhas) && length(unique(valores_tipos)) == 1L
+          if (uniformes) {
+            kk <- kk + 1L
+            extras[[kk]] <- criar(op_pai, linhas, cols$tipos, "remove_token", valores_tipos[1L], valores_tipos[1L], "remover_todos_tokens_tipos")
+          } else {
+            for (jj in nao_vazios) {
+              kk <- kk + 1L
+              extras[[kk]] <- criar(op_pai, linhas[jj], cols$tipos, "remove_token", valores_tipos[jj], valores_tipos[jj], "remover_todos_tokens_tipos_linha")
+            }
+          }
+        }
+        for (campo in c("outro", "descricao")) {
+          atributo_dep <- cols[[campo]]
+          if (is.na(atributo_dep) || !(atributo_dep %in% names(estado))) next
+          vals <- as.character(estado[[atributo_dep]][linhas])
+          preenchidos <- which(!monitora_correcao_vazio_vec(vals))
+          if (!length(preenchidos)) next
+          uniformes <- length(preenchidos) == length(linhas) && length(unique(vals)) == 1L
+          if (uniformes) {
+            kk <- kk + 1L
+            extras[[kk]] <- criar(op_pai, linhas, atributo_dep, "clear", vals[1L], NA_character_, paste0("limpar_", campo, "_irrelevante"))
+          } else {
+            for (jj in preenchidos) {
+              kk <- kk + 1L
+              extras[[kk]] <- criar(op_pai, linhas[jj], atributo_dep, "clear", vals[jj], NA_character_, paste0("limpar_", campo, "_irrelevante_linha"))
+            }
+          }
+        }
+      }
+      if (!length(extras)) return(ops_pai)
+      data.table::rbindlist(c(list(ops_pai), extras), fill = TRUE, use.names = TRUE)
+    }
+
     just_ocorrencias_exibidas <- shiny::reactive({
       rv$preview_revision
       x <- data.table::copy(data.table::as.data.table(rv$ocorrencias_idx))
@@ -28914,18 +29830,47 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     output$just_tabela_ocorrencias <- DT::renderDT({
       x <- just_ocorrencias_exibidas()
       if (!nrow(x)) return(DT::datatable(data.table::data.table(mensagem = "Nenhuma ocorrência diagnóstica remanescente nesta avaliação."), rownames = FALSE))
-      cols <- intersect(c("tipo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "ocorrencia_token", "ocorrencia_atributo", "ocorrencia_status", "ocorrencia_detalhe"), names(x))
+      cols <- intersect(c("rotulo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "ocorrencia_token", "ocorrencia_atributo", "ocorrencia_status", "ocorrencia_detalhe"), names(x))
       x_exibir <- data.table::copy(x[, ..cols])
       for (cc in intersect(c("ocorrencia_token", "ocorrencia_atributo", "ocorrencia_status", "ocorrencia_detalhe"), names(x_exibir))) {
         data.table::set(x_exibir, j = cc, value = monitora_painel_limpar_html_rotulo(x_exibir[[cc]]))
       }
-      DT::datatable(x_exibir, selection = "single", options = monitora_painel_dt_options(), rownames = FALSE)
+      DT::datatable(x_exibir, selection = "multiple", options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
+
+    just_proxy <- DT::dataTableProxy("just_tabela_ocorrencias", session = session)
+
+    output$just_selecao_info <- shiny::renderUI({
+      x <- just_ocorrencias_exibidas()
+      sel <- unique(suppressWarnings(as.integer(input$just_tabela_ocorrencias_rows_selected)))
+      sel <- sel[is.finite(sel) & sel >= 1L & sel <= nrow(x)]
+      if (!length(sel)) return(shiny::helpText("0 pendências selecionadas"))
+      oc <- x[sel]
+      shiny::helpText(paste0(
+        length(sel), " pendência(s); ",
+        if ("COLETA" %in% names(oc)) data.table::uniqueN(oc$COLETA) else 0L, " COLETA(s); ",
+        if ("tipo_ocorrencia" %in% names(oc)) data.table::uniqueN(oc$tipo_ocorrencia) else 0L, " tipo(s)."
+      ))
+    })
+
+    shiny::observeEvent(input$just_selecionar_filtradas, {
+      x <- just_ocorrencias_exibidas()
+      if (!nrow(x)) return(NULL)
+      idx <- unique(suppressWarnings(as.integer(input$just_tabela_ocorrencias_rows_all)))
+      idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(x)]
+      if (!length(idx)) idx <- seq_len(nrow(x))
+      DT::selectRows(just_proxy, idx)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$just_limpar_selecao, {
+      DT::selectRows(just_proxy, NULL)
+      try(shiny::updateCheckboxInput(session, "just_confirmar_lote", value = FALSE), silent = TRUE)
+    }, ignoreInit = TRUE)
 
     output$just_tabela_sessao <- DT::renderDT({
       x <- data.table::copy(data.table::as.data.table(rv$justificativas_sessao))
       if (!nrow(x)) return(DT::datatable(data.table::data.table(mensagem = "Nenhuma justificativa adicionada nesta sessão."), rownames = FALSE))
-      cols <- intersect(c("tipo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "tipo_justificativa", "justificativa", "responsavel", "timestamp_evento", "ocorrencia_id"), names(x))
+      cols <- intersect(c("evento_lote_id", "ordem_no_lote", "n_ocorrencias_lote", "tipo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "tipo_justificativa", "justificativa", "responsavel", "timestamp_evento", "ocorrencia_id"), names(x))
       DT::datatable(x[, ..cols], selection = "none", options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
@@ -28943,10 +29888,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!monitora_painel_iniciar_botao("just_adicionar", "adicionar justificativa de pendência")) return(NULL)
       on.exit(monitora_painel_liberar_botao("just_adicionar"), add = TRUE)
       x <- just_ocorrencias_exibidas()
-      sel <- suppressWarnings(as.integer(input$just_tabela_ocorrencias_rows_selected[1L]))
-      if (!length(sel)) sel <- NA_integer_
-      if (!nrow(x) || !is.finite(sel) || sel < 1L || sel > nrow(x)) {
-        monitora_painel_notificar("Selecione uma ocorrência na tabela antes de justificar.", type = "warning", duration = 7)
+      sel <- unique(suppressWarnings(as.integer(input$just_tabela_ocorrencias_rows_selected)))
+      sel <- sel[is.finite(sel) & sel >= 1L & sel <= nrow(x)]
+      if (!nrow(x) || !length(sel)) {
+        monitora_painel_notificar("Selecione uma ou várias ocorrências na tabela antes de justificar.", type = "warning", duration = 7)
+        return(NULL)
+      }
+      if (length(sel) > 1L && !isTRUE(input$just_confirmar_lote)) {
+        monitora_painel_notificar("Confirme explicitamente a aplicação da justificativa ao lote selecionado.", type = "warning", duration = 8)
         return(NULL)
       }
       tipo <- monitora_painel_valor(input$just_tipo)
@@ -28955,28 +29904,30 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         monitora_painel_notificar("Escolha a classificação e informe uma justificativa auditável com pelo menos 20 caracteres.", type = "warning", duration = 8)
         return(NULL)
       }
-      oc <- x[sel]
+      oc <- unique(x[sel], by = "ocorrencia_id")
       responsavel <- monitora_responsavel_normalizar(input$responsavel, "não informado")
       ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%OS6")
-      assinatura <- paste(oc$ocorrencia_id[1L], ts, responsavel, tipo, texto_just, sep = "|")
-      evento <- monitora_pendencias_justificativas_template()[0]
+      assinatura_lote <- paste(paste(sort(as.character(oc$ocorrencia_id)), collapse = "||"), ts, responsavel, tipo, texto_just, sep = "|")
+      evento_lote_id <- paste0("jlt_", substr(monitora_correcao_hash_texto(assinatura_lote), 1L, 24L))
+      assinaturas <- paste(as.character(oc$ocorrencia_id), evento_lote_id, seq_len(nrow(oc)), sep = "|")
+      campo_oc <- function(nm) if (nm %in% names(oc)) as.character(oc[[nm]]) else rep(NA_character_, nrow(oc))
       evento <- data.table::data.table(
-        evento_justificativa_id = paste0("jst_", substr(monitora_correcao_hash_texto(assinatura), 1L, 24L)),
-        ocorrencia_id = as.character(oc$ocorrencia_id[1L]), status_evento = "vigente",
+        evento_justificativa_id = paste0("jst_", vapply(assinaturas, function(z) substr(monitora_correcao_hash_texto(z), 1L, 24L), character(1L))),
+        evento_lote_id = evento_lote_id, ordem_no_lote = seq_len(nrow(oc)), n_ocorrencias_lote = nrow(oc),
+        ocorrencia_id = as.character(oc$ocorrencia_id), status_evento = "vigente",
         timestamp_evento = ts, exec_id = as.character(get0("MONITORA_EXEC_ID", ifnotfound = "", inherits = TRUE)),
         script_versao = as.character(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "", inherits = TRUE)),
         responsavel = responsavel, tipo_justificativa = tipo, justificativa = texto_just,
-        tipo_ocorrencia = as.character(oc$tipo_ocorrencia[1L]), COLETA = as.character(oc$COLETA[1L]),
-        UC = if ("UC" %in% names(oc)) as.character(oc$UC[1L]) else NA_character_,
-        EA = if ("EA" %in% names(oc)) as.character(oc$EA[1L]) else NA_character_,
-        UA = if ("UA" %in% names(oc)) as.character(oc$UA[1L]) else NA_character_,
-        ANO = if ("ANO" %in% names(oc)) as.character(oc$ANO[1L]) else NA_character_,
+        tipo_ocorrencia = campo_oc("tipo_ocorrencia"), COLETA = campo_oc("COLETA"),
+        UC = campo_oc("UC"), EA = campo_oc("EA"), UA = campo_oc("UA"), ANO = campo_oc("ANO"),
         evento_origem_id = NA_character_
       )
       rv$justificativas_sessao <- data.table::rbindlist(list(rv$justificativas_sessao, evento), fill = TRUE, use.names = TRUE)
       try(shiny::updateSelectInput(session, "just_tipo", selected = ""), silent = TRUE)
       try(shiny::updateTextAreaInput(session, "just_texto", value = ""), silent = TRUE)
-      monitora_painel_notificar("Justificativa adicionada à fila auditável. Ela não altera nem libera a pendência.", type = "message", duration = 7)
+      try(shiny::updateCheckboxInput(session, "just_confirmar_lote", value = FALSE), silent = TRUE)
+      try(DT::selectRows(just_proxy, NULL), silent = TRUE)
+      monitora_painel_notificar(paste0(nrow(evento), " justificativa(s) adicionada(s) à fila auditável no lote ", evento_lote_id, ". Elas não alteram nem liberam as pendências."), type = "message", duration = 8)
     }, ignoreInit = TRUE)
 
     monitora_painel_atualizar_habito_select <- function(input_id, forma, selected = "") {
@@ -29070,6 +30021,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       atributo <- monitora_painel_valor(input$atributo)
       acao_norm <- monitora_correcao_acao_normalizar(input$acao)
       if (!nzchar(atributo)) return(NULL)
+      if (identical(monitora_painel_impacto_tipo_atributo(atributo), "tipos")) {
+        ctx_imp <- monitora_painel_impacto_contexto_efetivo()
+        if (!isTRUE(ctx_imp$permitido_tipos)) {
+          return(shiny::div(class = "alert alert-warning", ctx_imp$motivo, " Selecione/adicione primeiro 'Sim — sim' no campo pai."))
+        }
+      }
       info <- tryCatch(monitora_painel_info_contrato_atributo(atributo), error = function(e) list(tipo = "text", list_name = NA_character_, escolhas = character(0)))
       tipo <- as.character(info$tipo)[1L]
       if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
@@ -29743,7 +30700,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       idx <- tryCatch({
         tri_atual <- monitora_painel_triagem_reativa()
         coletas_atual <- monitora_painel_coletas_triagem_por_tipo_reativas()
-        monitora_painel_ocorrencias_idx_leve(tri_atual, coletas_atual)
+        monitora_painel_ocorrencias_idx_leve(
+          tri_atual, coletas_atual,
+          validacao_espacial = rv$preview_validacao_espacial
+        )
       }, error = function(e) data.table::copy(ocorrencias_idx_base_painel))
       rv$ocorrencias_idx <- idx[]
       rv$ocorrencias_resumo <- monitora_painel_ocorrencias_resumo_leve(idx)
@@ -30634,7 +31594,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       obj <- get0("MONITORA_VALIDACAO_ESPACIAL_PRE_PAINEL_RESULTADO", ifnotfound = NULL, inherits = TRUE)
       if (data.table::is.data.table(obj) || is.data.frame(obj)) return(data.table::as.data.table(obj))
       if (is.list(obj) && !is.null(obj$validacao)) return(data.table::as.data.table(obj$validacao))
-      obj2 <- get0("validacao_esp_painel", ifnotfound = NULL, inherits = TRUE)
+      obj2 <- tryCatch(data.table::as.data.table(rv$preview_validacao_espacial), error = function(e) NULL)
+      if (is.null(obj2) || !nrow(obj2)) obj2 <- get0("validacao_esp_painel", ifnotfound = NULL, inherits = TRUE)
       if (data.table::is.data.table(obj2) || is.data.frame(obj2)) return(data.table::as.data.table(obj2))
       data.table::data.table()
     }
@@ -33282,6 +34243,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         out$nativa_sem_forma_vida <- coletas_idx(which(tem_tok(c("nativa", "nativas", "nativo", "nativos")) & !tem_forma("nativa")))
         out$exotica_sem_forma_vida <- coletas_idx(which(tem_tok(c("exotica", "exoticas", "exotico", "exoticos")) & !tem_forma("exotica")))
         out$seca_morta_sem_forma_vida <- coletas_idx(which(tem_tok(c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")) & !tem_forma("seca_morta")))
+        out$seca_morta_em_revisao <- coletas_idx(which(tem_tok(c("seca_morta", "seca", "secas", "seco", "secos", "morta", "mortas", "morto", "mortos")) & tem_forma("seca_morta")))
       }
       cols_info <- tryCatch(monitora_correcao_colunas_limpeza_outras_formas(x, NULL), error = function(e) data.table::data.table())
       if (nrow(cols_info)) {
@@ -33387,6 +34349,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!nzchar(atributo_sel)) {
         monitora_painel_notificar("Selecione um atributo válido antes de adicionar a correção.", type = "error", duration = 8)
         return(NULL)
+      }
+      if (identical(monitora_painel_impacto_tipo_atributo(atributo_sel), "tipos")) {
+        ctx_imp <- monitora_painel_impacto_contexto_efetivo()
+        if (!isTRUE(ctx_imp$permitido_tipos)) {
+          monitora_painel_bloquear_operacao(ctx_imp$motivo, etapa = "dependencia_tipos_impactos", atributo = atributo_sel, acao = input$acao, duration = 12)
+          return(NULL)
+        }
+        acao_imp <- monitora_correcao_acao_normalizar(input$acao)
+        if (acao_imp %in% c("remove_token", "remover_token") && data.table::is.data.table(ctx_imp$tokens_por_coleta) && nrow(ctx_imp$tokens_por_coleta)) {
+          remover <- monitora_correcao_tokenizar(monitora_painel_valor(input$valor_novo))
+          esvazia <- vapply(ctx_imp$tokens_por_coleta$tokens, function(tok) length(setdiff(tok, remover)) == 0L, logical(1L))
+          if (any(esvazia)) {
+            monitora_painel_bloquear_operacao(
+              "A remoção deixaria 'Quais?' sem token em pelo menos uma COLETA cujo campo pai continua em Sim. Para remover o último tipo, altere 'Ocorreram impactos?' para Não; o painel limpará os dependentes na mesma operação.",
+              etapa = "dependencia_tipos_impactos_ultimo_token", atributo = atributo_sel, acao = input$acao, duration = 15
+            )
+            return(NULL)
+          }
+        }
       }
 
       if (isTRUE(monitora_painel_usar_lote_coletas())) {
@@ -33547,6 +34528,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           ops[[ii]] <- monitora_correcao_anexar_contexto_operacao(ops[[ii]], dt, linhas_globais, chaves)
         }
         ops <- data.table::rbindlist(ops, fill = TRUE, use.names = TRUE)
+        if (identical(monitora_painel_impacto_tipo_atributo(atributo_sel), "pai") &&
+            identical(monitora_correcao_normalizar_nome_coluna(valor_novo_val), "nao")) {
+          ops <- monitora_painel_impacto_expandir_pai_nao(ops)
+        }
         n_add <- monitora_painel_adicionar_ops_pendentes(ops, origem = "lote de COLETAS")
         n_pend <- monitora_painel_n_operacoes_semanticas(rv$correcoes)
         monitora_correcao_console_msg("Lote de COLETAS adicionado à sessão do painel: 1 operação semântica com ", n_add, " item(ns) auditável(is) novo(s); ", n_pend, " operação(ões) semântica(s) pendente(s) no total.")
@@ -33687,6 +34672,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(NULL)
       }
       op <- plano_contrato$ops
+      if (identical(monitora_painel_impacto_tipo_atributo(atributo_sel), "pai") &&
+          identical(monitora_correcao_normalizar_nome_coluna(monitora_painel_valor(input$valor_novo)), "nao")) {
+        op <- monitora_painel_impacto_expandir_pai_nao(op)
+      }
       n_add <- monitora_painel_adicionar_ops_pendentes(op, origem = "correção simples/lote com contrato XLSForm")
       n_pend <- monitora_painel_n_operacoes_semanticas(rv$correcoes)
       msg_composta <- if (!is.null(plano_contrato$mensagem) && nzchar(plano_contrato$mensagem)) paste0(" ", plano_contrato$mensagem) else ""
@@ -34517,7 +35506,23 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         esperado_precomputado = attr(tri_atual, "monitora_exoticas_canonicas", exact = TRUE)
       )
       coletas_atual <- monitora_painel_coletas_triagem_dados(estado)
-      idx_atual <- monitora_painel_ocorrencias_idx_leve(tri_atual, coletas_atual, usar_relatorio_pre = FALSE, dt_estado = estado)
+      validacao_esp_atual <- data.table::data.table()
+      if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
+        estado_espacial <- monitora_espacial_preview_pos_operacoes(
+          estado,
+          ops = rv$correcoes_espaciais,
+          coletas_excluidas = monitora_esp_extrair_coletas_excluidas_correcoes(rv$correcoes)
+        )
+        coletas_espaciais <- monitora_esp_preparar_coletas(estado_espacial)
+        res_esp_atual <- monitora_esp_validar_coletas(coletas_espaciais)
+        validacao_esp_atual <- data.table::as.data.table(data.table::copy(res_esp_atual$validacao))
+      }
+      idx_atual <- monitora_painel_ocorrencias_idx_leve(
+        tri_atual, coletas_atual,
+        usar_relatorio_pre = FALSE,
+        dt_estado = estado,
+        validacao_espacial = validacao_esp_atual
+      )
       resumo_idx_atual <- monitora_painel_ocorrencias_resumo_leve(idx_atual)
  ### A varredura impeditiva ainda é executada uma vez por revisão para manter
  ### exatamente as contagens linha a linha do gate. O ganho vem de armazenar
@@ -34536,6 +35541,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rv$preview_triagem <- tri_atual[]
       rv$preview_coletas <- coletas_atual
       rv$preview_coletas_lateral <- coletas_lateral
+      rv$preview_validacao_espacial <- validacao_esp_atual[]
       rv$preview_resumo_impeditivas <- resumo_imp_atual[]
       rv$preview_dirty <- FALSE
       rv$preview_atualizado_em <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
@@ -41535,6 +42541,254 @@ monitora_coletores_repeat_limpar <- function(x) {
   x
 }
 
+### Sanitização estrutural de coletores legados ---------------------------
+### Downloads históricos do SISMONITORA podem serializar todo o repeat em
+### `COLETORES` como um mapa textual repetido nas 101 linhas da COLETA, por
+### exemplo {'nome 1,nome 2': 'cpf parcial'}. Planilhas ainda mais antigas
+### usam `Equipe:` e separadores textuais. A rotina abaixo interpreta somente
+### essas gramáticas comprovadas; nunca executa/evalua o texto, não corrige
+### grafia e não infere associação nome-CPF.
+monitora_coletores_repeat_normalizar_nome <- function(x) {
+  x <- monitora_coletores_repeat_limpar(x)
+  x <- gsub("[[:space:]]+", " ", x, perl = TRUE)
+  trimws(x)
+}
+
+monitora_coletores_repeat_parse_legado <- function(payload_nome, payload_cpf = "") {
+  nome <- monitora_coletores_repeat_limpar(payload_nome)[1L]
+  cpf_externo <- monitora_coletores_repeat_limpar(payload_cpf)[1L]
+  vazio <- list(
+    reconhecido = TRUE, formato_origem = "repeat_vazio", nomes = character(), cpfs = character(),
+    n_cpfs_observados = 0L, n_cpfs_descartados = 0L, motivo_cpf = "cpf_ausente",
+    status = "sem_coletores"
+  )
+  if (!nzchar(nome) && !nzchar(cpf_externo)) return(vazio)
+
+  extrair_pares_mapa <- function(texto, aspas = c("simples", "duplas")) {
+    aspas <- match.arg(aspas)
+    z <- trimws(as.character(texto)[1L])
+    if (nchar(z) < 2L || !startsWith(z, "{") || !endsWith(z, "}")) return(NULL)
+    restante <- substr(z, 2L, nchar(z) - 1L)
+    padrao <- if (identical(aspas, "simples")) {
+      "^\\s*'([^']*)'\\s*:\\s*'([^']*)'\\s*(,\\s*|$)"
+    } else {
+      '^\\s*"([^"]*)"\\s*:\\s*"([^"]*)"\\s*(,\\s*|$)'
+    }
+    chaves <- valores <- character()
+    while (nzchar(trimws(restante))) {
+      mm <- regexec(padrao, restante, perl = TRUE)
+      partes <- regmatches(restante, mm)[[1L]]
+      if (!length(partes)) return(NULL)
+      chaves <- c(chaves, partes[2L]); valores <- c(valores, partes[3L])
+      delimitador <- partes[4L]
+      novo <- sub(padrao, "", restante, perl = TRUE)
+      if (identical(novo, restante)) return(NULL)
+      restante <- novo
+      if (grepl(",", delimitador, fixed = TRUE) && !nzchar(trimws(restante))) return(NULL)
+    }
+    if (!length(chaves)) NULL else data.table::data.table(chave = chaves, valor = valores)
+  }
+
+  pares <- NULL
+  formato <- ""
+  if (grepl("^\\s*\\{'", nome, perl = TRUE)) {
+    pares <- extrair_pares_mapa(nome, "simples")
+    if (!is.null(pares)) formato <- if (nrow(pares) == 1L) "mapa_textual_aspas_simples" else "mapa_textual_aspas_simples_multiplos_pares"
+  } else if (grepl('^\\s*\\{"', nome, perl = TRUE)) {
+    pares <- extrair_pares_mapa(nome, "duplas")
+    if (!is.null(pares)) formato <- if (nrow(pares) == 1L) "mapa_textual_aspas_duplas" else "mapa_textual_aspas_duplas_multiplos_pares"
+  } else if (grepl("^\\s*equipe\\s*:", nome, ignore.case = TRUE, perl = TRUE)) {
+    pares <- data.table::data.table(
+      chave = sub("^\\s*equipe\\s*:\\s*", "", nome, ignore.case = TRUE, perl = TRUE),
+      valor = cpf_externo
+    )
+    formato <- "lista_legada_equipe"
+  }
+  if (is.null(pares) || !nrow(pares)) {
+    return(list(
+      reconhecido = FALSE, formato_origem = "formato_legado_nao_reconhecido",
+      nomes = character(), cpfs = character(), n_cpfs_observados = as.integer(nzchar(cpf_externo)),
+      n_cpfs_descartados = 0L, motivo_cpf = "nao_avaliado_formato_desconhecido",
+      status = "bloqueado_formato_nao_reconhecido"
+    ))
+  }
+
+  nomes <- cpfs <- character()
+  motivos <- character()
+  n_cpf_obs <- n_desc <- 0L
+  for (ii in seq_len(nrow(pares))) {
+    chave <- as.character(pares$chave[ii])
+    nomes_par <- if (identical(formato, "lista_legada_equipe")) {
+      unlist(strsplit(chave, "\\s*/\\s*|\\s*,\\s*|\\s+[eE]\\s+", perl = TRUE), use.names = FALSE)
+    } else {
+      unlist(strsplit(chave, ",", fixed = TRUE), use.names = FALSE)
+    }
+    nomes_par <- monitora_coletores_repeat_normalizar_nome(nomes_par)
+    nomes_par <- nomes_par[nzchar(nomes_par)]
+    valor <- monitora_coletores_repeat_limpar(pares$valor[ii])[1L]
+    if (!nzchar(valor) && nrow(pares) == 1L) valor <- cpf_externo
+    cpf_par <- rep("", length(nomes_par))
+    if (nzchar(valor)) {
+      n_cpf_obs <- n_cpf_obs + 1L
+      if (length(nomes_par) == 1L) {
+        avaliacao <- tryCatch(monitora_publicacao_ab_cpf_avaliar(valor), error = function(e) NULL)
+        if (!is.null(avaliacao) && isTRUE(avaliacao$valido[1L]) && nzchar(avaliacao$valor[1L])) {
+          cpf_par[1L] <- avaliacao$valor[1L]
+          motivos <- c(motivos, "cpf_unico_valido_associado_a_nome_unico")
+        } else {
+          n_desc <- n_desc + 1L
+          motivos <- c(motivos, if (!is.null(avaliacao)) as.character(avaliacao$motivo[1L]) else "cpf_invalido_irrecuperavel")
+        }
+      } else if (length(nomes_par) > 1L) {
+        n_desc <- n_desc + 1L
+        motivos <- c(motivos, "cpf_unico_para_varios_nomes_associacao_ambigua")
+      } else {
+        n_desc <- n_desc + 1L
+        motivos <- c(motivos, "cpf_sem_nome_associavel")
+      }
+    }
+    nomes <- c(nomes, nomes_par); cpfs <- c(cpfs, cpf_par)
+  }
+  if (nrow(pares) > 1L && !n_cpf_obs && nzchar(cpf_externo)) {
+    n_cpf_obs <- 1L; n_desc <- n_desc + 1L
+    motivos <- c(motivos, "cpf_externo_unico_para_varios_pares_associacao_ambigua")
+  }
+  motivo <- if (length(motivos)) paste(unique(motivos), collapse = " | ") else "cpf_ausente"
+
+  list(
+    reconhecido = TRUE, formato_origem = formato, nomes = nomes, cpfs = cpfs,
+    n_cpfs_observados = n_cpf_obs, n_cpfs_descartados = n_desc, motivo_cpf = motivo,
+    status = if (n_desc) "sanitizado_com_descarte_cpf_sem_inferencia" else "sanitizado_deterministicamente"
+  )
+}
+
+monitora_coletores_repeat_auditoria_template <- function() {
+  data.table::data.table(
+    contexto = character(), COLETA = character(), n_linhas_coleta = integer(),
+    formato_origem = character(), status = character(), n_nomes_recuperados = integer(),
+    n_cpfs_observados = integer(), n_cpfs_preservados = integer(), n_cpfs_descartados = integer(),
+    motivo_cpf = character(), estrutura_final = character(), cpf_inferido = logical(),
+    alterou_dados = logical(), exec_id = character(), script_versao = character()
+  )
+}
+
+monitora_coletores_repeat_auditoria_gravar <- function(auditoria,
+                                                        output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                        log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                        exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
+  aud <- data.table::as.data.table(auditoria)
+  if (!nrow(aud)) return(invisible(aud))
+  hist <- data.table::as.data.table(get0("MONITORA_AUDITORIA_SANITIZACAO_COLETORES_SESSAO", ifnotfound = monitora_coletores_repeat_auditoria_template(), inherits = TRUE))
+  hist <- data.table::rbindlist(list(hist, aud), fill = TRUE, use.names = TRUE)
+  hist <- unique(hist, by = c("contexto", "COLETA", "formato_origem", "status", "motivo_cpf"))
+  assign("MONITORA_AUDITORIA_SANITIZACAO_COLETORES_SESSAO", hist, envir = .GlobalEnv)
+  dir_aud <- file.path(output_dir, "03_auditorias", "cadastro")
+  dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  monitora_fwrite(hist, file.path(dir_aud, "auditoria_sanitizacao_coletores.csv"), na = "")
+  resumo <- hist[, .(
+    n_coletas = data.table::uniqueN(COLETA), n_nomes_recuperados = sum(n_nomes_recuperados),
+    n_cpfs_observados = sum(n_cpfs_observados), n_cpfs_preservados = sum(n_cpfs_preservados),
+    n_cpfs_descartados = sum(n_cpfs_descartados)
+  ), by = .(formato_origem, status, motivo_cpf)]
+  monitora_fwrite(resumo, file.path(dir_aud, "resumo_sanitizacao_coletores.csv"), na = "")
+  try(monitora_fwrite(hist, file.path(log_dir, paste0("auditoria_sanitizacao_coletores_", exec_id, ".csv")), na = ""), silent = TRUE)
+  invisible(hist)
+}
+
+monitora_coletores_repeat_sanitizar_legado <- function(dt,
+                                                        output_dir = get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+                                                        log_dir = get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE),
+                                                        exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
+                                                        contexto = "pre_painel",
+                                                        abortar_nao_reconhecido = FALSE) {
+  dt <- data.table::as.data.table(dt)
+  vazio <- monitora_coletores_repeat_auditoria_template()
+  if (!nrow(dt)) return(list(dt = dt, auditoria = vazio, alterou = FALSE, ok = TRUE))
+  aliases_nome <- intersect(c("coletor/nome", "COLETORES", "Coletores"), names(dt))
+  if (!length(aliases_nome)) return(list(dt = dt, auditoria = vazio, alterou = FALSE, ok = TRUE))
+  ### Caminho quente sem legado: uma busca vetorizada direta por alias e retorno
+  ### imediato. Contagens, agrupamento por COLETA e auditoria só são calculados
+  ### quando algum marcador estrutural realmente existe.
+  marcador_alias <- lapply(aliases_nome, function(cc) {
+    grepl("^\\s*\\{|^\\s*equipe\\s*:", as.character(dt[[cc]]), ignore.case = TRUE, perl = TRUE)
+  })
+  tem_legado <- vapply(marcador_alias, any, logical(1L), na.rm = TRUE)
+  if (!any(tem_legado)) return(list(dt = dt, auditoria = vazio, alterou = FALSE, ok = TRUE))
+  cols <- monitora_coletores_repeat_colunas_visiveis(dt)
+  marcador <- Reduce(`|`, marcador_alias)
+
+  coleta <- monitora_coletores_repeat_coleta(dt)
+  grupos_afetados <- split(which(coleta %in% unique(coleta[marcador])), coleta[coleta %in% unique(coleta[marcador])], drop = TRUE)
+  auditorias <- vector("list", length(grupos_afetados))
+  kk <- 0L
+  alterou <- FALSE
+  if (!("coletor/nome" %in% names(dt))) data.table::set(dt, j = "coletor/nome", value = rep("", nrow(dt)))
+  if (!("COLETORES" %in% names(dt))) data.table::set(dt, j = "COLETORES", value = rep("", nrow(dt)))
+  if (!("coletor/cpf" %in% names(dt))) data.table::set(dt, j = "coletor/cpf", value = rep("", nrow(dt)))
+
+  for (chave in names(grupos_afetados)) {
+    ii <- grupos_afetados[[chave]]
+    payloads <- unique(unlist(lapply(aliases_nome, function(cc) monitora_coletores_repeat_limpar(dt[[cc]][ii])), use.names = FALSE))
+    payloads <- payloads[nzchar(payloads)]
+    payloads_legados <- payloads[grepl("^\\s*\\{|^\\s*equipe\\s*:", payloads, ignore.case = TRUE, perl = TRUE)]
+    cpf_vals <- unique(unlist(lapply(cols$cpf_aliases, function(cc) monitora_coletores_repeat_limpar(dt[[cc]][ii])), use.names = FALSE))
+    cpf_vals <- cpf_vals[nzchar(cpf_vals)]
+    cpf_payload <- if (length(cpf_vals) == 1L) cpf_vals else ""
+    if (length(payloads_legados) != 1L || length(cpf_vals) > 1L) {
+      parsed <- list(
+        reconhecido = FALSE,
+        formato_origem = if (length(cpf_vals) > 1L) "multiplos_payloads_cpf_na_coleta" else "multiplos_payloads_legados_na_coleta",
+        nomes = character(), cpfs = character(), n_cpfs_observados = as.integer(length(cpf_vals)),
+        n_cpfs_descartados = 0L, motivo_cpf = if (length(cpf_vals) > 1L) "nao_avaliado_cpfs_externos_divergentes" else "nao_avaliado_payload_ambiguo",
+        status = "bloqueado_formato_nao_reconhecido"
+      )
+    } else {
+      parsed <- monitora_coletores_repeat_parse_legado(payloads_legados[1L], cpf_payload)
+    }
+    kk <- kk + 1L
+    if (isTRUE(parsed$reconhecido)) {
+      m <- length(parsed$nomes)
+      if (m > length(ii)) {
+        parsed$reconhecido <- FALSE
+        parsed$status <- "bloqueado_repeat_maior_que_coleta"
+        parsed$motivo_cpf <- "numero_de_integrantes_supera_linhas_disponiveis"
+      } else {
+        nomes_saida <- rep("", length(ii)); cpfs_saida <- rep("", length(ii))
+        if (m) {
+          nomes_saida[seq_len(m)] <- parsed$nomes
+          cpfs_saida[seq_len(m)] <- parsed$cpfs
+        }
+        aliases_nome <- unique(c("coletor/nome", "COLETORES", intersect(c("Coletores"), names(dt))))
+        aliases_cpf <- unique(c("coletor/cpf", intersect(c("CPF (coletor)", "cpf (coletor)"), names(dt))))
+        for (cc in aliases_nome) data.table::set(dt, i = ii, j = cc, value = nomes_saida)
+        for (cc in aliases_cpf) data.table::set(dt, i = ii, j = cc, value = cpfs_saida)
+        alterou <- TRUE
+      }
+    }
+    auditorias[[kk]] <- data.table::data.table(
+      contexto = as.character(contexto)[1L], COLETA = if (startsWith(chave, ".__linha_sem_coleta__")) "" else chave,
+      n_linhas_coleta = length(ii), formato_origem = parsed$formato_origem, status = parsed$status,
+      n_nomes_recuperados = length(parsed$nomes), n_cpfs_observados = parsed$n_cpfs_observados,
+      n_cpfs_preservados = sum(nzchar(parsed$cpfs)), n_cpfs_descartados = parsed$n_cpfs_descartados,
+      motivo_cpf = parsed$motivo_cpf, estrutura_final = if (isTRUE(parsed$reconhecido)) "repeat_esparso_template_sismonitora" else "nao_materializada",
+      cpf_inferido = FALSE, alterou_dados = isTRUE(parsed$reconhecido), exec_id = as.character(exec_id),
+      script_versao = as.character(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "", inherits = TRUE))
+    )
+  }
+  aud <- data.table::rbindlist(auditorias[seq_len(kk)], fill = TRUE, use.names = TRUE)
+  monitora_coletores_repeat_auditoria_gravar(aud, output_dir, log_dir, exec_id)
+  falhas <- aud[grepl("^bloqueado_", status)]
+  if (nrow(falhas) && isTRUE(abortar_nao_reconhecido)) {
+    stop(
+      "Sanitização de coletores bloqueada em ", data.table::uniqueN(falhas$COLETA),
+      " COLETA(s): formato legado não reconhecido de maneira inequívoca. Consulte output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv.",
+      call. = FALSE
+    )
+  }
+  list(dt = dt, auditoria = aud, alterou = alterou, ok = !nrow(falhas))
+}
+
 monitora_coletores_repeat_coleta <- function(dt) {
   n <- nrow(dt)
   cc <- intersect(c("COLETA", "coleta", "coleta_uuid", "UUID", "uuid"), names(dt))
@@ -41543,6 +42797,50 @@ monitora_coletores_repeat_coleta <- function(dt) {
   vazio <- !nzchar(v)
   if (any(vazio)) v[vazio] <- paste0(".__linha_sem_coleta__", which(vazio))
   v
+}
+
+monitora_coletores_repeat_colunas_visiveis <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  nomes_aliases <- intersect(c("coletor/nome", "COLETORES", "Coletores"), names(dt))
+  cpfs_aliases <- intersect(c("coletor/cpf", "CPF (coletor)", "cpf (coletor)"), names(dt))
+  escolher <- function(candidatos) {
+    candidatos <- intersect(candidatos, names(dt))
+    if (!length(candidatos)) return(NA_character_)
+    preenchidos <- vapply(candidatos, function(cc) {
+      sum(nzchar(monitora_coletores_repeat_limpar(dt[[cc]])))
+    }, integer(1L))
+    candidatos[which.max(preenchidos)]
+  }
+  list(
+    nome = escolher(nomes_aliases),
+    cpf = escolher(cpfs_aliases),
+    nome_aliases = nomes_aliases,
+    cpf_aliases = cpfs_aliases
+  )
+}
+
+monitora_coletores_repeat_membros <- function(dt, linhas) {
+  dt <- data.table::as.data.table(dt)
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  if (!length(linhas)) return(data.table::data.table())
+  cols <- monitora_coletores_repeat_colunas_visiveis(dt)
+  nomes <- if (!is.na(cols$nome)) monitora_coletores_repeat_limpar(dt[[cols$nome]][linhas]) else rep("", length(linhas))
+  cpfs <- if (!is.na(cols$cpf)) monitora_coletores_repeat_limpar(dt[[cols$cpf]][linhas]) else rep("", length(linhas))
+  usados <- which(nzchar(nomes) | nzchar(cpfs))
+  if (!length(usados)) {
+    return(data.table::data.table(
+      indice_repeat = integer(), linha_indice = integer(), monitora_row_id = character(),
+      nome = character(), cpf = character()
+    ))
+  }
+  data.table::data.table(
+    indice_repeat = seq_along(usados),
+    linha_indice = linhas[usados],
+    monitora_row_id = if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas[usados]]) else NA_character_,
+    nome = nomes[usados],
+    cpf = cpfs[usados]
+  )
 }
 
 monitora_coletores_repeat_json_ler <- function(x) {
@@ -45498,6 +46796,19 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
     monitora_publicacao_ac_perf_checkpoint("checkpoint_registros_corrig_inicio", paste0("início do fechamento contratual de registros_corrig; contexto=", contexto), dt)
   }
 
+ ### Reconhece e converte formatos legados comprovados antes de exigir o
+ ### repeat esparso. No fechamento, qualquer formato não reconhecido bloqueia
+ ### os produtos: registros_corrig/validados/XLSX nunca recebem um texto
+ ### concatenado tratado como se fosse uma única pessoa.
+  if (exists("monitora_coletores_repeat_sanitizar_legado", mode = "function")) {
+    sane_coletores <- monitora_coletores_repeat_sanitizar_legado(
+      dt, output_dir = output_dir, log_dir = log_dir, exec_id = exec_id,
+      contexto = paste0(contexto, "_sanitizacao_coletores"),
+      abortar_nao_reconhecido = TRUE
+    )
+    dt <- data.table::as.data.table(sane_coletores$dt)
+  }
+
  ### fecha a representação esparsa do repeat de coletores no produto
  ### mestre antes dos gates. A operação é idempotente, vale para todos os modos
  ### e não toca em elementos/atributos do painel. Checkpoints históricos
@@ -47089,11 +48400,35 @@ monitora_contrato_unico_labels_sem_html <- function(x) {
   trimws(x)
 }
 
-monitora_contrato_unico_cardinalidade_operacional <- function(tipo_base, relevant, ambiguo = FALSE) {
-  n <- max(length(tipo_base), length(relevant), length(ambiguo))
+monitora_contrato_unico_anotar_repeat <- function(campos) {
+  campos <- data.table::copy(data.table::as.data.table(campos))
+  campos[, `:=`(ordem_xlsform_embutido = seq_len(.N), repeat_pai = NA_character_)]
+  if (!nrow(campos)) return(campos)
+  arquivos <- unique(as.character(campos$arquivo_xlsform))
+  for (arquivo in arquivos) {
+    idx <- which(as.character(campos$arquivo_xlsform) == arquivo)
+    pilha <- character()
+    for (ii in idx) {
+      tipo <- tolower(trimws(gsub("_", " ", as.character(campos$type[ii]), fixed = TRUE)))
+      nome <- trimws(as.character(campos$name[ii]))
+      if (identical(tipo, "end repeat") && length(pilha)) {
+        campos$repeat_pai[ii] <- pilha[length(pilha)]
+        pilha <- pilha[-length(pilha)]
+      } else {
+        if (length(pilha)) campos$repeat_pai[ii] <- pilha[length(pilha)]
+        if (identical(tipo, "begin repeat") && nzchar(nome)) pilha <- c(pilha, nome)
+      }
+    }
+  }
+  campos[]
+}
+
+monitora_contrato_unico_cardinalidade_operacional <- function(tipo_base, relevant, ambiguo = FALSE, repeat_pai = NA_character_) {
+  n <- max(length(tipo_base), length(relevant), length(ambiguo), length(repeat_pai))
   tipo_base <- tolower(trimws(as.character(rep_len(tipo_base, n))))
   relevant <- as.character(rep_len(relevant, n))
   ambiguo <- as.logical(rep_len(ambiguo, n))
+  repeat_pai <- tolower(trimws(as.character(rep_len(repeat_pai, n))))
   ambiguo[is.na(ambiguo)] <- FALSE
   tem_relevant <- !is.na(relevant) & nzchar(trimws(relevant))
   tecnico <- tipo_base %in% c(
@@ -47110,6 +48445,7 @@ monitora_contrato_unico_cardinalidade_operacional <- function(tipo_base, relevan
   eh_select_one <- is.na(out) & tipo_base == "select_one"
   out[eh_select_one & tem_relevant] <- "estruturado_condicional_esparso"
   out[eh_select_one & !tem_relevant] <- "estruturado_completo_por_ponto"
+  out[!tecnico & repeat_pai == "coletor"] <- "membro_repeat_coleta"
   out[is.na(out)] <- "ambiguo_indeterminado"
   out[ambiguo] <- "ambiguo_indeterminado"
   out
@@ -47126,6 +48462,7 @@ monitora_contrato_unico_embutido <- function() {
     }
   }
   campos <- data.table::copy(data.table::as.data.table(meta$campos))
+  campos <- monitora_contrato_unico_anotar_repeat(campos)
   opcoes <- data.table::copy(if (!is.null(meta$opcoes)) data.table::as.data.table(meta$opcoes) else data.table::data.table())
   dependencias_xls <- data.table::copy(if (!is.null(meta$dependencias)) data.table::as.data.table(meta$dependencias) else data.table::data.table())
 
@@ -47258,7 +48595,9 @@ monitora_contrato_unico_embutido <- function() {
     }
   }
 
-  campos25[, cardinalidade_operacional := monitora_contrato_unico_cardinalidade_operacional(tipo_base, relevant, ambiguo_entre_versoes)]
+  campos25[, cardinalidade_operacional := monitora_contrato_unico_cardinalidade_operacional(
+    tipo_base, relevant, ambiguo_entre_versoes, repeat_pai
+  )]
 
  ### Campo pai: prioriza parent_name já resolvido em dependencias (inclui a
  ### regra padrão de 4 formas condicionais); cai para o path sem o último
@@ -47375,6 +48714,7 @@ monitora_contrato_unico_embutido <- function() {
     list_name,
     required,
     relevant,
+    repeat_pai,
     campo_pai,
     nivel_schema129,
     formato_schema129,
@@ -47418,6 +48758,7 @@ monitora_contrato_unico_embutido <- function() {
         list_name = NA_character_,
         required = NA_character_,
         relevant = NA_character_,
+        repeat_pai = NA_character_,
         campo_pai = NA_character_,
         nivel_schema129 = nivel,
         formato_schema129 = formato,
@@ -47577,7 +48918,7 @@ monitora_contrato_unico_validar_estrutura_indices <- function(indices, perfis = 
     "por_atributo_canonico", "por_caminho_registro", "por_name_curto",
     "por_label_normalizado", "por_alias_normalizado", "por_list_name",
     "por_choice_name", "por_relevance_campo_pai", "por_cardinalidade_operacional",
-    "por_estagio_aplicavel", "por_severidade", "por_origem_regra",
+    "por_repeat_pai", "por_estagio_aplicavel", "por_severidade", "por_origem_regra",
     "template_sismonitora_129", "atributos_tecnicos_pipeline",
     "atributos_ambiguos_indeterminados", "campos_condicionais_esparsos"
   )
@@ -47599,7 +48940,7 @@ monitora_contrato_unico_validar_estrutura_indices <- function(indices, perfis = 
   categorias_validas <- c(
     "texto_livre", "select_multiple", "estruturado_completo_por_ponto",
     "estruturado_condicional_esparso", "estruturado_coleta", "metadado_pipeline",
-    "tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado"
+    "membro_repeat_coleta", "tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado"
   )
   cats_presentes <- unique(as.character(indices$por_cardinalidade_operacional$cardinalidade_operacional))
   cats_invalidas <- setdiff(cats_presentes, categorias_validas)
@@ -47650,7 +48991,7 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
     cardinalidade_operacional = c(
       "texto_livre", "select_multiple", "estruturado_completo_por_ponto",
       "estruturado_condicional_esparso", "estruturado_coleta", "metadado_pipeline",
-      "tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado"
+      "membro_repeat_coleta", "tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado"
     ),
     estagios = list(
       c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
@@ -47658,6 +48999,7 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
       c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
       c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig"),
       c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados", "estatisticas_graficos"),
+      c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados"),
       c("importacao", "pre_painel", "painel_edicao", "pos_painel_corrig", "export_registros_validados"),
       c("importacao", "pos_painel_corrig"),
       c("pre_painel", "painel_edicao", "export_registros_validados"),
@@ -47705,6 +49047,9 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
   por_cardinalidade_operacional <- data.table::copy(atributos)
   data.table::setkeyv(por_cardinalidade_operacional, "cardinalidade_operacional")
 
+  por_repeat_pai <- data.table::copy(atributos[!is.na(repeat_pai) & nzchar(repeat_pai)])
+  data.table::setkeyv(por_repeat_pai, "repeat_pai")
+
   por_severidade <- data.table::copy(atributos)
   data.table::setkeyv(por_severidade, "severidade")
 
@@ -47735,6 +49080,7 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
     por_choice_name = por_choice_name[],
     por_relevance_campo_pai = por_relevance_campo_pai[],
     por_cardinalidade_operacional = por_cardinalidade_operacional[],
+    por_repeat_pai = por_repeat_pai[],
     por_estagio_aplicavel = por_estagio_aplicavel[],
     por_severidade = por_severidade[],
     por_origem_regra = por_origem_regra[],
@@ -47751,7 +49097,7 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
       atributo_canonico_2025, caminho_registro, name_curto,
       label_2025_com_html, label_2025_sem_html,
       labels_historicos_com_html, labels_historicos_sem_html,
-      cardinalidade_operacional
+      cardinalidade_operacional, repeat_pai
     )],
     aliases_por_caminho, by = "caminho_registro", all.x = TRUE
   )
@@ -47770,7 +49116,11 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
   perfil_painel_edicao <- atributos[!(cardinalidade_operacional %in% c("ambiguo_indeterminado", "tecnico_midia")), .(
     atributo_canonico_2025, caminho_registro, name_curto, label_2025_sem_html,
     list_name, tipo_base, cardinalidade_operacional, relevant, campo_pai,
-    nivel_schema129, posicao_schema129
+    nivel_schema129, posicao_schema129, repeat_pai
+  )]
+  perfil_painel_edicao[, `:=`(
+    escopo_operacional = data.table::fifelse(cardinalidade_operacional == "membro_repeat_coleta", "repeat_membro_coleta", NA_character_),
+    editor_dedicado = cardinalidade_operacional == "membro_repeat_coleta"
   )]
   perfil_painel_edicao <- merge(perfil_painel_edicao, choices_por_list_name, by = "list_name", all.x = TRUE)
 
@@ -48012,13 +49362,14 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
       atributo_canonico_2025 = character(),
       caminho_registro = character(),
       name_curto = character(),
+      list_name_contrato_unico = character(),
       cardinalidade_operacional_contrato_unico = character(),
       escopo_operacional_contrato_unico = character(),
       escopos_permitidos_contrato_unico = character(),
       motivo_escopo_contrato_unico = character()
     ))
   }
-  for (cc in c("atributo_canonico_2025", "caminho_registro", "name_curto", "label_2025_sem_html", "tipo_base", "cardinalidade_operacional", "relevant", "campo_pai", "nivel_schema129", "posicao_schema129")) {
+  for (cc in c("atributo_canonico_2025", "caminho_registro", "name_curto", "label_2025_sem_html", "list_name", "tipo_base", "cardinalidade_operacional", "relevant", "campo_pai", "nivel_schema129", "posicao_schema129")) {
     if (!(cc %in% names(perfil))) perfil[, (cc) := NA_character_]
   }
   perfil[, `:=`(
@@ -48117,7 +49468,7 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
       return(data.table::data.table(
         atributo_coluna_registros_corrig = obs$atributo_coluna_registros_corrig[i],
         atributo_canonico_2025 = NA_character_, caminho_registro = NA_character_, name_curto = NA_character_,
-        tipo_base_contrato_unico = NA_character_, cardinalidade_operacional_contrato_unico = NA_character_,
+        list_name_contrato_unico = NA_character_, tipo_base_contrato_unico = NA_character_, cardinalidade_operacional_contrato_unico = NA_character_,
         relevant_contrato_unico = NA_character_, campo_pai_contrato_unico = NA_character_,
         nivel_schema129_contrato_unico = NA_character_, posicao_schema129_contrato_unico = NA_integer_
       ))
@@ -48127,6 +49478,7 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
       atributo_canonico_2025 = h$atributo_canonico_2025[1L],
       caminho_registro = h$caminho_registro[1L],
       name_curto = h$name_curto[1L],
+      list_name_contrato_unico = h$list_name[1L],
       tipo_base_contrato_unico = h$tipo_base[1L],
       cardinalidade_operacional_contrato_unico = h$cardinalidade_operacional[1L],
       relevant_contrato_unico = h$relevant[1L],
@@ -48155,7 +49507,7 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
     !is.na(mapa$campo_pai_contrato_unico) & nzchar(as.character(mapa$campo_pai_contrato_unico)) |
     mapa$cardinalidade_operacional_contrato_unico %in% c("select_multiple", "estruturado_completo_por_ponto", "estruturado_condicional_esparso")
   protegido <- monitora_correcao_coluna_protegida(mapa$atributo_coluna_registros_corrig) |
-    mapa$cardinalidade_operacional_contrato_unico %in% c("tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado") |
+    mapa$cardinalidade_operacional_contrato_unico %in% c("membro_repeat_coleta", "tecnico_midia", "fora_do_contrato", "ambiguo_indeterminado") |
     grepl("(^|_)uuid$|(^|_)uuid_|foto|imagem|image", nome_norm)
   ponto <- (!protegido & nivel_autoritativo == "registro") |
     (!protegido & (is.na(nivel_autoritativo) | !nzchar(nivel_autoritativo)) & !superior_herdavel & (em_registro | condicional))
@@ -48173,6 +49525,7 @@ monitora_perfil_painel_edicao_operacional_contrato_unico <- function(colunas_obs
     default = ""
   )]
   mapa[, motivo_escopo_contrato_unico := data.table::fcase(
+    cardinalidade_operacional_contrato_unico == "membro_repeat_coleta", "membro de repeat da COLETA: edição somente no editor dedicado de equipe",
     escopo_operacional_contrato_unico == "protegido", "atributo protegido ou fora da edicao generica do perfil_painel_edicao",
     escopo_operacional_contrato_unico == "ponto", "atributo de registro/ponto ou condicional pelo perfil_painel_edicao",
     escopo_operacional_contrato_unico == "coleta_inteira", "atributo superior/herdavel pelo perfil_painel_edicao",
@@ -55713,6 +57066,28 @@ if (all(c("COLETORES", "coletor/nome") %in% names(registros_corrig))) {
   }
 }
 
+### Sanitização automática do repeat antes da fotografia operacional e do
+### painel. A análise percorre apenas a coluna de coletores e, quando encontra
+### um marcador legado, somente as COLETAs afetadas. Casos reconhecidos não
+### exigem interação; casos desconhecidos permanecem visíveis e serão
+### bloqueados pelo gate final se não forem corrigidos.
+MONITORA_SANITIZACAO_COLETORES_PRE_PAINEL <- monitora_coletores_repeat_sanitizar_legado(
+  registros_corrig,
+  output_dir = MONITORA_OUTPUT_DIR,
+  log_dir = MONITORA_LOG_DIR,
+  exec_id = MONITORA_EXEC_ID,
+  contexto = "pre_painel_pos_canonicalizacao_schema",
+  abortar_nao_reconhecido = FALSE
+)
+registros_corrig <- data.table::as.data.table(MONITORA_SANITIZACAO_COLETORES_PRE_PAINEL$dt)
+if (isTRUE(MONITORA_SANITIZACAO_COLETORES_PRE_PAINEL$alterou)) {
+  monitora_perf_registrar_checkpoint(
+    "sanitizacao_coletores_pre_painel",
+    paste0(nrow(MONITORA_SANITIZACAO_COLETORES_PRE_PAINEL$auditoria), " COLETA(s) com repeat legado materializado no padrão SISMONITORA"),
+    registros_corrig
+  )
+}
+
 ### Correção sistemática de ponto_metro é leve e independe do painel/XLSForm.
 registros_corrig <- monitora_correcao_corrigir_ponto_metro(registros_corrig)
 monitora_perf_registrar_checkpoint("correcao_ponto_metro", "correção/normalização sistemática de ponto_metro antes do painel", registros_corrig)
@@ -56804,8 +58179,12 @@ if ("serrapilheira" %in% names(registros_corrig_stat)) {
 data.table::set(registros_corrig_stat, j = "serrapilheira", value = registros_corrig_stat[["material_botanico"]])
 data.table::set(registros_corrig_stat, j = "sum_material_botanico_tipo", value = monitora_dt_somar_colunas(registros_corrig_stat, mat_bot_cols))
 
-herb_sum_cols <- nms_stat[grepl("_graminoide|_bromelioide|_cactacea|_orquidea|_samambaia|_canela_de_ema", nms_stat)]
-lenh_sum_cols <- nms_stat[grepl("_arbusto_abaixo|_arbusto_acima|_arvore_abaixo|_arvore_acima|_lianas|_palmeira|_passarinho|_bambu", nms_stat)]
+### O contraste estrutural usa somente vegetação viva (nativa + exótica).
+### Seca/morta permanece em indicador próprio: incorporá-la a herbácea ou
+### lenhosa confundiria estrutura viva com condição do material vegetal.
+vida_viva_prefixo <- "^(nativa_|exot_)"
+herb_sum_cols <- nms_stat[grepl(vida_viva_prefixo, nms_stat) & grepl("_graminoide|_erva_nao_graminoide|_bromelioide|_cactacea|_orquidea|_samambaia|_canela_de_ema", nms_stat)]
+lenh_sum_cols <- nms_stat[grepl(vida_viva_prefixo, nms_stat) & grepl("_arbusto_abaixo|_arbusto_acima|_arvore_abaixo|_arvore_acima|_lianas|_palmeira|_passarinho|_bambu", nms_stat)]
 data.table::set(registros_corrig_stat, j = "sum_herbacea", value = monitora_dt_somar_colunas(registros_corrig_stat, herb_sum_cols))
 data.table::set(registros_corrig_stat, j = "sum_lenhosa", value = monitora_dt_somar_colunas(registros_corrig_stat, lenh_sum_cols))
 
@@ -56817,7 +58196,7 @@ monitora_dt_mover_colunas_antes(registros_corrig_stat, c("sum_nativa", "sum_exot
 herb_pattern <- paste(
   c("graminoide",
     "erva_nao_graminoide",
-    "erva_bromelioide",
+    "bromelioide",
     "cactacea",
     "orquidea",
     "samambaia",
@@ -56837,10 +58216,11 @@ lenh_pattern <- paste(
   collapse = "|"
 )
 
-# As mesmas três colunas principais resolvidas pelo contrato alimentam a
-# presença herbácea/lenhosa. Isso elimina a antiga assimetria entre uma
-# sumarização por label literal e uma presença por busca textual genérica.
-vida_cols <- unname(MONITORA_COLUNAS_FORMA_VIDA_STAT)
+# Somente as listas de vegetação viva alimentam presença herbácea/lenhosa.
+# A lista seca/morta continua resolvida pelo mesmo contrato, mas é analisada
+# separadamente e jamais entra silenciosamente no contraste estrutural.
+vida_cols <- unname(MONITORA_COLUNAS_FORMA_VIDA_STAT[c("nativa", "exotica")])
+vida_cols <- unique(vida_cols[!is.na(vida_cols) & nzchar(vida_cols)])
 
 # Presença herbácea/lenhosa calculada por vetores lógicos, sem criar
 # cópias completas de registros_corrig.
@@ -64865,6 +66245,26 @@ monitora_relatorios_analiticos_rotulo_categoria <- function(categoria, categoria
   codigo <- as.character(categoria)
   rotulo <- if (is.null(categoria_label)) rep(NA_character_, length(codigo)) else as.character(categoria_label)
   if (length(rotulo) == 1L && length(codigo) > 1L) rotulo <- rep(rotulo, length(codigo))
+  rotulos_fixos <- c(
+    sum_herbacea = "Herbácea",
+    sum_lenhosa = "Lenhosa",
+    sum_presence_herb = "Herbácea",
+    sum_presence_lenh = "Lenhosa",
+    sum_nativa = "Nativas",
+    sum_exotica = "Exóticas",
+    sum_seca_morta = "Secas ou mortas",
+    sum_presence_nativa = "Nativas",
+    sum_presence_exotica = "Exóticas",
+    sum_presence_seca_morta = "Secas ou mortas",
+    material_botanico = "Material botânico",
+    solo_nu = "Solo exposto ou rochas",
+    mat_bot_serrapilheira = "Serrapilheira",
+    mat_bot_fragmentos_botanicos = "Fragmentos botânicos",
+    mat_bot_material_inundado = "Material inundável"
+  )
+  pos_fixo <- match(codigo, names(rotulos_fixos))
+  tem_fixo <- !is.na(pos_fixo)
+  rotulo[tem_fixo] <- unname(rotulos_fixos[pos_fixo[tem_fixo]])
   invalido <- is.na(rotulo) | !nzchar(trimws(rotulo)) | grepl("_", rotulo, fixed = TRUE)
   if (any(invalido) && exists("monitora_plot_rotulo_categoria", mode = "function")) {
     candidato <- tryCatch(
@@ -68571,6 +69971,8 @@ monitora_relatorios_analiticos_mapas <- function(
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
+      plot.title.position = "plot",
+      plot.caption.position = "plot",
       panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major = ggplot2::element_line(
         colour = grDevices::adjustcolor("white", alpha.f = 0.48),
@@ -68589,7 +69991,7 @@ monitora_relatorios_analiticos_mapas <- function(
         vjust = 0.5
       ),
       axis.ticks = ggplot2::element_line(colour = "#263238", linewidth = 0.35),
-      plot.caption = ggplot2::element_text(size = 7.8, colour = "#455A64", hjust = 0.5),
+      plot.caption = ggplot2::element_text(size = 7.8, colour = "#455A64", hjust = 0),
       legend.position = "bottom",
       legend.box = "vertical",
       legend.text = ggplot2::element_text(size = 8.8),
@@ -68664,6 +70066,8 @@ monitora_relatorios_analiticos_mapas <- function(
     ggplot2::theme_minimal(base_size = 10) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
+      plot.title.position = "plot",
+      plot.caption.position = "plot",
       panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major = ggplot2::element_line(
         colour = grDevices::adjustcolor("white", alpha.f = 0.48),
@@ -68682,7 +70086,7 @@ monitora_relatorios_analiticos_mapas <- function(
         vjust = 0.5
       ),
       axis.ticks = ggplot2::element_line(colour = "#263238", linewidth = 0.3),
-      plot.caption = ggplot2::element_text(size = 7.6, colour = "#455A64", hjust = 0.5),
+      plot.caption = ggplot2::element_text(size = 7.6, colour = "#455A64", hjust = 0),
       legend.position = "bottom",
       strip.text = ggplot2::element_text(face = "bold")
     )
@@ -68736,30 +70140,177 @@ monitora_relatorios_analiticos_mapas <- function(
   )
 }
 
+monitora_relatorios_analiticos_series_anuais_ua <- function(stat) {
+  dt <- monitora_relatorios_analiticos_dt(stat)
+  chaves <- c("UC", "UA", "ANO", "form_veg")
+  if (!nrow(dt) || !all(chaves %in% names(dt))) {
+    return(data.table::data.table())
+  }
+  dt[, `:=`(
+    UC = as.character(UC),
+    UA = as.character(UA),
+    ANO = suppressWarnings(as.integer(as.character(ANO))),
+    form_veg = as.character(form_veg)
+  )]
+  nomes <- names(dt)
+  nativas <- nomes[grepl("^nativa_", nomes) & !grepl("^nativa_serrapilheira", nomes)]
+  exoticas <- nomes[grepl("^exot_", nomes) & !grepl("^exot_serrapilheira", nomes)]
+  secas <- nomes[grepl("^seca_morta_", nomes) & !grepl("^seca_morta_serrapilheira", nomes)]
+  materiais <- nomes[grepl("^mat_bot_", nomes)]
+  specs <- list(
+    list("herbaceas_lenhosas", "proporcao_relativa", c("sum_herbacea", "sum_lenhosa"), "relativo"),
+    list("herbaceas_lenhosas", "cobertura", c("sum_presence_herb", "sum_presence_lenh"), "101"),
+    list("categorias_gerais", "proporcao_relativa", c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "solo_nu"), "relativo"),
+    list("categorias_gerais", "cobertura", c("sum_presence_nativa", "sum_presence_exotica", "sum_presence_seca_morta", "material_botanico", "solo_nu"), "101"),
+    list("formas_vida_nativas", "proporcao_relativa", nativas, "relativo"),
+    list("formas_vida_nativas", "cobertura", nativas, "101"),
+    list("formas_vida_exoticas", "proporcao_relativa", exoticas, "relativo"),
+    list("formas_vida_exoticas", "cobertura", exoticas, "101"),
+    list("formas_vida_secas_mortas", "proporcao_relativa", secas, "relativo"),
+    list("formas_vida_secas_mortas", "cobertura", secas, "101"),
+    list("material_botanico", "proporcao_relativa", materiais, "relativo"),
+    list("material_botanico", "cobertura", materiais, "101")
+  )
+  saidas <- vector("list", length(specs))
+  for (ii in seq_along(specs)) {
+    grupo <- specs[[ii]][[1L]]
+    metrica <- specs[[ii]][[2L]]
+    cols <- intersect(as.character(specs[[ii]][[3L]]), nomes)
+    denominador <- specs[[ii]][[4L]]
+    if (!length(cols)) next
+    x <- data.table::copy(dt[, c(chaves, cols), with = FALSE])
+    x[, (cols) := lapply(.SD, function(v) suppressWarnings(as.numeric(v))), .SDcols = cols]
+    if (identical(denominador, "relativo")) {
+      x[, total_relatorio_ua := rowSums(.SD, na.rm = TRUE), .SDcols = cols]
+      long <- data.table::melt(
+        x,
+        id.vars = c(chaves, "total_relatorio_ua"),
+        measure.vars = cols,
+        variable.name = "categoria",
+        value.name = "n_categoria",
+        variable.factor = FALSE
+      )
+      long[, valor_ua := data.table::fifelse(
+        is.finite(total_relatorio_ua) & total_relatorio_ua > 0,
+        n_categoria / total_relatorio_ua,
+        NA_real_
+      )]
+    } else {
+      long <- data.table::melt(
+        x,
+        id.vars = chaves,
+        measure.vars = cols,
+        variable.name = "categoria",
+        value.name = "n_categoria",
+        variable.factor = FALSE
+      )
+      long[, valor_ua := n_categoria / 101]
+    }
+    long <- long[is.finite(ANO) & is.finite(valor_ua)]
+    if (!nrow(long)) next
+    long[, ua_id_relatorio := paste(UC, UA, sep = "\u001f")]
+    resumo <- long[, .(
+      media_percent = mean(valor_ua, na.rm = TRUE) * 100,
+      sd_percent = stats::sd(valor_ua, na.rm = TRUE) * 100,
+      n_UA = data.table::uniqueN(ua_id_relatorio)
+    ), by = .(ANO, form_veg, categoria)]
+    resumo[, se_percent := data.table::fifelse(
+      n_UA >= 2L & is.finite(sd_percent),
+      sd_percent / sqrt(n_UA),
+      NA_real_
+    )]
+    resumo[, critico_t := data.table::fifelse(
+      n_UA >= 2L,
+      stats::qt(0.975, df = pmax(1, n_UA - 1L)),
+      NA_real_
+    )]
+    resumo[, `:=`(
+      ci_lower_percent = pmax(0, media_percent - critico_t * se_percent),
+      ci_upper_percent = pmin(100, media_percent + critico_t * se_percent),
+      grupo_grafico = grupo,
+      tipo_metrica = metrica,
+      categoria = as.character(categoria),
+      categoria_label = monitora_relatorios_analiticos_rotulo_categoria(
+        as.character(categoria),
+        as.character(categoria)
+      ),
+      unidade_analitica = "UA",
+      estimando_descritivo = "media_anual_dos_valores_por_UA",
+      metodo_ic95 = "t_Student_entre_UAs"
+    )]
+    resumo[, critico_t := NULL]
+    saidas[[ii]] <- resumo[]
+  }
+  out <- data.table::rbindlist(saidas, fill = TRUE, use.names = TRUE)
+  if (!nrow(out)) return(out)
+  data.table::setorder(
+    out,
+    grupo_grafico, tipo_metrica, form_veg, categoria, ANO
+  )
+  chaves_saida <- c(
+    "grupo_grafico", "tipo_metrica", "form_veg", "categoria", "ANO"
+  )
+  if (anyDuplicated(out[, ..chaves_saida])) {
+    stop(
+      "Séries anuais dos relatórios possuem chaves duplicadas após agregação por UA.",
+      call. = FALSE
+    )
+  }
+  out[]
+}
+
 monitora_relatorios_analiticos_graficos_editoriais <- function(
   cob_categ,
   cob_nat,
   cob_exot,
   evidencias,
-  dir_figuras
+  dir_figuras,
+  series_anuais_ua = NULL,
+  mudanca_periodo = NULL,
+  mudanca_linha_base = NULL,
+  composicao_periodo = NULL,
+  composicao_linha_base = NULL,
+  config_stat = NULL,
+  prop_herb_lenh = NULL,
+  cob_herb_lenh = NULL,
+  prop_categ = NULL,
+  prop_nat = NULL,
+  prop_exot = NULL,
+  prop_seca = NULL,
+  cob_seca = NULL,
+  prop_material = NULL,
+  cob_material = NULL
 ) {
   dir.create(dir_figuras, recursive = TRUE, showWarnings = FALSE)
   registros <- list()
+  auditoria_estatistica <- list()
+  auditoria_simbolos_series <- list()
+  series_anuais_ua <- monitora_relatorios_analiticos_dt(series_anuais_ua)
+  mudanca_periodo <- monitora_relatorios_analiticos_dt(mudanca_periodo)
+  mudanca_linha_base <- monitora_relatorios_analiticos_dt(mudanca_linha_base)
+  composicao_periodo <- monitora_relatorios_analiticos_dt(composicao_periodo)
+  composicao_linha_base <- monitora_relatorios_analiticos_dt(composicao_linha_base)
+  config_stat <- monitora_relatorios_analiticos_dt(config_stat)
   adicionar <- function(
     id,
     tema,
     arquivo,
     produto_origem,
     n_linhas,
-    disponivel
+    disponivel,
+    metrica = "cobertura",
+    estatistica_incorporada = FALSE,
+    fonte_estatistica = NA_character_,
+    n_resultados_estatisticos = 0L,
+    classes_incorporadas = NA_character_
   ) {
     registros[[length(registros) + 1L]] <<- data.table::data.table(
       id = id,
       tema = tema,
       escopo = "relatorio_analitico",
-      metrica = "cobertura",
+      metrica = metrica,
       tema_label = monitora_relatorios_analiticos_rotulo_grupo(tema),
-      metrica_label = monitora_relatorio_rotulo_metrica("cobertura"),
+      metrica_label = monitora_relatorio_rotulo_metrica(metrica),
       arquivo_origem = produto_origem,
       arquivo_relatorio = if (isTRUE(disponivel)) {
         file.path("figuras", basename(arquivo))
@@ -68769,6 +70320,10 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       disponivel = isTRUE(disponivel),
       n_linhas_dados_plot = as.integer(n_linhas),
       rotulos_editoriais = isTRUE(disponivel),
+      estatistica_incorporada = isTRUE(estatistica_incorporada),
+      fonte_estatistica = as.character(fonte_estatistica)[1L],
+      n_resultados_estatisticos = as.integer(n_resultados_estatisticos),
+      classes_incorporadas = as.character(classes_incorporadas)[1L],
       hash_md5 = if (isTRUE(disponivel)) {
         unname(tools::md5sum(arquivo))
       } else {
@@ -68791,12 +70346,70 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       paste0(toupper(substr(x, 1L, 1L)), substr(x, 2L, nchar(x)))
     )
   }
+  cfg_num <- function(nome, padrao) {
+    if (!nrow(config_stat) || !all(c("parametro", "valor") %in% names(config_stat))) {
+      return(as.numeric(padrao))
+    }
+    z <- suppressWarnings(as.numeric(config_stat[parametro == nome, valor][1L]))
+    if (length(z) && is.finite(z)) z else as.numeric(padrao)
+  }
+  classe_label <- function(x) {
+    capitalizar(monitora_relatorios_analiticos_classe_portugues(x))
+  }
+  fmt_sinal <- function(x, digitos = 1L) {
+    z <- suppressWarnings(as.numeric(x))
+    ifelse(
+      is.finite(z),
+      paste0(ifelse(z > 0, "+", ""), monitora_relatorios_analiticos_fmt_num(z, digitos)),
+      "NA"
+    )
+  }
+  fmt_q <- function(x) {
+    z <- suppressWarnings(as.numeric(x))
+    ifelse(
+      is.finite(z),
+      data.table::fifelse(
+        z < 0.001,
+        "q<0,001",
+        paste0("q=", monitora_relatorios_analiticos_fmt_num(z, 3L))
+      ),
+      "q=NA"
+    )
+  }
+  classe_curta <- function(x) {
+    x <- as.character(x)
+    data.table::fcase(
+      x == "aumento", "AUM",
+      x %in% c("reducao", "redução"), "RED",
+      x == "estabilidade_equivalente", "EST",
+      x %in% c("mudanca_composicao", "mudança_composição"), "MUD",
+      x == "estabilidade_composicional", "EST-C",
+      x == "inconclusivo", "INC",
+      x == "pares_insuficientes", "PAR",
+      default = "IND"
+    )
+  }
+  resumo_esforco <- function(x) {
+    if (!nrow(x) || !all(c("Formação", "ANO", "n_UA") %in% names(x))) return("")
+    d <- unique(x[, .(Formação, ANO, n_UA)])
+    data.table::setorder(d, Formação, ANO)
+    paste(
+      d[, paste0(
+        unique(Formação), ": ",
+        paste0(ANO, " n=", n_UA, collapse = "; ")
+      ), by = Formação]$V1,
+      collapse = " | "
+    )
+  }
   tema_grafico <- function(p) {
     p +
       ggplot2::theme_minimal(base_size = 11) +
       ggplot2::theme(
         plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
         plot.subtitle = ggplot2::element_text(colour = "#52645B"),
+        plot.title.position = "plot",
+        plot.caption.position = "plot",
+        plot.caption = ggplot2::element_text(hjust = 0, colour = "#52645B"),
         panel.grid.minor = ggplot2::element_blank(),
         legend.position = "bottom",
         legend.box = "vertical",
@@ -68804,7 +70417,18 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       )
   }
 
-  categ <- monitora_relatorios_analiticos_dt(cob_categ)
+  categ_alinhada <- if (nrow(series_anuais_ua) && all(c("grupo_grafico", "tipo_metrica") %in% names(series_anuais_ua))) {
+    series_anuais_ua[grupo_grafico == "categorias_gerais" & tipo_metrica == "cobertura"]
+  } else data.table::data.table()
+  categ <- if (nrow(categ_alinhada)) {
+    categ_alinhada[, .(
+      ANO, form_veg, categoria, categoria_label,
+      cobertura_percent = media_percent,
+      ci_lower_percent, ci_upper_percent, n_UA
+    )]
+  } else {
+    monitora_relatorios_analiticos_dt(cob_categ)
+  }
   req_categ <- c(
     "ANO", "form_veg", "categoria", "categoria_label",
     "cobertura_percent"
@@ -68824,6 +70448,9 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         !is.na(Formação) & nzchar(Formação) &
         !is.na(Categoria) & nzchar(Categoria)
     ]
+    if (!"ci_lower_percent" %in% names(categ)) categ[, ci_lower_percent := NA_real_]
+    if (!"ci_upper_percent" %in% names(categ)) categ[, ci_upper_percent := NA_real_]
+    if (!"n_UA" %in% names(categ)) categ[, n_UA := NA_integer_]
   }
   arquivo_categ <- file.path(
     dir_figuras,
@@ -68846,6 +70473,16 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       )
     }
     p_categ <- p_categ +
+      ggplot2::geom_errorbar(
+        ggplot2::aes(
+          ymin = ci_lower_percent,
+          ymax = ci_upper_percent
+        ),
+        width = 0.10,
+        linewidth = 0.42,
+        alpha = 0.58,
+        na.rm = TRUE
+      ) +
       ggplot2::geom_point(size = 2.1) +
       ggplot2::facet_wrap(~Formação, ncol = 1L) +
       ggplot2::scale_x_continuous(breaks = sort(unique(categ$ANO))) +
@@ -68854,7 +70491,8 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         y = "Cobertura média por UA (%)",
         colour = "Categoria",
         title = "Estado anual das categorias gerais",
-        subtitle = "Amostra anual total; diferenças de esforço devem ser consideradas"
+        subtitle = "Média e IC95% entre UAs; mudanças são avaliadas por testes pareados",
+        caption = paste0("UAs disponíveis: ", resumo_esforco(categ))
       )
     p_categ <- tema_grafico(p_categ)
     ggplot2::ggsave(
@@ -68872,10 +70510,25 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     arquivo_categ,
     "05_estatisticas/cob_veg_categ.csv",
     nrow(categ),
-    nrow(categ) > 0L && file.exists(arquivo_categ)
+    nrow(categ) > 0L && file.exists(arquivo_categ),
+    estatistica_incorporada = nrow(categ_alinhada) > 0L,
+    fonte_estatistica = if (nrow(categ_alinhada)) "01_produtos_dados/registros_corrig_stat.csv" else NA_character_,
+    n_resultados_estatisticos = nrow(categ_alinhada),
+    classes_incorporadas = if (nrow(categ_alinhada)) "media_anual_por_UA; IC95_t_Student; n_UA" else NA_character_
   )
 
-  nat <- monitora_relatorios_analiticos_dt(cob_nat)
+  nat_alinhada <- if (nrow(series_anuais_ua) && all(c("grupo_grafico", "tipo_metrica") %in% names(series_anuais_ua))) {
+    series_anuais_ua[grupo_grafico == "formas_vida_nativas" & tipo_metrica == "cobertura"]
+  } else data.table::data.table()
+  nat <- if (nrow(nat_alinhada)) {
+    nat_alinhada[, .(
+      ANO, form_veg, categoria, categoria_label,
+      cobertura_percent = media_percent,
+      ci_lower_percent, ci_upper_percent, n_UA
+    )]
+  } else {
+    monitora_relatorios_analiticos_dt(cob_nat)
+  }
   req_nat <- c(
     "ANO", "form_veg", "categoria", "categoria_label",
     "cobertura_percent"
@@ -68895,6 +70548,9 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         !is.na(Formação) & nzchar(Formação) &
         !is.na(Categoria) & nzchar(Categoria)
     ]
+    if (!"ci_lower_percent" %in% names(nat)) nat[, ci_lower_percent := NA_real_]
+    if (!"ci_upper_percent" %in% names(nat)) nat[, ci_upper_percent := NA_real_]
+    if (!"n_UA" %in% names(nat)) nat[, n_UA := NA_integer_]
   }
   nat_recente <- data.table::data.table()
   if (nrow(nat)) {
@@ -68923,6 +70579,17 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       )
     ) +
       ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
+      ggplot2::geom_segment(
+        ggplot2::aes(
+          x = ci_lower_percent,
+          xend = ci_upper_percent,
+          y = Categoria_quebrada,
+          yend = Categoria_quebrada
+        ),
+        linewidth = 0.42,
+        alpha = 0.62,
+        na.rm = TRUE
+      ) +
       ggplot2::geom_text(
         ggplot2::aes(
           label = paste0(
@@ -68948,7 +70615,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
           "Principais formas de vida nativas em ",
           max(nat_recente$ANO)
         ),
-        subtitle = "Até cinco formas de vida com maior cobertura em cada formação"
+        subtitle = "Até cinco formas por formação; média e IC95% entre UAs"
       )
     p_nat <- tema_grafico(p_nat)
     ggplot2::ggsave(
@@ -68966,10 +70633,25 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     arquivo_nat,
     "05_estatisticas/cob_veg_form_vida_nat.csv",
     nrow(nat_recente),
-    nrow(nat_recente) > 0L && file.exists(arquivo_nat)
+    nrow(nat_recente) > 0L && file.exists(arquivo_nat),
+    estatistica_incorporada = nrow(nat_alinhada) > 0L,
+    fonte_estatistica = if (nrow(nat_alinhada)) "01_produtos_dados/registros_corrig_stat.csv" else NA_character_,
+    n_resultados_estatisticos = nrow(nat_recente),
+    classes_incorporadas = if (nrow(nat_alinhada)) "media_anual_por_UA; IC95_t_Student; n_UA" else NA_character_
   )
 
-  exot <- monitora_relatorios_analiticos_dt(cob_exot)
+  exot_alinhada <- if (nrow(series_anuais_ua) && all(c("grupo_grafico", "tipo_metrica") %in% names(series_anuais_ua))) {
+    series_anuais_ua[grupo_grafico == "formas_vida_exoticas" & tipo_metrica == "cobertura"]
+  } else data.table::data.table()
+  exot <- if (nrow(exot_alinhada)) {
+    exot_alinhada[, .(
+      ANO, form_veg, categoria, categoria_label,
+      cobertura_percent = media_percent,
+      ci_lower_percent, ci_upper_percent, n_UA
+    )]
+  } else {
+    monitora_relatorios_analiticos_dt(cob_exot)
+  }
   req_exot <- c(
     "ANO", "form_veg", "categoria", "categoria_label",
     "cobertura_percent"
@@ -68989,6 +70671,9 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         !is.na(Formação) & nzchar(Formação) &
         !is.na(Categoria) & nzchar(Categoria)
     ]
+    if (!"ci_lower_percent" %in% names(exot)) exot[, ci_lower_percent := NA_real_]
+    if (!"ci_upper_percent" %in% names(exot)) exot[, ci_upper_percent := NA_real_]
+    if (!"n_UA" %in% names(exot)) exot[, n_UA := NA_integer_]
     exot[, max_cobertura := max(cobertura_percent, na.rm = TRUE), by = .(
       Formação,
       Categoria
@@ -69014,6 +70699,16 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       p_exot <- p_exot + ggplot2::geom_line(linewidth = 0.75)
     }
     p_exot <- p_exot +
+      ggplot2::geom_errorbar(
+        ggplot2::aes(
+          ymin = ci_lower_percent,
+          ymax = ci_upper_percent
+        ),
+        width = 0.10,
+        linewidth = 0.42,
+        alpha = 0.58,
+        na.rm = TRUE
+      ) +
       ggplot2::geom_point(size = 2.2) +
       ggplot2::facet_wrap(~Formação) +
       ggplot2::scale_x_continuous(breaks = sort(unique(exot$ANO))) +
@@ -69022,7 +70717,8 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         y = "Cobertura média por UA (%)",
         colour = "Forma de vida exótica",
         title = "Formas de vida exóticas observadas",
-        subtitle = "Amostra anual total; são exibidas somente categorias com ocorrência"
+        subtitle = "Média e IC95% entre UAs; são exibidas somente categorias com ocorrência",
+        caption = paste0("UAs disponíveis: ", resumo_esforco(exot))
       ) +
       ggplot2::guides(
         colour = ggplot2::guide_legend(ncol = 2L, byrow = TRUE)
@@ -69043,15 +70739,20 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     arquivo_exot,
     "05_estatisticas/cob_veg_form_vida_exot.csv",
     nrow(exot),
-    nrow(exot) > 0L && file.exists(arquivo_exot)
+    nrow(exot) > 0L && file.exists(arquivo_exot),
+    estatistica_incorporada = nrow(exot_alinhada) > 0L,
+    fonte_estatistica = if (nrow(exot_alinhada)) "01_produtos_dados/registros_corrig_stat.csv" else NA_character_,
+    n_resultados_estatisticos = nrow(exot_alinhada),
+    classes_incorporadas = if (nrow(exot_alinhada)) "media_anual_por_UA; IC95_t_Student; n_UA" else NA_character_
   )
 
   mud <- monitora_relatorios_analiticos_dt(evidencias)
   req_mud <- c(
     "form_veg_label", "categoria_label_relatorio", "ano_1", "ano_2",
     "diferenca_pp", "ci95_lower_pp", "ci95_upper_pp",
-    "classe_mudanca_label", "prioridade_classe", "prioridade_grupo",
-    "abs_efeito"
+    "classe_mudanca", "classe_mudanca_label", "prioridade_classe",
+    "prioridade_grupo", "abs_efeito", "n_UA_pareadas",
+    "p_ajustado_fdr"
   )
   if (nrow(mud) && all(req_mud %in% names(mud))) {
     mud <- mud[
@@ -69065,20 +70766,39 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       -abs_efeito,
       -ano_2
     )
-    mud <- head(mud, 12L)
+    mud[, classe_balanceamento := data.table::fcase(
+      classe_mudanca %in% c("aumento", "reducao"), "mudança",
+      classe_mudanca == "estabilidade_equivalente", "estabilidade",
+      classe_mudanca == "inconclusivo", "inconclusivo",
+      default = "outro"
+    )]
+    mud <- mud[, head(.SD, 4L), by = classe_balanceamento]
+    data.table::setorder(
+      mud,
+      prioridade_classe,
+      prioridade_grupo,
+      -abs_efeito,
+      -ano_2
+    )
     mud[, `:=`(
       diferenca_pp = suppressWarnings(as.numeric(diferenca_pp)),
       ci95_lower_pp = suppressWarnings(as.numeric(ci95_lower_pp)),
       ci95_upper_pp = suppressWarnings(as.numeric(ci95_upper_pp)),
       Indicador = quebrar(
         paste0(
+          tipo_metrica_label,
+          " — ",
           form_veg_label,
           " — ",
           categoria_label_relatorio,
           " (",
           ano_1,
-          "–",
+          "-",
           ano_2,
+          "; n=",
+          n_UA_pareadas,
+          "; ",
+          fmt_q(p_ajustado_fdr),
           ")"
         ),
         43L
@@ -69100,6 +70820,15 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         colour = Interpretação
       )
     ) +
+      ggplot2::annotate(
+        "rect",
+        xmin = -cfg_num("margem_equivalencia_pp", 5),
+        xmax = cfg_num("margem_equivalencia_pp", 5),
+        ymin = -Inf,
+        ymax = Inf,
+        fill = "#E6F2E8",
+        alpha = 0.46
+      ) +
       ggplot2::geom_vline(
         xintercept = 0,
         linewidth = 0.55,
@@ -69117,11 +70846,14 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       ) +
       ggplot2::geom_point(size = 2.8) +
       ggplot2::labs(
-        x = "Diferença de cobertura (pontos percentuais)",
+        x = "Diferença (pontos percentuais)",
         y = NULL,
         colour = "Interpretação",
         title = "Mudanças temporais prioritárias",
-        subtitle = "Diferença pareada e intervalo de confiança de 95%"
+        subtitle = paste(strwrap(
+          "Diferença pareada, IC95%, número de UAs e q (FDR-BH); seleção balanceada entre mudança, estabilidade/equivalência e inconclusão",
+          width = 66L
+        ), collapse = "\n")
       )
     p_mud <- tema_grafico(p_mud)
     ggplot2::ggsave(
@@ -69139,11 +70871,580 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     arquivo_mud,
     "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
     nrow(mud),
-    nrow(mud) > 0L && file.exists(arquivo_mud)
+    nrow(mud) > 0L && file.exists(arquivo_mud),
+    estatistica_incorporada = nrow(mud) > 0L,
+    fonte_estatistica = "05_estatisticas/estatistica_pareada_periodo_editorial.csv; 05_estatisticas/estatisticas_mudanca_linha_base.csv",
+    n_resultados_estatisticos = nrow(mud),
+    classes_incorporadas = if (nrow(mud)) paste(sort(unique(mud$classe_mudanca_label)), collapse = "; ") else NA_character_
   )
 
+  ### Núcleo temático obrigatório. Os gráficos abaixo não competem por um
+  ### ranking global: cada tema ecológico solicitado recebe cobertura e/ou
+  ### proporção relativa quando o produto correspondente existe. Isso evita
+  ### que um efeito numericamente grande suprima temas de alta relevância de
+  ### manejo, como exóticas ou seca/morta.
+  grafico_temporal_nucleo <- function(
+    dados, id, tema, titulo, arquivo_nome, produto_origem,
+    metrica = c("cobertura", "proporcao_relativa"), max_categorias = 8L
+  ) {
+    metrica <- match.arg(metrica)
+    x_alinhado <- if (nrow(series_anuais_ua) && all(c("grupo_grafico", "tipo_metrica") %in% names(series_anuais_ua))) {
+      series_anuais_ua[grupo_grafico == tema & tipo_metrica == metrica]
+    } else data.table::data.table()
+    x <- if (nrow(x_alinhado)) {
+      x_alinhado[, .(
+        ANO, form_veg, categoria, categoria_label,
+        valor_plot = media_percent,
+        ci_lower_plot = ci_lower_percent,
+        ci_upper_plot = ci_upper_percent,
+        n_UA
+      )]
+    } else {
+      monitora_relatorios_analiticos_dt(dados)
+    }
+    col_valor <- if (metrica == "cobertura") "cobertura_percent" else "prop_percent"
+    req <- c("ANO", "form_veg", "categoria", "categoria_label")
+    if (!nrow(x_alinhado)) req <- c(req, col_valor)
+    arquivo <- file.path(dir_figuras, arquivo_nome)
+    if (nrow(x) && all(req %in% names(x))) {
+      if (!nrow(x_alinhado)) x[, valor_plot := suppressWarnings(as.numeric(get(col_valor)))]
+      x[, `:=`(
+        ANO = suppressWarnings(as.integer(as.character(ANO))),
+        valor_plot = suppressWarnings(as.numeric(valor_plot)),
+        Formação = monitora_relatorio_rotulo_formacao(form_veg, TRUE),
+        Categoria = monitora_relatorios_analiticos_rotulo_categoria(categoria, categoria_label)
+      )]
+      if (!"ci_lower_plot" %in% names(x)) x[, ci_lower_plot := NA_real_]
+      if (!"ci_upper_plot" %in% names(x)) x[, ci_upper_plot := NA_real_]
+      if (!"n_UA" %in% names(x)) x[, n_UA := NA_integer_]
+      x <- x[is.finite(ANO) & is.finite(valor_plot) & !is.na(Formação) & nzchar(Formação) & !is.na(Categoria) & nzchar(Categoria)]
+      if (nrow(x) && is.finite(max_categorias) && max_categorias > 0L) {
+        ordem <- x[, .(max_valor = max(valor_plot, na.rm = TRUE)), by = Categoria][order(-max_valor)]
+        x <- x[Categoria %in% head(ordem$Categoria, as.integer(max_categorias))]
+      }
+    } else {
+      x <- data.table::data.table()
+    }
+    if (nrow(x)) {
+      testes_simbolos <- if (nrow(mudanca_periodo) && all(c(
+        "grupo_grafico", "tipo_metrica", "form_veg", "categoria",
+        "ano_1", "ano_2", "classe_mudanca"
+      ) %in% names(mudanca_periodo))) {
+        data.table::copy(mudanca_periodo[
+          grupo_grafico == tema & tipo_metrica == metrica,
+          .(
+            form_veg = as.character(form_veg),
+            categoria = as.character(categoria),
+            ANO = suppressWarnings(as.integer(ano_2)),
+            ano_referencia = suppressWarnings(as.integer(ano_1)),
+            classe_mudanca = as.character(classe_mudanca)
+          )
+        ])
+      } else data.table::data.table()
+      if (nrow(testes_simbolos)) {
+        testes_simbolos <- testes_simbolos[is.finite(ANO) & is.finite(ano_referencia)]
+        data.table::setorder(testes_simbolos, form_veg, categoria, ANO, -ano_referencia)
+        testes_simbolos <- testes_simbolos[, .SD[1L], by = .(form_veg, categoria, ANO)]
+        testes_simbolos[, simbolo_estatistico := data.table::fcase(
+          classe_mudanca == "aumento", "↑",
+          classe_mudanca %in% c("reducao", "redução"), "↓",
+          classe_mudanca == "estabilidade_equivalente", "≈",
+          classe_mudanca == "pares_insuficientes", "—",
+          default = "?"
+        )]
+        x <- merge(
+          x, testes_simbolos,
+          by = c("form_veg", "categoria", "ANO"),
+          all.x = TRUE, sort = FALSE
+        )
+      } else {
+        x[, `:=`(ano_referencia = NA_integer_, classe_mudanca = NA_character_, simbolo_estatistico = NA_character_)]
+      }
+      x[, primeiro_ano_indicador := min(ANO, na.rm = TRUE), by = .(form_veg, categoria)]
+      x[ANO == primeiro_ano_indicador, simbolo_estatistico := ""]
+      x[ANO != primeiro_ano_indicador & (is.na(simbolo_estatistico) | !nzchar(simbolo_estatistico)), simbolo_estatistico := "—"]
+      x[, amplitude_formacao := {
+        limites <- c(valor_plot, ci_lower_plot, ci_upper_plot)
+        limites <- limites[is.finite(limites)]
+        if (length(limites)) diff(range(limites)) else 0
+      }, by = Formação]
+      x[, y_simbolo := pmax(valor_plot, ci_upper_plot, na.rm = TRUE) + pmax(1.1, 0.055 * amplitude_formacao)]
+      auditoria_simbolos_series[[length(auditoria_simbolos_series) + 1L]] <<- x[, .(
+        plot_id = id,
+        grupo_grafico = tema,
+        tipo_metrica = metrica,
+        form_veg,
+        categoria,
+        ANO,
+        ano_referencia,
+        classe_mudanca,
+        simbolo_estatistico,
+        media_percent = valor_plot,
+        ci95_lower_percent = ci_lower_plot,
+        ci95_upper_percent = ci_upper_plot,
+        n_UA
+      )]
+      p <- ggplot2::ggplot(x, ggplot2::aes(x = ANO, y = valor_plot, colour = Categoria, group = Categoria))
+      if (data.table::uniqueN(x$ANO) > 1L) p <- p + ggplot2::geom_line(linewidth = 0.72, alpha = 0.9)
+      p <- p +
+        ggplot2::geom_errorbar(
+          ggplot2::aes(ymin = ci_lower_plot, ymax = ci_upper_plot),
+          width = 0.10,
+          linewidth = 0.42,
+          alpha = 0.58,
+          na.rm = TRUE
+        ) +
+        ggplot2::geom_point(size = 2.05) +
+        ggplot2::geom_text(
+          ggplot2::aes(y = y_simbolo, label = simbolo_estatistico),
+          colour = "#17261F", size = 4.1, fontface = "bold",
+          show.legend = FALSE, na.rm = TRUE
+        ) +
+        ggplot2::facet_wrap(~Formação, scales = "free_y") +
+        ggplot2::scale_x_continuous(breaks = sort(unique(x$ANO))) +
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.04, 0.14))) +
+        ggplot2::labs(
+          x = "Ano",
+          y = if (metrica == "cobertura") "Cobertura média por UA (%)" else "Proporção relativa (%)",
+          colour = "Indicador",
+          title = titulo,
+          subtitle = if (metrica == "cobertura") {
+            "Média e IC95% entre UAs; a mudança temporal é testada nas UAs pareadas"
+          } else {
+            "Média e IC95% da proporção por UA; a composição conjunta é testada separadamente"
+          },
+          caption = paste0(
+            "Símbolos sobre as médias: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; ? resultado inconclusivo; — pares insuficientes. ",
+            "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(x)
+          )
+        ) + ggplot2::guides(colour = ggplot2::guide_legend(ncol = 2L, byrow = TRUE))
+      p <- tema_grafico(p)
+      ggplot2::ggsave(arquivo, p, width = 9.4, height = 6.2, dpi = 240, bg = "white")
+    }
+    adicionar(
+      id, tema, arquivo, produto_origem, nrow(x),
+      nrow(x) > 0L && file.exists(arquivo),
+      metrica = metrica,
+      estatistica_incorporada = nrow(x_alinhado) > 0L,
+      fonte_estatistica = if (nrow(x_alinhado)) "01_produtos_dados/registros_corrig_stat.csv" else NA_character_,
+      n_resultados_estatisticos = nrow(x_alinhado),
+      classes_incorporadas = if (nrow(x_alinhado)) "media_anual_por_UA; IC95_t_Student; n_UA; simbolo_teste_pareado_medicao_anterior" else NA_character_
+    )
+  }
+
+  grafico_temporal_nucleo(cob_herb_lenh, "herbaceas_lenhosas_cobertura", "herbaceas_lenhosas", "Estrutura viva: componentes herbáceo e lenhoso", "cobertura_herbaceas_lenhosas_serie_temporal.png", "05_estatisticas/cob_veg_herb_lenh.csv", "cobertura", 2L)
+  grafico_temporal_nucleo(prop_herb_lenh, "herbaceas_lenhosas_proporcao", "herbaceas_lenhosas", "Balanço relativo da vegetação viva", "proporcao_herbaceas_lenhosas_serie_temporal.png", "05_estatisticas/prop_rel_herb_lenh.csv", "proporcao_relativa", 2L)
+  grafico_temporal_nucleo(prop_categ, "categorias_proporcao", "categorias_gerais", "Composição relativa das categorias gerais", "proporcao_categorias_gerais_serie_temporal.png", "05_estatisticas/prop_rel_categ.csv", "proporcao_relativa", 8L)
+  grafico_temporal_nucleo(prop_nat, "formas_nativas_proporcao", "formas_vida_nativas", "Composição relativa das principais formas de vida nativas", "proporcao_formas_nativas_serie_temporal.png", "05_estatisticas/prop_rel_form_vida_nat.csv", "proporcao_relativa", 6L)
+  grafico_temporal_nucleo(prop_exot, "formas_exoticas_proporcao", "formas_vida_exoticas", "Composição relativa das formas de vida exóticas", "proporcao_formas_exoticas_serie_temporal.png", "05_estatisticas/prop_rel_form_vida_exot.csv", "proporcao_relativa", 8L)
+  grafico_temporal_nucleo(cob_seca, "formas_secas_mortas_cobertura", "formas_vida_secas_mortas", "Cobertura de formas de vida secas ou mortas", "cobertura_formas_secas_mortas_serie_temporal.png", "05_estatisticas/cob_veg_form_vida_seca_morta.csv", "cobertura", 8L)
+  grafico_temporal_nucleo(prop_seca, "formas_secas_mortas_proporcao", "formas_vida_secas_mortas", "Composição relativa das formas secas ou mortas", "proporcao_formas_secas_mortas_serie_temporal.png", "05_estatisticas/prop_rel_form_vida_seca_morta.csv", "proporcao_relativa", 8L)
+  grafico_temporal_nucleo(cob_material, "material_botanico_cobertura", "material_botanico", "Cobertura de material botânico em decomposição", "cobertura_material_botanico_serie_temporal.png", "05_estatisticas/cob_veg_material_botanico.csv", "cobertura", 8L)
+  grafico_temporal_nucleo(prop_material, "material_botanico_proporcao", "material_botanico", "Composição relativa do material botânico", "proporcao_material_botanico_serie_temporal.png", "05_estatisticas/prop_rel_material_botanico.csv", "proporcao_relativa", 8L)
+
+  ### Painel inferencial por tema e métrica. Uma célula corresponde a uma
+  ### comparação temporal efetivamente testada. A cor representa a classificação
+  ### contra a medição anterior; o texto preserva efeito, IC95%, n, q ajustado e
+  ### o resultado contra a linha de base. A última linha incorpora o teste
+  ### multivariado da composição conjunta, evitando testes pareados espúrios
+  ### entre categorias dependentes da mesma composição.
+  painel_inferencial <- function(grupo, metrica, id, titulo) {
+    req_periodo <- c(
+      "grupo_grafico", "tipo_metrica", "form_veg", "categoria",
+      "categoria_label", "ano_1", "ano_2", "n_UA_pareadas",
+      "diferenca_pp", "ci95_lower_pp", "ci95_upper_pp",
+      "p_ajustado_fdr", "classe_mudanca"
+    )
+    periodo <- if (nrow(mudanca_periodo) && all(c("grupo_grafico", "tipo_metrica") %in% names(mudanca_periodo))) {
+      mudanca_periodo[grupo_grafico == grupo & tipo_metrica == metrica]
+    } else data.table::data.table()
+    if (!nrow(periodo) || !all(req_periodo %in% names(periodo))) {
+      arquivo_vazio <- file.path(dir_figuras, paste0("evidencia_estatistica_", id, ".png"))
+      adicionar(
+        paste0("inferencias_", id), grupo, arquivo_vazio,
+        "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
+        0L, FALSE, metrica = metrica,
+        estatistica_incorporada = FALSE,
+        fonte_estatistica = "05_estatisticas/estatistica_pareada_periodo_editorial.csv; 05_estatisticas/estatisticas_mudanca_linha_base.csv; 05_estatisticas/estatisticas_composicao_geral_ano_a_ano.csv; 05_estatisticas/estatisticas_composicao_linha_base.csv"
+      )
+      return(invisible(NULL))
+    }
+    periodo <- data.table::copy(periodo)
+    periodo[, `:=`(
+      form_veg = as.character(form_veg),
+      categoria = as.character(categoria),
+      ano_1 = suppressWarnings(as.integer(ano_1)),
+      ano_2 = suppressWarnings(as.integer(ano_2)),
+      n_UA_pareadas = suppressWarnings(as.integer(n_UA_pareadas)),
+      diferenca_pp = suppressWarnings(as.numeric(diferenca_pp)),
+      ci95_lower_pp = suppressWarnings(as.numeric(ci95_lower_pp)),
+      ci95_upper_pp = suppressWarnings(as.numeric(ci95_upper_pp)),
+      p_ajustado_fdr = suppressWarnings(as.numeric(p_ajustado_fdr)),
+      classe_mudanca = as.character(classe_mudanca)
+    )]
+    periodo <- periodo[is.finite(ano_2)]
+    periodo <- unique(periodo, by = c(
+      "grupo_grafico", "tipo_metrica", "form_veg", "categoria", "ano_1", "ano_2"
+    ))
+
+    lb <- if (nrow(mudanca_linha_base) && all(c("grupo_grafico", "tipo_metrica") %in% names(mudanca_linha_base))) {
+      mudanca_linha_base[grupo_grafico == grupo & tipo_metrica == metrica]
+    } else data.table::data.table()
+    req_lb <- c(
+      "form_veg", "categoria", "ano_2", "anos_linha_base",
+      "n_UA_pareadas", "diferenca_pp", "ci95_lower_pp",
+      "ci95_upper_pp", "p_ajustado_fdr_linha_base", "classe_mudanca"
+    )
+    if (nrow(lb) && all(req_lb %in% names(lb))) {
+      lb <- unique(lb[, .(
+        form_veg = as.character(form_veg),
+        categoria = as.character(categoria),
+        ano_2 = suppressWarnings(as.integer(ano_2)),
+        anos_linha_base = as.character(anos_linha_base),
+        n_UA_pareadas_lb = suppressWarnings(as.integer(n_UA_pareadas)),
+        diferenca_lb_pp = suppressWarnings(as.numeric(diferenca_pp)),
+        ci95_lower_lb_pp = suppressWarnings(as.numeric(ci95_lower_pp)),
+        ci95_upper_lb_pp = suppressWarnings(as.numeric(ci95_upper_pp)),
+        q_lb = suppressWarnings(as.numeric(p_ajustado_fdr_linha_base)),
+        classe_lb = as.character(classe_mudanca)
+      )], by = c("form_veg", "categoria", "ano_2"))
+      periodo <- merge(
+        periodo,
+        lb,
+        by = c("form_veg", "categoria", "ano_2"),
+        all.x = TRUE,
+        sort = FALSE
+      )
+    }
+    cols_lb <- c(
+      "anos_linha_base", "n_UA_pareadas_lb", "diferenca_lb_pp",
+      "ci95_lower_lb_pp", "ci95_upper_lb_pp", "q_lb", "classe_lb"
+    )
+    for (cc in setdiff(cols_lb, names(periodo))) periodo[, (cc) := NA]
+
+    categorias <- periodo[, .(
+      tipo_resultado = "categoria",
+      grupo_grafico,
+      tipo_metrica,
+      form_veg,
+      categoria,
+      categoria_label = monitora_relatorios_analiticos_rotulo_categoria(
+        categoria,
+        categoria_label
+      ),
+      ano_1,
+      ano_2,
+      n_UA_pareadas,
+      estimativa = diferenca_pp,
+      ci95_lower = ci95_lower_pp,
+      ci95_upper = ci95_upper_pp,
+      q_ajustado = p_ajustado_fdr,
+      classe_periodo = classe_mudanca,
+      anos_linha_base,
+      n_UA_pareadas_lb,
+      estimativa_lb = suppressWarnings(as.numeric(diferenca_lb_pp)),
+      ci95_lower_lb = suppressWarnings(as.numeric(ci95_lower_lb_pp)),
+      ci95_upper_lb = suppressWarnings(as.numeric(ci95_upper_lb_pp)),
+      q_ajustado_lb = suppressWarnings(as.numeric(q_lb)),
+      classe_linha_base = as.character(classe_lb),
+      unidade_efeito = "pontos_percentuais"
+    )]
+
+    comp <- if (nrow(composicao_periodo) && all(c("grupo_grafico", "tipo_metrica") %in% names(composicao_periodo))) {
+      composicao_periodo[grupo_grafico == grupo & tipo_metrica == metrica]
+    } else data.table::data.table()
+    req_comp <- c(
+      "form_veg", "ano_1", "ano_2", "n_UA_pareadas",
+      "distancia_centroide_hellinger", "ci95_lower_dist_hellinger",
+      "ci95_upper_dist_hellinger", "p_ajustado_fdr_composicao",
+      "classe_mudanca_composicao"
+    )
+    composicao <- data.table::data.table()
+    if (nrow(comp) && all(req_comp %in% names(comp))) {
+      comp <- unique(comp[, .(
+        form_veg = as.character(form_veg),
+        ano_1 = suppressWarnings(as.integer(ano_1)),
+        ano_2 = suppressWarnings(as.integer(ano_2)),
+        n_UA_pareadas = suppressWarnings(as.integer(n_UA_pareadas)),
+        estimativa = suppressWarnings(as.numeric(distancia_centroide_hellinger)),
+        ci95_lower = suppressWarnings(as.numeric(ci95_lower_dist_hellinger)),
+        ci95_upper = suppressWarnings(as.numeric(ci95_upper_dist_hellinger)),
+        q_ajustado = suppressWarnings(as.numeric(p_ajustado_fdr_composicao)),
+        classe_periodo = as.character(classe_mudanca_composicao)
+      )], by = c("form_veg", "ano_1", "ano_2"))
+      comp_lb <- if (nrow(composicao_linha_base) && all(c("grupo_grafico", "tipo_metrica") %in% names(composicao_linha_base))) {
+        composicao_linha_base[grupo_grafico == grupo & tipo_metrica == metrica]
+      } else data.table::data.table()
+      req_comp_lb <- c(
+        "form_veg", "ano_2", "anos_linha_base", "n_UA_pareadas",
+        "distancia_centroide_hellinger", "ci95_lower_dist_hellinger",
+        "ci95_upper_dist_hellinger",
+        "p_ajustado_fdr_composicao_linha_base",
+        "classe_mudanca_composicao_linha_base"
+      )
+      if (nrow(comp_lb) && all(req_comp_lb %in% names(comp_lb))) {
+        comp_lb <- unique(comp_lb[, .(
+          form_veg = as.character(form_veg),
+          ano_2 = suppressWarnings(as.integer(ano_2)),
+          anos_linha_base = as.character(anos_linha_base),
+          n_UA_pareadas_lb = suppressWarnings(as.integer(n_UA_pareadas)),
+          estimativa_lb = suppressWarnings(as.numeric(distancia_centroide_hellinger)),
+          ci95_lower_lb = suppressWarnings(as.numeric(ci95_lower_dist_hellinger)),
+          ci95_upper_lb = suppressWarnings(as.numeric(ci95_upper_dist_hellinger)),
+          q_ajustado_lb = suppressWarnings(as.numeric(p_ajustado_fdr_composicao_linha_base)),
+          classe_linha_base = as.character(classe_mudanca_composicao_linha_base)
+        )], by = c("form_veg", "ano_2"))
+        comp <- merge(comp, comp_lb, by = c("form_veg", "ano_2"), all.x = TRUE, sort = FALSE)
+      }
+      for (cc in c(
+        "anos_linha_base", "n_UA_pareadas_lb", "estimativa_lb",
+        "ci95_lower_lb", "ci95_upper_lb", "q_ajustado_lb",
+        "classe_linha_base"
+      )) if (!cc %in% names(comp)) comp[, (cc) := NA]
+      composicao <- comp[, .(
+        tipo_resultado = "composicao_conjunta",
+        grupo_grafico = grupo,
+        tipo_metrica = metrica,
+        form_veg,
+        categoria = "__composicao_conjunta__",
+        categoria_label = "Composição conjunta",
+        ano_1,
+        ano_2,
+        n_UA_pareadas,
+        estimativa,
+        ci95_lower,
+        ci95_upper,
+        q_ajustado,
+        classe_periodo,
+        anos_linha_base,
+        n_UA_pareadas_lb,
+        estimativa_lb,
+        ci95_lower_lb,
+        ci95_upper_lb,
+        q_ajustado_lb,
+        classe_linha_base,
+        unidade_efeito = "distancia_Hellinger"
+      )]
+    }
+    dados_plot <- data.table::rbindlist(
+      list(categorias, composicao),
+      fill = TRUE,
+      use.names = TRUE
+    )
+    if (!nrow(dados_plot)) return(invisible(NULL))
+    dados_plot[, `:=`(
+      Formação = monitora_relatorio_rotulo_formacao(form_veg, TRUE),
+      Periodo = paste0(ano_1, "-", ano_2),
+      Indicador = as.character(categoria_label),
+      classe_periodo_label = classe_label(classe_periodo),
+      classe_linha_base_label = classe_label(classe_linha_base)
+    )]
+    dados_plot[is.na(classe_linha_base) | !nzchar(classe_linha_base),
+      classe_linha_base_label := "Linha de base indisponível"]
+    dados_plot[, classe_linha_base_curta := classe_curta(classe_linha_base)]
+    dados_plot[is.na(classe_linha_base) | !nzchar(classe_linha_base),
+      classe_linha_base_curta := "IND"]
+    dados_plot[, rotulo_celula := data.table::fifelse(
+      tipo_resultado == "categoria",
+      paste0(
+        fmt_sinal(estimativa, 1L), " p.p. [",
+        monitora_relatorios_analiticos_fmt_num(ci95_lower, 1L), ";",
+        monitora_relatorios_analiticos_fmt_num(ci95_upper, 1L), "]\n",
+        "n=", n_UA_pareadas, "; ", fmt_q(q_ajustado), "\n",
+        "LB ", classe_linha_base_curta,
+        data.table::fifelse(
+          is.finite(estimativa_lb),
+          paste0(" ", fmt_sinal(estimativa_lb, 1L), "; ", fmt_q(q_ajustado_lb)),
+          ""
+        )
+      ),
+      paste0(
+        "H=", monitora_relatorios_analiticos_fmt_num(estimativa, 3L), " [",
+        monitora_relatorios_analiticos_fmt_num(ci95_lower, 3L), ";",
+        monitora_relatorios_analiticos_fmt_num(ci95_upper, 3L), "]\n",
+        "n=", n_UA_pareadas, "; ", fmt_q(q_ajustado), "\n",
+        "LB ", classe_linha_base_curta,
+        data.table::fifelse(
+          is.finite(estimativa_lb),
+          paste0(" H=", monitora_relatorios_analiticos_fmt_num(estimativa_lb, 3L), "; ", fmt_q(q_ajustado_lb)),
+          ""
+        )
+      )
+    )]
+    ordem_periodo <- unique(dados_plot[order((ano_2 - ano_1) > 1L, ano_2, ano_1)]$Periodo)
+    ordem_indicador <- unique(c(
+      sort(dados_plot[tipo_resultado == "categoria"]$Indicador),
+      dados_plot[tipo_resultado == "composicao_conjunta"]$Indicador
+    ))
+    dados_plot[, `:=`(
+      Periodo = factor(Periodo, levels = ordem_periodo),
+      Indicador = factor(Indicador, levels = rev(ordem_indicador)),
+      classe_periodo_label = factor(
+        classe_periodo_label,
+        levels = c(
+          "Aumento", "Redução", "Estabilidade/equivalência",
+          "Mudança na composição", "Estabilidade composicional",
+          "Inconclusivo", "Pares insuficientes"
+        )
+      )
+    )]
+    paleta <- c(
+      "Aumento" = "#2B8CBE",
+      "Redução" = "#D95F0E",
+      "Estabilidade/equivalência" = "#66A61E",
+      "Mudança na composição" = "#756BB1",
+      "Estabilidade composicional" = "#1B9E77",
+      "Inconclusivo" = "#BDBDBD",
+      "Pares insuficientes" = "#F0F0F0"
+    )
+    largura_titulo <- if (identical(grupo, "formas_vida_secas_mortas")) 48L else 82L
+    arquivo <- file.path(dir_figuras, paste0("evidencia_estatistica_", id, ".png"))
+    p <- ggplot2::ggplot(
+      dados_plot,
+      ggplot2::aes(x = Periodo, y = Indicador, fill = classe_periodo_label)
+    ) +
+      ggplot2::geom_tile(colour = "white", linewidth = 0.65) +
+      ggplot2::geom_text(
+        ggplot2::aes(label = rotulo_celula),
+        size = 2.45,
+        lineheight = 0.90,
+        colour = "#17231E"
+      ) +
+      ggplot2::facet_wrap(~Formação, ncol = 1L, scales = "free_y") +
+      ggplot2::scale_fill_manual(
+        values = paleta,
+        drop = TRUE,
+        na.value = "#F0F0F0"
+      ) +
+      ggplot2::labs(
+        x = "Período comparado",
+        y = NULL,
+        fill = "Comparação com\na medição anterior",
+        title = paste(strwrap(titulo, width = largura_titulo), collapse = "\n"),
+        subtitle = paste(strwrap(paste0(
+          "Cada célula: efeito [IC95%], n e q (FDR-BH). LB = linha de base acumulada; ",
+          "AUM/RED/EST/INC/PAR = aumento/redução/estabilidade/inconclusivo/pares insuficientes; ",
+          "MUD/EST-C = mudança/estabilidade da composição; H = distância de Hellinger."
+        ), width = 88L), collapse = "\n"),
+        caption = paste(strwrap(paste0(
+          "Mudança direcional: q <= ", monitora_relatorios_analiticos_fmt_num(cfg_num("alpha", 0.05), 2L),
+          ", IC95% sem cruzar zero e efeito mínimo de ",
+          monitora_relatorios_analiticos_fmt_num(cfg_num("efeito_minimo_pp", 2), 1L),
+          " p.p. Estabilidade: IC95% contido em +/- ",
+          monitora_relatorios_analiticos_fmt_num(cfg_num("margem_equivalencia_pp", 5), 1L),
+          " p.p. Valores completos de linha de base permanecem na auditoria. Associação temporal não implica causalidade."
+        ), width = 105L), collapse = "\n")
+      ) +
+      ggplot2::theme_minimal(base_size = 10.5) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold", colour = "#174B3B"),
+        plot.subtitle = ggplot2::element_text(colour = "#52645B"),
+        plot.title.position = "plot",
+        plot.caption.position = "plot",
+        panel.grid = ggplot2::element_blank(),
+        axis.text.x = ggplot2::element_text(face = "bold"),
+        axis.text.y = ggplot2::element_text(size = 8.4),
+        legend.position = "bottom",
+        legend.box = "vertical",
+        strip.text = ggplot2::element_text(face = "bold"),
+        plot.caption = ggplot2::element_text(size = 7.8, colour = "#52645B", hjust = 0)
+      ) +
+      ggplot2::guides(fill = ggplot2::guide_legend(ncol = 3L, byrow = TRUE))
+    altura <- max(
+      5.8,
+      0.60 * max(dados_plot[, data.table::uniqueN(Indicador), by = Formação]$V1) + 3.2
+    )
+    ggplot2::ggsave(
+      arquivo,
+      p,
+      width = 9.4,
+      height = altura,
+      dpi = 240,
+      bg = "white",
+      limitsize = FALSE
+    )
+    audit <- data.table::copy(dados_plot)
+    audit[, `:=`(
+      plot_id = paste0("inferencias_", id),
+      fonte_periodo = "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
+      fonte_linha_base = "05_estatisticas/estatisticas_mudanca_linha_base.csv",
+      fonte_composicao_periodo = "05_estatisticas/estatisticas_composicao_geral_ano_a_ano.csv",
+      fonte_composicao_linha_base = "05_estatisticas/estatisticas_composicao_linha_base.csv",
+      decisao_inclusao = "todos_os_resultados_disponiveis_do_tema_e_metrica",
+      associacao_nao_causal = TRUE
+    )]
+    audit[, c("Formação", "Periodo", "Indicador", "rotulo_celula") := NULL]
+    if (anyDuplicated(audit[, .(
+      plot_id, tipo_resultado, form_veg, categoria, ano_1, ano_2
+    )])) {
+      stop("Gate estatístico: comparação duplicada no painel ", id, ".", call. = FALSE)
+    }
+    auditoria_estatistica[[length(auditoria_estatistica) + 1L]] <<- audit[]
+    adicionar(
+      paste0("inferencias_", id),
+      grupo,
+      arquivo,
+      "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
+      nrow(dados_plot),
+      file.exists(arquivo),
+      metrica = metrica,
+      estatistica_incorporada = TRUE,
+      fonte_estatistica = "05_estatisticas/estatistica_pareada_periodo_editorial.csv; 05_estatisticas/estatisticas_mudanca_linha_base.csv; 05_estatisticas/estatisticas_composicao_geral_ano_a_ano.csv; 05_estatisticas/estatisticas_composicao_linha_base.csv",
+      n_resultados_estatisticos = nrow(dados_plot),
+      classes_incorporadas = paste(
+        sort(unique(as.character(dados_plot$classe_periodo_label))),
+        collapse = "; "
+      )
+    )
+    invisible(NULL)
+  }
+
+  temas_inferenciais <- data.table::data.table(
+    grupo = rep(c(
+      "categorias_gerais", "herbaceas_lenhosas", "formas_vida_nativas",
+      "formas_vida_exoticas", "formas_vida_secas_mortas", "material_botanico"
+    ), each = 2L),
+    metrica = rep(c("cobertura", "proporcao_relativa"), 6L)
+  )
+  temas_inferenciais[, id := paste0(grupo, "_", metrica)]
+  temas_inferenciais[, titulo := paste0(
+    "Evidência temporal - ",
+    monitora_relatorios_analiticos_rotulo_grupo(grupo),
+    " - ",
+    capitalizar(monitora_relatorio_rotulo_metrica(metrica))
+  )]
+  for (ii in seq_len(nrow(temas_inferenciais))) {
+    painel_inferencial(
+      temas_inferenciais$grupo[[ii]],
+      temas_inferenciais$metrica[[ii]],
+      temas_inferenciais$id[[ii]],
+      temas_inferenciais$titulo[[ii]]
+    )
+  }
+
   if (!length(registros)) return(data.table::data.table())
-  data.table::rbindlist(registros, fill = TRUE, use.names = TRUE)
+  indice <- data.table::rbindlist(registros, fill = TRUE, use.names = TRUE)
+  audit <- if (length(auditoria_estatistica)) {
+    data.table::rbindlist(auditoria_estatistica, fill = TRUE, use.names = TRUE)
+  } else {
+    data.table::data.table()
+  }
+  esperados <- indice[
+    grepl("^inferencias_", id) & disponivel == TRUE,
+    sum(n_resultados_estatisticos, na.rm = TRUE)
+  ]
+  if (nrow(audit) != esperados) {
+    stop(
+      "Gate estatístico: o número de resultados auditados (", nrow(audit),
+      ") difere do número incorporado aos painéis (", esperados, ").",
+      call. = FALSE
+    )
+  }
+  attr(indice, "auditoria_estatistica") <- audit[]
+  attr(indice, "auditoria_simbolos_series") <- if (length(auditoria_simbolos_series)) {
+    data.table::rbindlist(auditoria_simbolos_series, fill = TRUE, use.names = TRUE)
+  } else data.table::data.table()
+  indice[]
 }
 
 monitora_relatorios_analiticos_resolver_candidato_navegador <- function(valor) {
@@ -69584,6 +71885,207 @@ monitora_relatorios_analiticos_referencia_docx_materializar <- function(destino)
   invisible(destino)
 }
 
+monitora_relatorios_analiticos_coluna_contextual_mesclavel <- function(x) {
+  y <- iconv(trimws(as.character(x)), from = "UTF-8", to = "ASCII//TRANSLIT")
+  y <- gsub("[^a-z0-9]+", " ", tolower(y))
+  y <- trimws(gsub("[[:space:]]+", " ", y))
+  y %in% c(
+    "uc", "ano", "metrica", "grupo", "referencia", "prioridade",
+    "natureza", "natureza da informacao", "componente", "contexto",
+    "classe de continuidade"
+  )
+}
+
+monitora_relatorios_analiticos_html_mesclar_contexto <- function(arquivo_html) {
+  if (!file.exists(arquivo_html) || !requireNamespace("xml2", quietly = TRUE)) return(invisible(FALSE))
+  doc <- xml2::read_html(arquivo_html, encoding = "UTF-8")
+  tabelas <- xml2::xml_find_all(doc, ".//table")
+  for (tab in tabelas) {
+    cab <- trimws(xml2::xml_text(xml2::xml_find_all(tab, "./thead/tr[1]/th")))
+    linhas <- xml2::xml_find_all(tab, "./tbody/tr")
+    if (!length(cab) || length(linhas) < 2L) next
+    colunas <- which(monitora_relatorios_analiticos_coluna_contextual_mesclavel(cab))
+    if (!length(colunas)) next
+    for (jj in rev(colunas)) {
+      celulas <- lapply(linhas, function(linha) xml2::xml_find_all(linha, "./td"))
+      valores <- vapply(celulas, function(cels) {
+        if (length(cels) < jj) "" else trimws(xml2::xml_text(cels[[jj]]))
+      }, character(1L))
+      ini <- 1L
+      while (ini <= length(valores)) {
+        fim <- ini
+        while (fim < length(valores) && nzchar(valores[[ini]]) && identical(valores[[fim + 1L]], valores[[ini]])) fim <- fim + 1L
+        if (fim > ini && nzchar(valores[[ini]])) {
+          xml2::xml_set_attr(celulas[[ini]][[jj]], "rowspan", as.character(fim - ini + 1L))
+          xml2::xml_set_attr(celulas[[ini]][[jj]], "class", "monitora-contexto-mesclado")
+          for (rr in seq.int(ini + 1L, fim)) xml2::xml_remove(celulas[[rr]][[jj]])
+        }
+        ini <- fim + 1L
+      }
+    }
+  }
+  xml2::write_html(doc, arquivo_html, options = c("format", "no_declaration"))
+  invisible(TRUE)
+}
+
+monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_docx) {
+  if (!file.exists(arquivo_docx) || is.na(file.info(arquivo_docx)$size) || file.info(arquivo_docx)$size <= 0) {
+    stop("DOCX ausente ou vazio antes da adequação de paginação.", call. = FALSE)
+  }
+  if (!requireNamespace("xml2", quietly = TRUE) || !requireNamespace("zip", quietly = TRUE)) {
+    stop("A adequação de paginação do DOCX exige os pacotes 'xml2' e 'zip'.", call. = FALSE)
+  }
+
+  dir_docx <- tempfile(pattern = ".monitora_docx_tabelas_")
+  dir.create(dir_docx, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dir_docx, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(arquivo_docx, exdir = dir_docx)
+  documento_xml <- file.path(dir_docx, "word", "document.xml")
+  if (!file.exists(documento_xml)) stop("DOCX sem word/document.xml.", call. = FALSE)
+
+  doc <- xml2::read_xml(documento_xml)
+  ns <- xml2::xml_ns(doc)
+  uri_w <- "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  linhas <- xml2::xml_find_all(doc, ".//w:tr", ns)
+  if (length(linhas)) {
+    for (linha in linhas) {
+      propriedades <- xml2::xml_find_first(linha, "./w:trPr", ns)
+      if (inherits(propriedades, "xml_missing")) {
+        primeiro_filho <- xml2::xml_child(linha, 1L)
+        propriedades <- xml2::xml_add_sibling(
+          primeiro_filho,
+          xml2::read_xml(paste0('<w:trPr xmlns:w="', uri_w, '"/>')),
+          .where = "before"
+        )
+      }
+      if (!length(xml2::xml_find_all(propriedades, "./w:cantSplit", ns))) {
+        xml2::xml_add_child(
+          propriedades,
+          xml2::read_xml(paste0('<w:cantSplit xmlns:w="', uri_w, '"/>'))
+        )
+      }
+    }
+  }
+
+  ### Mescla verticalmente somente colunas contextuais, nunca formação
+  ### vegetacional nem medidas numéricas. A operação é restrita à camada de
+  ### apresentação; CSVs e demais produtos tabulares permanecem inalterados.
+  tabelas <- xml2::xml_find_all(doc, ".//w:tbl", ns)
+  for (tab in tabelas) {
+    linhas_tab <- xml2::xml_find_all(tab, "./w:tr", ns)
+    if (length(linhas_tab) < 3L) next
+    cab_trpr <- xml2::xml_find_first(linhas_tab[[1L]], "./w:trPr", ns)
+    if (inherits(cab_trpr, "xml_missing")) {
+      primeiro <- xml2::xml_child(linhas_tab[[1L]], 1L)
+      cab_trpr <- xml2::xml_add_sibling(
+        primeiro,
+        xml2::read_xml(paste0('<w:trPr xmlns:w="', uri_w, '"/>')),
+        .where = "before"
+      )
+    }
+    if (!length(xml2::xml_find_all(cab_trpr, "./w:tblHeader", ns))) {
+      xml2::xml_add_child(cab_trpr, xml2::read_xml(paste0('<w:tblHeader xmlns:w="', uri_w, '"/>')))
+    }
+    cab_cells <- xml2::xml_find_all(linhas_tab[[1L]], "./w:tc", ns)
+    cab <- trimws(vapply(cab_cells, xml2::xml_text, character(1L)))
+    colunas <- which(monitora_relatorios_analiticos_coluna_contextual_mesclavel(cab))
+    if (!length(colunas)) next
+    dados_linhas <- linhas_tab[-1L]
+    for (jj in rev(colunas)) {
+      celulas <- lapply(dados_linhas, function(linha) xml2::xml_find_all(linha, "./w:tc", ns))
+      valores <- vapply(celulas, function(cels) {
+        if (length(cels) < jj) "" else trimws(xml2::xml_text(cels[[jj]]))
+      }, character(1L))
+      ini <- 1L
+      while (ini <= length(valores)) {
+        fim <- ini
+        while (fim < length(valores) && nzchar(valores[[ini]]) && identical(valores[[fim + 1L]], valores[[ini]])) fim <- fim + 1L
+        if (fim > ini && nzchar(valores[[ini]])) {
+          for (rr in seq.int(ini, fim)) {
+            cel <- celulas[[rr]][[jj]]
+            tcpr <- xml2::xml_find_first(cel, "./w:tcPr", ns)
+            if (inherits(tcpr, "xml_missing")) {
+              primeiro <- xml2::xml_child(cel, 1L)
+              tcpr <- xml2::xml_add_sibling(
+                primeiro,
+                xml2::read_xml(paste0('<w:tcPr xmlns:w="', uri_w, '"/>')),
+                .where = "before"
+              )
+            }
+            antigos <- xml2::xml_find_all(tcpr, "./w:vMerge", ns)
+            if (length(antigos)) xml2::xml_remove(antigos)
+            vm <- if (rr == ini) {
+              paste0('<w:vMerge xmlns:w="', uri_w, '" w:val="restart"/>')
+            } else {
+              paste0('<w:vMerge xmlns:w="', uri_w, '"/>')
+            }
+            xml2::xml_add_child(tcpr, xml2::read_xml(vm))
+            if (rr > ini) {
+              textos <- xml2::xml_find_all(cel, ".//w:t", ns)
+              if (length(textos)) xml2::xml_set_text(textos, "")
+            }
+          }
+        }
+        ini <- fim + 1L
+      }
+    }
+  }
+
+  ### Justificação tipográfica direta nos parágrafos de corpo, inclusive listas
+  ### e caixas textuais. Títulos, legendas, imagens e tabelas mantêm o alinhamento
+  ### editorial próprio do modelo DOCX.
+  paragrafos <- xml2::xml_find_all(doc, ".//w:body//w:p[not(ancestor::w:tbl)]", ns)
+  for (par in paragrafos) {
+    texto <- trimws(xml2::xml_text(par))
+    if (!nzchar(texto) || length(xml2::xml_find_all(par, ".//w:drawing|.//w:pict", ns))) next
+    estilo_no <- xml2::xml_find_first(par, "./w:pPr/w:pStyle", ns)
+    estilo <- if (inherits(estilo_no, "xml_missing")) "" else as.character(xml2::xml_attr(estilo_no, "val"))
+    if (is.na(estilo) || !nzchar(estilo)) {
+      attrs_estilo <- if (inherits(estilo_no, "xml_missing")) character(0) else xml2::xml_attrs(estilo_no)
+      pos_val <- grep("val$", names(attrs_estilo), ignore.case = TRUE, perl = TRUE)[1L]
+      estilo <- if (!is.na(pos_val)) as.character(attrs_estilo[[pos_val]]) else ""
+    }
+    ppr <- xml2::xml_find_first(par, "./w:pPr", ns)
+    if (inherits(ppr, "xml_missing")) {
+      primeiro <- xml2::xml_child(par, 1L)
+      ppr <- xml2::xml_add_sibling(
+        primeiro,
+        xml2::read_xml(paste0('<w:pPr xmlns:w="', uri_w, '"/>')),
+        .where = "before"
+      )
+    }
+    if (grepl("heading", estilo, ignore.case = TRUE, perl = TRUE)) {
+      if (!length(xml2::xml_find_all(ppr, "./w:keepNext", ns))) {
+        xml2::xml_add_child(ppr, xml2::read_xml(paste0('<w:keepNext xmlns:w="', uri_w, '"/>')))
+      }
+      next
+    }
+    if (grepl("title|subtitle|author|date|caption|toc|image", estilo, ignore.case = TRUE, perl = TRUE)) next
+    jc <- xml2::xml_find_first(ppr, "./w:jc", ns)
+    if (inherits(jc, "xml_missing")) {
+      jc <- xml2::xml_add_child(ppr, xml2::read_xml(paste0('<w:jc xmlns:w="', uri_w, '" w:val="both"/>')))
+    } else {
+      xml2::xml_set_attr(jc, "w:val", "both")
+    }
+  }
+  xml2::write_xml(doc, documento_xml, options = "format")
+
+  arquivo_ajustado <- tempfile(pattern = ".monitora_docx_paginado_", fileext = ".docx")
+  on.exit(if (file.exists(arquivo_ajustado)) unlink(arquivo_ajustado, force = TRUE), add = TRUE)
+  arquivos_docx <- list.files(dir_docx, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  zip::zipr(
+    arquivo_ajustado,
+    arquivos_docx,
+    root = dir_docx,
+    include_directories = FALSE,
+    mode = "mirror"
+  )
+  if (!file.copy(arquivo_ajustado, arquivo_docx, overwrite = TRUE)) {
+    stop("Falha ao aplicar a paginação íntegra das tabelas no DOCX.", call. = FALSE)
+  }
+  invisible(arquivo_docx)
+}
+
 monitora_relatorios_analiticos_conteudo_docx <- function(conteudo) {
   linhas <- unlist(lapply(as.character(conteudo), function(x) {
     if (!nzchar(x)) return("")
@@ -69774,22 +72276,23 @@ monitora_relatorios_analiticos_conteudo_docx <- function(conteudo) {
       return(saida)
     }
 
-    if (all(c("Formação", "Grupo", "Métrica", "Ano", "Nº de UAs pareadas", "Distância de Hellinger", "Bray-Curtis médio", "Valor de p ajustado", "Interpretação") %in% cab)) {
-      saida <- character(0)
-      for (ii in seq_len(nrow(dados))) {
-        d <- as.list(dados[ii, , drop = TRUE])
-        saida <- c(
-          saida,
-          "",
-          paste0("**", d[["Formação"]], " — ", d[["Grupo"]], " — ", d[["Métrica"]], " (", d[["Ano"]], ")**"),
-          "",
-          paste0("- **UAs pareadas:** ", d[["Nº de UAs pareadas"]], "."),
-          paste0("- **Distâncias:** Hellinger = ", d[["Distância de Hellinger"]], "; Bray-Curtis médio = ", d[["Bray-Curtis médio"]], "."),
-          paste0("- **Resultado:** valor de p ajustado = ", d[["Valor de p ajustado"]], "; ", d[["Interpretação"]], "."),
-          ""
-        )
-      }
-      return(saida)
+    if (all(c("Formação", "Grupo", "Métrica", "Referência", "Ano", "Nº de UAs pareadas", "Distância de Hellinger", "Bray-Curtis médio", "Valor de p ajustado", "Interpretação") %in% cab)) {
+      comparacao <- paste0(
+        dados[, "Formação"], " — ", dados[, "Grupo"], " — ",
+        dados[, "Métrica"], " — ", dados[, "Referência"],
+        " (", dados[, "Ano"], ")"
+      )
+      resultado <- paste0(
+        "n = ", dados[, "Nº de UAs pareadas"],
+        "; Hellinger = ", dados[, "Distância de Hellinger"],
+        "; Bray-Curtis médio = ", dados[, "Bray-Curtis médio"],
+        "; q = ", dados[, "Valor de p ajustado"],
+        "; ", dados[, "Interpretação"], "."
+      )
+      return(c("", tabela_markdown(
+        c("Comparação", "Resultado estatístico"),
+        cbind(comparacao, resultado)
+      ), ""))
     }
     bloco
   }
@@ -69826,7 +72329,11 @@ monitora_relatorios_analiticos_conteudo_docx <- function(conteudo) {
         linha,
         perl = TRUE
       )
-      return(paste0("![", legenda, "](", origem, "){width=6.93in}"))
+      ### Linhas vazias são deliberadas: sem elas, figuras consecutivas são
+      ### convertidas pelo Pandoc em um único parágrafo OOXML. Esse agrupamento
+      ### impede o controle de quebra de página e pode deixar o título da seção
+      ### órfão, mesmo com keepNext ativo.
+      return(c("", paste0("![", legenda, "](", origem, "){width=6.93in}"), ""))
     }
     if (identical(linha, '<div class="page-break"></div>')) {
       return(paste0(
@@ -69992,29 +72499,32 @@ monitora_relatorios_analiticos_renderizar <- function(
         monitora_relatorios_analiticos_referencia_docx_materializar(
           referencia_docx
         )
-        antigo <- getwd()
-        on.exit(setwd(antigo), add = TRUE)
-        setwd(dir_relatorio)
-        rmarkdown::render(
-          input = basename(rmd_docx),
-          output_format = rmarkdown::word_document(
-            toc = FALSE,
-            number_sections = FALSE,
-            fig_width = 6.93,
-            fig_height = 4.5,
-            reference_docx = normalizePath(
-              referencia_docx,
-              winslash = "/",
-              mustWork = TRUE
+        local({
+          antigo <- getwd()
+          on.exit(setwd(antigo), add = TRUE)
+          setwd(dir_relatorio)
+          rmarkdown::render(
+            input = basename(rmd_docx),
+            output_format = rmarkdown::word_document(
+              toc = FALSE,
+              number_sections = FALSE,
+              fig_width = 6.93,
+              fig_height = 4.5,
+              reference_docx = normalizePath(
+                referencia_docx,
+                winslash = "/",
+                mustWork = TRUE
+              ),
+              pandoc_args = "--wrap=none"
             ),
-            pandoc_args = "--wrap=none"
-          ),
-          output_file = basename(docx),
-          output_dir = dir_relatorio,
-          quiet = TRUE,
-          clean = TRUE,
-          envir = new.env(parent = globalenv())
-        )
+            output_file = basename(docx),
+            output_dir = dir_relatorio,
+            quiet = TRUE,
+            clean = TRUE,
+            envir = new.env(parent = globalenv())
+          )
+        })
+        monitora_relatorios_analiticos_docx_preservar_linhas_tabela(docx)
       }, error = function(e) {
         registrar_erro("docx", "renderizacao_docx", conditionMessage(e))
       })
@@ -70032,22 +72542,25 @@ monitora_relatorios_analiticos_renderizar <- function(
       )
     } else {
       tryCatch({
-        antigo <- getwd()
-        on.exit(setwd(antigo), add = TRUE)
-        setwd(dir_relatorio)
-        rmarkdown::render(
-          input = basename(rmd),
-          output_format = pagedown::html_paged(
-            css = c("default-fonts", basename(css_path)),
-            self_contained = TRUE,
-            toc = FALSE,
-            number_sections = FALSE
-          ),
-          output_file = basename(html),
-          output_dir = dir_relatorio,
-          quiet = TRUE,
-          envir = new.env(parent = globalenv())
-        )
+        local({
+          antigo <- getwd()
+          on.exit(setwd(antigo), add = TRUE)
+          setwd(dir_relatorio)
+          rmarkdown::render(
+            input = basename(rmd),
+            output_format = pagedown::html_paged(
+              css = c("default-fonts", basename(css_path)),
+              self_contained = TRUE,
+              toc = FALSE,
+              number_sections = FALSE
+            ),
+            output_file = basename(html),
+            output_dir = dir_relatorio,
+            quiet = TRUE,
+            envir = new.env(parent = globalenv())
+          )
+        })
+        monitora_relatorios_analiticos_html_mesclar_contexto(html)
       }, error = function(e) {
         registrar_erro("html", "renderizacao_html", conditionMessage(e))
       })
@@ -70171,6 +72684,7 @@ monitora_relatorios_analiticos_gerar <- function(
   stat,
   mudanca_periodo,
   mudanca_linha_base,
+  composicao_periodo,
   composicao_linha_base,
   config_stat,
   cob_categ,
@@ -70180,7 +72694,16 @@ monitora_relatorios_analiticos_gerar <- function(
   formatos = c("rmd", "md", "html", "docx", "pdf"),
   mapa_satelite = FALSE,
   fonte_mapa_satelite = "SENTINEL2_PUBLICO",
-  status_validacao = "CONSULTAR AUDITORIAS"
+  status_validacao = "CONSULTAR AUDITORIAS",
+  prop_herb_lenh = NULL,
+  cob_herb_lenh = NULL,
+  prop_categ = NULL,
+  prop_nat = NULL,
+  prop_exot = NULL,
+  prop_seca = NULL,
+  cob_seca = NULL,
+  prop_material = NULL,
+  cob_material = NULL
 ) {
   inicio <- proc.time()[["elapsed"]]
   formatos <- intersect(
@@ -70359,6 +72882,22 @@ monitora_relatorios_analiticos_gerar <- function(
   cob_categ <- monitora_relatorios_analiticos_dt(cob_categ)
   cob_nat <- monitora_relatorios_analiticos_dt(cob_nat)
   cob_exot <- monitora_relatorios_analiticos_dt(cob_exot)
+  prop_herb_lenh <- monitora_relatorios_analiticos_dt(prop_herb_lenh)
+  cob_herb_lenh <- monitora_relatorios_analiticos_dt(cob_herb_lenh)
+  prop_categ <- monitora_relatorios_analiticos_dt(prop_categ)
+  prop_nat <- monitora_relatorios_analiticos_dt(prop_nat)
+  prop_exot <- monitora_relatorios_analiticos_dt(prop_exot)
+  prop_seca <- monitora_relatorios_analiticos_dt(prop_seca)
+  cob_seca <- monitora_relatorios_analiticos_dt(cob_seca)
+  prop_material <- monitora_relatorios_analiticos_dt(prop_material)
+  cob_material <- monitora_relatorios_analiticos_dt(cob_material)
+  series_anuais_ua <- monitora_relatorios_analiticos_series_anuais_ua(stat)
+  data.table::fwrite(
+    series_anuais_ua,
+    file.path(dir_relatorio, "series_anuais_relatorios_por_ua.csv"),
+    bom = TRUE,
+    na = ""
+  )
   estado_atual <- data.table::data.table()
   if (nrow(cob_categ) && all(c(
     "ANO", "form_veg", "categoria", "categoria_label",
@@ -70394,10 +72933,182 @@ monitora_relatorios_analiticos_gerar <- function(
     )]
   }
 
+  ### Estado atual por núcleo ecológico, sempre colocando lado a lado as duas
+  ### métricas. Cobertura responde à frequência absoluta de contatos por UA;
+  ### proporção relativa descreve o balanço composicional e depende do
+  ### denominador. Nenhuma das duas substitui a outra.
+  tabela_estado_nucleo <- function(cobertura, proporcao, rotulo_indicador = "Indicador", max_por_formacao = 8L) {
+    preparar <- function(x, metrica) {
+      x <- monitora_relatorios_analiticos_dt(x)
+      col_val <- if (metrica == "cobertura") "cobertura_percent" else "prop_percent"
+      if (!nrow(x) || !all(c("ANO", "form_veg", "categoria", "categoria_label", col_val) %in% names(x))) return(data.table::data.table())
+      x[, `:=`(
+        ANO = suppressWarnings(as.integer(as.character(ANO))),
+        valor = suppressWarnings(as.numeric(get(col_val))),
+        Formação = monitora_relatorio_rotulo_formacao(form_veg, TRUE),
+        Indicador = monitora_relatorios_analiticos_rotulo_categoria(categoria, categoria_label)
+      )]
+      x <- x[is.finite(ANO) & is.finite(valor) & !is.na(Formação) & nzchar(Formação) & !is.na(Indicador) & nzchar(Indicador)]
+      if (!nrow(x)) return(data.table::data.table())
+      ano_recente <- max(x$ANO)
+      x <- x[ANO == ano_recente]
+      x[, .(Formação, Indicador, valor, `Nº de UAs` = if ("n_UA" %in% names(x)) suppressWarnings(as.integer(n_UA)) else NA_integer_)]
+    }
+    a <- preparar(cobertura, "cobertura")
+    b <- preparar(proporcao, "proporcao_relativa")
+    if (!nrow(a) && !nrow(b)) return(data.table::data.table())
+    if (nrow(a)) data.table::setnames(a, "valor", "Cobertura (%)")
+    if (nrow(b)) data.table::setnames(b, c("valor", "Nº de UAs"), c("Proporção relativa (%)", "Nº de UAs proporção"))
+    ch <- c("Formação", "Indicador")
+    out <- merge(a, b, by = ch, all = TRUE, sort = FALSE)
+    if (!("Cobertura (%)" %in% names(out))) out[, `Cobertura (%)` := NA_real_]
+    if (!("Proporção relativa (%)" %in% names(out))) out[, `Proporção relativa (%)` := NA_real_]
+    if (!("Nº de UAs" %in% names(out))) out[, `Nº de UAs` := NA_integer_]
+    if ("Nº de UAs proporção" %in% names(out)) {
+      out[is.na(`Nº de UAs`), `Nº de UAs` := `Nº de UAs proporção`]
+      out[, `Nº de UAs proporção` := NULL]
+    }
+    out[, relevancia_ordem := data.table::fifelse(is.finite(`Cobertura (%)`), `Cobertura (%)`, data.table::fifelse(is.finite(`Proporção relativa (%)`), `Proporção relativa (%)`, -Inf))]
+    data.table::setorder(out, Formação, -relevancia_ordem, Indicador)
+    if (is.finite(max_por_formacao) && max_por_formacao > 0L) out <- out[, head(.SD, as.integer(max_por_formacao)), by = Formação]
+    out[, `:=`(
+      `Cobertura (%)` = monitora_relatorios_analiticos_fmt_num(`Cobertura (%)`, 1L),
+      `Proporção relativa (%)` = monitora_relatorios_analiticos_fmt_num(`Proporção relativa (%)`, 1L),
+      relevancia_ordem = NULL
+    )]
+    data.table::setnames(out, "Indicador", rotulo_indicador)
+    out[]
+  }
+
+  estado_herb_lenh <- tabela_estado_nucleo(cob_herb_lenh, prop_herb_lenh, "Componente estrutural", 2L)
+  estado_nativas <- tabela_estado_nucleo(cob_nat, prop_nat, "Forma de vida nativa", 6L)
+  estado_exoticas <- tabela_estado_nucleo(cob_exot, prop_exot, "Forma de vida exótica", 8L)
+  estado_seca <- tabela_estado_nucleo(cob_seca, prop_seca, "Forma de vida seca ou morta", 8L)
+  estado_material <- tabela_estado_nucleo(cob_material, prop_material, "Material botânico", 8L)
+  estados_nucleo <- list(
+    estrutura_viva = estado_herb_lenh,
+    formas_nativas = estado_nativas,
+    formas_exoticas = estado_exoticas,
+    formas_secas_mortas = estado_seca,
+    material_botanico = estado_material
+  )
+  for (nm_estado in names(estados_nucleo)) {
+    data.table::fwrite(estados_nucleo[[nm_estado]], file.path(dir_relatorio, paste0("estado_atual_", nm_estado, ".csv")), bom = TRUE, na = "")
+  }
+
+  matriz_interpretacao <- data.table::data.table(
+    Indicador = c(
+      "Herbáceas × lenhosas vivas", "Categorias gerais", "Formas de vida nativas",
+      "Formas de vida exóticas", "Formas secas ou mortas", "Material botânico em decomposição",
+      "Solo nu/rochas"
+    ),
+    `Indicação ou hipótese compatível` = c(
+      "Mudança do balanço estrutural; aumento lenhoso com redução herbácea em UAs repetidas é compatível com adensamento lenhoso.",
+      "Reorganização da cobertura e do balanço entre vegetação viva, seca/morta, material botânico e solo/rochas.",
+      "Mudança funcional dentro da vegetação nativa; identifica quais formas mais contribuem para a trajetória observada.",
+      "Detecção, persistência ou expansão espacial potencial de exóticas; presença não equivale automaticamente a invasão.",
+      "Pulso fenológico, déficit hídrico, efeito de fogo, herbivoria ou outro dano são hipóteses alternativas.",
+      "Mudança em deposição/decomposição; pode refletir produtividade, fenologia, fogo, inundação ou manejo.",
+      "Aumento de contatos com solo ou rochas; o protocolo não permite separar ambos nem diagnosticar desertificação isoladamente."
+    ),
+    `Evidência necessária para testar` = c(
+      "UAs pareadas; contribuição das formas nativas e exóticas; histórico de fogo, clima e manejo; estrutura por classes.",
+      "Cobertura e proporção relativa juntas, esforço comparável, UAs pareadas e distribuição espacial.",
+      "Contribuição por forma, persistência, fenologia, identificação taxonômica e covariáveis ambientais.",
+      "Identificação taxonômica, ocupação de UAs, primeira detecção, persistência, novas UAs e histórico de controle.",
+      "Data e sazonalidade da campanha, precipitação, severidade e data do fogo, rebrota e repetição temporal.",
+      "Separação dos subtipos, sazonalidade, umidade, histórico de fogo e medida independente de carga de combustível.",
+      "Verificação de campo, erosão, compactação, cobertura basal, trilhas/uso, chuva e posição topográfica."
+    ),
+    `Implicação para gestão sem atribuição causal` = c(
+      "Priorizar investigação de adensamento ou abertura; não prescrever fogo apenas pelo contraste.",
+      "Localizar UAs que explicam a mudança antes de planejar intervenção.",
+      "Orientar restauração pela fisionomia de referência; aumento de árvores não é automaticamente positivo em ambientes abertos.",
+      "Priorizar confirmação e delimitação; controle depende de espécie, estágio, extensão e viabilidade.",
+      "Planejar checagem temporal e espacial; seca/morta não prova impacto negativo do fogo.",
+      "Apoiar investigação de combustível e ciclagem; não interpretar como carga de combustível medida.",
+      "Priorizar inspeção em hotspots; não declarar desertificação ou efeito de uso público sem corroborar."
+    )
+  )
+  data.table::fwrite(matriz_interpretacao, file.path(dir_relatorio, "matriz_interpretacao_ecologica_e_evidencias.csv"), bom = TRUE, na = "")
+
+  ### Pressões, ações de manejo e uso são contexto declarado no formulário,
+  ### não explicadores causais. O resumo abaixo apenas localiza coincidências
+  ### que podem orientar desenho de pesquisa e conferência documental.
+  contexto_impactos <- data.table::data.table()
+  if (nrow(registros)) {
+    norm_nomes <- tryCatch(monitora_correcao_normalizar_nome_coluna(names(registros)), error = function(e) tolower(names(registros)))
+    candidatos_impacto <- which(
+      grepl("tipos.*impact|quais.*impact|qual.*impact", norm_nomes, perl = TRUE) &
+        !grepl("descrev|ocorreram", norm_nomes, perl = TRUE)
+    )
+    if (!length(candidatos_impacto)) candidatos_impacto <- which(grepl("impact_manejo_uso", norm_nomes, fixed = TRUE) & !grepl("descrev|ocorreram", norm_nomes, perl = TRUE))
+    if (length(candidatos_impacto)) {
+      col_impacto <- names(registros)[candidatos_impacto[[1L]]]
+      ch_ctx <- tryCatch(monitora_correcao_colunas_chave(registros), error = function(e) list())
+      gv <- function(nm) {
+        cc <- as.character(ch_ctx[[nm]])[1L]
+        if (is.na(cc) || !nzchar(cc) || !(cc %in% names(registros))) {
+          alvo <- switch(nm, uc = "^uc$", ea = "^ea$", ua = "^ua$", ano = "^ano$", coleta = "^coleta$", paste0("^", nm, "$"))
+          cand <- which(grepl(alvo, norm_nomes, ignore.case = TRUE, perl = TRUE))
+          cc <- if (length(cand)) names(registros)[cand[[1L]]] else NA_character_
+        }
+        if (is.na(cc) || !nzchar(cc) || !(cc %in% names(registros))) rep(NA_character_, nrow(registros)) else as.character(registros[[cc]])
+      }
+      valores_imp <- as.character(registros[[col_impacto]]); valores_imp[is.na(valores_imp)] <- ""
+      tokens_imp <- strsplit(trimws(gsub("[,;|]+", " ", valores_imp)), "[[:space:]]+")
+      lens_imp <- lengths(tokens_imp)
+      keep_imp <- which(lens_imp > 0L & nzchar(trimws(valores_imp)))
+      if (length(keep_imp)) {
+        linha_imp <- rep(keep_imp, lens_imp[keep_imp])
+        token_imp <- monitora_relatorio_exoticas_normalizar_token(unlist(tokens_imp[keep_imp], use.names = FALSE))
+        rotulos_imp <- c(
+          incendio = "Incêndio", aceiro = "Aceiro", queima_prescrita = "Queima prescrita",
+          queima_controlada = "Queima controlada", extrativismo = "Extrativismo",
+          herbivoria = "Herbivoria", pisoteio = "Pisoteio", restauracao = "Restauração",
+          uso_publico = "Uso público", outros = "Outros"
+        )
+        ctx <- data.table::data.table(
+          linha_indice = linha_imp, UC = gv("uc")[linha_imp], EA = gv("ea")[linha_imp],
+          UA = gv("ua")[linha_imp], ANO = gv("ano")[linha_imp], COLETA = gv("coleta")[linha_imp],
+          token = token_imp
+        )
+        ctx <- unique(ctx[!is.na(token) & nzchar(token)])
+        contexto_impactos <- ctx[, .(
+          `Nº de coletas com registro` = data.table::uniqueN(COLETA[!is.na(COLETA) & nzchar(COLETA)]),
+          `Nº de UAs com registro` = data.table::uniqueN(UA[!is.na(UA) & nzchar(UA)])
+        ), by = .(UC, Ano = ANO, token)]
+        contexto_impactos[, Contexto := data.table::fifelse(token %in% names(rotulos_imp), unname(rotulos_imp[token]), gsub("_", " ", token, fixed = TRUE))]
+        contexto_impactos[, `Natureza da informação` := "contexto declarado; não demonstra associação causal"]
+        data.table::setcolorder(contexto_impactos, c("UC", "Ano", "Contexto", "token", "Nº de coletas com registro", "Nº de UAs com registro", "Natureza da informação"))
+        data.table::setorder(contexto_impactos, Ano, Contexto)
+      }
+    }
+  }
+  data.table::fwrite(contexto_impactos, file.path(dir_relatorio, "contexto_declarado_impactos_manejo_uso.csv"), bom = TRUE, na = "")
+  contexto_impactos_relatorio <- data.table::copy(contexto_impactos)
+  if ("token" %in% names(contexto_impactos_relatorio)) contexto_impactos_relatorio[, token := NULL]
+  if ("UC" %in% names(contexto_impactos_relatorio)) contexto_impactos_relatorio[, UC := NULL]
+  if ("Natureza da informação" %in% names(contexto_impactos_relatorio)) contexto_impactos_relatorio[, `Natureza da informação` := NULL]
+  seca_morta_analitica <- monitora_diag_seca_morta_ocorrencias_revisao(registros)
+  data.table::fwrite(
+    seca_morta_analitica,
+    file.path(dir_relatorio, "ocorrencias_seca_morta_linha_forma_relatorio_analitico.csv"),
+    bom = TRUE,
+    na = ""
+  )
+  resumo_seca_morta_analitica <- monitora_diag_seca_morta_gravar_resumo(
+    registros,
+    seca_morta_analitica,
+    dir_relatorio,
+    "relatorio_analitico"
+  )
+
   mudanca_periodo <- monitora_relatorios_analiticos_dt(mudanca_periodo)
   mudanca_linha_base <- monitora_relatorios_analiticos_dt(mudanca_linha_base)
+  composicao_periodo <- monitora_relatorios_analiticos_dt(composicao_periodo)
   evid <- if (nrow(mudanca_periodo) && "tipo_metrica" %in% names(mudanca_periodo)) {
-    mudanca_periodo[tipo_metrica == "cobertura"]
+    mudanca_periodo[tipo_metrica %in% c("cobertura", "proporcao_relativa")]
   } else {
     data.table::data.table()
   }
@@ -70407,7 +73118,7 @@ monitora_relatorios_analiticos_gerar <- function(
       sep = "|"
     )]
     lb <- if (nrow(mudanca_linha_base) && "tipo_metrica" %in% names(mudanca_linha_base)) {
-      mudanca_linha_base[tipo_metrica == "cobertura"]
+      mudanca_linha_base[tipo_metrica %in% c("cobertura", "proporcao_relativa")]
     } else {
       data.table::data.table()
     }
@@ -70460,8 +73171,8 @@ monitora_relatorios_analiticos_gerar <- function(
       classe_mudanca %in% c("aumento", "reducao") &
         consistencia == "Convergente com a linha de base", 1L,
       classe_mudanca %in% c("aumento", "reducao"), 2L,
-      classe_mudanca == "inconclusivo", 3L,
-      classe_mudanca == "estabilidade_equivalente", 4L,
+      classe_mudanca == "estabilidade_equivalente", 3L,
+      classe_mudanca == "inconclusivo", 4L,
       default = 5L
     )]
     evid[, prioridade_grupo := data.table::fcase(
@@ -70487,7 +73198,7 @@ monitora_relatorios_analiticos_gerar <- function(
       prioridade_classe, prioridade_grupo, -abs_efeito, -ano_2
     )
     evid_selecao <- evid[, .SD[1L], by = .(
-      grupo_grafico, form_veg, categoria
+      grupo_grafico, tipo_metrica, form_veg, categoria
     )]
     data.table::setorder(
       evid_selecao,
@@ -70590,6 +73301,7 @@ monitora_relatorios_analiticos_gerar <- function(
     d <- head(evid_selecao[prioridade_classe <= 4L], n_max)
     d[, .(
       Formação = form_veg_label,
+      Métrica = tipo_metrica_label,
       Indicador = categoria_label_relatorio,
       Período = paste0(ano_1, "-", ano_2),
       `Nº de UAs pareadas` = n_UA_pareadas,
@@ -70605,18 +73317,19 @@ monitora_relatorios_analiticos_gerar <- function(
     )]
   }
 
-  frase_achado <- function(r) {
+  frase_achado_item <- function(r) {
+    categoria <- as.character(r$categoria_label_relatorio)
+    plural <- grepl("(?:s|as|os)$", tolower(categoria), perl = TRUE)
     direcao <- data.table::fcase(
-      r$classe_mudanca == "aumento", "aumentou",
-      r$classe_mudanca == "reducao", "diminuiu",
-      r$classe_mudanca == "estabilidade_equivalente", "apresentou estabilidade/equivalência",
-      r$classe_mudanca == "inconclusivo", "apresentou resultado inconclusivo",
-      default = "não pôde ser interpretado"
+      r$classe_mudanca == "aumento", if (plural) "aumentaram" else "aumentou",
+      r$classe_mudanca == "reducao", if (plural) "diminuíram" else "diminuiu",
+      r$classe_mudanca == "estabilidade_equivalente", if (plural) "apresentaram estabilidade/equivalência" else "apresentou estabilidade/equivalência",
+      r$classe_mudanca == "inconclusivo", if (plural) "apresentaram resultado inconclusivo" else "apresentou resultado inconclusivo",
+      default = if (plural) "não puderam ser interpretadas" else "não pôde ser interpretado"
     )
     if (r$classe_mudanca %in% c("aumento", "reducao")) {
       paste0(
-        "Na formação **", tolower(r$form_veg_label), "**, ",
-        tolower(r$categoria_label_relatorio), " ", direcao,
+        monitora_relatorios_analiticos_inicial_maiuscula(categoria), " ", direcao,
         " **", monitora_relatorios_analiticos_fmt_num(abs(r$diferenca_pp), 1L),
         " pontos percentuais** entre ", r$ano_1, " e ", r$ano_2,
         " (IC95%: ",
@@ -70631,13 +73344,30 @@ monitora_relatorios_analiticos_gerar <- function(
       )
     } else {
       paste0(
-        "Na formação **", tolower(r$form_veg_label), "**, ",
-        tolower(r$categoria_label_relatorio), " ", direcao,
+        monitora_relatorios_analiticos_inicial_maiuscula(categoria), " ", direcao,
         " entre ", r$ano_1, " e ", r$ano_2,
         " (n = ", r$n_UA_pareadas,
         "). Esse resultado não deve ser apresentado como mudança direcional."
       )
     }
+  }
+
+  achados_agrupados <- function(d) {
+    d <- data.table::as.data.table(data.table::copy(d))
+    if (!nrow(d)) {
+      return("A série ainda não contém comparação temporal interpretável; o relatório apresenta esforço, distribuição espacial e estado descritivo mais recente.")
+    }
+    d[, grupo_textual := paste(tipo_metrica_label, form_veg_label, sep = "\034")]
+    grupos <- unique(d$grupo_textual)
+    unlist(lapply(grupos, function(g) {
+      z <- d[grupo_textual == g]
+      c(
+        paste0("Na métrica **", tolower(z$tipo_metrica_label[[1L]]), "**, formação **", tolower(z$form_veg_label[[1L]]), "**:"),
+        "",
+        paste0("- ", vapply(seq_len(nrow(z)), function(ii) frase_achado_item(z[ii]), character(1L))),
+        ""
+      )
+    }), use.names = FALSE)
   }
 
   achados_sintese <- if (nrow(evid_selecao)) {
@@ -70650,15 +73380,7 @@ monitora_relatorios_analiticos_gerar <- function(
   } else {
     data.table::data.table()
   }
-  frases_sintese <- if (nrow(achados_sintese)) {
-    vapply(
-      seq_len(nrow(achados_sintese)),
-      function(ii) frase_achado(achados_sintese[ii]),
-      character(1L)
-    )
-  } else {
-    "A série ainda não contém comparação temporal interpretável; o relatório apresenta esforço, distribuição espacial e estado descritivo mais recente."
-  }
+  frases_sintese <- achados_agrupados(achados_sintese)
 
   tokens_direcionais <- if (nrow(evid_selecao)) {
     paste(tolower(evid_selecao[
@@ -70700,6 +73422,80 @@ monitora_relatorios_analiticos_gerar <- function(
     hipoteses <- "A série disponível não sustenta hipótese ecológica direcional prioritária. O esforço e o estado descritivo devem orientar a continuidade do monitoramento."
   }
   hipoteses <- unique(head(hipoteses, 5L))
+
+  ### Para cada achado selecionado, registra em colunas distintas aquilo que
+  ### foi observado e aquilo que ainda é hipótese. Essa separação é também um
+  ### produto editável e auditável do relatório.
+  achados_inferencia <- if (nrow(evid_selecao)) {
+    ai <- head(evid_selecao[prioridade_classe <= 4L], 24L)
+    ai[, `:=`(
+      `Resultado observado` = paste0(
+        tipo_metrica_label, ": ", categoria_label_relatorio, " — ", classe_mudanca_label,
+        " entre ", ano_1, " e ", ano_2, "; diferença ",
+        monitora_relatorios_analiticos_fmt_num(diferenca_pp, 1L),
+        " p.p.; ", n_UA_pareadas, " UAs pareadas."
+      ),
+      `Hipótese compatível, não demonstrada` = data.table::fcase(
+        grupo_grafico == "herbaceas_lenhosas", "Alteração do balanço estrutural; adensamento lenhoso ou abertura são hipóteses condicionadas à direção conjunta dos dois componentes.",
+        grupo_grafico == "formas_vida_exoticas", "Mudança de ocupação, persistência ou abundância de plantas exóticas; invasão biológica requer confirmação de expansão e impacto.",
+        grupo_grafico == "formas_vida_secas_mortas", "Pulso fenológico, déficit hídrico, fogo, herbivoria ou outro dano podem ser compatíveis com o padrão.",
+        grupo_grafico == "material_botanico", "Mudança em deposição ou decomposição de material vegetal pode ser compatível com variação de produtividade, fenologia, fogo ou umidade.",
+        grupo_grafico == "formas_vida_nativas", "Reorganização funcional da vegetação nativa; as formas contribuintes devem ser avaliadas separadamente.",
+        grupo_grafico == "categorias_gerais" & grepl("solo", categoria, ignore.case = TRUE), "Mudança no contato com solo ou rochas; erosão, compactação ou desertificação não são demonstradas por este indicador isolado.",
+        default = "Reorganização da cobertura ou da composição; o mecanismo ecológico permanece em aberto."
+      ),
+      `Explicações alternativas` = data.table::fcase(
+        grupo_grafico == "formas_vida_exoticas", "Detectabilidade, identificação, mudança do painel amostral, controle prévio ou sazonalidade.",
+        grupo_grafico == "formas_vida_secas_mortas", "Data da campanha, precipitação antecedente, fenologia, severidade e tempo desde o fogo.",
+        grupo_grafico == "herbaceas_lenhosas", "Regime do fogo, precipitação, recrutamento, herbivoria, manejo, restauração ou classificação das formas.",
+        default = "Variação de esforço, composição das UAs, sazonalidade, clima, fogo, uso, animais e manejo."
+      ),
+      `Linha de pesquisa prioritária` = data.table::fcase(
+        grupo_grafico == "herbaceas_lenhosas", "Decompor a mudança por forma nativa/exótica e testar associação espacial-temporal com regime do fogo e clima nas mesmas UAs.",
+        grupo_grafico == "formas_vida_exoticas", "Confirmar espécies, primeira detecção, persistência, novas UAs ocupadas e resposta a controle.",
+        grupo_grafico == "formas_vida_secas_mortas", "Confrontar as UAs com datas de fogo, severidade, chuva e repetição sazonal; distinguir pulso transitório de persistência.",
+        grupo_grafico == "material_botanico", "Separar subtipos e testar sua relação com umidade, fenologia e histórico de fogo; medir combustível por método independente quando necessário.",
+        grupo_grafico == "formas_vida_nativas", "Quantificar contribuição de cada forma e verificar se a trajetória é coerente com a fisionomia de referência e objetivos de restauração.",
+        default = "Repetir a análise nas UAs pareadas e integrar covariáveis independentes com localização, data, intensidade e extensão."
+      )
+    )]
+    ai[, .(
+      Formação = form_veg_label, Métrica = tipo_metrica_label, Indicador = categoria_label_relatorio,
+      `Resultado observado`, `Hipótese compatível, não demonstrada`, `Explicações alternativas`,
+      `Linha de pesquisa prioritária`, Consistência = consistencia
+    )]
+  } else {
+    data.table::data.table(
+      Observação = "Não há comparação temporal interpretável; manter a continuidade amostral e coletar covariáveis independentes."
+    )
+  }
+  data.table::fwrite(achados_inferencia, file.path(dir_relatorio, "achados_hipoteses_e_linhas_de_pesquisa.csv"), bom = TRUE, na = "")
+  achados_inferencia_relatorio <- if (nrow(achados_inferencia) && all(c(
+    "Resultado observado", "Hipótese compatível, não demonstrada", "Linha de pesquisa prioritária"
+  ) %in% names(achados_inferencia))) {
+    ai <- head(achados_inferencia, 8L)
+    ai[, bloco_inferencia := paste(`Hipótese compatível, não demonstrada`, `Linha de pesquisa prioritária`, sep = "\034")]
+    unlist(lapply(unique(ai$bloco_inferencia), function(chave) {
+      z <- ai[bloco_inferencia == chave]
+      alternativas <- unique(as.character(z$`Explicações alternativas`))
+      alternativas <- alternativas[!is.na(alternativas) & nzchar(alternativas)]
+      c(
+        "### Hipótese compatível, não demonstrada",
+        "",
+        as.character(z$`Hipótese compatível, não demonstrada`[[1L]]),
+        "",
+        "**Resultados observados**",
+        "",
+        paste0("- ", as.character(z$`Resultado observado`)),
+        "",
+        if (length(alternativas)) paste0("**Explicações alternativas.** ", paste(alternativas, collapse = " ")) else "",
+        paste0("**Linha de pesquisa prioritária.** ", as.character(z$`Linha de pesquisa prioritária`[[1L]])),
+        ""
+      )
+    }), use.names = FALSE)
+  } else {
+    "Não há comparação temporal interpretável; manter a continuidade amostral e coletar covariáveis independentes."
+  }
 
   esforco_total <- esforco_obj$por_ano
   variacao_esforco <- if (nrow(esforco_total) > 1L) {
@@ -70759,6 +73555,32 @@ monitora_relatorios_analiticos_gerar <- function(
   recomendacoes <- unique(recomendacoes)
 
   comp_detalhe <- data.table::data.table()
+  comp_partes <- list()
+  if (nrow(composicao_periodo) && all(c(
+    "grupo_grafico", "tipo_metrica", "form_veg", "ano_1", "ano_2",
+    "n_UA_pareadas", "distancia_centroide_hellinger",
+    "bray_curtis_medio_pareado", "p_ajustado_fdr_composicao",
+    "classe_mudanca_composicao"
+  ) %in% names(composicao_periodo))) {
+    comp_partes[[length(comp_partes) + 1L]] <- composicao_periodo[, .(
+      Formação = monitora_relatorio_rotulo_formacao(form_veg, TRUE),
+      Grupo = monitora_relatorios_analiticos_rotulo_grupo(grupo_grafico),
+      Métrica = monitora_relatorio_rotulo_metrica(tipo_metrica),
+      Referência = paste0("Medição anterior (", ano_1, "-", ano_2, ")"),
+      Ano = ano_2,
+      `Nº de UAs pareadas` = n_UA_pareadas,
+      `Distância de Hellinger` = monitora_relatorios_analiticos_fmt_num(distancia_centroide_hellinger, 3L),
+      `Bray-Curtis médio` = monitora_relatorios_analiticos_fmt_num(bray_curtis_medio_pareado, 3L),
+      `Valor de p ajustado` = monitora_relatorios_analiticos_fmt_p(p_ajustado_fdr_composicao),
+      Interpretação = monitora_relatorios_analiticos_classe_portugues(classe_mudanca_composicao),
+      ordem_classe = data.table::fcase(
+        classe_mudanca_composicao == "mudanca_composicao", 1L,
+        classe_mudanca_composicao == "estabilidade_composicional", 2L,
+        classe_mudanca_composicao == "inconclusivo", 3L,
+        default = 4L
+      )
+    )]
+  }
   composicao_linha_base <- monitora_relatorios_analiticos_dt(composicao_linha_base)
   if (nrow(composicao_linha_base)) {
     classe_col <- if ("classe_mudanca_composicao_linha_base" %in% names(composicao_linha_base)) {
@@ -70771,24 +73593,34 @@ monitora_relatorios_analiticos_gerar <- function(
     } else {
       "p_ajustado_fdr_composicao"
     }
-    comp <- composicao_linha_base[
-      n_UA_pareadas >= 5L & !is.na(get(classe_col))
-    ]
-    data.table::setorder(comp, -distancia_centroide_hellinger)
-    comp <- head(comp, 8L)
+    comp <- composicao_linha_base[!is.na(get(classe_col))]
     if (nrow(comp)) {
-      comp_detalhe <- comp[, .(
+      comp_partes[[length(comp_partes) + 1L]] <- comp[, .(
         Formação = monitora_relatorio_rotulo_formacao(form_veg, TRUE),
         Grupo = monitora_relatorios_analiticos_rotulo_grupo(grupo_grafico),
         Métrica = monitora_relatorio_rotulo_metrica(tipo_metrica),
+        Referência = paste0("Linha de base (", anos_linha_base, ")"),
         Ano = ano_2,
         `Nº de UAs pareadas` = n_UA_pareadas,
         `Distância de Hellinger` = monitora_relatorios_analiticos_fmt_num(distancia_centroide_hellinger, 3L),
         `Bray-Curtis médio` = monitora_relatorios_analiticos_fmt_num(bray_curtis_medio_pareado, 3L),
         `Valor de p ajustado` = monitora_relatorios_analiticos_fmt_p(get(p_col)),
-        Interpretação = monitora_relatorios_analiticos_classe_portugues(get(classe_col))
+        Interpretação = monitora_relatorios_analiticos_classe_portugues(get(classe_col)),
+        ordem_classe = data.table::fcase(
+          get(classe_col) == "mudanca_composicao", 1L,
+          get(classe_col) == "estabilidade_composicional", 2L,
+          get(classe_col) == "inconclusivo", 3L,
+          default = 4L
+        )
       )]
     }
+  }
+  if (length(comp_partes)) {
+    comp_detalhe <- data.table::rbindlist(comp_partes, fill = TRUE, use.names = TRUE)
+    data.table::setorder(comp_detalhe, ordem_classe, -Ano, Grupo, Métrica, Formação)
+    comp_detalhe <- comp_detalhe[, head(.SD, 8L), by = ordem_classe]
+    data.table::setorder(comp_detalhe, ordem_classe, -Ano, Grupo, Métrica, Formação)
+    comp_detalhe[, ordem_classe := NULL]
   }
 
   config_stat <- monitora_relatorios_analiticos_dt(config_stat)
@@ -70799,6 +73631,7 @@ monitora_relatorios_analiticos_gerar <- function(
   }
   linhas_metodo <- c(
     "A unidade analítica é a UA. O número de pontos amostrais corresponde aos identificadores válidos e únicos efetivamente presentes em registros_corrig; não é uma projeção de 101 posições por UA.",
+    "As séries anuais dos gráficos apresentam a média entre UAs disponíveis e IC95% t de Student entre UAs. Os testes temporais não comparam esses ICs: usam somente UAs pareadas, de modo que o estimando inferencial permanece a diferença média dentro da mesma UA.",
     paste0(
       "As comparações temporais utilizam pareamento por UA, teste de permutação, intervalo de confiança de 95% por bootstrap e ajuste FDR-BH. A margem de equivalência foi ",
       cfg("margem_equivalencia_pp"), " pontos percentuais, o efeito mínimo ",
@@ -70810,7 +73643,55 @@ monitora_relatorios_analiticos_gerar <- function(
       cfg("baseline_min_anos"),
       " anos anteriores. Estabilidade/equivalência é uma conclusão específica; ausência de significância, isoladamente, é inconclusiva."
     ),
-    "As hipóteses ecológicas são sugestivas e não estabelecem causalidade. Fogo, clima, invasão, uso, animais e manejo somente podem ser associados aos indicadores com evidência temporal e espacial independente."
+    "Para proporções relativas, cada componente é testado ao longo do tempo e a composição completa é testada conjuntamente após transformação de Hellinger. Não são executados testes par a par entre categorias no mesmo ano, pois as partes compartilham o mesmo denominador e não são independentes.",
+    "As hipóteses ecológicas são sugestivas e não estabelecem causalidade. Fogo, clima, invasão, uso, animais e manejo somente podem ser associados aos indicadores com evidência temporal e espacial independente.",
+    "O contraste herbáceo–lenhoso representa somente vegetação viva nativa e exótica. Formas secas ou mortas são analisadas em indicador próprio."
+  )
+
+  auditoria_robustez <- data.table::data.table(
+    componente = c(
+      "Unidade analítica", "Série anual", "Pareamento temporal", "Incerteza",
+      "Multiplicidade", "Mudança direcional", "Estabilidade/equivalência",
+      "Linha de base", "Composição relativa", "Modelo longitudinal global",
+      "Dependência espacial", "Sensibilidade à formação", "Margens ecológicas"
+    ),
+    status = c(
+      rep("atendido", 9L),
+      "limitação explícita", "limitação explícita", "limitação explícita",
+      "requer validação por indicador"
+    ),
+    implementacao_ou_limite = c(
+      "UA em todas as médias e comparações inferenciais.",
+      "Média, IC95% entre UAs e n anual; amostra disponível explicitada.",
+      "Diferenças dentro da mesma UC+UA entre medições disponíveis.",
+      "IC95% bootstrap pareado para efeitos e IC95% t de Student para médias anuais.",
+      "FDR-BH dentro de grupo gráfico e métrica.",
+      "Exige q ajustado, IC95% sem cruzar zero, efeito mínimo e pares mínimos.",
+      "Exige que todo o IC95% esteja dentro da margem de equivalência; não significância isolada permanece inconclusiva.",
+      "Comparação com média acumulada dos anos anteriores da mesma UA, com mínimo de anos explícito.",
+      "Componentes testados ao longo do tempo e composição conjunta testada por permutação após transformação de Hellinger.",
+      "A versão não estima uma única tendência global de toda a série; cada intervalo e linha de base têm interpretação própria.",
+      "Os testes não modelam autocorrelação espacial entre UAs; padrões espaciais devem ser investigados com desenho específico.",
+      "Mudanças na classificação da formação são auditadas, mas a inferência principal não possui ainda uma análise de sensibilidade restrita às UAs com formação invariável.",
+      paste0(
+        "As margens globais de ", cfg("efeito_minimo_pp"), " e ",
+        cfg("margem_equivalencia_pp"),
+        " p.p. devem ser validadas biologicamente por indicador; categorias raras, especialmente exóticas, podem exigir limiares próprios."
+      )
+    ),
+    implicacao = c(
+      rep("Resultado incorporado aos gráficos e à auditoria.", 9L),
+      "Não interpretar um conjunto de comparações intervalares como tendência linear global.",
+      "Não extrapolar independência espacial nem atribuir mecanismo sem análise própria.",
+      "Revisar achados sensíveis a mudanças de classificação antes de decisão de manejo.",
+      "Usar as classes atuais como regra transparente e reavaliável, não como limiar biológico universal."
+    )
+  )
+  data.table::fwrite(
+    auditoria_robustez,
+    file.path(dir_relatorio, "auditoria_robustez_inferencial_relatorio.csv"),
+    bom = TRUE,
+    na = ""
   )
 
   graficos <- monitora_relatorios_analiticos_graficos_editoriais(
@@ -70818,8 +73699,99 @@ monitora_relatorios_analiticos_gerar <- function(
     cob_nat,
     cob_exot,
     evid_selecao,
-    dir_figuras
+    dir_figuras,
+    series_anuais_ua = series_anuais_ua,
+    mudanca_periodo = mudanca_periodo,
+    mudanca_linha_base = mudanca_linha_base,
+    composicao_periodo = composicao_periodo,
+    composicao_linha_base = composicao_linha_base,
+    config_stat = config_stat,
+    prop_herb_lenh = prop_herb_lenh,
+    cob_herb_lenh = cob_herb_lenh,
+    prop_categ = prop_categ,
+    prop_nat = prop_nat,
+    prop_exot = prop_exot,
+    prop_seca = prop_seca,
+    cob_seca = cob_seca,
+    prop_material = prop_material,
+    cob_material = cob_material
   )
+  auditoria_estatistica_graficos <- data.table::as.data.table(
+    attr(graficos, "auditoria_estatistica")
+  )
+  if (is.null(auditoria_estatistica_graficos)) {
+    auditoria_estatistica_graficos <- data.table::data.table()
+  }
+  auditoria_simbolos_series <- data.table::as.data.table(
+    attr(graficos, "auditoria_simbolos_series")
+  )
+  if (is.null(auditoria_simbolos_series)) auditoria_simbolos_series <- data.table::data.table()
+  data.table::fwrite(
+    auditoria_simbolos_series,
+    file.path(dir_relatorio, "auditoria_simbolos_medias_anuais_relatorio.csv"),
+    bom = TRUE,
+    na = ""
+  )
+  if (nrow(auditoria_simbolos_series)) {
+    if (anyDuplicated(auditoria_simbolos_series[, .(plot_id, form_veg, categoria, ANO)])) {
+      stop("Gate dos símbolos estatísticos falhou: chave gráfica duplicada.", call. = FALSE)
+    }
+    anos_pos_primeiro <- auditoria_simbolos_series[, ANO > min(ANO, na.rm = TRUE), by = .(plot_id, form_veg, categoria)]$V1
+    simbolos_pos_primeiro <- auditoria_simbolos_series$simbolo_estatistico[anos_pos_primeiro]
+    if (length(simbolos_pos_primeiro) && any(is.na(simbolos_pos_primeiro) | !nzchar(simbolos_pos_primeiro))) {
+      stop("Gate dos símbolos estatísticos falhou: média posterior ao primeiro ano sem classificação explícita.", call. = FALSE)
+    }
+  }
+  if (nrow(auditoria_estatistica_graficos)) {
+    cols_hash <- intersect(c(
+      "plot_id", "tipo_resultado", "grupo_grafico", "tipo_metrica",
+      "form_veg", "categoria", "ano_1", "ano_2", "n_UA_pareadas",
+      "estimativa", "ci95_lower", "ci95_upper", "q_ajustado",
+      "classe_periodo", "estimativa_lb", "q_ajustado_lb",
+      "classe_linha_base"
+    ), names(auditoria_estatistica_graficos))
+    auditoria_estatistica_graficos[, hash_conteudo_resultado := vapply(
+      seq_len(.N),
+      function(ii) digest::digest(
+        paste(
+          vapply(
+            .SD[ii],
+            function(v) paste(as.character(v), collapse = "|"),
+            character(1L)
+          ),
+          collapse = "||"
+        ),
+        algo = "sha256",
+        serialize = FALSE
+      ),
+      character(1L)
+    ), .SDcols = cols_hash]
+  }
+  data.table::fwrite(
+    auditoria_estatistica_graficos,
+    file.path(
+      dir_relatorio,
+      "auditoria_integracao_estatistica_graficos_relatorio.csv"
+    ),
+    bom = TRUE,
+    na = ""
+  )
+  n_paineis_inferenciais <- graficos[
+    grepl("^inferencias_", id) & disponivel == TRUE,
+    .N
+  ]
+  n_resultados_indice <- graficos[
+    grepl("^inferencias_", id) & disponivel == TRUE,
+    sum(n_resultados_estatisticos, na.rm = TRUE)
+  ]
+  if (n_paineis_inferenciais < 1L ||
+      nrow(auditoria_estatistica_graficos) != n_resultados_indice ||
+      any(auditoria_estatistica_graficos$associacao_nao_causal %in% FALSE, na.rm = TRUE)) {
+    stop(
+      "Gate de integração estatística dos relatórios falhou: painéis ausentes, contagem divergente ou cautela causal não preservada.",
+      call. = FALSE
+    )
+  }
   data.table::fwrite(
     graficos,
     file.path(dir_relatorio, "indice_selecao_graficos.csv"),
@@ -70845,6 +73817,8 @@ monitora_relatorios_analiticos_gerar <- function(
     ".cover h1 { border:0; font-size:28pt; line-height:1.1; margin:18px 0; }",
     ".cover .uc { font-size:19pt; color:#276A56; font-weight:bold; }",
     ".cover .meta { margin-top:28px; color:#607168; }",
+    "p, li, .callout { text-align:justify; text-justify:inter-word; hyphens:auto; orphans:3; widows:3; }",
+    ".cover, .cover *, h1, h2, h3, th, td, figure, figcaption, .status, .small { text-align:left; hyphens:none; }",
     ".callout { background:#EEF5F1; border-left:5px solid #276A56; padding:12px 15px; margin:12px 0 16px 0; }",
     ".warning { background:#FFF7E8; border-left-color:#C7922E; }",
     ".status { display:inline-block; background:#174B3B; color:white; padding:4px 9px; border-radius:3px; font-weight:bold; }",
@@ -70852,6 +73826,8 @@ monitora_relatorios_analiticos_gerar <- function(
     "th { background:#174B3B; color:white; padding:6px; text-align:left; }",
     "td { padding:5px 6px; border-bottom:1px solid #D9E1DD; vertical-align:top; }",
     "tr:nth-child(even) td { background:#F7F9F8; }",
+    "thead { display:table-header-group; }",
+    "tr { break-inside:avoid; page-break-inside:avoid; }",
     "figure { margin:15px auto 18px auto; text-align:center; break-inside:avoid; }",
     "figure img { max-width:100%; height:auto; }",
     "figcaption { color:#52645b; font-size:8.4pt; text-align:left; margin-top:6px; }",
@@ -70892,7 +73868,6 @@ monitora_relatorios_analiticos_gerar <- function(
     `Nº de pontos amostrais` = n_pontos_amostrais
   )]
   tabela_esforco_formacao <- esforco_obj$por_formacao[, .(
-    UC,
     Ano = ANO,
     Formação = formacao_label,
     `UAs amostradas` = n_UAs_amostradas,
@@ -70916,10 +73891,9 @@ monitora_relatorios_analiticos_gerar <- function(
       min(esforco_total$n_UAs_amostradas), " a ",
       max(esforco_total$n_UAs_amostradas), " UAs."
     ),
-    frases_sintese[[1L]],
     if (nrow(evid)) {
       paste0(
-        "Nas comparações pareadas de cobertura, foram classificados ",
+        "Nas comparações pareadas de cobertura e proporção relativa, foram classificados ",
         sum(evid$classe_mudanca == "aumento", na.rm = TRUE), " aumentos, ",
         sum(evid$classe_mudanca == "reducao", na.rm = TRUE), " reduções e ",
         sum(evid$classe_mudanca == "estabilidade_equivalente", na.rm = TRUE),
@@ -70958,7 +73932,7 @@ monitora_relatorios_analiticos_gerar <- function(
     "# Resumo executivo",
     paste0('<div class="callout">', paste(resumo_exec, collapse = "<br><br>"), "</div>"),
     "## Achados prioritários",
-    paste0("- ", frases_sintese),
+    frases_sintese,
     "",
     "# Esforço amostral por UC, formação e ano",
     "A tabela contabiliza UAs e pontos amostrais efetivamente observados. UAs não são duplicadas como “transecções”, e o número de pontos não é estimado pelo desenho potencial de 101 posições.",
@@ -70976,18 +73950,63 @@ monitora_relatorios_analiticos_gerar <- function(
     paste0("Cobertura observada na campanha mais recente (**", max(anos), "**):"),
     monitora_relatorios_analiticos_kable(estado_atual),
     "",
-    fig_sint(fig_por_id("categorias_temporal"), "Série descritiva das categorias gerais. Diferenças de esforço devem ser consideradas na leitura."),
+    fig_sint(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura entre UAs; o n anual é informado na própria figura."),
+    fig_sint(fig_por_id("categorias_proporcao"), "Média anual e IC95% da proporção relativa por UA. A proporção pode mudar por alteração do numerador ou do denominador."),
+    fig_sint(fig_por_id("inferencias_categorias_gerais_proporcao_relativa"), "Testes temporais dos componentes e da composição conjunta das categorias gerais. Cores e valores derivam integralmente dos produtos estatísticos auditados."),
+    "",
+    "# Indicadores ecológicos prioritários",
+    "Cobertura e proporção relativa são apresentadas em conjunto. O primeiro indicador descreve a frequência absoluta de contatos; o segundo descreve o balanço composicional e depende do total usado como denominador. Vegetação seca ou morta não integra o contraste entre vegetação herbácea e lenhosa viva.",
+    "",
+    "## Estrutura viva: herbáceas e lenhosas",
+    monitora_relatorios_analiticos_kable(estado_herb_lenh),
+    fig_sint(fig_por_id("herbaceas_lenhosas_cobertura"), "Cobertura dos componentes herbáceo e lenhoso vivos."),
+    fig_sint(fig_por_id("herbaceas_lenhosas_proporcao"), "Balanço relativo entre os componentes herbáceo e lenhoso vivos."),
+    fig_sint(fig_por_id("inferencias_herbaceas_lenhosas_cobertura"), "Evidência pareada para a cobertura herbácea e lenhosa, incluindo linha de base e composição conjunta."),
+    fig_sint(fig_por_id("inferencias_herbaceas_lenhosas_proporcao_relativa"), "Evidência pareada para o balanço relativo herbáceo-lenhoso."),
+    "Um aumento do componente lenhoso acompanhado de redução herbácea nas mesmas UAs é compatível com adensamento lenhoso, mas não o demonstra. Regime do fogo, clima, recrutamento, herbivoria, manejo e restauração precisam ser testados com informação independente.",
+    "",
+    "## Formas de vida nativas",
+    monitora_relatorios_analiticos_kable(estado_nativas),
+    fig_sint(fig_por_id("formas_nativas_recente"), "Principais formas de vida nativas na campanha mais recente."),
+    fig_sint(fig_por_id("formas_nativas_proporcao"), "Composição relativa das principais formas de vida nativas."),
+    "",
+    "## Formas de vida exóticas",
+    if (nrow(estado_exoticas)) monitora_relatorios_analiticos_kable(estado_exoticas) else "Não houve forma de vida exótica com valor analítico disponível no estado mais recente.",
+    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("formas_exoticas_temporal"), "Cobertura das formas de vida exóticas observadas.") else "",
+    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("formas_exoticas_proporcao"), "Composição relativa das formas de vida exóticas observadas.") else "",
+    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("inferencias_formas_vida_exoticas_proporcao_relativa"), "Evidência temporal da proporção relativa das formas exóticas e de sua composição conjunta.") else "",
+    "A presença de exóticas não equivale automaticamente a invasão biológica. A prioridade de investigação considera identidade taxonômica, primeira detecção, persistência, ocupação e novas UAs, além da resposta a ações de controle.",
+    "",
+    "## Formas secas ou mortas",
+    monitora_relatorios_analiticos_kable(estado_seca),
+    fig_sint(fig_por_id("formas_secas_mortas_cobertura"), "Cobertura das formas secas ou mortas."),
+    fig_sint(fig_por_id("formas_secas_mortas_proporcao"), "Composição relativa das formas secas ou mortas."),
+    fig_sint(fig_por_id("inferencias_formas_vida_secas_mortas_cobertura"), "Evidência temporal pareada da cobertura das formas secas ou mortas."),
+    paste0("Foram materializadas **", nrow(seca_morta_analitica), " ocorrências linha × forma de vida** para revisão não impeditiva. Seca/morta pode refletir fenologia, déficit hídrico, fogo, herbivoria ou outros danos; o dado isolado não identifica a causa."),
+    "",
+    "## Material botânico em decomposição e solo/rochas",
+    monitora_relatorios_analiticos_kable(estado_material),
+    fig_sint(fig_por_id("material_botanico_cobertura"), "Cobertura de material botânico em decomposição."),
+    fig_sint(fig_por_id("material_botanico_proporcao"), "Composição relativa do material botânico em decomposição."),
+    "Material em decomposição não é, por si só, impacto negativo nem medida direta de carga de combustível. O atributo solo nu agrega solo e rochas; portanto, não sustenta isoladamente diagnóstico de erosão ou desertificação.",
     "",
     "# Resultados temporais",
     "## Mudanças temporais prioritárias",
     monitora_relatorios_analiticos_kable(tabela_achados(8L)),
     "",
-    fig_sint(fig_por_id("mudancas_prioritarias"), "Diferenças pareadas e intervalos de confiança dos resultados temporais priorizados."),
+    fig_sint(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
+    "",
+    "## Do achado à linha de pesquisa",
+    achados_inferencia_relatorio,
     "",
     "# Hipóteses ecológicas",
     paste0("- ", hipoteses),
     "",
     '<div class="callout warning"><strong>Limite inferencial.</strong> As hipóteses são mecanismos plausíveis, não causas demonstradas. Registros independentes de fogo, clima, manejo, invasão, uso e animais são necessários para testar associação temporal e espacial.</div>',
+    "",
+    "## Contexto declarado de impactos, manejo e uso",
+    if (nrow(contexto_impactos_relatorio)) monitora_relatorios_analiticos_kable(contexto_impactos_relatorio) else "Não foram localizados valores de contexto preenchidos para síntese.",
+    "Os valores da tabela representam contexto declarado. Eles orientam hipóteses e conferência documental, mas a coincidência no mesmo ano ou na mesma UC não demonstra associação causal com a mudança de vegetação.",
     "",
     "# Recomendações para a UC",
     "## Recomendações de maior prioridade",
@@ -71005,7 +74024,10 @@ monitora_relatorios_analiticos_gerar <- function(
     "- Base analítica: `01_produtos_dados/registros_corrig_stat.csv`.",
     "- Pontos amostrais: `01_produtos_dados/registros_corrig.csv`.",
     "- Estatísticas: arquivos de `05_estatisticas/`.",
-    "- Figuras: sínteses editoriais reproduzíveis a partir dos produtos de `05_estatisticas/`.",
+    "- Séries anuais alinhadas à UA: `series_anuais_relatorios_por_ua.csv`.",
+    "- Figuras: sínteses editoriais reproduzíveis a partir dos produtos de `05_estatisticas/` e de `registros_corrig_stat.csv`.",
+    "- Integração estatística dos gráficos: `auditoria_integracao_estatistica_graficos_relatorio.csv`.",
+    "- Robustez e limites: `auditoria_robustez_inferencial_relatorio.csv`.",
     "- Evidências: `indice_evidencias_relatorio.csv`.",
     "- Esforço: `esforco_amostral_por_uc_formacao_ano.csv`.",
     "- Continuidade: `continuidade_uas.csv` e `matriz_anuidades_amostrais.csv`.",
@@ -71022,22 +74044,14 @@ monitora_relatorios_analiticos_gerar <- function(
     )
   )
 
-  frases_detalhe <- if (nrow(achados_detalhe)) {
-    paste0("- ", vapply(
-      seq_len(nrow(achados_detalhe)),
-      function(ii) frase_achado(achados_detalhe[ii]),
-      character(1L)
-    ))
-  } else {
-    "- Não há comparação temporal interpretável."
-  }
+  frases_detalhe <- achados_agrupados(achados_detalhe)
   conteudo_detalhado <- c(
     yaml(paste0("Relatório analítico detalhado - ", uc)),
     capa("detalhado"),
     "# Resumo executivo",
     paste0('<div class="callout">', paste(resumo_exec, collapse = "<br><br>"), "</div>"),
     "## Achados prioritários",
-    paste0("- ", frases_sintese),
+    frases_sintese,
     "",
     '<div class="page-break"></div>',
     "## Recomendações de maior prioridade",
@@ -71051,6 +74065,9 @@ monitora_relatorios_analiticos_gerar <- function(
     "O protocolo caracteriza a cobertura por interceptação de pontos ao longo das UAs. O desenho prevê até 101 posições potenciais, mas este relatório contabiliza somente os pontos válidos efetivamente registrados.",
     "",
     paste0("- ", linhas_metodo),
+    "",
+    "## Auditoria da robustez inferencial",
+    monitora_relatorios_analiticos_kable(auditoria_robustez),
     "",
     "# Esforço amostral por UC, formação e ano",
     monitora_relatorios_analiticos_kable(tabela_esforco_formacao),
@@ -71078,8 +74095,51 @@ monitora_relatorios_analiticos_gerar <- function(
     "## Principais formas de vida nativas",
     monitora_relatorios_analiticos_kable(formas_atual),
     "",
-    fig_det(fig_por_id("categorias_temporal"), "Cobertura das categorias gerais na amostra anual total."),
+    fig_det(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura das categorias gerais entre UAs."),
+    fig_det(fig_por_id("categorias_proporcao"), "Média anual e IC95% da proporção relativa por UA; mudanças podem decorrer do numerador ou do denominador."),
     fig_det(fig_por_id("formas_nativas_recente"), "Principais formas de vida nativas na campanha mais recente."),
+    "",
+    "# Indicadores ecológicos prioritários",
+    '<div class="callout"><strong>Regra de leitura.</strong> Resultado observado, hipótese compatível e evidência necessária são apresentados separadamente. Cobertura mede frequência absoluta de contatos; proporção relativa descreve o balanço composicional. Nenhum vetor de mudança é atribuído como causa apenas por coincidência temporal ou espacial.</div>',
+    "",
+    "## Estrutura viva: herbáceas e lenhosas",
+    monitora_relatorios_analiticos_kable(estado_herb_lenh),
+    fig_det(fig_por_id("herbaceas_lenhosas_cobertura"), "Cobertura dos componentes herbáceo e lenhoso vivos; seca/morta é excluída deste contraste."),
+    fig_det(fig_por_id("herbaceas_lenhosas_proporcao"), "Balanço relativo entre componentes herbáceo e lenhoso vivos."),
+    fig_det(fig_por_id("inferencias_herbaceas_lenhosas_cobertura"), "Resultados pareados da cobertura herbácea e lenhosa: comparação anterior, linha de base e composição conjunta."),
+    fig_det(fig_por_id("inferencias_herbaceas_lenhosas_proporcao_relativa"), "Resultados pareados do balanço relativo herbáceo-lenhoso."),
+    "Adensamento lenhoso é uma hipótese prioritária apenas quando o aumento lenhoso, especialmente de formas nativas lenhosas, coincide com redução herbácea nas mesmas UAs e persiste no tempo. Aumento simultâneo dos dois componentes pode indicar maior estratificação ou densidade de contatos, e não deve receber automaticamente o mesmo diagnóstico.",
+    "",
+    "## Formas de vida nativas",
+    monitora_relatorios_analiticos_kable(estado_nativas),
+    fig_det(fig_por_id("formas_nativas_proporcao"), "Composição relativa das principais formas de vida nativas."),
+    fig_det(fig_por_id("inferencias_formas_vida_nativas_cobertura"), "Resultados pareados da cobertura das formas de vida nativas."),
+    fig_det(fig_por_id("inferencias_formas_vida_nativas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas nativas."),
+    "A decomposição por forma de vida informa quais componentes sustentam a trajetória. Para restauração de formações abertas, aumento de árvores não é automaticamente positivo: a referência deve ser a fisionomia e os objetivos de conservação locais.",
+    "",
+    "## Formas de vida exóticas e invasão biológica",
+    if (nrow(estado_exoticas)) monitora_relatorios_analiticos_kable(estado_exoticas) else "Não houve forma de vida exótica com valor analítico disponível no estado mais recente.",
+    if (isTRUE(tem_exotica)) fig_det(fig_por_id("formas_exoticas_temporal"), "Cobertura das formas de vida exóticas observadas.") else "",
+    if (isTRUE(tem_exotica)) fig_det(fig_por_id("formas_exoticas_proporcao"), "Composição relativa das formas de vida exóticas observadas.") else "",
+    if (isTRUE(tem_exotica)) fig_det(fig_por_id("inferencias_formas_vida_exoticas_cobertura"), "Resultados pareados da cobertura das formas de vida exóticas.") else "",
+    if (isTRUE(tem_exotica)) fig_det(fig_por_id("inferencias_formas_vida_exoticas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas exóticas.") else "",
+    "Presença, aumento de cobertura e invasão são estados distintos. A investigação deve combinar espécie, primeira detecção, ocupação de UAs, persistência, novas UAs, abundância e histórico de controle; baixa cobertura pode ainda representar alta prioridade operacional em foco recente.",
+    "",
+    "## Formas secas ou mortas",
+    monitora_relatorios_analiticos_kable(estado_seca),
+    fig_det(fig_por_id("formas_secas_mortas_cobertura"), "Cobertura das formas de vida secas ou mortas."),
+    fig_det(fig_por_id("formas_secas_mortas_proporcao"), "Composição relativa das formas secas ou mortas."),
+    fig_det(fig_por_id("inferencias_formas_vida_secas_mortas_cobertura"), "Resultados pareados da cobertura das formas secas ou mortas."),
+    fig_det(fig_por_id("inferencias_formas_vida_secas_mortas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas secas ou mortas."),
+    paste0("O diagnóstico não impeditivo materializou **", nrow(seca_morta_analitica), " ocorrências linha × forma**. A síntese editável por UC, estação amostral, UA, ano e coleta está em `resumo_seca_morta_em_revisao_relatorio_analitico.csv`. Picos podem ser compatíveis com fenologia, déficit hídrico, fogo, herbivoria ou outros danos, mas sua causa exige data da campanha, chuva, data e severidade do fogo, rebrota e repetição temporal."),
+    "",
+    "## Material botânico em decomposição e solo/rochas",
+    monitora_relatorios_analiticos_kable(estado_material),
+    fig_det(fig_por_id("material_botanico_cobertura"), "Cobertura de material botânico em decomposição."),
+    fig_det(fig_por_id("material_botanico_proporcao"), "Composição relativa do material botânico em decomposição."),
+    fig_det(fig_por_id("inferencias_material_botanico_cobertura"), "Resultados pareados da cobertura dos componentes de material botânico."),
+    fig_det(fig_por_id("inferencias_material_botanico_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta do material botânico."),
+    "Material em decomposição pode refletir produtividade, fenologia, umidade, inundação, fogo ou manejo e não equivale a impacto negativo nem a carga de combustível medida. Como o protocolo agrega solo nu e rochas, alterações desse indicador requerem inspeção de campo e medidas independentes antes de discutir erosão, compactação ou desertificação.",
     "",
     "# Resultados temporais",
     "A tabela apresenta os resultados de maior relevância editorial. A classificação vem do produto estatístico; a consistência informa se a linha de base acumulada confirmou a mesma direção.",
@@ -71087,10 +74147,14 @@ monitora_relatorios_analiticos_gerar <- function(
     "",
     frases_detalhe,
     "",
-    fig_det(fig_por_id("mudancas_prioritarias"), "Diferenças pareadas e intervalos de confiança dos resultados temporais priorizados."),
-    if (isTRUE(tem_exotica)) fig_det(fig_por_id("formas_exoticas_temporal"), "Formas de vida exóticas observadas na amostra anual total.") else "",
+    fig_det(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
+    "",
+    "## Resultados observados, hipóteses e linhas de pesquisa",
+    achados_inferencia_relatorio,
     "",
     "# Composição geral",
+    fig_det(fig_por_id("inferencias_categorias_gerais_cobertura"), "Resultados pareados da cobertura e da composição conjunta das categorias gerais."),
+    fig_det(fig_por_id("inferencias_categorias_gerais_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das categorias gerais."),
     if (nrow(comp_detalhe)) monitora_relatorios_analiticos_kable(comp_detalhe) else "Não houve resultado multivariado com pares suficientes para apresentação.",
     "A análise de composição complementa, mas não substitui, a leitura dos indicadores individuais. Uma distância elevada com resultado inconclusivo é um sinal a investigar, não mudança demonstrada.",
     "",
@@ -71098,6 +74162,12 @@ monitora_relatorios_analiticos_gerar <- function(
     unlist(lapply(seq_along(hipoteses), function(ii) c(
       paste0("## Hipótese ", ii), "", hipoteses[[ii]], ""
     ))),
+    "## Matriz de interpretação e evidência necessária",
+    monitora_relatorios_analiticos_kable(matriz_interpretacao),
+    "",
+    "## Contexto declarado de impactos, manejo e uso",
+    if (nrow(contexto_impactos_relatorio)) monitora_relatorios_analiticos_kable(contexto_impactos_relatorio) else "Não foram localizados valores de contexto preenchidos para síntese.",
+    "Os valores da tabela representam contexto declarado. Eles podem orientar estratificação e investigação; a coincidência no mesmo ano, coleta ou UC não estabelece associação, e uma associação observacional ainda não demonstra causalidade.",
     "",
     "# Recomendações para a UC",
     monitora_relatorios_analiticos_kable(recomendacoes[, .(
@@ -71116,6 +74186,8 @@ monitora_relatorios_analiticos_gerar <- function(
     ),
     "- A inferência principal prioriza UAs pareadas e informa o número de pares.",
     "- Resultado inconclusivo não significa estabilidade.",
+    "- Os painéis incorporam todas as comparações disponíveis do tema e da métrica; a síntese prioritária é apenas uma seleção editorial balanceada.",
+    "- Não há, nesta versão, modelo longitudinal global nem ajuste de autocorrelação espacial; esses limites estão registrados em `auditoria_robustez_inferencial_relatorio.csv`.",
     "- Cobertura e proporção relativa respondem a perguntas diferentes.",
     "- Formações campestre e savânica são interpretadas separadamente.",
     "- O mapa principal representa a rede amostral; o limite oficial da UC é usado somente no localizador e não substitui produto cartográfico oficial.",
@@ -71125,8 +74197,9 @@ monitora_relatorios_analiticos_gerar <- function(
     monitora_relatorios_analiticos_kable(data.table::data.table(
       Componente = c(
         "Base analítica", "Pontos", "Esforço", "Continuidade",
-        "Estado", "Mudanças", "Composição", "Gráficos", "Espacial",
-        "Metadados cartográficos"
+        "Estado", "Séries anuais por UA", "Mudanças", "Composição",
+        "Gráficos", "Auditoria estatística dos gráficos",
+        "Robustez inferencial", "Espacial", "Metadados cartográficos"
       ),
       Produto = c(
         "01_produtos_dados/registros_corrig_stat.csv",
@@ -71134,9 +74207,12 @@ monitora_relatorios_analiticos_gerar <- function(
         "esforco_amostral_por_uc_formacao_ano.csv",
         "continuidade_uas.csv e matriz_anuidades_amostrais.csv",
         "05_estatisticas/cob_veg_*.csv",
+        "series_anuais_relatorios_por_ua.csv",
         "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
         "05_estatisticas/estatisticas_composicao_*.csv",
         "indice_selecao_graficos.csv e PNGs editoriais",
+        "auditoria_integracao_estatistica_graficos_relatorio.csv",
+        "auditoria_robustez_inferencial_relatorio.csv",
         "resumo_espacial_continuidade_uas.csv",
         if (length(arquivos_metadados_cartograficos)) {
           "metadados_cartograficos_mgb2.csv/json e auditoria_limite_uc_oficial.csv"
@@ -71148,7 +74224,14 @@ monitora_relatorios_analiticos_gerar <- function(
     "",
     "# Referências metodológicas",
     "- [Componente Campestre Savânico - ICMBio](https://www.gov.br/icmbio/pt-br/assuntos/centros-de-pesquisa/biodiversidade-e-restauracao-ecologica/monitoramento-da-biodiversidade-e).",
+    "- [Protocolos de monitoramento campestre e savânico - ICMBio](https://www.gov.br/icmbio/pt-br/assuntos/monitoramento/conteudo/Materiais-de-Apoio/protocolos_de_monitoramente_campestre_e_savnico__Reduced.pdf).",
     "- [Guia para amostragem das formas de vida](https://www.gov.br/icmbio/pt-br/assuntos/monitoramento/conteudo/Materiais-de-Apoio/Guiaparaamostragemdasformasdevida.pdf).",
+    "- [Abreu et al. (2017): fire and woody encroachment in Cerrado](https://pmc.ncbi.nlm.nih.gov/articles/PMC5576881/).",
+    "- [Rodrigues et al. (2021): woody encroachment and Cerrado structure](https://doi.org/10.1016/j.foreco.2020.118850).",
+    "- [Gorgone-Barbosa et al. (2015): fire and invasive grass dynamics](https://doi.org/10.1007/s10530-014-0740-z).",
+    "- [Sampaio et al. (2019): ecological restoration in Cerrado](https://doi.org/10.1016/j.ecoleng.2019.07.025).",
+    "- [Manejo de espécies exóticas invasoras - ICMBio](https://www.gov.br/icmbio/pt-br/assuntos/biodiversidade/manejo-de-especies-exoticas-invasoras).",
+    "- [Manejo Integrado do Fogo - Ibama](https://www.gov.br/ibama/pt-br/assuntos/fiscalizacao-e-protecao-ambiental/manejo-integrado-do-fogo/sobre-o-manejo-integrado-do-fogo).",
     "- [Dados geoespaciais oficiais do ICMBio](https://www.gov.br/icmbio/pt-br/dados-icmbio/dados_geoespaciais/mapa-tematico-e-dados-geoestatisticos-das-unidades-de-conservacao-federais).",
     "- [Perfil de Metadados Geoespaciais do Brasil - MGB 2.0](https://www.inde.gov.br/pdf/liv101802.pdf)."
   )
@@ -71282,6 +74365,8 @@ monitora_relatorios_analiticos_gerar <- function(
       "status_validacao", "n_anos", "n_uas_fisicas",
       "n_pontos_amostrais", "n_evidencias_selecionadas",
       "n_figuras_preexistentes_selecionadas",
+      "n_series_anuais_ua", "n_paineis_inferenciais",
+      "n_resultados_estatisticos_incorporados",
       "mapa_satelite_solicitado", "mapa_satelite_gerado",
       "mapa_satelite_provedor", "mapa_satelite_data_aquisicao",
       "mapa_satelite_nuvens_area_pct", "mapa_satelite_cenas",
@@ -71303,6 +74388,9 @@ monitora_relatorios_analiticos_gerar <- function(
       nrow(esforco_obj$pontos_form),
       nrow(evid_selecao),
       if (nrow(graficos)) sum(graficos$disponivel) else 0L,
+      nrow(series_anuais_ua),
+      n_paineis_inferenciais,
+      nrow(auditoria_estatistica_graficos),
       mapas$status_satelite$solicitado[[1L]],
       mapas$status_satelite$gerado[[1L]],
       mapas$status_satelite$provedor[[1L]],
@@ -71405,6 +74493,14 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
         ),
         obrigatorio = FALSE
       ),
+      composicao_periodo = monitora_relatorios_analiticos_obter_objeto_ou_csv(
+        "MONITORA_STAT_COMPOSICAO_GERAL",
+        c(
+          "estatisticas_composicao_geral_ano_a_ano.csv",
+          "05_estatisticas/estatisticas_composicao_geral_ano_a_ano.csv"
+        ),
+        obrigatorio = FALSE
+      ),
       composicao_linha_base = monitora_relatorios_analiticos_obter_objeto_ou_csv(
         "MONITORA_STAT_COMPOSICAO_LINHA_BASE",
         c(
@@ -71446,7 +74542,34 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
       formatos = MONITORA_FORMATOS_RELATORIOS_ANALITICOS,
       mapa_satelite = MONITORA_RELATORIOS_ANALITICOS_MAPA_SATELITE,
       fonte_mapa_satelite = MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE,
-      status_validacao = status_relatorio
+      status_validacao = status_relatorio,
+      prop_herb_lenh = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_herb_lenh.csv", "05_estatisticas/prop_rel_herb_lenh.csv"), obrigatorio = FALSE
+      ),
+      cob_herb_lenh = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("cob_veg_herb_lenh.csv", "05_estatisticas/cob_veg_herb_lenh.csv"), obrigatorio = FALSE
+      ),
+      prop_categ = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_categ.csv", "05_estatisticas/prop_rel_categ.csv"), obrigatorio = FALSE
+      ),
+      prop_nat = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_form_vida_nat.csv", "05_estatisticas/prop_rel_form_vida_nat.csv"), obrigatorio = FALSE
+      ),
+      prop_exot = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_form_vida_exot.csv", "05_estatisticas/prop_rel_form_vida_exot.csv"), obrigatorio = FALSE
+      ),
+      prop_seca = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_form_vida_seca_morta.csv", "05_estatisticas/prop_rel_form_vida_seca_morta.csv"), obrigatorio = FALSE
+      ),
+      cob_seca = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("cob_veg_form_vida_seca_morta.csv", "05_estatisticas/cob_veg_form_vida_seca_morta.csv"), obrigatorio = FALSE
+      ),
+      prop_material = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("prop_rel_material_botanico.csv", "05_estatisticas/prop_rel_material_botanico.csv"), obrigatorio = FALSE
+      ),
+      cob_material = monitora_relatorios_analiticos_ler_produto(
+        MONITORA_OUTPUT_DIR, c("cob_veg_material_botanico.csv", "05_estatisticas/cob_veg_material_botanico.csv"), obrigatorio = FALSE
+      )
     ),
     error = function(e) {
       MONITORA_RELATORIOS_ANALITICOS_ERRO <<- conditionMessage(e)
