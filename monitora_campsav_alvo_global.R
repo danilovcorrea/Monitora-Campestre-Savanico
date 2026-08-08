@@ -1,22 +1,17 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.3
-### Baseline pública de origem: v2.9.2
-### Conteúdo acumulado da versão — repetições de coletores/impactos, justificativas em
-### lote, sanitização contratual de coletores, manual atualizado, diagnóstico
-### não impeditivo de seca/morta, núcleo ecológico dos relatórios analíticos e
-### integração inferencial auditável nos gráficos dos relatórios. As séries
-### anuais usam a UA como unidade analítica, com média, IC95% e esforço; os
-### painéis estatísticos incorporam mudanças pareadas entre medições, comparação
-### com linha de base, FDR-BH, equivalência e mudança de composição. Pendências e
-### alertas espaciais passam a integrar a justificativa auditável em lote, com
-### reavaliação pós-correção; relatórios recebem texto agrupado, alinhamento
-### editorial externo, justificativa tipográfica e símbolos inferenciais nas
-### médias anuais, sempre derivados dos testes pareados já materializados.
-### A interpretação distingue resultado observado, hipótese compatível,
-### explicações alternativas e evidência necessária; nenhum vetor de mudança é
-### atribuído como causa somente a partir da série de vegetação.
+### Versão do script: 2.9.4
+### Baseline pública de origem: v2.9.3
+### Conteúdo acumulado da revisão — preserva integralmente o contrato e os
+### resultados da v2.9.3 e reorganiza somente a apresentação dos relatórios
+### analíticos. O sintético passa a ser efetivamente executivo; o detalhado
+### conserva cobertura temática e robustez sem reproduzir todos os painéis
+### técnicos. CSVs, PNGs, testes pareados, composição, IC95%, FDR-BH,
+### equivalência, cautela causal e rastreabilidade permanecem completos. Quando
+### os relatórios são ativados, o mapa orbital Sentinel-2 público passa a ser o
+### padrão, sem chave, conta ou cobrança. Com o módulo desligado, nenhum pacote,
+### consulta orbital, figura ou cálculo específico é iniciado.
 ###
 ### Finalidade
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
@@ -152,28 +147,22 @@
 ###
 ### Repositório: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
 
-### Encapsulamento interno de inicialização ---------------------------------
-### Todo o programa constitui deliberadamente uma única expressão externa.
-### Assim, mesmo quando o RStudio aciona Source with Echo por engano, o IDE não
-### precisa enfileirar e reproduzir milhares de expressões no console. O corpo é
-### avaliado no ambiente global, preservando a semântica histórica do script,
-### sem depender de iniciador, .Rprofile, projeto RStudio ou arquivo auxiliar.
-### A versão 2.9.3 acrescenta edição transacional e sanitização determinística
-### do repeat de coletores, preserva o CPF como opcional, explicita labels/names
-### e dependências dos atributos de impactos, permite justificar pendências em
-### lote e atualiza integralmente o manual e o relatório consolidado, sem alterar
-### os demais módulos congelados.
-###
-base::evalq({
+### Inicialização direta no RStudio e no Rscript -----------------------------
+### A v2.9.4 remove o evalq que encapsulava todo o arquivo. No R do Windows,
+### a substituição interna dessa expressão de aproximadamente 4,5 MB podia
+### consumir vários minutos antes da primeira mensagem, embora a leitura e a
+### análise sintática fossem rápidas. O corpo volta a ser avaliado diretamente
+### no ambiente global, como já ocorre no Source padrão e no Rscript, sem
+### iniciador, .Rprofile, projeto RStudio ou arquivo auxiliar. A preferência
+### oficial Source with Echo continua sendo corrigida abaixo para FALSE.
 
 ### Inicialização sem eco no RStudio ----------------------------------------
 ### "Source with Echo" é uma preferência do IDE aplicada antes da primeira
-### expressão deste arquivo. Por isso, um script monolítico não consegue
-### neutralizá-la de modo confiável de dentro da própria chamada que o carrega.
-### Nesta revisão, todo o programa é uma única expressão externa. Isso elimina
-### a fila volumosa de expressões mesmo na chamada corrente, enquanto a rotina
-### abaixo corrige a preferência persistentemente pela API oficial do RStudio.
-### A execução por Rscript não é tocada e nenhum arquivo auxiliar é necessário.
+### expressão deste arquivo. A rotina abaixo a corrige persistentemente pela
+### API oficial do RStudio; a chamada corrente preserva a escolha já aplicada
+### pelo IDE. O botão Source padrão, com eco desligado, inicia o corpo assim que
+### a análise sintática termina. A execução por Rscript não é tocada e nenhum
+### arquivo auxiliar é necessário.
 MONITORA_SOURCE_ECHO_DESATIVADO_AUTOMATICAMENTE <- FALSE
 MONITORA_RSTUDIO_SOURCE_ECHO <- local({
   resultado <- list(
@@ -216,6 +205,9 @@ MONITORA_RSTUDIO_SOURCE_ECHO <- local({
   }
   resultado
 })
+MONITORA_SOURCE_ECHO_DESATIVADO_AUTOMATICAMENTE <- isTRUE(
+  MONITORA_RSTUDIO_SOURCE_ECHO$alterada
+)
 MONITORA_INICIO_PRIMEIRA_EXPRESSAO <- Sys.time()
 ### Dispositivos já pertencentes à sessão (por exemplo, RStudioGD) não são
 ### encerrados pelo script. A fotografia inicial permite fechar, na finalização,
@@ -226,8 +218,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.3"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.3-20260807.1"
+MONITORA_SCRIPT_VERSAO <- "2.9.4"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.4-20260808.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -300,15 +292,17 @@ MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "docx", "pdf")
 ### Também são reconhecidas, nessa ordem posterior, as variáveis de ambiente
 ### PAGEDOWN_CHROME, CHROME_BIN e CHROMOTE_CHROME.
 MONITORA_CAMINHO_NAVEGADOR_PDF <- ""
-### Fundo orbital opcional para o mapa de continuidade. O padrão "N" mantém o
-### mapa vetorial local, sem internet, credenciais, cobrança ou dependência
-### externa. Com "S", a fonte padrão SENTINEL2_PUBLICO consulta o catálogo STAC
-### público Earth Search, seleciona a aquisição mais recente com nuvens
-### aceitáveis na extensão da rede amostral e lê somente as janelas necessárias
-### dos COGs públicos. Não exige conta, chave, token ou faturamento.
+### Fundo orbital para o mapa de continuidade. O padrão "S" somente é avaliado
+### quando os relatórios analíticos também estão ativos; portanto, com o módulo
+### desligado não há consulta, pacote ou custo adicional. A fonte padrão
+### SENTINEL2_PUBLICO consulta o catálogo STAC público Earth Search, seleciona a
+### aquisição mais recente com nuvens aceitáveis na extensão da rede amostral e
+### lê somente as janelas necessárias dos COGs públicos. Não exige conta, chave,
+### token ou faturamento. Use "N" para solicitar explicitamente o mapa vetorial
+### local, sem acesso à internet.
 ### GOOGLE_MAPS permanece disponível como alternativa explícita e exige
 ### MONITORA_GOOGLE_MAPS_API_KEY no ambiente.
-MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE <- "N"
+MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE <- "S"
 MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE <- "SENTINEL2_PUBLICO"
 MONITORA_RESPONSAVEL_CORRECAO <- Sys.getenv("MONITORA_RESPONSAVEL_CORRECAO", unset = "")
 MONITORA_INSTITUICAO_RESPONSAVEL <- Sys.getenv("MONITORA_INSTITUICAO_RESPONSAVEL", unset = "ICMBio")
@@ -715,10 +709,12 @@ if (!(MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE %in% c("S", "N"))) {
     call. = FALSE
   )
 }
-MONITORA_RELATORIOS_ANALITICOS_MAPA_SATELITE <- identical(
-  MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE,
-  "S"
-)
+### A chave do mapa só se materializa dentro do módulo analítico. Assim, o
+### padrão Sentinel="S" não cria validações, consultas ou custo quando os
+### relatórios estão em "N".
+MONITORA_RELATORIOS_ANALITICOS_MAPA_SATELITE <- isTRUE(
+  MONITORA_GERAR_RELATORIOS_ANALITICOS
+) && identical(MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE, "S")
 MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE <- toupper(trimws(Sys.getenv(
   "MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE",
   unset = as.character(get0(
@@ -732,13 +728,6 @@ if (!(MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE %in%
   stop(
     "MONITORA_FONTE_RELATORIOS_ANALITICOS_MAPA_SATELITE deve ser ",
     "'SENTINEL2_PUBLICO' ou 'GOOGLE_MAPS'.",
-    call. = FALSE
-  )
-}
-if (isTRUE(MONITORA_RELATORIOS_ANALITICOS_MAPA_SATELITE) &&
-    !isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
-  stop(
-    "O mapa de satélite exige MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS = 'S'.",
     call. = FALSE
   )
 }
@@ -2777,6 +2766,23 @@ if (!(MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES %in% c("S", "N"))) {
   stop("MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES deve ser 'S' ou 'N'.", call. = FALSE)
 }
 MONITORA_REAPLICAR_CORRECOES_ANTERIORES <- identical(MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES, "S")
+MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA <- Sys.getenv(
+  "MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA",
+  unset = as.character(get0(
+    "MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA",
+    ifnotfound = "N",
+    inherits = TRUE
+  ))[1L]
+)
+MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA <- toupper(trimws(
+  as.character(MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA)[1L]
+))
+if (!(MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA %in% c("S", "N"))) {
+  stop(
+    "MONITORA_OPCAO_DISPENSAR_LINHAGEM_HISTORICA_INCOMPLETA deve ser 'S' ou 'N'.",
+    call. = FALSE
+  )
+}
 MONITORA_ARQUIVO_CORRECOES_ANTERIORES <- Sys.getenv(
   "MONITORA_ARQUIVO_CORRECOES_ANTERIORES",
   unset = as.character(get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = "", inherits = TRUE))[1]
@@ -72417,6 +72423,72 @@ monitora_relatorios_analiticos_conteudo_docx <- function(conteudo) {
 }
 
 
+### Localiza o Pandoc também fora de uma sessão do RStudio. No Windows, o
+### executável distribuído com o RStudio/Quarto não entra necessariamente no
+### PATH do Rscript; sem esta resolução, os mesmos relatórios que funcionam no
+### botão Source falham em uma execução agendada. A busca só ocorre quando o
+### módulo analítico está ativo e um formato renderizado foi solicitado.
+monitora_relatorios_analiticos_resolver_pandoc <- local({
+  cache <- NULL
+  function() {
+    if (!is.null(cache)) return(cache)
+    disponivel <- function() {
+      isTRUE(tryCatch(rmarkdown::pandoc_available(), error = function(e) FALSE))
+    }
+    if (disponivel()) {
+      info <- tryCatch(rmarkdown::pandoc_version(), error = function(e) NA)
+      cache <<- list(ok = TRUE, caminho = Sys.getenv("RSTUDIO_PANDOC", unset = ""), versao = as.character(info))
+      return(cache)
+    }
+
+    dirs_env <- c(
+      Sys.getenv("RSTUDIO_PANDOC", unset = ""),
+      Sys.getenv("QUARTO_PANDOC", unset = "")
+    )
+    dirs_env <- c(dirs_env, dirname(Sys.which("pandoc")))
+    if (.Platform$OS.type == "windows") {
+      raizes <- unique(c(
+        Sys.getenv("ProgramFiles", unset = ""),
+        Sys.getenv("ProgramW6432", unset = ""),
+        Sys.getenv("LOCALAPPDATA", unset = "")
+      ))
+      raizes <- raizes[nzchar(raizes)]
+      dirs_env <- c(dirs_env, unlist(lapply(raizes, function(raiz) c(
+        file.path(raiz, "RStudio", "resources", "app", "bin", "quarto", "bin", "tools"),
+        file.path(raiz, "RStudio", "resources", "app", "bin", "pandoc"),
+        file.path(raiz, "Programs", "RStudio", "resources", "app", "bin", "quarto", "bin", "tools")
+      )), use.names = FALSE))
+    } else if (identical(Sys.info()[["sysname"]], "Darwin")) {
+      dirs_env <- c(
+        dirs_env,
+        "/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools",
+        "/Applications/RStudio.app/Contents/MacOS/pandoc"
+      )
+    } else {
+      dirs_env <- c(
+        dirs_env,
+        "/usr/lib/rstudio/resources/app/bin/quarto/bin/tools",
+        "/usr/lib/rstudio/bin/pandoc",
+        "/opt/rstudio/resources/app/bin/quarto/bin/tools"
+      )
+    }
+    dirs_env <- unique(normalizePath(dirs_env[nzchar(dirs_env)], winslash = "/", mustWork = FALSE))
+    executavel <- if (.Platform$OS.type == "windows") "pandoc.exe" else "pandoc"
+    candidatos <- file.path(dirs_env, executavel)
+    pos <- which(file.exists(candidatos))[1L]
+    if (!is.na(pos)) {
+      Sys.setenv(RSTUDIO_PANDOC = dirname(candidatos[[pos]]))
+    }
+    ok <- disponivel()
+    cache <<- list(
+      ok = ok,
+      caminho = if (ok) Sys.getenv("RSTUDIO_PANDOC", unset = dirname(candidatos[[pos]])) else "",
+      versao = if (ok) as.character(tryCatch(rmarkdown::pandoc_version(), error = function(e) NA)) else NA_character_
+    )
+    cache
+  }
+})
+
 monitora_relatorios_analiticos_renderizar <- function(
   conteudo,
   base_nome,
@@ -72448,6 +72520,19 @@ monitora_relatorios_analiticos_renderizar <- function(
   remover_alvo_anterior <- function(caminho) {
     if (file.exists(caminho)) unlink(caminho, force = TRUE)
     invisible(!file.exists(caminho))
+  }
+
+  if (any(c("html", "docx", "pdf") %in% formatos)) {
+    pandoc_resolvido <- monitora_relatorios_analiticos_resolver_pandoc()
+    if (!isTRUE(pandoc_resolvido$ok)) {
+      mensagem_pandoc <- paste0(
+        "Pandoc não localizado. Instale o Pandoc ou o RStudio/Quarto; ",
+        "a busca automática multiplataforma não encontrou um executável válido."
+      )
+      for (formato_pandoc in intersect(formatos, c("html", "docx", "pdf"))) {
+        registrar_erro(formato_pandoc, "resolucao_pandoc", mensagem_pandoc)
+      }
+    }
   }
 
   remover_alvo_anterior(rmd)
@@ -72995,6 +73080,48 @@ monitora_relatorios_analiticos_gerar <- function(
   for (nm_estado in names(estados_nucleo)) {
     data.table::fwrite(estados_nucleo[[nm_estado]], file.path(dir_relatorio, paste0("estado_atual_", nm_estado, ".csv")), bom = TRUE, na = "")
   }
+
+  ### Síntese editorial do estado atual. Os produtos completos acima permanecem
+  ### inalterados; esta tabela controla somente o volume impresso no relatório
+  ### sintético. A regra é determinística e seleciona, por formação, os primeiros
+  ### indicadores já ordenados por cobertura e, na ausência dela, por proporção.
+  estado_resumir_relatorio <- function(x, eixo, n_por_formacao) {
+    x <- data.table::as.data.table(data.table::copy(x))
+    if (!nrow(x)) return(data.table::data.table())
+    col_indicador <- setdiff(
+      names(x),
+      c("Formação", "Cobertura (%)", "Nº de UAs", "Proporção relativa (%)")
+    )
+    if (!length(col_indicador)) return(data.table::data.table())
+    data.table::setnames(x, col_indicador[[1L]], "Indicador")
+    x <- x[, head(.SD, as.integer(n_por_formacao)), by = Formação]
+    x[, Eixo := eixo]
+    data.table::setcolorder(
+      x,
+      c(
+        "Eixo", "Formação", "Indicador", "Cobertura (%)",
+        "Proporção relativa (%)", "Nº de UAs"
+      )
+    )
+    x[]
+  }
+  estado_prioritario_sintetico <- data.table::rbindlist(
+    list(
+      estado_resumir_relatorio(estado_herb_lenh, "Estrutura viva", 2L),
+      estado_resumir_relatorio(estado_nativas, "Nativas", 3L),
+      estado_resumir_relatorio(estado_exoticas, "Exóticas", 2L),
+      estado_resumir_relatorio(estado_seca, "Secas ou mortas", 2L),
+      estado_resumir_relatorio(estado_material, "Material botânico", 2L)
+    ),
+    fill = TRUE,
+    use.names = TRUE
+  )
+  data.table::fwrite(
+    estado_prioritario_sintetico,
+    file.path(dir_relatorio, "estado_atual_prioritario_relatorio_sintetico.csv"),
+    bom = TRUE,
+    na = ""
+  )
 
   matriz_interpretacao <- data.table::data.table(
     Indicador = c(
@@ -73693,6 +73820,18 @@ monitora_relatorios_analiticos_gerar <- function(
     bom = TRUE,
     na = ""
   )
+  auditoria_robustez_compacta <- auditoria_robustez[
+    componente %in% c(
+      "Unidade analítica", "Pareamento temporal", "Incerteza",
+      "Multiplicidade", "Estabilidade/equivalência", "Composição relativa",
+      "Dependência espacial"
+    ),
+    .(
+      Componente = componente,
+      Situação = status,
+      `Implementação ou limite` = implementacao_ou_limite
+    )
+  ]
 
   graficos <- monitora_relatorios_analiticos_graficos_editoriais(
     cob_categ,
@@ -73935,107 +74074,50 @@ monitora_relatorios_analiticos_gerar <- function(
     frases_sintese,
     "",
     "# Esforço amostral por UC, formação e ano",
-    "A tabela contabiliza UAs e pontos amostrais efetivamente observados. UAs não são duplicadas como “transecções”, e o número de pontos não é estimado pelo desenho potencial de 101 posições.",
+    "A tabela contabiliza UAs e pontos efetivamente observados; não duplica UAs como transecções nem projeta automaticamente as 101 posições potenciais.",
     monitora_relatorios_analiticos_kable(tabela_esforco_formacao),
     "",
-    fig_sint(rel_mapa_resumo, "Distribuição espacial do esforço amostral nas UAs. A formação indicada é a classificação mais recente; mudanças históricas de classificação constam na matriz editável."),
     if (!is.na(rel_mapa_satelite)) fig_sint(
       rel_mapa_satelite,
       legenda_mapa_satelite
-    ) else "",
+    ) else fig_sint(
+      rel_mapa_resumo,
+      "Distribuição espacial do esforço amostral nas UAs. A formação indicada é a classificação mais recente; mudanças históricas constam nos produtos editáveis."
+    ),
     fig_sint("figuras/esforco_amostral_temporal.png", "Esforço amostral anual por formação vegetacional."),
     "",
     "# Estado da cobertura vegetal",
-    "## Categorias gerais na campanha mais recente",
-    paste0("Cobertura observada na campanha mais recente (**", max(anos), "**):"),
+    paste0("Cobertura observada na campanha mais recente (**", max(anos), "**) e trajetória anual das categorias gerais:"),
     monitora_relatorios_analiticos_kable(estado_atual),
-    "",
-    fig_sint(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura entre UAs; o n anual é informado na própria figura."),
-    fig_sint(fig_por_id("categorias_proporcao"), "Média anual e IC95% da proporção relativa por UA. A proporção pode mudar por alteração do numerador ou do denominador."),
-    fig_sint(fig_por_id("inferencias_categorias_gerais_proporcao_relativa"), "Testes temporais dos componentes e da composição conjunta das categorias gerais. Cores e valores derivam integralmente dos produtos estatísticos auditados."),
+    fig_sint(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura entre UAs; os símbolos junto às médias derivam dos testes pareados auditados."),
     "",
     "# Indicadores ecológicos prioritários",
-    "Cobertura e proporção relativa são apresentadas em conjunto. O primeiro indicador descreve a frequência absoluta de contatos; o segundo descreve o balanço composicional e depende do total usado como denominador. Vegetação seca ou morta não integra o contraste entre vegetação herbácea e lenhosa viva.",
+    "Cobertura descreve a frequência absoluta de contatos; proporção relativa descreve o balanço composicional. A tabela reúne os componentes mais representativos de cada eixo e os produtos CSV preservam todos os indicadores.",
+    monitora_relatorios_analiticos_kable(estado_prioritario_sintetico),
     "",
     "## Estrutura viva: herbáceas e lenhosas",
-    monitora_relatorios_analiticos_kable(estado_herb_lenh),
     fig_sint(fig_por_id("herbaceas_lenhosas_cobertura"), "Cobertura dos componentes herbáceo e lenhoso vivos."),
     fig_sint(fig_por_id("herbaceas_lenhosas_proporcao"), "Balanço relativo entre os componentes herbáceo e lenhoso vivos."),
-    fig_sint(fig_por_id("inferencias_herbaceas_lenhosas_cobertura"), "Evidência pareada para a cobertura herbácea e lenhosa, incluindo linha de base e composição conjunta."),
-    fig_sint(fig_por_id("inferencias_herbaceas_lenhosas_proporcao_relativa"), "Evidência pareada para o balanço relativo herbáceo-lenhoso."),
     "Um aumento do componente lenhoso acompanhado de redução herbácea nas mesmas UAs é compatível com adensamento lenhoso, mas não o demonstra. Regime do fogo, clima, recrutamento, herbivoria, manejo e restauração precisam ser testados com informação independente.",
     "",
-    "## Formas de vida nativas",
-    monitora_relatorios_analiticos_kable(estado_nativas),
-    fig_sint(fig_por_id("formas_nativas_recente"), "Principais formas de vida nativas na campanha mais recente."),
-    fig_sint(fig_por_id("formas_nativas_proporcao"), "Composição relativa das principais formas de vida nativas."),
-    "",
-    "## Formas de vida exóticas",
-    if (nrow(estado_exoticas)) monitora_relatorios_analiticos_kable(estado_exoticas) else "Não houve forma de vida exótica com valor analítico disponível no estado mais recente.",
-    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("formas_exoticas_temporal"), "Cobertura das formas de vida exóticas observadas.") else "",
-    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("formas_exoticas_proporcao"), "Composição relativa das formas de vida exóticas observadas.") else "",
-    if (isTRUE(tem_exotica)) fig_sint(fig_por_id("inferencias_formas_vida_exoticas_proporcao_relativa"), "Evidência temporal da proporção relativa das formas exóticas e de sua composição conjunta.") else "",
-    "A presença de exóticas não equivale automaticamente a invasão biológica. A prioridade de investigação considera identidade taxonômica, primeira detecção, persistência, ocupação e novas UAs, além da resposta a ações de controle.",
-    "",
-    "## Formas secas ou mortas",
-    monitora_relatorios_analiticos_kable(estado_seca),
-    fig_sint(fig_por_id("formas_secas_mortas_cobertura"), "Cobertura das formas secas ou mortas."),
-    fig_sint(fig_por_id("formas_secas_mortas_proporcao"), "Composição relativa das formas secas ou mortas."),
-    fig_sint(fig_por_id("inferencias_formas_vida_secas_mortas_cobertura"), "Evidência temporal pareada da cobertura das formas secas ou mortas."),
-    paste0("Foram materializadas **", nrow(seca_morta_analitica), " ocorrências linha × forma de vida** para revisão não impeditiva. Seca/morta pode refletir fenologia, déficit hídrico, fogo, herbivoria ou outros danos; o dado isolado não identifica a causa."),
-    "",
-    "## Material botânico em decomposição e solo/rochas",
-    monitora_relatorios_analiticos_kable(estado_material),
-    fig_sint(fig_por_id("material_botanico_cobertura"), "Cobertura de material botânico em decomposição."),
-    fig_sint(fig_por_id("material_botanico_proporcao"), "Composição relativa do material botânico em decomposição."),
-    "Material em decomposição não é, por si só, impacto negativo nem medida direta de carga de combustível. O atributo solo nu agrega solo e rochas; portanto, não sustenta isoladamente diagnóstico de erosão ou desertificação.",
+    '<div class="callout"><strong>Leitura para gestão.</strong> Exóticas exigem identificação e delimitação antes de inferir invasão; seca ou mortalidade pode refletir fenologia, déficit hídrico, fogo ou outros danos; material em decomposição não mede diretamente carga de combustível; e solo exposto/rochas não demonstra erosão ou desertificação isoladamente.</div>',
     "",
     "# Resultados temporais",
-    "## Mudanças temporais prioritárias",
-    monitora_relatorios_analiticos_kable(tabela_achados(8L)),
-    "",
+    "A seleção é determinística e balanceia mudanças direcionais, estabilidade/equivalência e resultados inconclusivos. Todos os testes, inclusive os não impressos, permanecem nos CSVs e PNGs técnicos.",
     fig_sint(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
     "",
-    "## Do achado à linha de pesquisa",
-    achados_inferencia_relatorio,
-    "",
-    "# Hipóteses ecológicas",
-    paste0("- ", hipoteses),
-    "",
-    '<div class="callout warning"><strong>Limite inferencial.</strong> As hipóteses são mecanismos plausíveis, não causas demonstradas. Registros independentes de fogo, clima, manejo, invasão, uso e animais são necessários para testar associação temporal e espacial.</div>',
-    "",
-    "## Contexto declarado de impactos, manejo e uso",
-    if (nrow(contexto_impactos_relatorio)) monitora_relatorios_analiticos_kable(contexto_impactos_relatorio) else "Não foram localizados valores de contexto preenchidos para síntese.",
-    "Os valores da tabela representam contexto declarado. Eles orientam hipóteses e conferência documental, mas a coincidência no mesmo ano ou na mesma UC não demonstra associação causal com a mudança de vegetação.",
-    "",
-    "# Recomendações para a UC",
-    "## Recomendações de maior prioridade",
+    "# Recomendações, limites e rastreabilidade",
     monitora_relatorios_analiticos_kable(head(recomendacoes[, .(
       Prioridade = prioridade,
       Natureza = natureza,
       Recomendação = recomendacao,
       Fundamento = fundamento
-    )], 5L)),
-    "",
-    "# Escopo e método",
-    paste0("- ", linhas_metodo),
-    "",
-    "# Produtos e rastreabilidade",
-    "- Base analítica: `01_produtos_dados/registros_corrig_stat.csv`.",
-    "- Pontos amostrais: `01_produtos_dados/registros_corrig.csv`.",
-    "- Estatísticas: arquivos de `05_estatisticas/`.",
-    "- Séries anuais alinhadas à UA: `series_anuais_relatorios_por_ua.csv`.",
-    "- Figuras: sínteses editoriais reproduzíveis a partir dos produtos de `05_estatisticas/` e de `registros_corrig_stat.csv`.",
-    "- Integração estatística dos gráficos: `auditoria_integracao_estatistica_graficos_relatorio.csv`.",
-    "- Robustez e limites: `auditoria_robustez_inferencial_relatorio.csv`.",
-    "- Evidências: `indice_evidencias_relatorio.csv`.",
-    "- Esforço: `esforco_amostral_por_uc_formacao_ano.csv`.",
-    "- Continuidade: `continuidade_uas.csv` e `matriz_anuidades_amostrais.csv`.",
-    if (length(arquivos_metadados_cartograficos)) {
-      "- Cartografia: `metadados_cartograficos_mgb2.csv`, `metadados_cartograficos_mgb2.json` e `auditoria_limite_uc_oficial.csv`."
-    } else {
-      "- Cartografia orbital: não solicitada nesta execução; a auditoria da opção foi preservada."
-    },
+    )], 4L)),
+    '<div class="callout warning"><strong>Limite inferencial.</strong> A série de vegetação sustenta resultados observados e hipóteses testáveis, não atribuição causal. Fogo, clima, manejo, invasão, uso e animais exigem evidência temporal e espacial independente.</div>',
+    "- Unidade analítica e pareamento: UA; IC95%, n de pares, q ajustado e equivalência constam nos produtos estatísticos.",
+    "- Resultado inconclusivo não significa estabilidade; cobertura e proporção relativa respondem a perguntas diferentes.",
+    "- Evidências completas: `indice_evidencias_relatorio.csv`, `auditoria_integracao_estatistica_graficos_relatorio.csv` e PNGs em `figuras/`.",
+    "- Bases: `01_produtos_dados/registros_corrig_stat.csv`, `05_estatisticas/` e `series_anuais_relatorios_por_ua.csv`.",
     "",
     paste0(
       '<p class="small">Relatório analítico ',
@@ -74053,21 +74135,14 @@ monitora_relatorios_analiticos_gerar <- function(
     "## Achados prioritários",
     frases_sintese,
     "",
-    '<div class="page-break"></div>',
-    "## Recomendações de maior prioridade",
-    monitora_relatorios_analiticos_kable(recomendacoes[prioridade == "Alta", .(
-      Natureza = natureza,
-      Recomendação = recomendacao,
-      Fundamento = fundamento
-    )]),
-    "",
     "# Escopo e método",
     "O protocolo caracteriza a cobertura por interceptação de pontos ao longo das UAs. O desenho prevê até 101 posições potenciais, mas este relatório contabiliza somente os pontos válidos efetivamente registrados.",
     "",
-    paste0("- ", linhas_metodo),
+    paste0("- ", linhas_metodo[c(1L, 2L, 3L, 4L, 6L)]),
     "",
     "## Auditoria da robustez inferencial",
-    monitora_relatorios_analiticos_kable(auditoria_robustez),
+    monitora_relatorios_analiticos_kable(auditoria_robustez_compacta),
+    "A auditoria completa, inclusive limitações e critérios não impressos, permanece em `auditoria_robustez_inferencial_relatorio.csv`.",
     "",
     "# Esforço amostral por UC, formação e ano",
     monitora_relatorios_analiticos_kable(tabela_esforco_formacao),
@@ -74080,12 +74155,13 @@ monitora_relatorios_analiticos_gerar <- function(
       " UA(s)** apresenta(m) mudança de classificação da formação entre anos; isso não representa, por si só, substituição ou perda da UA."
     ),
     "",
-    fig_det(rel_mapa_resumo, "Distribuição espacial do esforço amostral nas UAs. O mapa representa a rede amostral, não o limite oficial da UC."),
     if (!is.na(rel_mapa_satelite)) fig_det(
       rel_mapa_satelite,
       legenda_mapa_satelite
-    ) else "",
-    fig_det(rel_mapa_paineis, "Rede de UAs com geometria válida em cada campanha."),
+    ) else fig_det(
+      rel_mapa_resumo,
+      "Distribuição espacial do esforço amostral nas UAs. O mapa representa a rede amostral, não o limite oficial da UC."
+    ),
     fig_det("figuras/esforco_amostral_temporal.png", "Esforço amostral anual por formação vegetacional."),
     "",
     "# Estado da cobertura vegetal",
@@ -74095,9 +74171,7 @@ monitora_relatorios_analiticos_gerar <- function(
     "## Principais formas de vida nativas",
     monitora_relatorios_analiticos_kable(formas_atual),
     "",
-    fig_det(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura das categorias gerais entre UAs."),
-    fig_det(fig_por_id("categorias_proporcao"), "Média anual e IC95% da proporção relativa por UA; mudanças podem decorrer do numerador ou do denominador."),
-    fig_det(fig_por_id("formas_nativas_recente"), "Principais formas de vida nativas na campanha mais recente."),
+    fig_det(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura das categorias gerais entre UAs; símbolos estatísticos derivam dos testes pareados."),
     "",
     "# Indicadores ecológicos prioritários",
     '<div class="callout"><strong>Regra de leitura.</strong> Resultado observado, hipótese compatível e evidência necessária são apresentados separadamente. Cobertura mede frequência absoluta de contatos; proporção relativa descreve o balanço composicional. Nenhum vetor de mudança é atribuído como causa apenas por coincidência temporal ou espacial.</div>',
@@ -74106,64 +74180,47 @@ monitora_relatorios_analiticos_gerar <- function(
     monitora_relatorios_analiticos_kable(estado_herb_lenh),
     fig_det(fig_por_id("herbaceas_lenhosas_cobertura"), "Cobertura dos componentes herbáceo e lenhoso vivos; seca/morta é excluída deste contraste."),
     fig_det(fig_por_id("herbaceas_lenhosas_proporcao"), "Balanço relativo entre componentes herbáceo e lenhoso vivos."),
-    fig_det(fig_por_id("inferencias_herbaceas_lenhosas_cobertura"), "Resultados pareados da cobertura herbácea e lenhosa: comparação anterior, linha de base e composição conjunta."),
-    fig_det(fig_por_id("inferencias_herbaceas_lenhosas_proporcao_relativa"), "Resultados pareados do balanço relativo herbáceo-lenhoso."),
     "Adensamento lenhoso é uma hipótese prioritária apenas quando o aumento lenhoso, especialmente de formas nativas lenhosas, coincide com redução herbácea nas mesmas UAs e persiste no tempo. Aumento simultâneo dos dois componentes pode indicar maior estratificação ou densidade de contatos, e não deve receber automaticamente o mesmo diagnóstico.",
     "",
     "## Formas de vida nativas",
     monitora_relatorios_analiticos_kable(estado_nativas),
     fig_det(fig_por_id("formas_nativas_proporcao"), "Composição relativa das principais formas de vida nativas."),
-    fig_det(fig_por_id("inferencias_formas_vida_nativas_cobertura"), "Resultados pareados da cobertura das formas de vida nativas."),
-    fig_det(fig_por_id("inferencias_formas_vida_nativas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas nativas."),
     "A decomposição por forma de vida informa quais componentes sustentam a trajetória. Para restauração de formações abertas, aumento de árvores não é automaticamente positivo: a referência deve ser a fisionomia e os objetivos de conservação locais.",
     "",
     "## Formas de vida exóticas e invasão biológica",
     if (nrow(estado_exoticas)) monitora_relatorios_analiticos_kable(estado_exoticas) else "Não houve forma de vida exótica com valor analítico disponível no estado mais recente.",
     if (isTRUE(tem_exotica)) fig_det(fig_por_id("formas_exoticas_temporal"), "Cobertura das formas de vida exóticas observadas.") else "",
-    if (isTRUE(tem_exotica)) fig_det(fig_por_id("formas_exoticas_proporcao"), "Composição relativa das formas de vida exóticas observadas.") else "",
-    if (isTRUE(tem_exotica)) fig_det(fig_por_id("inferencias_formas_vida_exoticas_cobertura"), "Resultados pareados da cobertura das formas de vida exóticas.") else "",
-    if (isTRUE(tem_exotica)) fig_det(fig_por_id("inferencias_formas_vida_exoticas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas exóticas.") else "",
     "Presença, aumento de cobertura e invasão são estados distintos. A investigação deve combinar espécie, primeira detecção, ocupação de UAs, persistência, novas UAs, abundância e histórico de controle; baixa cobertura pode ainda representar alta prioridade operacional em foco recente.",
     "",
     "## Formas secas ou mortas",
     monitora_relatorios_analiticos_kable(estado_seca),
     fig_det(fig_por_id("formas_secas_mortas_cobertura"), "Cobertura das formas de vida secas ou mortas."),
-    fig_det(fig_por_id("formas_secas_mortas_proporcao"), "Composição relativa das formas secas ou mortas."),
-    fig_det(fig_por_id("inferencias_formas_vida_secas_mortas_cobertura"), "Resultados pareados da cobertura das formas secas ou mortas."),
-    fig_det(fig_por_id("inferencias_formas_vida_secas_mortas_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das formas secas ou mortas."),
     paste0("O diagnóstico não impeditivo materializou **", nrow(seca_morta_analitica), " ocorrências linha × forma**. A síntese editável por UC, estação amostral, UA, ano e coleta está em `resumo_seca_morta_em_revisao_relatorio_analitico.csv`. Picos podem ser compatíveis com fenologia, déficit hídrico, fogo, herbivoria ou outros danos, mas sua causa exige data da campanha, chuva, data e severidade do fogo, rebrota e repetição temporal."),
     "",
     "## Material botânico em decomposição e solo/rochas",
     monitora_relatorios_analiticos_kable(estado_material),
     fig_det(fig_por_id("material_botanico_cobertura"), "Cobertura de material botânico em decomposição."),
-    fig_det(fig_por_id("material_botanico_proporcao"), "Composição relativa do material botânico em decomposição."),
-    fig_det(fig_por_id("inferencias_material_botanico_cobertura"), "Resultados pareados da cobertura dos componentes de material botânico."),
-    fig_det(fig_por_id("inferencias_material_botanico_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta do material botânico."),
     "Material em decomposição pode refletir produtividade, fenologia, umidade, inundação, fogo ou manejo e não equivale a impacto negativo nem a carga de combustível medida. Como o protocolo agrega solo nu e rochas, alterações desse indicador requerem inspeção de campo e medidas independentes antes de discutir erosão, compactação ou desertificação.",
     "",
     "# Resultados temporais",
-    "A tabela apresenta os resultados de maior relevância editorial. A classificação vem do produto estatístico; a consistência informa se a linha de base acumulada confirmou a mesma direção.",
-    monitora_relatorios_analiticos_kable(tabela_achados(16L)),
-    "",
-    frases_detalhe,
+    "A tabela apresenta uma seleção editorial determinística. A classificação vem do produto estatístico e a consistência informa se a linha de base acumulada confirmou a direção; os resultados completos permanecem nos produtos técnicos.",
+    monitora_relatorios_analiticos_kable(tabela_achados(10L)),
     "",
     fig_det(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
     "",
-    "## Resultados observados, hipóteses e linhas de pesquisa",
-    achados_inferencia_relatorio,
-    "",
     "# Composição geral",
-    fig_det(fig_por_id("inferencias_categorias_gerais_cobertura"), "Resultados pareados da cobertura e da composição conjunta das categorias gerais."),
-    fig_det(fig_por_id("inferencias_categorias_gerais_proporcao_relativa"), "Resultados pareados das proporções relativas e da composição conjunta das categorias gerais."),
-    if (nrow(comp_detalhe)) monitora_relatorios_analiticos_kable(comp_detalhe) else "Não houve resultado multivariado com pares suficientes para apresentação.",
+    if (nrow(comp_detalhe)) monitora_relatorios_analiticos_kable(
+      comp_detalhe[, head(.SD, 3L), by = Interpretação]
+    ) else "Não houve resultado multivariado com pares suficientes para apresentação.",
     "A análise de composição complementa, mas não substitui, a leitura dos indicadores individuais. Uma distância elevada com resultado inconclusivo é um sinal a investigar, não mudança demonstrada.",
     "",
-    "# Hipóteses ecológicas",
-    unlist(lapply(seq_along(hipoteses), function(ii) c(
-      paste0("## Hipótese ", ii), "", hipoteses[[ii]], ""
-    ))),
-    "## Matriz de interpretação e evidência necessária",
-    monitora_relatorios_analiticos_kable(matriz_interpretacao),
+    "# Hipóteses, evidências e gestão",
+    monitora_relatorios_analiticos_kable(matriz_interpretacao[, .(
+      Indicador,
+      `Indicação ou hipótese compatível`,
+      `Implicação para gestão sem atribuição causal`
+    )]),
+    "A matriz completa, incluindo a evidência necessária para testar cada hipótese, permanece em `matriz_interpretacao_ecologica_e_evidencias.csv`.",
     "",
     "## Contexto declarado de impactos, manejo e uso",
     if (nrow(contexto_impactos_relatorio)) monitora_relatorios_analiticos_kable(contexto_impactos_relatorio) else "Não foram localizados valores de contexto preenchidos para síntese.",
@@ -75868,9 +75925,9 @@ auditoria_inicializacao <- data.table::data.table(
     3
   ),
   observacao = paste0(
-    "O programa está encapsulado em uma única expressão externa. O tempo mede ",
-    "o início do corpo interno até a instrumentação do pipeline; a análise ",
-    "sintática anterior é medida pela homologação externa."
+    "O programa é avaliado diretamente, sem encapsulamento global por evalq. ",
+    "O tempo mede a primeira expressão até a instrumentação do pipeline; ",
+    "leitura e análise sintática são verificadas também na homologação externa."
   )
 )
 caminho_inicializacao_out <- file.path(
@@ -75962,5 +76019,3 @@ message(sprintf(
 } ### Fim do bloco protegido por MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE
 
 }
-
-}, envir = .GlobalEnv)
