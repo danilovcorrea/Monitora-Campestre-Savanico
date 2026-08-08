@@ -2,7 +2,7 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 script <- if (length(args) >= 1L) args[[1L]] else
-  "monitora_campsav_alvo_global_v2.9.1.R"
+  "monitora_campsav_alvo_global_v2.9.3.R"
 fonte <- if (length(args) >= 2L) args[[2L]] else
   Sys.getenv("MONITORA_QA_OUTPUT_FONTE", unset = "")
 dir_qa_base <- if (length(args) >= 3L) args[[3L]] else file.path("tmp", "pdfs")
@@ -50,11 +50,18 @@ coletar_funcoes <- function(expr) {
       is.call(expr[[3L]]) && identical(as.character(expr[[3L]][[1L]]), "function")) {
     nome <- as.character(expr[[2L]])
     if (startsWith(nome, "monitora_relatorios_analiticos_") ||
+        startsWith(nome, "monitora_diag_seca_morta_") ||
         nome %in% c(
           "monitora_relatorio_classe_portugues",
           "monitora_relatorio_rotulo_metrica",
           "monitora_relatorio_rotulo_grupo",
-          "monitora_relatorio_rotulo_formacao"
+          "monitora_relatorio_rotulo_formacao",
+          "monitora_correcao_colunas_chave",
+          "monitora_correcao_colunas_forma_vida_categoria",
+          "monitora_correcao_normalizar_nome_coluna",
+          "monitora_relatorio_exoticas_tem_token",
+          "monitora_relatorio_exoticas_normalizar_token",
+          "monitora_diag_rel_write_dt"
         )) {
       eval(expr, envir = funcoes)
     }
@@ -95,6 +102,7 @@ MONITORA_CAMINHO_NAVEGADOR_PDF <- Sys.getenv(
   "MONITORA_CAMINHO_NAVEGADOR_PDF",
   unset = ""
 )
+MONITORA_COL_ROW_ID <- ".monitora_row_id"
 assert(
   identical(monitora_relatorios_analiticos_situacao_dados("CONTRATO VALIDADO"), "Validado") &&
     identical(monitora_relatorios_analiticos_situacao_dados("QA"), "Em validação") &&
@@ -165,16 +173,27 @@ stat <- ler("01_produtos_dados/registros_corrig_stat.csv")
 periodo <- ler("05_estatisticas/estatistica_pareada_periodo_editorial.csv", FALSE)
 linha_base <- ler("05_estatisticas/estatisticas_mudanca_linha_base.csv", FALSE)
 composicao <- ler("05_estatisticas/estatisticas_composicao_linha_base.csv", FALSE)
+composicao_periodo <- ler("05_estatisticas/estatisticas_composicao_geral_ano_a_ano.csv", FALSE)
 config <- ler("05_estatisticas/estatisticas_mudanca_config.csv", FALSE)
 cob_categ <- ler("05_estatisticas/cob_veg_categ.csv")
 cob_nat <- ler("05_estatisticas/cob_veg_form_vida_nat.csv")
 cob_exot <- ler("05_estatisticas/cob_veg_form_vida_exot.csv", FALSE)
+prop_herb_lenh <- ler("05_estatisticas/prop_rel_herb_lenh.csv", FALSE)
+cob_herb_lenh <- ler("05_estatisticas/cob_veg_herb_lenh.csv", FALSE)
+prop_categ <- ler("05_estatisticas/prop_rel_categ.csv", FALSE)
+prop_nat <- ler("05_estatisticas/prop_rel_form_vida_nat.csv", FALSE)
+prop_exot <- ler("05_estatisticas/prop_rel_form_vida_exot.csv", FALSE)
+prop_seca <- ler("05_estatisticas/prop_rel_form_vida_seca_morta.csv", FALSE)
+cob_seca <- ler("05_estatisticas/cob_veg_form_vida_seca_morta.csv", FALSE)
+prop_material <- ler("05_estatisticas/prop_rel_material_botanico.csv", FALSE)
+cob_material <- ler("05_estatisticas/cob_veg_material_botanico.csv", FALSE)
 
 resultado <- monitora_relatorios_analiticos_gerar(
   registros = registros,
   stat = stat,
   mudanca_periodo = periodo,
   mudanca_linha_base = linha_base,
+  composicao_periodo = composicao_periodo,
   composicao_linha_base = composicao,
   config_stat = config,
   cob_categ = cob_categ,
@@ -184,7 +203,16 @@ resultado <- monitora_relatorios_analiticos_gerar(
   formatos = c("rmd", "md", "html", "docx", "pdf"),
   mapa_satelite = ativar_sentinel,
   fonte_mapa_satelite = "SENTINEL2_PUBLICO",
-  status_validacao = "QA"
+  status_validacao = "QA",
+  prop_herb_lenh = prop_herb_lenh,
+  cob_herb_lenh = cob_herb_lenh,
+  prop_categ = prop_categ,
+  prop_nat = prop_nat,
+  prop_exot = prop_exot,
+  prop_seca = prop_seca,
+  cob_seca = cob_seca,
+  prop_material = prop_material,
+  cob_material = cob_material
 )
 
 dir_rel <- resultado$diretorio
@@ -197,6 +225,64 @@ assert(setequal(indice$formato, c("rmd", "md", "html", "docx", "pdf")),
        "Conjunto de formatos divergente.")
 assert(setequal(indice$versao_editorial, c("sintético", "detalhado")),
        "Versões editoriais divergentes.")
+
+series_anuais <- fread(
+  file.path(dir_rel, "series_anuais_relatorios_por_ua.csv"),
+  encoding = "UTF-8"
+)
+assert(nrow(series_anuais) > 0L, "Séries anuais alinhadas à UA não foram materializadas.")
+assert(all(c(
+  "media_percent", "ci_lower_percent", "ci_upper_percent", "n_UA",
+  "unidade_analitica", "estimando_descritivo"
+) %in% names(series_anuais)), "Séries anuais não contêm estimando, IC95% e esforço por UA.")
+assert(all(series_anuais$unidade_analitica == "UA"), "Unidade analítica anual divergente de UA.")
+
+indice_graficos <- fread(
+  file.path(dir_rel, "indice_selecao_graficos.csv"),
+  encoding = "UTF-8"
+)
+paineis_inferenciais <- indice_graficos[
+  grepl("^inferencias_", id) & disponivel == TRUE
+]
+assert(nrow(paineis_inferenciais) == 12L, "Os 12 painéis inferenciais temáticos não foram gerados.")
+assert(
+  all(paineis_inferenciais$estatistica_incorporada == TRUE) &&
+    all(paineis_inferenciais$n_resultados_estatisticos > 0L),
+  "Painel inferencial sem estatística incorporada ou sem resultados."
+)
+assert(
+  !any(grepl("(^|;[[:space:]]*)NA($|;)", paineis_inferenciais$classes_incorporadas)) &&
+    any(grepl("Mudança na composição", paineis_inferenciais$classes_incorporadas, fixed = TRUE)),
+  "Há classe inferencial não mapeada ou a mudança composicional não foi representada visualmente."
+)
+auditoria_estatistica <- fread(
+  file.path(dir_rel, "auditoria_integracao_estatistica_graficos_relatorio.csv"),
+  encoding = "UTF-8"
+)
+assert(
+  nrow(auditoria_estatistica) == nrow(periodo) + nrow(composicao_periodo),
+  "Auditoria dos gráficos não cobre exatamente os testes por categoria e de composição."
+)
+assert(
+  all(auditoria_estatistica$associacao_nao_causal %in% TRUE) &&
+    all(nzchar(auditoria_estatistica$hash_conteudo_resultado)),
+  "Cautela causal ou hash de rastreabilidade ausente na integração estatística."
+)
+assert(
+  setequal(
+    unique(na.omit(auditoria_estatistica$classe_periodo)),
+    unique(c(na.omit(periodo$classe_mudanca), na.omit(composicao_periodo$classe_mudanca_composicao)))
+  ),
+  "Alguma classe inferencial disponível foi omitida dos painéis."
+)
+auditoria_robustez <- fread(
+  file.path(dir_rel, "auditoria_robustez_inferencial_relatorio.csv"),
+  encoding = "UTF-8"
+)
+assert(
+  all(c("atendido", "limitação explícita", "requer validação por indicador") %in% auditoria_robustez$status),
+  "Auditoria de robustez não explicita implementação, limitações e validação de margens."
+)
 docx_relatorios <- file.path(dir_qa, indice[formato == "docx", caminho_relativo])
 assert(
   length(docx_relatorios) == 2L && all(file.info(docx_relatorios)$size > 100000L),
@@ -209,6 +295,26 @@ assert(
     logical(1L)
   )),
   "Um DOCX não incorporou as figuras do relatório."
+)
+assert(
+  all(vapply(docx_relatorios, function(arq) {
+    dir_xml <- tempfile("qa_docx_xml_")
+    dir.create(dir_xml, recursive = TRUE, showWarnings = FALSE)
+    on.exit(unlink(dir_xml, recursive = TRUE, force = TRUE), add = TRUE)
+    utils::unzip(arq, files = "word/document.xml", exdir = dir_xml)
+    xml <- paste(readLines(
+      file.path(dir_xml, "word", "document.xml"),
+      warn = FALSE,
+      encoding = "UTF-8"
+    ), collapse = "")
+    contar <- function(padrao) {
+      pos <- gregexpr(padrao, xml, perl = TRUE)[[1L]]
+      if (identical(pos[[1L]], -1L)) 0L else length(pos)
+    }
+    n_linhas <- contar("<w:tr(?:[ >])")
+    n_linhas > 0L && contar("<w:cantSplit(?:[ />])") == n_linhas
+  }, logical(1L))),
+  "Um DOCX permite dividir linhas de tabela entre páginas."
 )
 
 esforco <- fread(
@@ -255,6 +361,13 @@ assert(all(
   graficos_editoriais[disponivel == TRUE, rotulos_editoriais]
 ), "Um gráfico selecionado não passou pelo contrato de rótulos editoriais.")
 graficos_essenciais <- c("categorias_temporal", "formas_nativas_recente")
+graficos_essenciais <- c(
+  graficos_essenciais,
+  "herbaceas_lenhosas_cobertura", "herbaceas_lenhosas_proporcao",
+  "categorias_proporcao", "formas_nativas_proporcao",
+  "formas_secas_mortas_cobertura", "formas_secas_mortas_proporcao",
+  "material_botanico_cobertura", "material_botanico_proporcao"
+)
 if (data.table::uniqueN(stat$ANO) > 1L && nrow(periodo)) {
   graficos_essenciais <- c(graficos_essenciais, "mudancas_prioritarias")
 }
@@ -301,6 +414,21 @@ assert(
     !any(grepl("# Síntese executiva", textos, fixed = TRUE)) &&
     !any(grepl("## Mensagens principais", textos, fixed = TRUE)),
   "Títulos do relatório sintético não foram harmonizados com o detalhado."
+)
+assert(
+  all(file.exists(file.path(dir_rel, c(
+    "matriz_interpretacao_ecologica_e_evidencias.csv",
+    "achados_hipoteses_e_linhas_de_pesquisa.csv",
+    "ocorrencias_seca_morta_linha_forma_relatorio_analitico.csv",
+    "resumo_seca_morta_em_revisao_relatorio_analitico.csv"
+  )))),
+  "Produtos editáveis do núcleo ecológico ou de seca/morta estão ausentes."
+)
+assert(
+  any(grepl("não demonstra", textos, fixed = TRUE)) &&
+    any(grepl("Linha de pesquisa", textos, fixed = TRUE)) &&
+    any(grepl("Cobertura e proporção relativa", textos, fixed = TRUE)),
+  "Separação entre resultado, hipótese e evidência necessária não foi materializada."
 )
 assert(
   any(grepl("Situação dos dados:", textos, fixed = TRUE)) &&
@@ -388,7 +516,7 @@ if (isTRUE(ativar_sentinel)) {
 stat_multi <- rbind(stat, copy(stat[1L])[, UC := "Outra UC de QA"])
 erro_multi <- tryCatch({
   monitora_relatorios_analiticos_gerar(
-    registros, stat_multi, periodo, linha_base, composicao, config,
+    registros, stat_multi, periodo, linha_base, composicao_periodo, composicao, config,
     cob_categ, cob_nat, cob_exot, dir_qa,
     formatos = c("rmd", "md"), mapa_satelite = FALSE
   )
