@@ -98,7 +98,7 @@ campanha imediatamente anterior:
 - `↑`: aumento demonstrado;
 - `↓`: redução demonstrada;
 - `≈`: estabilidade/equivalência demonstrada dentro da margem configurada;
-- `?`: resultado inconclusivo;
+- `·`: resultado inconclusivo;
 - `—`: pares insuficientes;
 - primeira campanha: sem símbolo comparativo.
 

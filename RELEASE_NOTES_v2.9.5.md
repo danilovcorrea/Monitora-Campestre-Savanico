@@ -7,6 +7,16 @@ cartografia e a cautela causal. A versão concentra-se na operação cotidiana d
 painel, na triagem de vegetação seca ou morta e na restauração definitiva do
 início imediato pelo botão **Source** do RStudio para Windows.
 
+## Hotfix editorial 20260811.2
+
+- O símbolo de resultado estatístico inconclusivo foi padronizado como `·` nos
+  gráficos incorporados aos relatórios analíticos, nas legendas e nas auditorias
+  de símbolos, igualando a convenção já usada nos PNGs técnicos.
+- `—` continua indicando comparação pareada insuficiente e a primeira campanha
+  continua sem símbolo comparativo.
+- A alteração é exclusivamente editorial: testes, p, q, IC95%, estimativas,
+  classes estatísticas e regras inferenciais permanecem inalterados.
+
 ## Inicialização no RStudio
 
 - Foi restaurada integralmente a arquitetura de inicialização homologada na
@@ -91,7 +101,7 @@ registro original.
 ## Uso
 
 Use `monitora_campsav_alvo_global_v2.9.5.R`. O build declarado no console é
-`v2.9.5-20260811.1`.
+`v2.9.5-20260811.2`.
 
 Ao abrir o arquivo no RStudio, confirme **Sim** no aviso de tamanho e ajuste as
 variáveis operacionais. Depois, use **Source** normalmente. Não é necessário

@@ -12,6 +12,9 @@
 ### justificativas ainda não persistidas. Mantém também a ordem operacional das
 ### abas, o localizador oficial temporário e a incorporação e a auditoria dos
 ### testes estatísticos nos gráficos temporais.
+### Hotfix editorial 20260811.2: o resultado estatístico inconclusivo passa a
+### usar o ponto central "·" também nos gráficos e relatórios analíticos,
+### padronizado com os PNGs técnicos. Nenhum teste ou resultado foi recalculado.
 ### Os módulos opcionais permanecem sem custo quando desligados.
 ###
 ### Finalidade
@@ -217,7 +220,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.5"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.5-20260811.1"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.5-20260811.2"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -71925,9 +71928,9 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       classe_mudanca == "aumento", "↑",
       classe_mudanca %in% c("reducao", "redução"), "↓",
       classe_mudanca == "estabilidade_equivalente", "≈",
-      classe_mudanca == "inconclusivo", "?",
+      classe_mudanca == "inconclusivo", "·",
       classe_mudanca %in% c("pares_insuficientes", "sem_comparacao_pareada"), "—",
-      default = "?"
+      default = "·"
     )]
     x[
       ANO == primeiro_ano_indicador &
@@ -72061,7 +72064,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         title = "Estado anual das categorias gerais",
         subtitle = "Média e IC95% entre UAs; a mudança temporal é testada nas UAs pareadas",
         caption = paste0(
-          "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; ? inconclusivo; — sem comparação pareada suficiente. ",
+          "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; · inconclusivo; — sem comparação pareada suficiente. ",
           "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(categ)
         )
       )
@@ -72304,7 +72307,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         title = "Formas de vida exóticas observadas",
         subtitle = "Média e IC95% entre UAs; são exibidas somente categorias com ocorrência",
         caption = paste0(
-          "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; ? inconclusivo; — sem comparação pareada suficiente. ",
+          "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; · inconclusivo; — sem comparação pareada suficiente. ",
           "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(exot)
         )
       ) +
@@ -72548,7 +72551,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
             "Média e IC95% da proporção por UA; a composição conjunta é testada separadamente"
           },
           caption = paste0(
-            "Símbolos sobre as médias: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; ? resultado inconclusivo; — sem comparação pareada suficiente. ",
+            "Símbolos sobre as médias: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; · resultado inconclusivo; — sem comparação pareada suficiente. ",
             "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(x)
           )
         ) + ggplot2::guides(colour = ggplot2::guide_legend(ncol = 2L, byrow = TRUE))
@@ -75418,7 +75421,7 @@ monitora_relatorios_analiticos_gerar <- function(
     if (any(is.na(classes_series) | !nzchar(classes_series))) {
       stop("Gate dos símbolos estatísticos falhou: média anual sem classe auditável.", call. = FALSE)
     }
-    simbolos_permitidos <- c("", "↑", "↓", "≈", "?", "—")
+    simbolos_permitidos <- c("", "↑", "↓", "≈", "·", "—")
     if (any(!(auditoria_simbolos_series$simbolo_estatistico %in% simbolos_permitidos))) {
       stop("Gate dos símbolos estatísticos falhou: símbolo fora do vocabulário editorial.", call. = FALSE)
     }

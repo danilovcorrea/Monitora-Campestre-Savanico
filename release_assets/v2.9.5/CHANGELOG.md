@@ -4,6 +4,9 @@
 
 ### Corrigido
 
+- Hotfix editorial `v2.9.5-20260811.2`: o resultado estatístico inconclusivo
+  passa de `?` para `·` nos gráficos e relatórios analíticos, padronizado com os
+  PNGs técnicos, sem alteração de cálculos ou classes estatísticas.
 - A inicialização pelo botão **Source** do RStudio para Windows volta à
   arquitetura homologada na v2.9.1: uma única expressão externa `base::evalq`,
   sem releitura, segundo parse, consulta ao editor ou arquivo auxiliar.

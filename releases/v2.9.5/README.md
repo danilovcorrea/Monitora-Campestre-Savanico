@@ -19,6 +19,9 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 
 ## Destaques da v2.9.5
 
+- O hotfix editorial `v2.9.5-20260811.2` padroniza o resultado estatístico
+  inconclusivo como `·` nos PNGs técnicos, gráficos e relatórios analíticos,
+  sem alterar testes, estimativas ou classificações.
 - A inicialização rápida homologada na v2.9.1 foi restaurada integralmente: uma
   única expressão externa, sem releitura ou segundo parse do próprio script. O
   início imediato foi confirmado no botão **Source** do RStudio para Windows.

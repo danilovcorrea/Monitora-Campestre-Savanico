@@ -37,7 +37,7 @@ exigir(grepl('MONITORA_INICIO_PRIMEIRA_EXPRESSAO <- Sys.time()', texto, fixed = 
        "O relógio inicial deixou de seguir a baseline v2.9.1.")
 exigir(grepl('MONITORA_SCRIPT_VERSAO <- "2.9.5"', texto, fixed = TRUE),
        "Identificação pública v2.9.5 ausente.")
-exigir(grepl('MONITORA_SCRIPT_BUILD_ID <- "v2.9.5-20260811.1"', texto, fixed = TRUE),
+exigir(grepl('MONITORA_SCRIPT_BUILD_ID <- "v2.9.5-20260811.2"', texto, fixed = TRUE),
        "Build público v2.9.5 inesperado.")
 exigir(!grepl("2.9.5-dev", texto, fixed = TRUE),
        "Marca de desenvolvimento permaneceu no script público.")
@@ -57,6 +57,16 @@ exigir(grepl('MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS <- "N"', texto, fixed =
        "Relatórios analíticos deixaram de ser opcionais e sem custo por padrão.")
 exigir(grepl('MONITORA_OPCAO_RELATORIOS_ANALITICOS_MAPA_SATELITE <- "S"', texto, fixed = TRUE),
        "Sentinel-2 deixou de ser o padrão condicionado aos relatórios.")
+exigir(grepl('classe_mudanca == "inconclusivo", "·"', texto, fixed = TRUE),
+       "O símbolo inconclusivo dos relatórios não foi padronizado com os PNGs técnicos.")
+exigir(!grepl('classe_mudanca == "inconclusivo", "?"', texto, fixed = TRUE),
+       "O símbolo obsoleto ? permaneceu no mapeamento analítico de inconclusivo.")
+exigir(grepl('simbolos_permitidos <- c("", "↑", "↓", "≈", "·", "—")', texto, fixed = TRUE),
+       "O vocabulário auditado dos símbolos analíticos divergiu do hotfix.")
+for (legenda_obsoleta in c("? inconclusivo", "? resultado inconclusivo")) {
+  exigir(!grepl(legenda_obsoleta, texto, fixed = TRUE),
+         paste0("Legenda analítica obsoleta permaneceu: ", legenda_obsoleta))
+}
 
 pos_abas <- vapply(c(
   "Correções de registros", "Equipe da COLETA", "Validação espacial",

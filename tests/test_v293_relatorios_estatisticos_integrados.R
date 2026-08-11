@@ -84,7 +84,7 @@ periodo <- rbindlist(list(
     n_UA_pareadas = 8L, diferenca_pp = c(1, 0),
     ci95_lower_pp = c(-1, -1), ci95_upper_pp = c(3, 1),
     p_ajustado_fdr = c(0.4, 1),
-    classe_mudanca = c("estabilidade_equivalente", "estabilidade_equivalente")
+    classe_mudanca = c("estabilidade_equivalente", "inconclusivo")
   )
 ))
 linha_base <- copy(periodo)[, `:=`(
@@ -134,7 +134,7 @@ auditoria <- as.data.table(attr(indice, "auditoria_estatistica"))
 assert(nrow(auditoria) == nrow(periodo) + nrow(composicao_periodo),
        "Auditoria não cobre exatamente todas as células inferenciais.")
 assert(setequal(unique(auditoria$classe_periodo),
-                c("aumento", "reducao", "estabilidade_equivalente", "mudanca_composicao")),
+                c("aumento", "reducao", "estabilidade_equivalente", "inconclusivo", "mudanca_composicao")),
        "Classes de mudança, estabilidade e composição não foram preservadas.")
 assert(all(auditoria$associacao_nao_causal), "Cautela causal ausente na auditoria.")
 simbolos <- as.data.table(attr(indice, "auditoria_simbolos_series"))
@@ -149,11 +149,14 @@ assert(identical(simbolos_prop_2026, c("↑", "↓")), paste0(
   "Aumento e redução não foram associados às médias corretas: ",
   paste(simbolos_prop_2026, collapse = "|")
 ))
-assert(all(simbolos[
+simbolos_cobertura_2026 <- simbolos[
   grupo_grafico == "herbaceas_lenhosas" & tipo_metrica == "cobertura" & ANO == 2026L,
   simbolo_estatistico
-] == "≈"),
-       "Estabilidade/equivalência não foi representada por ≈.")
+]
+assert(setequal(simbolos_cobertura_2026, c("≈", "·")),
+       "Estabilidade e resultado inconclusivo não foram representados por ≈ e ·.")
+assert(!any(simbolos$simbolo_estatistico == "?"),
+       "O símbolo obsoleto ? permaneceu associado às médias dos relatórios.")
 assert(all(simbolos[
   grupo_grafico == "categorias_gerais" & tipo_metrica == "cobertura" & ANO == 2026L,
   simbolo_estatistico
