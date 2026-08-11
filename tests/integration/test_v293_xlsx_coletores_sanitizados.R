@@ -11,7 +11,7 @@ fixture <- Sys.getenv("MONITORA_TESTE_FNCS_2026_REGISTROS_VALIDADOS", unset = ""
 stopifnot(nzchar(fixture), file.exists(fixture))
 
 parsed <- parse(file = script)
-body <- parsed[[1L]][[2L]]
+body <- as.call(c(list(as.name("{")), as.list(parsed)))
 env <- new.env(parent = globalenv())
 carregar_definicoes <- function(node) {
   if (!is.call(node)) return(invisible(NULL))
