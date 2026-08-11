@@ -3,12 +3,7 @@ suppressPackageStartupMessages(library(data.table))
 script <- if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.2.R"
 script <- normalizePath(script, mustWork = TRUE)
 parsed <- parse(file = script)
-outer <- if (length(parsed) >= 2L && identical(deparse(parsed[[2L]][[1L]]), "base::tryCatch")) {
-  parsed[[2L]][[2L]]
-} else {
-  parsed[[1L]]
-}
-body <- outer[[2L]]
+body <- as.call(c(list(as.name("{")), as.list(parsed)))
 env <- new.env(parent = globalenv())
 
 carregar_definicoes <- function(node) {

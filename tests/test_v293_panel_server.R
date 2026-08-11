@@ -9,7 +9,7 @@ rbg_arquivo <- Sys.getenv("MONITORA_TESTE_RBG_DADOS", unset = "")
 stopifnot(file.exists(rbg_arquivo))
 
 parsed <- parse(file = script)
-body <- parsed[[1L]][[2L]]
+body <- as.call(c(list(as.name("{")), as.list(parsed)))
 env <- new.env(parent = globalenv())
 carregar_definicoes <- function(node) {
   if (!is.call(node)) return(invisible(NULL))
@@ -273,17 +273,31 @@ shiny::testServer(capturado$serverFuncSource(), {
   )
 
   rv_painel$ocorrencias_idx <- data.table(
-    ocorrencia_id = c("occ_lote_1", "occ_lote_2"),
-    tipo_ocorrencia = c("mudanca_formacao_vegetacional", "mudanca_formacao_vegetacional"),
-    COLETA = c(coleta_teste, coleta_nao_teste), UC = "UC teste", EA = "EA1", UA = "UA1",
-    ANO = c("2025", "2026"), linha_indice = c(1L, 102L),
-    ocorrencia_token = "", ocorrencia_atributo = "formacao_vegetacional",
-    ocorrencia_status = "revisao", ocorrencia_detalhe = "Mudança entre anos"
+    ocorrencia_id = c("occ_lote_1", "occ_lote_2", "occ_outro_rotulo"),
+    tipo_ocorrencia = c("mudanca_formacao_vegetacional", "mudanca_formacao_vegetacional", "seca_morta_em_revisao"),
+    rotulo_ocorrencia = c("Mudança de formação", "Mudança de formação", "Vegetação seca ou morta"),
+    COLETA = c(coleta_teste, coleta_nao_teste, coleta_teste), UC = "UC teste", EA = "EA1", UA = "UA1",
+    ANO = c("2025", "2026", "2025"), linha_indice = c(1L, 102L, 2L),
+    ocorrencia_token = "", ocorrencia_atributo = c("formacao_vegetacional", "formacao_vegetacional", "seca_morta"),
+    ocorrencia_status = "revisao", ocorrencia_detalhe = c("Mudança entre anos", "Mudança entre anos", "Ocorrência a revisar")
   )
   rv_painel$justificativas_sessao <- env$monitora_pendencias_justificativas_template()
   rv_painel$preview_revision <- rv_painel$preview_revision + 1L
   session$setInputs(
-    just_tabela_ocorrencias_rows_selected = c(1L, 2L),
+    just_rotulos_lote = "mudanca_formacao_vegetacional"
+  )
+  session$flushReact()
+  stopifnot(
+    nrow(just_ocorrencias_exibidas()) == 2L,
+    all(just_ocorrencias_exibidas()$tipo_ocorrencia == "mudanca_formacao_vegetacional")
+  )
+  session$setInputs(just_selecionar_filtradas = 1L)
+  session$flushReact()
+  stopifnot(setequal(
+    as.character(rv_painel$justificativas_selec_ids),
+    c("occ_lote_1", "occ_lote_2")
+  ))
+  session$setInputs(
     just_tipo = "pendencia_legitima",
     just_texto = "Mudança ecológica documentada e confirmada em campo.",
     just_confirmar_lote = TRUE,
@@ -300,6 +314,51 @@ shiny::testServer(capturado$serverFuncSource(), {
     identical(as.integer(lote$ordem_no_lote), 1:2),
     all(as.integer(lote$n_ocorrencias_lote) == 2L)
   )
+  session$setInputs(just_selecionar_filtradas = 2L)
+  session$flushReact()
+  estado_botoes_painel$botoes_ultima_conclusao[["just_adicionar"]] <- Sys.time() - 5
+  session$setInputs(just_adicionar = 2L)
+  session$flushReact()
+  stopifnot(identical(
+    data.table::as.data.table(rv_painel$justificativas_sessao), lote
+  ))
+  session$setInputs(
+    just_tabela_sessao_rows_selected = 1L
+  )
+  session$flushReact()
+  session$setInputs(just_sessao_excluir_selecionadas = 1L)
+  session$flushReact()
+  session$setInputs(just_sessao_confirmar_exclusao = 1L)
+  session$flushReact()
+  lote_parcial <- data.table::as.data.table(rv_painel$justificativas_sessao)
+  stopifnot(
+    nrow(lote_parcial) == 1L,
+    lote_parcial$ordem_no_lote[[1L]] == 1L,
+    lote_parcial$n_ocorrencias_lote[[1L]] == 1L
+  )
+  session$setInputs(just_sessao_selecionar_todas = 1L)
+  session$flushReact()
+  session$setInputs(just_sessao_excluir_selecionadas = 2L)
+  session$flushReact()
+  session$setInputs(just_sessao_confirmar_exclusao = 2L)
+  session$flushReact()
+  stopifnot(nrow(data.table::as.data.table(rv_painel$justificativas_sessao)) == 0L)
+  session$setInputs(
+    just_rotulos_lote = "mudanca_formacao_vegetacional",
+    just_selecionar_filtradas = 3L
+  )
+  session$flushReact()
+  estado_botoes_painel$botoes_ultima_conclusao[["just_adicionar"]] <- Sys.time() - 5
+  session$setInputs(
+    just_tipo = "pendencia_legitima",
+    just_texto = "Mudança ecológica documentada e confirmada em campo.",
+    just_confirmar_lote = TRUE,
+    just_adicionar = 3L
+  )
+  session$flushReact()
+  lote <- data.table::as.data.table(rv_painel$justificativas_sessao)
+  justificativas_lote_capturadas <<- data.table::copy(lote)
+  stopifnot(nrow(lote) == 2L, data.table::uniqueN(lote$evento_lote_id) == 1L)
 })
 
 n_aliases_nome <- length(intersect(c("coletor/nome", "COLETORES", "Coletores"), names(dados)))

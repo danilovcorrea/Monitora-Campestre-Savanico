@@ -2,7 +2,7 @@ args <- commandArgs(trailingOnly = TRUE)
 suppressPackageStartupMessages(library(data.table))
 script <- normalizePath(if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.3.R", mustWork = TRUE)
 parsed <- parse(file = script)
-body <- parsed[[1L]][[2L]]
+body <- as.call(c(list(as.name("{")), as.list(parsed)))
 env <- new.env(parent = globalenv())
 
 carregar_definicoes <- function(node) {

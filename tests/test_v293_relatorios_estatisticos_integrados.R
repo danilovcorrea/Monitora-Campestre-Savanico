@@ -149,7 +149,15 @@ assert(identical(simbolos_prop_2026, c("↑", "↓")), paste0(
   "Aumento e redução não foram associados às médias corretas: ",
   paste(simbolos_prop_2026, collapse = "|")
 ))
-assert(all(simbolos[tipo_metrica == "cobertura" & ANO == 2026L, simbolo_estatistico] == "≈"),
+assert(all(simbolos[
+  grupo_grafico == "herbaceas_lenhosas" & tipo_metrica == "cobertura" & ANO == 2026L,
+  simbolo_estatistico
+] == "≈"),
        "Estabilidade/equivalência não foi representada por ≈.")
+assert(all(simbolos[
+  grupo_grafico == "categorias_gerais" & tipo_metrica == "cobertura" & ANO == 2026L,
+  simbolo_estatistico
+] == "—"),
+       "Médias sem comparação pareada deveriam ser explicitamente classificadas por —.")
 
 cat("TEST_V293_RELATORIOS_ESTATISTICOS_INTEGRADOS_OK\n")
