@@ -1,25 +1,20 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.7
-### Baseline pública de origem: v2.9.6
-### Conteúdo acumulado da versão — preserva integralmente o contrato, os itens
-### congelados e os resultados da v2.9.5. Esta versão preserva integralmente a
-### arquitetura de inicialização rápida homologada na v2.9.1, sem releitura nem
-### reinterpretação do próprio arquivo. Consolida o inventário de sessões na
-### linhagem e no relatório de validação; estabiliza filtro, seleção e operações
-### atômicas da aba Justificar pendências; unifica a identidade canônica e a
-### persistência de ocorrências biológicas e espaciais; preserva nomes e remove
-### somente associações CPF ambíguas, sem inferência; e impede que uma falha da
-### planilha XLSX opcional interrompa os demais produtos. Mantém a triagem de
-### seca/morta orientada a falsos positivos, a ordem operacional das abas, o
-### localizador oficial temporário e os testes estatísticos nos gráficos. A
-### v2.9.6 preserva seleções entre lotes sucessivos e disjuntos de
-### justificativas, explicita o progresso das subetapas analíticas e isola a
-### impressão PDF em processo temporário para que mensagens técnicas de
-### encerramento do navegador não poluam o console do RStudio. A v2.9.7
-### acrescenta à linhagem o ledger cumulativo e assinado dos metadados das
-### sessões, com migração histórica única e continuidade automática.
+### Versão do script: 2.9.8
+### Baseline pública de origem: v2.9.7
+### Conteúdo acumulado da versão — preserva integralmente o contrato, os
+### itens congelados e os resultados da v2.9.7, inclusive a arquitetura de
+### inicialização rápida homologada no RStudio do Windows. Preserva o tratamento
+### de falhas recuperáveis e o checkpoint integral da r01 e corrige a precondição
+### de operações de campo superior em lote: o valor amigável exibido no painel
+### deixa de ser reutilizado como trava transacional, que passa a conservar o
+### valor bruto exato de cada COLETA. Checkpoints integrais afetados pela r01 são
+### migrados somente quando a base é a mesma e a divergência comprovada se limita
+### a espaços nas extremidades; divergências materiais continuam bloqueadas.
+### Correções de campos, operações espaciais, justificativas e auditorias seguem
+### preservadas atomicamente, com restauração automática apenas sobre a mesma
+### base. A compatibilidade com o checkpoint legado de justificativas permanece.
 ### Os módulos opcionais permanecem sem custo quando desligados.
 ###
 ### Finalidade
@@ -224,8 +219,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.7"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.7-20260812.1"
+MONITORA_SCRIPT_VERSAO <- "2.9.8"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.8-20260812.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -2144,7 +2139,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     "# Painel de correções assistidas", "", "O painel permite corrigir a base sem edição manual de CSV. As operações devem registrar responsável, escopo, atributo, valor novo e justificativa. Ao salvar, o script aplica as operações, recalcula campos superiores quando necessário, atualiza diagnósticos e materializa os produtos pós-painel.", "", monitora_doc_rmd_table_chunk(arq_painel, "manual-painel", 100L, c("controle", "funcao", "quando_usar", "auditoria_efeito"), 40L), "",
     "## Equipe da COLETA", "", "Coletores formam um repeat: cada integrante ocupa uma linha, com o CPF correspondente na mesma posição. A edição é feita no controle **Equipe da COLETA**, e não pela seleção de ponto amostral nem pela edição genérica de atributo superior. Nome é obrigatório para o integrante; CPF é opcional. Para excluir uma pessoa, selecione somente a linha dessa pessoa. O script não deve replicar um nome nas 101 linhas nem deslocar o CPF de outro integrante.", "",
     "## Impactos de manejo e uso", "", "`impact_manejo_uso` é a pergunta superior Sim/Não. `tipos_impacto_manejo_uso` é a lista condicional **Quais?** e deve ser editada por operações de tokens: adicionar, remover ou substituir. Os seletores mostram `label — name`, mas os arquivos armazenam os names do contrato único. Ao mudar o pai para Não, os tipos e descritores filhos tornam-se irrelevantes e são limpos de forma auditável; ao mudar para Sim, o usuário escolhe quantos tokens forem necessários.", "",
-    "## Justificar pendências", "", "A aba **Justificar pendências** documenta ocorrências que permanecem após a revisão por motivo legítimo. A justificativa não corrige, não oculta e não libera uma pendência impeditiva. Selecione um ou mais rótulos para que a tabela exiba somente as ocorrências correspondentes e use **Selecionar todas as pendências filtradas**; a seleção abrange todas as páginas e permanece vinculada a `ocorrencia_id`. Também é possível adicionar o conjunto filtrado à seleção atual. Revise os totais, marque a confirmação e aplique a classificação e a justificativa em lote. A inclusão é atômica: todas as ocorrências e os metadados do lote são validados antes de uma única atualização da sessão; qualquer falha rejeita o lote completo. Em **Justificativas adicionadas nesta sessão**, filtre e selecione uma, várias, todas as filtradas ou todas e use **Excluir justificativas selecionadas**. A exclusão também é atômica e reconstrói lotes parcialmente mantidos. Eventos já persistidos nunca são apagados; eventual revogação deve ser um novo evento auditável. Se uma falha recuperável ocorrer ao salvar, o painel permanece aberto, os arquivos anteriores são restaurados e um checkpoint recuperável da pequena fila humana é gravado em `output/02_painel_correcoes/operacoes_sessao/cache_sessao/` após a organização do output. Use texto específico, verificável e com pelo menos 20 caracteres.", "",
+    "## Justificar pendências", "", "A aba **Justificar pendências** documenta ocorrências que permanecem após a revisão por motivo legítimo. A justificativa não corrige, não oculta e não libera uma pendência impeditiva. Selecione um ou mais rótulos para que a tabela exiba somente as ocorrências correspondentes e use **Selecionar todas as pendências filtradas**; a seleção abrange todas as páginas e permanece vinculada a `ocorrencia_id`. Também é possível adicionar o conjunto filtrado à seleção atual. Revise os totais, marque a confirmação e aplique a classificação e a justificativa em lote. A inclusão é atômica: todas as ocorrências e os metadados do lote são validados antes de uma única atualização da sessão; qualquer falha rejeita o lote completo. Em **Justificativas adicionadas nesta sessão**, filtre e selecione uma, várias, todas as filtradas ou todas e use **Excluir justificativas selecionadas**. A exclusão também é atômica e reconstrói lotes parcialmente mantidos. Eventos já persistidos nunca são apagados; eventual revogação deve ser um novo evento auditável. Se uma falha recuperável ocorrer ao salvar, o painel permanece aberto, os arquivos anteriores são restaurados e um checkpoint integral preserva as filas de correções de campos, operações espaciais, justificativas e a auditoria exata da falha em `output/02_painel_correcoes/operacoes_sessao/cache_sessao/` após a organização do output. Na reabertura sobre a mesma base, esse checkpoint é restaurado automaticamente e só é removido após salvamento concluído ou descarte explícito. Use texto específico, verificável e com pelo menos 20 caracteres.", "",
     "## Validação espacial", "", "A aba de Validação espacial trabalha sempre no escopo integral da COLETA. Os filtros identificam origem e destino; quando o conjunto de filtros define uma única COLETA destino, ela é preenchida automaticamente. A prévia mostra somente as coordenadas realmente afetadas pela operação. **Limpar filtros** reinicia COLETAS, listas, coordenadas e seleções do módulo. Confira os CSVs e mapas em `output/04_validacao_espacial/` antes de salvar.", "",
     "## Situação dos dados e diagnósticos", "", "O status apresentado ao usuário é **não validado**, **em validação** ou **validado**. Ocorrências impeditivas precisam ser corrigidas antes de `registros_validados.csv`. Ocorrências de revisão podem permanecer, desde que avaliadas e justificadas. A mudança de formação vegetacional entre anos na mesma UA é uma ocorrência diagnóstica não impeditiva: pode decorrer de classificação inconsistente ou ser compatível com mudança ecológica, como adensamento lenhoso ou supressão, mas o diagnóstico isolado não demonstra causa e deve orientar verificação de campo e análise temporal. A vegetação seca ou morta também é registrada como revisão não impeditiva, por linha e forma de vida. O apoio à triagem inclui `relatorio_operacional_seca_morta_*`, sínteses por ano, por UA e ano e por forma de vida, além de trajetórias herbáceas e lenhosas entre campanhas amostradas; os produtos editáveis identificam as COLETAS amostradas e as COLETAS com ocorrência. `criterios_atendidos` registra todas as razões da triagem e `criterio_principal` preserva apenas a precedência operacional. `classificacao_triagem` distingue suspeita de falso positivo, ocorrência biologicamente plausível a revisar, falta de contexto, padrão persistente e revisão rotineira. Nenhuma classe confirma erro ou causa ecológica. Percentuais usam todos os pontos da COLETA ou da UA/ano como denominador. Registros estruturados e texto livre de fogo, impacto e manejo são exibidos somente como contexto associado: fenologia, seca, fogo, herbivoria e outros processos permanecem hipóteses, nunca causas atribuídas pelo diagnóstico.", "",
     "# Sanitizações automáticas", "", "As sanitizações automáticas ocorrem antes do painel e são repetidas como gate idempotente antes dos produtos finais. Elas não substituem decisões ecológicas. Para coletores, o script reconhece somente formatos legados comprovados, transforma a equipe em repeat esparso e preserva CPF apenas quando um CPF válido está inequivocamente associado a um único nome. CPF parcial, inválido ou único para vários nomes é removido sem tentativa de adivinhação. A auditoria fica em `output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv`; ela registra contagens e motivos, sem expor nomes ou CPFs.", "",
@@ -19175,10 +19170,18 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
     if (is.list(res) && isTRUE(res$falha)) falha <<- TRUE
     invisible(TRUE)
   }
+  retornar_falha_sem_finalizacao <- function() {
+    list(
+      dt = dt[], corr = corr[], audit = audit[],
+      linhas = unique(linhas_semantica_alvo), afetacoes = unique(afetacoes),
+      falha = TRUE
+    )
+  }
 
   if (nrow(corr)) {
     res_mvlote <- monitora_correcao_aplicar_movimentos_forma_vida_lote_atomicos(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao, dicionario = dicionario)
     add_res(res_mvlote)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_mvlote) && "corr" %in% names(res_mvlote)) corr <- data.table::copy(data.table::as.data.table(res_mvlote$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19187,6 +19190,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (nrow(corr)) {
     res_mov <- monitora_correcao_aplicar_movimentos_forma_vida_atomicos(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao, dicionario = dicionario)
     add_res(res_mov)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_mov) && "corr" %in% names(res_mov)) corr <- data.table::copy(data.table::as.data.table(res_mov$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19195,6 +19199,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (nrow(corr)) {
     res_desc <- monitora_correcao_aplicar_triagens_desconhecida_atomicas(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao, dicionario = dicionario)
     add_res(res_desc)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_desc) && "corr" %in% names(res_desc)) corr <- data.table::copy(data.table::as.data.table(res_desc$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19216,6 +19221,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (nrow(corr)) {
     res_triout_pre <- monitora_correcao_aplicar_limpezas_outras_formas_estado_corrente(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao, dicionario = dicionario, silencioso = silencioso, registrar_perf = registrar_perf)
     add_res(res_triout_pre)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_triout_pre) && "corr" %in% names(res_triout_pre)) corr <- data.table::copy(data.table::as.data.table(res_triout_pre$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19224,6 +19230,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (nrow(corr)) {
     res_pend <- monitora_correcao_aplicar_pendencias_sem_forma_atomicas(dt, corr, chaves = chaves, arquivo_correcao = arquivo_correcao, dicionario = dicionario, silencioso = silencioso, registrar_perf = registrar_perf)
     add_res(res_pend)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_pend) && "corr" %in% names(res_pend)) corr <- data.table::copy(data.table::as.data.table(res_pend$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19232,6 +19239,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (nrow(corr)) {
     res_triout <- monitora_correcao_aplicar_limpezas_outras_formas_estado_corrente(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao, dicionario = dicionario, silencioso = silencioso, registrar_perf = registrar_perf)
     add_res(res_triout)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_triout) && "corr" %in% names(res_triout)) corr <- data.table::copy(data.table::as.data.table(res_triout$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
@@ -19242,6 +19250,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
     ids_vinculos_pre_exc <- if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas_afetadas_vinculos]) else character(0)
     res_exc <- monitora_correcao_aplicar_exclusoes_coleta_atomicas(dt, corr, chaves = chaves, indice = indice_linhas, arquivo_correcao = arquivo_correcao)
     add_res(res_exc)
+    if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
     if (is.list(res_exc) && "corr" %in% names(res_exc)) corr <- data.table::copy(data.table::as.data.table(res_exc$corr))
     if (nrow(corr)) corr[, ordem_tmp := seq_len(.N)]
     if (MONITORA_COL_ROW_ID %in% names(dt)) {
@@ -19311,7 +19320,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
           linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_,
           arquivo_correcao = arquivo_correcao
         )), fill = TRUE, use.names = TRUE)
-        next
+        break
       }
       lin <- tryCatch(monitora_correcao_linhas_alvo_operacao(dt, corr[ii], chaves = chaves, indice = indice_linhas), error = function(e) integer(0))
       lin <- monitora_correcao_aplicar_escopo_conciliado(dt, lin, corr[ii])
@@ -19327,7 +19336,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
           linha_indice = NA_integer_, valor_antes = NA_character_, valor_depois = NA_character_,
           arquivo_correcao = arquivo_correcao
         )), fill = TRUE, use.names = TRUE)
-        next
+        break
       }
  ### `recalcular_tipo_forma_vida` depende do estado matricial das listas
  ### inferiores e dos materiais botânicos. O backend real trata esta ação
@@ -19360,7 +19369,7 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
           linha_indice = lin, valor_antes = antes, valor_depois = NA_character_,
           arquivo_correcao = arquivo_correcao
         )), fill = TRUE, use.names = TRUE)
-        next
+        break
       }
       novo <- tryCatch(
         monitora_correcao_aplicar_operacao(antes, ac, linha_corr$valor_novo[1L], esperado),
@@ -19377,6 +19386,8 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
       }
     }
   }
+
+  if (isTRUE(falha)) return(retornar_falha_sem_finalizacao())
 
  ### A remoção manual do token desconhecida é uma resolução válida quando já
  ### existem formas válidas na lista. Como `remove_token` é operação genérica,
@@ -28637,15 +28648,91 @@ monitora_painel_transacao_arquivos_finalizar <- function(tx) {
   invisible(TRUE)
 }
 
-### Checkpoint mínimo escrito somente em falha/encerramento anormal. Não inclui
-### registros_corrig nem dispara diagnóstico; preserva apenas a pequena fila
-### humana necessária para auditoria e recuperação assistida.
+### Checkpoint recuperável do painel -----------------------------------------
+### É escrito somente em falha/encerramento anormal e nunca inclui a base larga.
+### A versão v2 preserva atomicamente todas as filas humanas, a auditoria que
+### explica a falha e uma impressão digital da base. A chamada histórica apenas
+### com justificativas continua produzindo o schema v1 para compatibilidade.
+monitora_painel_checkpoint_dt <- function(x) {
+  if (is.null(x)) return(data.table::data.table())
+  tryCatch(data.table::as.data.table(data.table::copy(x)), error = function(e) data.table::data.table())
+}
+
+monitora_painel_checkpoint_assinatura_filas <- function(correcoes_sessao = NULL,
+                                                         correcoes_solicitadas = NULL,
+                                                         correcoes_historico_intencoes = NULL,
+                                                         correcoes_espaciais = NULL,
+                                                         justificativas_ativas = NULL,
+                                                         justificativas_encerradas = NULL) {
+  filas <- lapply(list(
+    correcoes_sessao = correcoes_sessao,
+    correcoes_solicitadas = correcoes_solicitadas,
+    correcoes_historico_intencoes = correcoes_historico_intencoes,
+    correcoes_espaciais = correcoes_espaciais,
+    justificativas_ativas = justificativas_ativas,
+    justificativas_encerradas = justificativas_encerradas
+  ), function(x) {
+    z <- monitora_painel_checkpoint_dt(x)
+    if (!nrow(z) && !ncol(z)) return(list(nomes = character(), dados = list()))
+    list(nomes = names(z), dados = unclass(as.data.frame(z, stringsAsFactors = FALSE)))
+  })
+  digest::digest(filas, algo = "sha256", serialize = TRUE)
+}
+
+monitora_painel_checkpoint_fingerprint_base <- function(dt) {
+  dt <- data.table::as.data.table(dt)
+  col_id <- if (exists("MONITORA_COL_ROW_ID", inherits = TRUE) &&
+                get("MONITORA_COL_ROW_ID", inherits = TRUE) %in% names(dt)) {
+    get("MONITORA_COL_ROW_ID", inherits = TRUE)
+  } else NA_character_
+  ids <- if (!is.na(col_id)) as.character(dt[[col_id]]) else as.character(seq_len(nrow(dt)))
+  hashes_colunas <- vapply(
+    names(dt),
+    function(cc) digest::digest(dt[[cc]], algo = "sha256", serialize = TRUE),
+    character(1L)
+  )
+  list(
+    fingerprint_schema = "monitora_painel_base_v2",
+    n_linhas = nrow(dt),
+    n_colunas = ncol(dt),
+    nomes_colunas_sha256 = digest::digest(names(dt), algo = "sha256", serialize = TRUE),
+    identidade_linhas_sha256 = digest::digest(ids, algo = "sha256", serialize = TRUE),
+    conteudo_colunas_sha256 = digest::digest(hashes_colunas, algo = "sha256", serialize = TRUE)
+  )
+}
+
+monitora_painel_checkpoint_fingerprint_igual <- function(a, b) {
+  campos <- c(
+    "fingerprint_schema", "n_linhas", "n_colunas", "nomes_colunas_sha256",
+    "identidade_linhas_sha256", "conteudo_colunas_sha256"
+  )
+  is.list(a) && is.list(b) && all(vapply(campos, function(cc) identical(a[[cc]], b[[cc]]), logical(1L)))
+}
+
 monitora_pendencias_justificativas_checkpoint_recuperavel <- function(
     eventos_sessao,
     eventos_encerrados_sessao,
     auditoria_reconciliacao = NULL,
-    motivo = "encerramento_anormal"
+    motivo = "encerramento_anormal",
+    correcoes_sessao = NULL,
+    correcoes_solicitadas = NULL,
+    correcoes_historico_intencoes = NULL,
+    correcoes_espaciais = NULL,
+    auditoria_rejeicoes = NULL,
+    auditoria_espacial = NULL,
+    auditoria_preview_falha = NULL,
+    mensagem_preview_falha = "",
+    assinatura_preview_falha = "",
+    fingerprint_base = NULL
 ) {
+  as_dt_checkpoint <- if (exists("monitora_painel_checkpoint_dt", mode = "function", inherits = TRUE)) {
+    get("monitora_painel_checkpoint_dt", mode = "function", inherits = TRUE)
+  } else {
+    function(x) {
+      if (is.null(x)) return(data.table::data.table())
+      tryCatch(data.table::as.data.table(data.table::copy(x)), error = function(e) data.table::data.table())
+    }
+  }
   exec_id <- as.character(get0("MONITORA_EXEC_ID", ifnotfound = "sem_exec_id", inherits = TRUE))[1L]
   base <- file.path(
     as.character(get0(
@@ -28656,28 +28743,76 @@ monitora_pendencias_justificativas_checkpoint_recuperavel <- function(
     "cache_sessao"
   )
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
-  destino <- file.path(base, paste0("checkpoint_recuperavel_justificativas_", exec_id, ".rds"))
-  objeto <- list(
-    checkpoint_schema = "monitora_justificativas_checkpoint_v1",
-    data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%OS6 %z"),
-    exec_id = exec_id,
-    script_versao = as.character(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "", inherits = TRUE))[1L],
-    build = as.character(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "", inherits = TRUE))[1L],
-    motivo = as.character(motivo)[1L],
-    justificativas_ativas = data.table::as.data.table(eventos_sessao),
-    justificativas_encerradas = data.table::as.data.table(eventos_encerrados_sessao),
-    auditoria_reconciliacao = data.table::as.data.table(auditoria_reconciliacao)
-  )
+  integral <- any(vapply(list(
+    correcoes_sessao, correcoes_solicitadas, correcoes_historico_intencoes, correcoes_espaciais,
+    auditoria_rejeicoes, auditoria_espacial, auditoria_preview_falha, fingerprint_base
+  ), Negate(is.null), logical(1L))) || nzchar(as.character(mensagem_preview_falha)[1L]) ||
+    nzchar(as.character(assinatura_preview_falha)[1L])
+  justificativas_ativas <- as_dt_checkpoint(eventos_sessao)
+  justificativas_encerradas <- as_dt_checkpoint(eventos_encerrados_sessao)
+  if (isTRUE(integral)) {
+    corr <- as_dt_checkpoint(correcoes_sessao)
+    corr_solic <- as_dt_checkpoint(correcoes_solicitadas)
+    corr_hist <- as_dt_checkpoint(correcoes_historico_intencoes)
+    corr_esp <- as_dt_checkpoint(correcoes_espaciais)
+    filas_sha <- monitora_painel_checkpoint_assinatura_filas(
+      corr, corr_solic, corr_hist, corr_esp, justificativas_ativas, justificativas_encerradas
+    )
+    destino <- file.path(base, paste0("checkpoint_recuperavel_painel_", exec_id, ".rds"))
+    objeto <- list(
+      checkpoint_schema = "monitora_painel_checkpoint_v2",
+      data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%OS6 %z"),
+      exec_id = exec_id,
+      script_versao = as.character(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "", inherits = TRUE))[1L],
+      build = as.character(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "", inherits = TRUE))[1L],
+      motivo = as.character(motivo)[1L],
+      fingerprint_base = fingerprint_base,
+      filas_sha256 = filas_sha,
+      correcoes_sessao = corr,
+      correcoes_solicitadas = corr_solic,
+      correcoes_historico_intencoes = corr_hist,
+      correcoes_espaciais = corr_esp,
+      justificativas_ativas = justificativas_ativas,
+      justificativas_encerradas = justificativas_encerradas,
+      auditoria_reconciliacao = as_dt_checkpoint(auditoria_reconciliacao),
+      auditoria_rejeicoes = as_dt_checkpoint(auditoria_rejeicoes),
+      auditoria_espacial = as_dt_checkpoint(auditoria_espacial),
+      auditoria_preview_falha = as_dt_checkpoint(auditoria_preview_falha),
+      mensagem_preview_falha = as.character(mensagem_preview_falha)[1L],
+      assinatura_preview_falha = as.character(assinatura_preview_falha)[1L]
+    )
+  } else {
+    destino <- file.path(base, paste0("checkpoint_recuperavel_justificativas_", exec_id, ".rds"))
+    objeto <- list(
+      checkpoint_schema = "monitora_justificativas_checkpoint_v1",
+      data_hora = format(Sys.time(), "%Y-%m-%d %H:%M:%OS6 %z"),
+      exec_id = exec_id,
+      script_versao = as.character(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "", inherits = TRUE))[1L],
+      build = as.character(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "", inherits = TRUE))[1L],
+      motivo = as.character(motivo)[1L],
+      justificativas_ativas = justificativas_ativas,
+      justificativas_encerradas = justificativas_encerradas,
+      auditoria_reconciliacao = as_dt_checkpoint(auditoria_reconciliacao)
+    )
+  }
   temporario <- tempfile(
     pattern = paste0(".", basename(destino), "_"), tmpdir = base, fileext = ".rds"
   )
   on.exit(if (file.exists(temporario)) unlink(temporario, force = TRUE), add = TRUE)
   saveRDS(objeto, temporario, compress = FALSE)
   conferido <- tryCatch(readRDS(temporario), error = function(e) NULL)
-  if (!is.list(conferido) || !identical(conferido$checkpoint_schema, objeto$checkpoint_schema) ||
+  filas_ok <- !isTRUE(integral) || identical(
+    as.character(conferido$filas_sha256)[1L],
+    monitora_painel_checkpoint_assinatura_filas(
+      conferido$correcoes_sessao, conferido$correcoes_solicitadas, conferido$correcoes_historico_intencoes,
+      conferido$correcoes_espaciais, conferido$justificativas_ativas,
+      conferido$justificativas_encerradas
+    )
+  )
+  if (!is.list(conferido) || !identical(conferido$checkpoint_schema, objeto$checkpoint_schema) || !isTRUE(filas_ok) ||
       nrow(data.table::as.data.table(conferido$justificativas_ativas)) != nrow(objeto$justificativas_ativas) ||
       nrow(data.table::as.data.table(conferido$justificativas_encerradas)) != nrow(objeto$justificativas_encerradas)) {
-    stop("Falha ao validar o checkpoint recuperável de justificativas.", call. = FALSE)
+    stop("Falha ao validar o checkpoint recuperável integral do painel.", call. = FALSE)
   }
   backup <- ""
   if (file.exists(destino)) {
@@ -28687,16 +28822,15 @@ monitora_pendencias_justificativas_checkpoint_recuperavel <- function(
   publicado <- file.rename(temporario, destino)
   if (!isTRUE(publicado)) {
     if (nzchar(backup) && file.exists(backup)) file.rename(backup, destino)
-    stop("Falha ao publicar o checkpoint recuperável de justificativas.", call. = FALSE)
+    stop("Falha ao publicar o checkpoint recuperável do painel.", call. = FALSE)
   }
   temporario <- ""
   if (nzchar(backup) && file.exists(backup)) unlink(backup, force = TRUE)
   invisible(destino)
 }
 
-monitora_pendencias_justificativas_checkpoint_remover <- function() {
-  exec_id <- as.character(get0("MONITORA_EXEC_ID", ifnotfound = "sem_exec_id", inherits = TRUE))[1L]
-  base <- file.path(
+monitora_painel_checkpoint_diretorios <- function() {
+  staging <- file.path(
     as.character(get0(
       "MONITORA_CORRECOES_DIR",
       ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"),
@@ -28704,9 +28838,103 @@ monitora_pendencias_justificativas_checkpoint_remover <- function() {
     ))[1L],
     "cache_sessao"
   )
-  destino <- file.path(base, paste0("checkpoint_recuperavel_justificativas_", exec_id, ".rds"))
-  if (file.exists(destino)) unlink(destino, force = TRUE)
-  invisible(destino)
+  canonico <- file.path(
+    as.character(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE))[1L],
+    "02_painel_correcoes", "operacoes_sessao", "cache_sessao"
+  )
+  unique(c(staging, canonico))
+}
+
+monitora_painel_checkpoint_localizar <- function(dt) {
+  bases <- monitora_painel_checkpoint_diretorios()
+  bases_existentes <- bases[dir.exists(bases)]
+  if (!length(bases_existentes)) {
+    return(list(encontrado = FALSE, status = "diretorio_ausente", arquivo = "", bases = bases))
+  }
+  arquivos <- unlist(lapply(bases_existentes, list.files,
+    pattern = "^checkpoint_recuperavel_(painel|justificativas)_.+[.]rds$",
+    full.names = TRUE
+  ), use.names = FALSE)
+  arquivos <- unique(arquivos)
+  if (!length(arquivos)) {
+    return(list(encontrado = FALSE, status = "checkpoint_ausente", arquivo = "", bases = bases))
+  }
+  info <- file.info(arquivos)
+  arquivos <- arquivos[order(info$mtime, decreasing = TRUE, na.last = TRUE)]
+  ha_checkpoint_integral <- any(grepl("^checkpoint_recuperavel_painel_", basename(arquivos)))
+  fingerprint_atual <- NULL
+  rejeicoes <- character()
+  for (arquivo in arquivos) {
+    objeto <- tryCatch(readRDS(arquivo), error = function(e) NULL)
+    if (!is.list(objeto)) {
+      rejeicoes <- c(rejeicoes, paste0(basename(arquivo), ":ilegivel"))
+      next
+    }
+    schema <- as.character(objeto$checkpoint_schema)[1L]
+    if (identical(schema, "monitora_painel_checkpoint_v2")) {
+      filas_sha <- tryCatch(monitora_painel_checkpoint_assinatura_filas(
+        objeto$correcoes_sessao, objeto$correcoes_solicitadas, objeto$correcoes_historico_intencoes,
+        objeto$correcoes_espaciais, objeto$justificativas_ativas,
+        objeto$justificativas_encerradas
+      ), error = function(e) "")
+      if (!nzchar(filas_sha) || !identical(filas_sha, as.character(objeto$filas_sha256)[1L])) {
+        rejeicoes <- c(rejeicoes, paste0(basename(arquivo), ":hash_filas_invalido"))
+        next
+      }
+      if (is.null(fingerprint_atual)) fingerprint_atual <- monitora_painel_checkpoint_fingerprint_base(dt)
+      if (!monitora_painel_checkpoint_fingerprint_igual(objeto$fingerprint_base, fingerprint_atual)) {
+        rejeicoes <- c(rejeicoes, paste0(basename(arquivo), ":base_divergente"))
+        next
+      }
+      return(list(encontrado = TRUE, status = "checkpoint_integral_v2", arquivo = arquivo, objeto = objeto, bases = bases))
+    }
+    if (identical(schema, "monitora_justificativas_checkpoint_v1")) {
+      if (isTRUE(ha_checkpoint_integral)) {
+        rejeicoes <- c(rejeicoes, paste0(basename(arquivo), ":legado_ignorado_existe_checkpoint_integral"))
+        next
+      }
+      return(list(encontrado = TRUE, status = "checkpoint_legado_v1_somente_justificativas", arquivo = arquivo, objeto = objeto, bases = bases))
+    }
+    rejeicoes <- c(rejeicoes, paste0(basename(arquivo), ":schema_desconhecido"))
+  }
+  list(encontrado = FALSE, status = "nenhum_checkpoint_compativel", arquivo = "", rejeicoes = rejeicoes, bases = bases)
+}
+
+monitora_pendencias_justificativas_checkpoint_remover <- function(arquivos_adicionais = character()) {
+  exec_id <- as.character(get0("MONITORA_EXEC_ID", ifnotfound = "sem_exec_id", inherits = TRUE))[1L]
+  bases <- if (exists("monitora_painel_checkpoint_diretorios", mode = "function", inherits = TRUE)) {
+    monitora_painel_checkpoint_diretorios()
+  } else {
+    c(
+      file.path(
+        as.character(get0(
+          "MONITORA_CORRECOES_DIR",
+          ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"),
+          inherits = TRUE
+        ))[1L],
+        "cache_sessao"
+      ),
+      file.path(
+        as.character(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE))[1L],
+        "02_painel_correcoes", "operacoes_sessao", "cache_sessao"
+      )
+    )
+  }
+  destinos <- c(
+    unlist(lapply(bases, function(base) c(
+      file.path(base, paste0("checkpoint_recuperavel_justificativas_", exec_id, ".rds")),
+      file.path(base, paste0("checkpoint_recuperavel_painel_", exec_id, ".rds"))
+    )), use.names = FALSE),
+    as.character(arquivos_adicionais)
+  )
+  bases_norm <- unique(normalizePath(bases, winslash = "/", mustWork = FALSE))
+  destinos <- unique(destinos[!is.na(destinos) & nzchar(destinos)])
+  destinos <- destinos[vapply(destinos, function(x) {
+    normalizePath(dirname(x), winslash = "/", mustWork = FALSE) %in% bases_norm
+  }, logical(1L))]
+  existentes <- destinos[file.exists(destinos) & !dir.exists(destinos)]
+  if (length(existentes)) unlink(existentes, force = TRUE)
+  invisible(destinos)
 }
 
 monitora_painel_retorno_publicar_metadados <- function(resultado) {
@@ -30535,7 +30763,31 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       validacao_esp_painel <- data.table::as.data.table(data.table::copy(res_esp_pre_painel$validacao))
     }
   }
-  rv <- shiny::reactiveValues(correcoes = monitora_correcao_template(), correcoes_solicitadas = monitora_correcao_template(), correcoes_historico_intencoes = monitora_correcao_template(), auditoria_conciliacao_semantica = data.table::data.table(), conflitos_semanticos = data.table::data.table(), preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "", movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0), correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0), auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table(), ocorrencias_idx = data.table::data.table(), ocorrencias_resumo = data.table::data.table(), justificativas_sessao = monitora_pendencias_justificativas_template(), justificativas_encerradas_sessao = monitora_pendencias_justificativas_template(), auditoria_reconciliacao_justificativas = data.table::data.table(), tempo_reconciliacao_justificativas_s = 0, justificativas_selec_ids = character(0), justificativas_sessao_selec_ids = character(0), justificativas_exclusao_ids_pendente = character(0), justificativas_dt_sincronizando = FALSE, justificativas_dt_revisao = 0L, justificativas_dt_sincronizado_em = NA_real_, acao_choices_atuais = character(0), preview_estado = NULL, preview_triagem = data.table::copy(triagem_painel_unificada), preview_coletas = coletas_triagem_por_tipo, preview_coletas_lateral = coletas_triagem_por_tipo, preview_validacao_espacial = data.table::copy(validacao_esp_painel), preview_resumo_impeditivas = data.table::data.table(), preview_dirty = FALSE, preview_revision = 0L, preview_atualizado_em = NA_character_, reset_painel_em_andamento = FALSE)
+  rv <- shiny::reactiveValues(
+    correcoes = monitora_correcao_template(), correcoes_solicitadas = monitora_correcao_template(),
+    correcoes_historico_intencoes = monitora_correcao_template(),
+    auditoria_conciliacao_semantica = data.table::data.table(), conflitos_semanticos = data.table::data.table(),
+    preview = data.table::data.table(), painel_finalizado = FALSE, ponto_alvo = "",
+    movimento_alvo = data.table::data.table(), correcoes_vis_ids = character(0),
+    correcoes_espaciais = data.table::data.table(), correcoes_espaciais_vis_ids = character(0),
+    auditoria_espacial_sessao = data.table::data.table(), auditoria_rejeicoes = data.table::data.table(),
+    ocorrencias_idx = data.table::data.table(), ocorrencias_resumo = data.table::data.table(),
+    justificativas_sessao = monitora_pendencias_justificativas_template(),
+    justificativas_encerradas_sessao = monitora_pendencias_justificativas_template(),
+    auditoria_reconciliacao_justificativas = data.table::data.table(), tempo_reconciliacao_justificativas_s = 0,
+    justificativas_selec_ids = character(0), justificativas_sessao_selec_ids = character(0),
+    justificativas_exclusao_ids_pendente = character(0), justificativas_dt_sincronizando = FALSE,
+    justificativas_dt_revisao = 0L, justificativas_dt_sincronizado_em = NA_real_,
+    acao_choices_atuais = character(0), preview_estado = NULL,
+    preview_triagem = data.table::copy(triagem_painel_unificada), preview_coletas = coletas_triagem_por_tipo,
+    preview_coletas_lateral = coletas_triagem_por_tipo,
+    preview_validacao_espacial = data.table::copy(validacao_esp_painel),
+    preview_resumo_impeditivas = data.table::data.table(), preview_dirty = FALSE,
+    preview_revision = 0L, preview_atualizado_em = NA_character_, reset_painel_em_andamento = FALSE,
+    preview_falha_assinatura = "", preview_falha_mensagem = "",
+    preview_falha_auditoria = data.table::data.table(), checkpoint_recuperado_origem = "",
+    checkpoint_recuperado_status = ""
+  )
   ocorrencias_idx_base_painel <- monitora_painel_ocorrencias_idx_leve(
     triagem_painel_unificada, coletas_triagem_por_tipo,
     validacao_espacial = validacao_esp_painel
@@ -30544,6 +30796,193 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   ocorrencias_resumo_base_painel <- monitora_painel_ocorrencias_resumo_leve(ocorrencias_idx_base_painel)
   rv$ocorrencias_resumo <- data.table::copy(ocorrencias_resumo_base_painel)
   rv$preview_resumo_impeditivas <- monitora_painel_resumo_impeditivas_do_indice(ocorrencias_resumo_base_painel)
+  normalizar_fila_checkpoint <- function(x, template) {
+    z <- monitora_painel_checkpoint_dt(x)
+    template <- monitora_painel_checkpoint_dt(template)
+    if (!nrow(z)) return(template)
+    for (cc in setdiff(names(template), names(z))) data.table::set(z, j = cc, value = template[[cc]][1L])
+    z[]
+  }
+  monitora_painel_checkpoint_reidratar_precondicoes_lote <- function(x) {
+    z <- data.table::copy(monitora_painel_checkpoint_dt(x))
+    audit_vazio <- data.table::data.table(
+      id_correcao = character(), ordem_operacao = character(), coleta = character(),
+      atributo = character(), acao = character(), n_linhas = integer(),
+      n_chars_esperado = integer(), n_chars_bruto = integer(),
+      diferenca_chars_borda = integer(), status_migracao = character(),
+      motivo = character()
+    )
+    obrigatorias <- c(
+      "id_correcao", "ordem_operacao", "tipo_correcao", "escopo_aplicacao",
+      "coleta", "atributo_coluna_registros_corrig", "acao",
+      "valor_original_esperado"
+    )
+    if (!nrow(z) || !all(obrigatorias %in% names(z)) ||
+        !monitora_painel_coluna_ok(chaves$coleta, dt)) {
+      return(list(fila = z, auditoria = audit_vazio, n_migradas = 0L))
+    }
+    candidatas <- which(
+      as.character(z$tipo_correcao) == "lote_multicoletas_campo_superior" &
+        as.character(z$escopo_aplicacao) == "coleta_inteira" &
+        tolower(trimws(as.character(z$acao))) %in% c("update", "substituir_valor", "clear", "limpar")
+    )
+    if (!length(candidatas)) {
+      return(list(fila = z, auditoria = audit_vazio, n_migradas = 0L))
+    }
+    auditorias <- vector("list", length(candidatas))
+    na <- 0L
+    for (ii in candidatas) {
+      coleta_i <- as.character(z$coleta[ii])
+      atributo_i <- as.character(z$atributo_coluna_registros_corrig[ii])
+      esperado_i <- as.character(z$valor_original_esperado[ii])
+      if (is.na(coleta_i) || !nzchar(coleta_i) || is.na(atributo_i) ||
+          !nzchar(atributo_i) || !(atributo_i %in% names(dt)) ||
+          is.na(esperado_i) || !nzchar(trimws(esperado_i))) next
+      linhas_i <- which(as.character(dt[[chaves$coleta]]) == coleta_i)
+      if (!length(linhas_i)) next
+      n_alvo_i <- if ("n_linhas_alvo" %in% names(z)) suppressWarnings(as.integer(z$n_linhas_alvo[ii])) else NA_integer_
+      atuais_i <- as.character(dt[[atributo_i]][linhas_i])
+      atuais_norm <- monitora_correcao_na_para_vazio(atuais_i)
+      atuais_norm[is.na(atuais_norm)] <- ""
+      esperado_norm <- monitora_correcao_na_para_vazio(esperado_i)
+      if (is.na(esperado_norm)) esperado_norm <- ""
+      iguais_exatos <- atuais_norm == esperado_norm
+      iguais_borda <- trimws(atuais_norm) == trimws(esperado_norm)
+      valores_brutos <- unique(atuais_norm)
+      elegivel <- (is.na(n_alvo_i) || n_alvo_i == length(linhas_i)) &&
+        length(valores_brutos) == 1L && all(iguais_borda) && !all(iguais_exatos)
+      divergencia_material <- !all(iguais_borda)
+      if (!isTRUE(elegivel) && !isTRUE(divergencia_material)) next
+      na <- na + 1L
+      status_i <- if (isTRUE(elegivel)) "migrada_espacos_borda" else "nao_migrada_divergencia_material"
+      motivo_i <- if (isTRUE(elegivel)) {
+        "Valor bruto reidratado a partir da mesma base; divergencia limitada a espacos nas extremidades."
+      } else {
+        "Precondicao preservada e bloqueada: o conteudo atual diverge materialmente do checkpoint."
+      }
+      bruto_i <- valores_brutos[1L]
+      auditorias[[na]] <- data.table::data.table(
+        id_correcao = as.character(z$id_correcao[ii]),
+        ordem_operacao = as.character(z$ordem_operacao[ii]),
+        coleta = coleta_i,
+        atributo = atributo_i,
+        acao = as.character(z$acao[ii]),
+        n_linhas = length(linhas_i),
+        n_chars_esperado = nchar(esperado_i),
+        n_chars_bruto = nchar(bruto_i),
+        diferenca_chars_borda = nchar(bruto_i) - nchar(trimws(bruto_i)),
+        status_migracao = status_i,
+        motivo = motivo_i
+      )
+      if (isTRUE(elegivel)) {
+        data.table::set(z, i = ii, j = "valor_original_esperado", value = bruto_i)
+      }
+    }
+    audit <- if (na > 0L) {
+      data.table::rbindlist(auditorias[seq_len(na)], fill = TRUE, use.names = TRUE)
+    } else audit_vazio
+    list(
+      fila = z,
+      auditoria = audit,
+      n_migradas = if (nrow(audit)) sum(audit$status_migracao == "migrada_espacos_borda") else 0L
+    )
+  }
+  monitora_painel_checkpoint_gravar_auditoria_migracao_lote <- function(audit) {
+    audit <- data.table::as.data.table(audit)
+    if (!nrow(audit)) return("")
+    base <- as.character(get0(
+      "MONITORA_CORRECOES_DIR",
+      ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"),
+      inherits = TRUE
+    ))[1L]
+    dir.create(base, recursive = TRUE, showWarnings = FALSE)
+    destino <- file.path(base, "auditoria_migracao_checkpoint_precondicoes_lote_ultima_execucao.csv")
+    data.table::fwrite(audit, destino, bom = TRUE)
+    destino
+  }
+  checkpoint_rec <- tryCatch(
+    monitora_painel_checkpoint_localizar(dt),
+    error = function(e) list(encontrado = FALSE, status = paste0("erro_ao_localizar: ", conditionMessage(e)), arquivo = "")
+  )
+  if (isTRUE(checkpoint_rec$encontrado) &&
+      identical(checkpoint_rec$status, "checkpoint_legado_v1_somente_justificativas")) {
+    obj_legado <- checkpoint_rec$objeto
+    ids_legado <- unique(c(
+      as.character(monitora_painel_checkpoint_dt(obj_legado$justificativas_ativas)$ocorrencia_id),
+      as.character(monitora_painel_checkpoint_dt(obj_legado$justificativas_encerradas)$ocorrencia_id)
+    ))
+    ids_legado <- ids_legado[!is.na(ids_legado) & nzchar(ids_legado)]
+    ids_atuais <- if ("ocorrencia_id" %in% names(ocorrencias_idx_base_painel)) {
+      unique(as.character(ocorrencias_idx_base_painel$ocorrencia_id))
+    } else character(0)
+    ids_incompativeis <- setdiff(ids_legado, ids_atuais)
+    if (length(ids_legado) && length(ids_incompativeis)) {
+      checkpoint_rec <- list(
+        encontrado = FALSE,
+        status = "checkpoint_legado_incompativel_com_ocorrencias_atuais",
+        arquivo = "",
+        rejeicoes = paste0(
+          basename(as.character(checkpoint_rec$arquivo)[1L]),
+          ":", length(ids_incompativeis), "_ocorrencia(s)_nao_pertencem_ao_diagnostico_atual"
+        )
+      )
+    }
+  }
+  if (isTRUE(checkpoint_rec$encontrado)) {
+    shiny::isolate({
+      obj_rec <- checkpoint_rec$objeto
+      rv$justificativas_sessao <- normalizar_fila_checkpoint(
+        obj_rec$justificativas_ativas, monitora_pendencias_justificativas_template()
+      )
+      rv$justificativas_encerradas_sessao <- normalizar_fila_checkpoint(
+        obj_rec$justificativas_encerradas, monitora_pendencias_justificativas_template()
+      )
+      rv$auditoria_reconciliacao_justificativas <- monitora_painel_checkpoint_dt(obj_rec$auditoria_reconciliacao)
+      if (identical(checkpoint_rec$status, "checkpoint_integral_v2")) {
+        mig_corr <- monitora_painel_checkpoint_reidratar_precondicoes_lote(obj_rec$correcoes_sessao)
+        mig_solic <- monitora_painel_checkpoint_reidratar_precondicoes_lote(obj_rec$correcoes_solicitadas)
+        mig_hist <- monitora_painel_checkpoint_reidratar_precondicoes_lote(obj_rec$correcoes_historico_intencoes)
+        rv$correcoes <- normalizar_fila_checkpoint(mig_corr$fila, monitora_correcao_template())
+        rv$correcoes_solicitadas <- normalizar_fila_checkpoint(mig_solic$fila, monitora_correcao_template())
+        rv$correcoes_historico_intencoes <- normalizar_fila_checkpoint(mig_hist$fila, monitora_correcao_template())
+        rv$correcoes_espaciais <- monitora_painel_checkpoint_dt(obj_rec$correcoes_espaciais)
+        rv$auditoria_rejeicoes <- monitora_painel_checkpoint_dt(obj_rec$auditoria_rejeicoes)
+        rv$auditoria_espacial_sessao <- monitora_painel_checkpoint_dt(obj_rec$auditoria_espacial)
+        rv$preview_falha_auditoria <- monitora_painel_checkpoint_dt(obj_rec$auditoria_preview_falha)
+        rv$preview_falha_mensagem <- as.character(obj_rec$mensagem_preview_falha)[1L]
+        rv$preview_falha_assinatura <- as.character(obj_rec$assinatura_preview_falha)[1L]
+        if (mig_corr$n_migradas > 0L) {
+          audit_mig_path <- monitora_painel_checkpoint_gravar_auditoria_migracao_lote(mig_corr$auditoria)
+          rv$preview_falha_auditoria <- data.table::data.table()
+          rv$preview_falha_mensagem <- ""
+          rv$preview_falha_assinatura <- ""
+          monitora_correcao_console_msg(
+            "Checkpoint integral migrado de forma segura: ", mig_corr$n_migradas,
+            " precondicao(oes) de lote reidratada(s) a partir da mesma base; auditoria=",
+            audit_mig_path, "."
+          )
+        }
+        rv$preview_dirty <- nrow(rv$correcoes) > 0L || nrow(rv$correcoes_espaciais) > 0L
+      }
+      rv$checkpoint_recuperado_origem <- as.character(checkpoint_rec$arquivo)[1L]
+      rv$checkpoint_recuperado_status <- as.character(checkpoint_rec$status)[1L]
+      n_corr_rec <- if (nrow(rv$correcoes) && "id_correcao" %in% names(rv$correcoes)) {
+        data.table::uniqueN(as.character(rv$correcoes$id_correcao))
+      } else nrow(rv$correcoes)
+      monitora_correcao_console_msg(
+        "Checkpoint recuperável carregado: status=", rv$checkpoint_recuperado_status,
+        "; correções=", n_corr_rec,
+        "; operações espaciais=", nrow(rv$correcoes_espaciais),
+        "; justificativas ativas=", nrow(rv$justificativas_sessao),
+        "; arquivo=", rv$checkpoint_recuperado_origem, "."
+      )
+    })
+  } else if (!is.null(checkpoint_rec$rejeicoes) && length(checkpoint_rec$rejeicoes)) {
+    monitora_correcao_console_msg(
+      "Checkpoint(s) recuperável(is) ignorado(s) por incompatibilidade: ",
+      paste(as.character(checkpoint_rec$rejeicoes), collapse = " | "), "."
+    )
+  }
   escolhas_esp_status <- if ("status_espacial" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$status_espacial))) else character(0)
   escolhas_esp_ua <- if ("UA" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$UA))) else character(0)
   escolhas_esp_ano <- if ("ANO" %in% names(validacao_esp_painel)) sort(unique(as.character(validacao_esp_painel$ANO))) else character(0)
@@ -30594,6 +31033,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   painel_estado$botoes_ultima_conclusao <- new.env(parent = emptyenv())
   painel_estado$modal_impeditivas_salvar_ativo <- FALSE
   painel_estado$commit_em_andamento <- FALSE
+  painel_estado$checkpoint_fingerprint_base <- NULL
+
+  monitora_painel_checkpoint_fingerprint_atual <- function() {
+    if (is.null(painel_estado$checkpoint_fingerprint_base)) {
+      painel_estado$checkpoint_fingerprint_base <- monitora_painel_checkpoint_fingerprint_base(dt)
+    }
+    painel_estado$checkpoint_fingerprint_base
+  }
 
   monitora_painel_notificar <- function(ui, type = "message", duration = 8, ...) {
  ### Notificações são auxiliares de interface e nunca devem derrubar uma
@@ -31289,6 +31736,28 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
   )
 
   server <- function(input, output, session) {
+    if (nzchar(as.character(shiny::isolate(rv$checkpoint_recuperado_origem))[1L])) {
+      session$onFlushed(function() {
+        shiny::isolate({
+          legado <- identical(rv$checkpoint_recuperado_status, "checkpoint_legado_v1_somente_justificativas")
+          monitora_painel_notificar(
+            if (isTRUE(legado)) {
+              paste0(
+                "Checkpoint legado restaurado: ", nrow(rv$justificativas_sessao),
+                " justificativa(s). A versão antiga não preservava a fila de correções."
+              )
+            } else {
+              paste0(
+                "Checkpoint integral restaurado: ", nrow(rv$correcoes), " item(ns) de correção, ",
+                nrow(rv$correcoes_espaciais), " operação(ões) espacial(is) e ",
+                nrow(rv$justificativas_sessao), " justificativa(s)."
+              )
+            },
+            type = "warning", duration = 15
+          )
+        })
+      }, once = TRUE)
+    }
     dicionario_painel <- if (!is.null(meta_xls) && !is.null(meta_xls$campos)) meta_xls$campos else NULL
 
     coletores_estado_efetivo <- shiny::reactive({
@@ -33010,6 +33479,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!nrow(x_lote)) return(data.table::data.table())
       res <- x_lote[, {
         vals <- as.character(get(atributo))
+        vals_brutos_norm <- monitora_correcao_na_para_vazio(vals)
+        vals_brutos_norm[is.na(vals_brutos_norm)] <- ""
+        valores_brutos_unicos <- unique(vals_brutos_norm)
         vals_norm <- monitora_correcao_na_para_vazio(vals)
         vals_norm[is.na(vals_norm)] <- ""
         vals_norm <- trimws(vals_norm)
@@ -33023,7 +33495,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           ANO = if (monitora_painel_coluna_ok(chaves$ano, x_lote)) colapsar(get(chaves$ano)) else NA_character_,
           coleta_uuid = if (monitora_painel_coluna_ok(chaves$coleta_uuid, x_lote)) colapsar(get(chaves$coleta_uuid)) else NA_character_,
           n_valores_atuais = length(unique(vals_norm)),
-          valor_atual = colapsar(vals)
+          n_valores_atuais_brutos = length(valores_brutos_unicos),
+          valor_atual = colapsar(vals),
+          valor_original_esperado_exato = if (length(valores_brutos_unicos) == 1L) {
+            if (nzchar(valores_brutos_unicos[1L])) valores_brutos_unicos[1L] else NA_character_
+          } else NA_character_
         )
       }, by = .(coleta = as.character(get(coleta_col)))]
       ausentes <- setdiff(coletas, res$coleta)
@@ -33031,14 +33507,19 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         res <- data.table::rbindlist(list(res, data.table::data.table(
           coleta = ausentes, n_linhas = 0L, UC = NA_character_, EA = NA_character_, UA = NA_character_,
           CICLO = NA_character_, CAMPANHA = NA_character_, ANO = NA_character_, coleta_uuid = NA_character_,
-          n_valores_atuais = NA_integer_, valor_atual = NA_character_
+          n_valores_atuais = NA_integer_, n_valores_atuais_brutos = NA_integer_,
+          valor_atual = NA_character_, valor_original_esperado_exato = NA_character_
         )), fill = TRUE, use.names = TRUE)
       }
       res[, n_linhas_esperado := n_esperado]
       res[, status_lote := data.table::fifelse(
         n_linhas != n_linhas_esperado,
         "bloqueio_n_linhas",
-        data.table::fifelse(is.na(n_valores_atuais) | n_valores_atuais > 1L, "bloqueio_atributo_nao_uniforme", "ok")
+        data.table::fifelse(
+          is.na(n_valores_atuais) | n_valores_atuais > 1L |
+            is.na(n_valores_atuais_brutos) | n_valores_atuais_brutos > 1L,
+          "bloqueio_atributo_nao_uniforme", "ok"
+        )
       )]
       data.table::setorder(res, status_lote, coleta)
       res[]
@@ -34180,7 +34661,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (!nrow(resumo)) {
         return(DT::datatable(data.table::data.table(mensagem = "Sem COLETAS selecionadas para lote ou atributo inválido."), rownames = FALSE))
       }
-      resumo_vis <- monitora_painel_ocultar_uuid_registro_visual(resumo)
+      resumo_vis <- data.table::copy(resumo)
+      colunas_transacionais_internas <- intersect(
+        c("n_valores_atuais_brutos", "valor_original_esperado_exato"), names(resumo_vis)
+      )
+      if (length(colunas_transacionais_internas)) resumo_vis[, (colunas_transacionais_internas) := NULL]
+      resumo_vis <- monitora_painel_ocultar_uuid_registro_visual(resumo_vis)
       DT::datatable(resumo_vis, options = monitora_painel_dt_options(), rownames = FALSE)
     }, server = TRUE)
 
@@ -36781,7 +37267,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             uuid_vals <- uuid_vals[!is.na(uuid_vals) & nzchar(trimws(uuid_vals))]
             if (length(uuid_vals) == 1L) coleta_uuid_val <- uuid_vals[1L]
           }
-          valor_original_op <- if (nzchar(valor_original_global)) valor_original_global else as.character(resumo_lote$valor_atual[ii])
+          acao_celula_inteira <- acao_val %in% c("update", "substituir_valor", "clear", "limpar", "append_text", "acrescentar_texto", "adicionar_texto")
+          valor_original_op <- if (isTRUE(acao_celula_inteira) && "valor_original_esperado_exato" %in% names(resumo_lote)) {
+            as.character(resumo_lote$valor_original_esperado_exato[ii])
+          } else if (nzchar(valor_original_global)) {
+            valor_original_global
+          } else {
+            as.character(resumo_lote$valor_atual[ii])
+          }
           if (is.na(valor_original_op)) valor_original_op <- NA_character_
           ops[[ii]] <- monitora_correcao_criar_operacao(
             id = id,
@@ -37386,15 +37879,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
             eventos_sessao = data.table::as.data.table(rv$justificativas_sessao),
             eventos_encerrados_sessao = data.table::as.data.table(rv$justificativas_encerradas_sessao),
             auditoria_reconciliacao = data.table::as.data.table(rv$auditoria_reconciliacao_justificativas),
-            motivo = "sessao_shiny_encerrada_sem_acao_explicita"
+            motivo = "sessao_shiny_encerrada_sem_acao_explicita",
+            correcoes_sessao = data.table::as.data.table(rv$correcoes),
+            correcoes_solicitadas = data.table::as.data.table(rv$correcoes_solicitadas),
+            correcoes_historico_intencoes = data.table::as.data.table(rv$correcoes_historico_intencoes),
+            correcoes_espaciais = data.table::as.data.table(rv$correcoes_espaciais),
+            auditoria_rejeicoes = data.table::as.data.table(rv$auditoria_rejeicoes),
+            auditoria_espacial = data.table::as.data.table(rv$auditoria_espacial_sessao),
+            auditoria_preview_falha = data.table::as.data.table(rv$preview_falha_auditoria),
+            mensagem_preview_falha = as.character(rv$preview_falha_mensagem)[1L],
+            assinatura_preview_falha = as.character(rv$preview_falha_assinatura)[1L],
+            fingerprint_base = monitora_painel_checkpoint_fingerprint_atual()
           ),
           error = function(e) {
-            monitora_correcao_console_msg("Falha ao criar checkpoint recuperável de justificativas: ", conditionMessage(e))
+            monitora_correcao_console_msg("Falha ao criar checkpoint recuperável integral do painel: ", conditionMessage(e))
             ""
           }
         )
         monitora_correcao_console_msg("Sessão do painel encerrada sem ação explícita de salvar ou fechar; execução será bloqueada para evitar perda silenciosa de correções.")
-        if (nzchar(checkpoint_anormal)) monitora_correcao_console_msg("Checkpoint recuperável das justificativas: ", checkpoint_anormal, ".")
+        if (nzchar(checkpoint_anormal)) monitora_correcao_console_msg("Checkpoint recuperável integral do painel: ", checkpoint_anormal, ".")
         painel_estado$finalizado <- TRUE
         res_anormal <- monitora_correcao_template()
         attr(res_anormal, "painel_encerramento_anormal") <- TRUE
@@ -37559,10 +38062,99 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       invisible(TRUE)
     }
 
+    monitora_painel_assinatura_preview_filas <- function() {
+      monitora_painel_checkpoint_assinatura_filas(
+        rv$correcoes,
+        rv$correcoes_solicitadas,
+        rv$correcoes_historico_intencoes,
+        rv$correcoes_espaciais,
+        NULL,
+        NULL
+      )
+    }
+
+    monitora_painel_preview_registrar_falha <- function(resultado, corrs, assinatura_fila) {
+      corrs <- data.table::as.data.table(data.table::copy(corrs))
+      audit <- if (is.list(resultado) && !is.null(resultado$audit)) {
+        data.table::as.data.table(data.table::copy(resultado$audit))
+      } else data.table::data.table()
+      conflitos <- if (is.list(resultado) && !is.null(resultado$conflitos_semanticos)) {
+        data.table::as.data.table(data.table::copy(resultado$conflitos_semanticos))
+      } else data.table::data.table()
+      if (nrow(conflitos)) {
+        if (!("status" %in% names(conflitos))) conflitos[, status := "conflito_semantico"]
+        if (!("mensagem" %in% names(conflitos))) conflitos[, mensagem := "Conflito semântico na fila do painel"]
+        if (!("id_correcao" %in% names(conflitos)) && "ids_operacoes" %in% names(conflitos)) conflitos[, id_correcao := as.character(ids_operacoes)]
+        audit <- data.table::rbindlist(list(audit, conflitos), fill = TRUE, use.names = TRUE)
+      }
+      if (!nrow(audit)) {
+        audit <- data.table::data.table(
+          id_correcao = NA_character_, status = "falha_motor_unico_sem_detalhe",
+          mensagem = "O motor atômico informou falha sem linha de auditoria associada."
+        )
+      }
+      for (cc in c("id_correcao", "status", "mensagem", "atributo", "ordem_operacao")) {
+        if (!(cc %in% names(audit))) data.table::set(audit, j = cc, value = NA_character_)
+      }
+      texto_falha <- paste(
+        tolower(as.character(audit$status)),
+        tolower(as.character(audit$mensagem))
+      )
+      audit[, registro_falha := grepl("falha|conflito|erro|inval|bloque", texto_falha)]
+      if (!any(audit$registro_falha, na.rm = TRUE)) audit[, registro_falha := TRUE]
+      campos_ctx <- intersect(c(
+        "id_correcao", "tipo_correcao", "acao", "coleta", "escopo_aplicacao",
+        "atributo_coluna_registros_corrig", "valor_original_esperado", "valor_novo",
+        "n_linhas_alvo", "n_linhas_esperado", "motivo"
+      ), names(corrs))
+      if (length(campos_ctx) && "id_correcao" %in% campos_ctx) {
+        ctx <- unique(corrs[, ..campos_ctx], by = "id_correcao")
+        data.table::setnames(ctx, setdiff(names(ctx), "id_correcao"), paste0("fila_", setdiff(names(ctx), "id_correcao")))
+        audit <- merge(audit, ctx, by = "id_correcao", all.x = TRUE, sort = FALSE)
+      }
+      audit[, `:=`(
+        assinatura_fila = as.character(assinatura_fila)[1L],
+        data_hora_diagnostico = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")
+      )]
+      falhas <- audit[registro_falha %in% TRUE]
+      arq <- file.path(MONITORA_CORRECOES_DIR, "auditoria_preview_motor_unico_falhas_ultima_execucao.csv")
+      dir.create(dirname(arq), recursive = TRUE, showWarnings = FALSE)
+      monitora_fwrite(audit, arq, na = "")
+      primeira <- falhas[1L]
+      id_txt <- as.character(primeira$id_correcao)[1L]
+      if (is.na(id_txt) || !nzchar(id_txt)) id_txt <- "sem_id"
+      coleta_txt <- if ("fila_coleta" %in% names(primeira)) as.character(primeira$fila_coleta)[1L] else ""
+      atributo_txt <- if ("fila_atributo_coluna_registros_corrig" %in% names(primeira)) as.character(primeira$fila_atributo_coluna_registros_corrig)[1L] else as.character(primeira$atributo)[1L]
+      status_txt <- as.character(primeira$status)[1L]
+      detalhe_txt <- as.character(primeira$mensagem)[1L]
+      partes <- c(
+        paste0("operação=", id_txt),
+        if (!is.na(coleta_txt) && nzchar(coleta_txt)) paste0("COLETA=", coleta_txt) else character(0),
+        if (!is.na(atributo_txt) && nzchar(atributo_txt)) paste0("atributo=", atributo_txt) else character(0),
+        if (!is.na(status_txt) && nzchar(status_txt)) paste0("status=", status_txt) else character(0)
+      )
+      mensagem <- paste0(
+        "Preview bloqueado pelo motor único: ", paste(partes, collapse = "; "),
+        if (!is.na(detalhe_txt) && nzchar(detalhe_txt)) paste0(". ", detalhe_txt) else "",
+        ". Auditoria detalhada: ", arq
+      )
+      rv$preview_falha_assinatura <- as.character(assinatura_fila)[1L]
+      rv$preview_falha_mensagem <- mensagem
+      rv$preview_falha_auditoria <- data.table::copy(audit)
+      monitora_painel_registrar_rejeicao(
+        "preview_motor_unico_falha", mensagem,
+        atributo = if (!is.na(atributo_txt) && nzchar(atributo_txt)) atributo_txt else "__motor_unico_preview__",
+        acao = "preview", detalhe = arq
+      )
+      stop(mensagem, call. = FALSE)
+    }
+
     monitora_painel_preview_dados_pos_operacoes <- function() {
       xprev <- data.table::as.data.table(data.table::copy(dt))
       corrs <- data.table::as.data.table(data.table::copy(rv$correcoes))
       if (!nrow(corrs)) return(xprev)
+      assinatura_fila <- monitora_painel_assinatura_preview_filas()
+      erro_preview_unico <- NULL
       res_preview_unico <- tryCatch(
         monitora_correcao_aplicar_plano_atomico_sessao(
           xprev,
@@ -37575,7 +38167,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           registrar_perf = FALSE
         ),
         error = function(e) {
-          try(monitora_painel_registrar_rejeicao("preview_motor_unico_erro", conditionMessage(e), atributo = "__motor_unico_preview__", acao = "preview"), silent = TRUE)
+          erro_preview_unico <<- e
           NULL
         }
       )
@@ -37591,7 +38183,16 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         }
         return(xprev)
       }
-      stop("Preview bloqueado: o motor único não concluiu integralmente. Nenhuma simulação parcial, fallback legado ou confirmação divergente será exibida.", call. = FALSE)
+      if (is.null(res_preview_unico)) {
+        res_preview_unico <- list(
+          falha = TRUE,
+          audit = data.table::data.table(
+            id_correcao = NA_character_, status = "erro_preview_motor_unico",
+            mensagem = if (!is.null(erro_preview_unico)) conditionMessage(erro_preview_unico) else "Falha interna sem condição capturada"
+          )
+        )
+      }
+      monitora_painel_preview_registrar_falha(res_preview_unico, corrs, assinatura_fila)
  ### Fallback legado abaixo só roda se o motor único falhar.
       if (monitora_painel_coluna_ok(chaves$coleta, xprev) && "acao" %in% names(corrs) && "coleta" %in% names(corrs)) {
         co_exc <- unique(unlist(lapply(as.character(corrs[tolower(as.character(acao)) %in% c("excluir_coleta", "exclusao_coleta"), coleta]), monitora_correcao_parse_lista_serializada), use.names = FALSE))
@@ -37772,16 +38373,34 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       inicio <- proc.time()[["elapsed"]]
       inicio_wall <- Sys.time()
       concluido <- FALSE
+      falha_cacheada <- FALSE
       on.exit({
         if (exists("monitora_perf_registrar_computacao_painel", mode = "function", inherits = TRUE)) {
           try(monitora_perf_registrar_computacao_painel(
             etapa = "painel_preview_integral",
             inicio = inicio_wall,
             fim = Sys.time(),
-            detalhe = paste0("origem=", origem, "; status=", if (isTRUE(concluido)) "concluido" else "falha")
+            detalhe = paste0(
+              "origem=", origem, "; status=",
+              if (isTRUE(concluido)) "concluido" else if (isTRUE(falha_cacheada)) "falha_cacheada_sem_recomputacao" else "falha"
+            )
           ), silent = TRUE)
         }
       }, add = TRUE)
+      assinatura_atual <- monitora_painel_assinatura_preview_filas()
+      if (nzchar(as.character(rv$preview_falha_assinatura)[1L]) &&
+          identical(as.character(rv$preview_falha_assinatura)[1L], assinatura_atual) &&
+          nzchar(as.character(rv$preview_falha_mensagem)[1L])) {
+        falha_cacheada <- TRUE
+        mensagem_cache <- paste0(
+          "Prévia não recalculada: a fila é idêntica à tentativa que já falhou. ",
+          as.character(rv$preview_falha_mensagem)[1L],
+          " Altere ou exclua a operação indicada antes de tentar novamente."
+        )
+        monitora_correcao_console_msg(mensagem_cache)
+        if (isTRUE(notificar)) monitora_painel_notificar(mensagem_cache, type = "error", duration = 16)
+        stop(mensagem_cache, call. = FALSE)
+      }
       estado <- monitora_painel_preview_dados_pos_operacoes()
       tri_atual <- monitora_painel_tabela_exoticas(estado)
       monitora_diag_reconciliar_exoticas_painel(
@@ -37840,6 +38459,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rv$preview_coletas_lateral <- coletas_lateral
       rv$preview_validacao_espacial <- validacao_esp_atual[]
       rv$preview_resumo_impeditivas <- resumo_imp_atual[]
+      rv$preview_falha_assinatura <- ""
+      rv$preview_falha_mensagem <- ""
+      rv$preview_falha_auditoria <- data.table::data.table()
       rv$preview_dirty <- FALSE
       rv$preview_atualizado_em <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
       rv$ocorrencias_idx <- idx_atual[]
@@ -38206,7 +38828,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         " ocorrência(s) remanescente(s); ", nrow(just_prod$historico), " evento(s) no histórico append-only."
       )
       commit_concluido <- TRUE
-      try(monitora_pendencias_justificativas_checkpoint_remover(), silent = TRUE)
+      try(monitora_pendencias_justificativas_checkpoint_remover(rv$checkpoint_recuperado_origem), silent = TRUE)
       painel_estado$finalizado <- TRUE
       shiny::stopApp(res)
     }
@@ -38237,7 +38859,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(invisible(NULL))
       }
       painel_estado$finalizado <- TRUE
-      try(monitora_pendencias_justificativas_checkpoint_remover(), silent = TRUE)
+      try(monitora_pendencias_justificativas_checkpoint_remover(rv$checkpoint_recuperado_origem), silent = TRUE)
       resumo_imp_pre <- monitora_painel_resumo_impeditivas_pre()
       if (nrow(resumo_imp_pre) && (any(resumo_imp_pre$n_coletas > 0L, na.rm = TRUE) || ("n_linhas" %in% names(resumo_imp_pre) && any(resumo_imp_pre$n_linhas > 0L, na.rm = TRUE)))) {
         txt_imp <- monitora_painel_txt_impeditivas_pre(resumo_imp_pre)
@@ -38279,7 +38901,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
               eventos_sessao = data.table::as.data.table(rv$justificativas_sessao),
               eventos_encerrados_sessao = data.table::as.data.table(rv$justificativas_encerradas_sessao),
               auditoria_reconciliacao = data.table::as.data.table(rv$auditoria_reconciliacao_justificativas),
-              motivo = paste0("falha_recuperavel_salvamento: ", conditionMessage(e))
+              motivo = paste0("falha_recuperavel_salvamento: ", conditionMessage(e)),
+              correcoes_sessao = data.table::as.data.table(rv$correcoes),
+              correcoes_solicitadas = data.table::as.data.table(rv$correcoes_solicitadas),
+              correcoes_historico_intencoes = data.table::as.data.table(rv$correcoes_historico_intencoes),
+              correcoes_espaciais = data.table::as.data.table(rv$correcoes_espaciais),
+              auditoria_rejeicoes = data.table::as.data.table(rv$auditoria_rejeicoes),
+              auditoria_espacial = data.table::as.data.table(rv$auditoria_espacial_sessao),
+              auditoria_preview_falha = data.table::as.data.table(rv$preview_falha_auditoria),
+              mensagem_preview_falha = as.character(rv$preview_falha_mensagem)[1L],
+              assinatura_preview_falha = as.character(rv$preview_falha_assinatura)[1L],
+              fingerprint_base = monitora_painel_checkpoint_fingerprint_atual()
             ),
             error = function(e_checkpoint) ""
           )
