@@ -1,8 +1,8 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.6
-### Baseline pública de origem: v2.9.5
+### Versão do script: 2.9.7
+### Baseline pública de origem: v2.9.6
 ### Conteúdo acumulado da versão — preserva integralmente o contrato, os itens
 ### congelados e os resultados da v2.9.5. Esta versão preserva integralmente a
 ### arquitetura de inicialização rápida homologada na v2.9.1, sem releitura nem
@@ -17,7 +17,9 @@
 ### v2.9.6 preserva seleções entre lotes sucessivos e disjuntos de
 ### justificativas, explicita o progresso das subetapas analíticas e isola a
 ### impressão PDF em processo temporário para que mensagens técnicas de
-### encerramento do navegador não poluam o console do RStudio.
+### encerramento do navegador não poluam o console do RStudio. A v2.9.7
+### acrescenta à linhagem o ledger cumulativo e assinado dos metadados das
+### sessões, com migração histórica única e continuidade automática.
 ### Os módulos opcionais permanecem sem custo quando desligados.
 ###
 ### Finalidade
@@ -222,8 +224,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.6"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.6-20260812.1"
+MONITORA_SCRIPT_VERSAO <- "2.9.7"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.7-20260812.1"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -317,6 +319,9 @@ MONITORA_INSTITUICAO_RESPONSAVEL <- Sys.getenv("MONITORA_INSTITUICAO_RESPONSAVEL
 MONITORA_RESPONSAVEL_SESSAO_PAINEL <- ""
 MONITORA_METADADOS_SESSAO_PAINEL_ULTIMA <- NULL
 MONITORA_ARQUIVO_METADADOS_SESSAO_PAINEL <- ""
+MONITORA_METADADOS_SESSOES_LINHAGEM_HERDADOS <- NULL
+MONITORA_METADADOS_SESSOES_LINHAGEM_STATUS <- "nao_avaliados"
+MONITORA_METADADOS_SESSOES_RECUPERACAO_AUDITORIA <- NULL
 
 
 ### REPLAY SEMÂNTICO versus CURADORIA CONTINUADA -----------------------------
@@ -2132,7 +2137,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "docs", versao = get0("MONI
     monitora_doc_rmd_table_chunk(arq_modos, "manual-modos", 100L, c("modo", "finalidade", "entrada_principal", "painel", "saida_esperada"), 40L), "",
     "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
     "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
-    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/auditorias_operacionais/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "`inventario_sessoes_linhagem.csv` distingue execuções/rodadas, sessões que criaram decisões semânticas e execuções sem novas decisões; também informa eventos herdados, reaplicados, atuais e acumulados. O relatório consolidado apresenta a mesma cronologia e os controles de integridade. Metadados ausentes em sessões legadas são declarados como não registrados, nunca inferidos.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
+    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/auditorias_operacionais/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "`inventario_sessoes_linhagem.csv` distingue execuções/rodadas, sessões que criaram decisões semânticas e execuções sem novas decisões; também informa eventos herdados, reaplicados, atuais e acumulados. O relatório consolidado apresenta a mesma cronologia e os controles de integridade. A v2.9.7 preserva os metadados das sessões em `metadados_sessoes_painel_consolidado.csv`, assinado pelo manifesto; na primeira continuidade de uma cadeia legada, a recuperação histórica deve ser feita uma única vez a partir dos sidecars da cadeia canônica. Depois de consumida, a recuperação não é propagada: as rodadas seguintes copiam `registros_corrig.csv` e a pasta `output/02_painel_correcoes/linhagem/` completa para o novo `input/`. Ausências verdadeiras continuam declaradas, nunca inferidas.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
     "# Produtos de dados", "", "Os produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
     "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_importados_operacional_pre_painel.csv` documenta a camada operacional pós-tokenização/pré-painel e não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
     "## Planilha para o SISMONITORA", "", "`registros_validados_importacao_sismonitora*.xlsx` só pode ser criado quando `registros_validados.csv` foi gerado e aprovado na mesma execução. O script produz um arquivo por contexto UC + ciclo + campanha, preserva o modelo 21FEV25 e representa atributos superiores apenas na primeira linha do bloco quando o template assim exige. A opção de UUID afeta somente o XLSX: use remoção para inclusão de registros novos; preserve UUID apenas após homologação da atualização pela equipe do SISMONITORA.", "",
@@ -2325,7 +2330,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     "# Pendências remanescentes e justificativas", "", "Justificativas documentam por que uma ocorrência permaneceu; elas não alteram o dado, não ocultam a pendência e não liberam gates impeditivos. Eventos aplicados em lote continuam individualizados por `ocorrencia_id` e compartilham um `evento_lote_id`. O CSV detalhado preserva autoria, classificação, texto e horário.", "", monitora_doc_rmd_table_chunk(arq_pend_just_resumo, "tab-pend-just-resumo", 100L, c("status_justificativa", "tipo_justificativa", "n_ocorrencias", "n_coletas"), 55L), "", monitora_doc_rmd_table_chunk(arq_pend_just, "tab-pend-just", 100L, c("evento_lote_id", "ordem_no_lote", "n_ocorrencias_lote", "tipo_ocorrencia", "COLETA", "UC", "EA", "UA", "ANO", "status_justificativa", "tipo_justificativa", "justificativa", "responsavel_justificativa", "timestamp_justificativa"), 38L), "",
     "# Sanitização automática do repeat de coletores", "", "A rotina converte somente formatos legados reconhecidos para a representação esparsa do template SISMONITORA. CPF é opcional e só é preservado quando válido e inequivocamente associado a um único nome. Nenhum CPF é inferido. A auditoria desta seção contém contagens e motivos, mas não contém nomes nem valores de CPF.", "", monitora_doc_rmd_table_chunk(arq_coletores_resumo, "tab-coletores-resumo", 100L, c("formato_origem", "status", "motivo_cpf", "n_coletas", "n_nomes_recuperados", "n_cpfs_preservados", "n_cpfs_descartados"), 48L), "",
     "# Linhagem incremental e roll-forward semântico", "", "O histórico de correções é cumulativo: distingue eventos herdados já materializados no registros_corrig de entrada, eventos aplicados nesta sessão e o total acumulado. Uma entrada incremental sem sidecar de linhagem é marcada como proveniência histórica incompleta; ausência de evidência nunca é interpretada como ausência de correções.", "", monitora_doc_rmd_table_chunk(arq_linhagem, "tab-linhagem", 20L, c("componente", "valor"), 70L), "",
-    "## Sessões, rodadas e integridade da trilha", "", "Uma rodada é uma execução registrada na trilha. Uma sessão com decisões semânticas é uma rodada que criou ao menos um `event_id`; portanto, execuções sem novas decisões também integram a cronologia, mas não aumentam a contagem de decisões. Metadados ausentes em rodadas legadas são explicitados como não registrados, sem inferência nem preenchimento artificial.", "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes_resumo, "tab-linhagem-sessoes-resumo", 30L, c("indicador", "valor", "fonte"), 64L), "", paste0("O inventário cronológico completo está em `dados/", basename(arq_linhagem_sessoes), "`. A linha da sessão atual inclui, quando persistidos, instituição, modo, forma de encerramento, número de operações e itens auditáveis."), "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes, "tab-linhagem-sessoes", 100L, c("ordem_sessao", "exec_id", "classificacao_sessao", "n_eventos_criados", "n_aplicacoes", "build", "data_hora_referencia", "responsavel", "instituicao", "modo_execucao", "acao_encerramento", "n_operacoes_sessao", "n_itens_auditaveis_sessao", "metadados_sessao"), 34L), "", "A tabela de integridade verifica preservação dos eventos herdados, falhas registradas de aplicação e coerência entre manifesto e ledger quando essas evidências estão disponíveis.", "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes_integridade, "tab-linhagem-sessoes-integridade", 30L, c("verificacao", "valor", "status"), 62L), "",
+    "## Sessões, rodadas e integridade da trilha", "", "Uma rodada é uma execução registrada na trilha. Uma sessão com decisões semânticas é uma rodada que criou ao menos um `event_id`; portanto, execuções sem novas decisões também integram a cronologia, mas não aumentam a contagem de decisões. O ledger cumulativo de metadados preserva instituição, modo, forma de encerramento e contagens de cada sessão; uma ausência verdadeira continua explícita, sem inferência.", "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes_resumo, "tab-linhagem-sessoes-resumo", 30L, c("indicador", "valor", "fonte"), 64L), "", paste0("O inventário cronológico completo está em `dados/", basename(arq_linhagem_sessoes), "`. Todas as linhas com sidecar persistido usam o ledger de metadados das sessões, assinado no manifesto de linhagem."), "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes, "tab-linhagem-sessoes", 100L, c("ordem_sessao", "exec_id", "classificacao_sessao", "n_eventos_criados", "n_aplicacoes", "build", "data_hora_referencia", "responsavel", "instituicao", "modo_execucao", "acao_encerramento", "n_operacoes_sessao", "n_itens_auditaveis_sessao", "metadados_sessao"), 34L), "", "A tabela de integridade verifica preservação dos eventos herdados, falhas registradas de aplicação e coerência entre manifesto e ledgers quando essas evidências estão disponíveis.", "", monitora_doc_rmd_table_chunk(arq_linhagem_sessoes_integridade, "tab-linhagem-sessoes-integridade", 30L, c("verificacao", "valor", "status"), 62L), "",
     "Quando `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`, o relatório registra o arquivo de intenções reaplicado sobre input bruto/original. O replay v2 migra versões conhecidas, resolve atributos pelo contrato único, valida o plano e executa preflight antes da mutação; schema, operação ou alvo desconhecido bloqueiam a aplicação.", "", "Mudanças futuras do script devem preservar compatibilidade com o contrato semântico abaixo ou fornecer migração explícita. O oráculo é apenas evidência suplementar de convergência.", "", monitora_doc_rmd_table_chunk(arq_replay_contrato, "tab-replay-contrato", 100L, c("item", "valor"), 70L), "", monitora_doc_rmd_table_chunk(arq_oraculo, "tab-oraculo", 100L, c("arquivo", "tipo_diagnostico", "interpretacao"), 46L), "",
     "# Validação espacial", "", "A validação espacial deve ser interpretada junto com os produtos específicos em `output/04_validacao_espacial/`. O mapa abaixo é gerado quando há coordenadas detectáveis em `registros_corrig`.", "", mapa_bloco, "",
     "# Descrição dos arquivos de saída", "", paste0("Arquivos descritos em `output/`: **", nrow(output_info), "**. A tabela completa está em `dados/", basename(arq_output), "`."), "", "## Sumário por tipo", "", monitora_doc_rmd_table_chunk(arq_output_resumo, "tab-output-resumo", 60L, c("extensao", "n_arquivos", "tamanho_total_bytes"), 55L), "", "## Arquivos de saída e o que tratam", "", monitora_doc_rmd_table_chunk(arq_output, "tab-output-arqs", 100L, c("arquivo", "extensao", "descricao", "conteudo_tratado", "serve_de_subsidio_para"), 43L), "",
@@ -20730,6 +20735,173 @@ monitora_linhagem_hash_arquivo <- function(path) {
   as.character(tools::md5sum(path)[1L])
 }
 
+MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL <- "monitora_metadados_sessoes_v1"
+
+monitora_linhagem_metadados_sessoes_template <- function() {
+  data.table::data.table(
+    metadados_schema_version = character(), exec_id = character(),
+    data_hora = character(), build_sessao = character(), modo_execucao = character(),
+    responsavel_sessao = character(), instituicao = character(),
+    acao_encerramento = character(), n_operacoes_sessao = character(),
+    n_itens_auditaveis_sessao = character(), origem_metadados = character(),
+    sidecar_sha256 = character()
+  )
+}
+
+monitora_linhagem_metadados_sessoes_normalizar <- function(x,
+                                                            origem_padrao = "linhagem_herdada",
+                                                            abortar = TRUE) {
+  x <- data.table::copy(data.table::as.data.table(x))
+  template <- monitora_linhagem_metadados_sessoes_template()
+  if (!nrow(x)) return(template)
+  for (cc in setdiff(names(template), names(x))) data.table::set(x, j = cc, value = rep("", nrow(x)))
+  x <- x[, names(template), with = FALSE]
+  for (cc in names(x)) {
+    z <- as.character(x[[cc]]); z[is.na(z)] <- ""
+    data.table::set(x, j = cc, value = trimws(z))
+  }
+  x[!nzchar(metadados_schema_version), metadados_schema_version := MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL]
+  x[!nzchar(origem_metadados), origem_metadados := as.character(origem_padrao)[1L]]
+  schema_ruim <- x$metadados_schema_version != MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL
+  obrigatorios <- c(
+    "exec_id", "data_hora", "build_sessao", "modo_execucao",
+    "responsavel_sessao", "instituicao", "acao_encerramento",
+    "n_operacoes_sessao", "n_itens_auditaveis_sessao"
+  )
+  faltas <- vapply(obrigatorios, function(cc) any(!nzchar(x[[cc]])), logical(1L))
+  contagens <- c("n_operacoes_sessao", "n_itens_auditaveis_sessao")
+  contagens_invalidas <- vapply(contagens, function(cc) {
+    z <- suppressWarnings(as.integer(x[[cc]]))
+    any(is.na(z) | z < 0L)
+  }, logical(1L))
+  if (isTRUE(abortar) && (any(schema_ruim) || any(faltas) || any(contagens_invalidas))) {
+    problemas <- c(
+      if (any(schema_ruim)) "schema incompatível" else character(),
+      if (any(faltas)) paste0("campos vazios: ", paste(names(faltas)[faltas], collapse = ", ")) else character(),
+      if (any(contagens_invalidas)) paste0("contagens inválidas: ", paste(names(contagens_invalidas)[contagens_invalidas], collapse = ", ")) else character()
+    )
+    stop("Metadados de sessões inválidos: ", paste(problemas, collapse = "; "), call. = FALSE)
+  }
+  campos_conteudo <- setdiff(names(template), c("origem_metadados", "sidecar_sha256"))
+  assinatura <- do.call(paste, c(x[, ..campos_conteudo], sep = "\034"))
+  conflitos <- data.table::data.table(exec_id = x$exec_id, assinatura = assinatura)[, .(
+    n_assinaturas = data.table::uniqueN(assinatura)
+  ), by = exec_id][n_assinaturas > 1L]
+  if (nrow(conflitos) && isTRUE(abortar)) {
+    stop(
+      "Metadados de sessões bloqueados: exec_id com versões conflitantes: ",
+      paste(conflitos$exec_id, collapse = ", "), call. = FALSE
+    )
+  }
+  x <- x[!duplicated(exec_id)]
+  data.table::setorder(x, data_hora, exec_id, na.last = TRUE)
+  x[]
+}
+
+monitora_linhagem_metadados_sessoes_importar <- function(input_dir, manifesto = NULL,
+                                                          arquivo_ledger = NA_character_) {
+  inicio <- proc.time()[["elapsed"]]
+  dir_lin <- file.path(input_dir, "linhagem")
+  arq_consolidado <- file.path(dir_lin, "metadados_sessoes_painel_consolidado.csv")
+  arq_recuperacao <- file.path(dir_lin, "metadados_sessoes_painel_recuperacao.csv")
+  arq_manifesto_rec <- file.path(dir_lin, "manifesto_recuperacao_metadados_sessoes.json")
+  valor_manifesto <- function(obj, nome, fallback = "") {
+    z <- if (is.null(obj)) NULL else obj[[nome]]
+    if (is.null(z) || !length(z) || is.na(z[[1L]])) fallback else as.character(z[[1L]])
+  }
+  esperado_consolidado <- valor_manifesto(manifesto, "metadados_sessoes_sha256")
+  consolidado <- monitora_linhagem_metadados_sessoes_template()
+  status <- "legado_sem_ledger_metadados_sessoes"
+  if (file.exists(arq_consolidado)) {
+    if (!nzchar(esperado_consolidado)) {
+      stop("Linhagem incremental bloqueada: metadados_sessoes_painel_consolidado.csv não está assinado pelo manifesto de entrada.", call. = FALSE)
+    }
+    observado <- monitora_linhagem_hash_arquivo(arq_consolidado)
+    if (!identical(esperado_consolidado, observado)) {
+      stop("Linhagem incremental bloqueada: hash do ledger de metadados das sessões diverge do manifesto.", call. = FALSE)
+    }
+    consolidado <- data.table::fread(arq_consolidado, colClasses = "character", na.strings = NULL, showProgress = FALSE)
+    consolidado <- monitora_linhagem_metadados_sessoes_normalizar(consolidado, "linhagem_assinada", abortar = TRUE)
+    n_esperado <- suppressWarnings(as.integer(valor_manifesto(manifesto, "session_metadata_count", NA_character_)))
+    if (!is.na(n_esperado) && nrow(consolidado) != n_esperado) {
+      stop("Linhagem incremental bloqueada: quantidade de metadados de sessões diverge do manifesto.", call. = FALSE)
+    }
+    status <- "ledger_metadados_sessoes_assinado_importado"
+  } else if (nzchar(esperado_consolidado)) {
+    stop("Linhagem incremental bloqueada: manifesto exige o ledger de metadados das sessões, mas o arquivo está ausente.", call. = FALSE)
+  }
+  recuperacao <- monitora_linhagem_metadados_sessoes_template()
+  if (file.exists(arq_recuperacao) || file.exists(arq_manifesto_rec)) {
+    if (!all(file.exists(c(arq_recuperacao, arq_manifesto_rec)))) {
+      stop("Recuperação histórica bloqueada: CSV e manifesto de recuperação devem estar presentes juntos.", call. = FALSE)
+    }
+    if (is.null(manifesto) || !requireNamespace("jsonlite", quietly = TRUE)) {
+      stop("Recuperação histórica bloqueada: manifesto de linhagem e pacote jsonlite são obrigatórios.", call. = FALSE)
+    }
+    rec_man <- tryCatch(jsonlite::read_json(arq_manifesto_rec, simplifyVector = TRUE), error = function(e) NULL)
+    if (is.null(rec_man) || !identical(valor_manifesto(rec_man, "recovery_schema"), "monitora_recuperacao_metadados_sessoes_v1")) {
+      stop("Recuperação histórica bloqueada: manifesto de recuperação inválido.", call. = FALSE)
+    }
+    if (!identical(valor_manifesto(rec_man, "base_revision_id"), valor_manifesto(manifesto, "revision_id")) ||
+        !identical(valor_manifesto(rec_man, "base_ledger_sha256"), valor_manifesto(manifesto, "ledger_sha256"))) {
+      stop("Recuperação histórica bloqueada: artefato não pertence à revisão/ledger desta cadeia.", call. = FALSE)
+    }
+    if (is.na(arquivo_ledger) || !nzchar(as.character(arquivo_ledger)[1L]) || !file.exists(arquivo_ledger) ||
+        !identical(monitora_linhagem_hash_arquivo(arquivo_ledger), valor_manifesto(rec_man, "base_ledger_sha256"))) {
+      stop("Recuperação histórica bloqueada: ledger físico da entrada não corresponde à base declarada.", call. = FALSE)
+    }
+    hash_rec <- monitora_linhagem_hash_arquivo(arq_recuperacao)
+    if (!identical(hash_rec, valor_manifesto(rec_man, "metadados_recuperacao_sha256"))) {
+      stop("Recuperação histórica bloqueada: hash do CSV de recuperação diverge do manifesto.", call. = FALSE)
+    }
+    recuperacao <- data.table::fread(arq_recuperacao, colClasses = "character", na.strings = NULL, showProgress = FALSE)
+    recuperacao <- monitora_linhagem_metadados_sessoes_normalizar(recuperacao, "recuperacao_historica_validada", abortar = TRUE)
+    n_rec <- suppressWarnings(as.integer(valor_manifesto(rec_man, "n_sessoes", NA_character_)))
+    if (is.na(n_rec) || nrow(recuperacao) != n_rec) {
+      stop("Recuperação histórica bloqueada: quantidade de sessões diverge do manifesto de recuperação.", call. = FALSE)
+    }
+    status <- if (nrow(consolidado)) "recuperacao_historica_mesclada_ao_ledger_assinado" else "recuperacao_historica_unica_validada"
+  }
+  combinado <- monitora_linhagem_metadados_sessoes_normalizar(
+    data.table::rbindlist(list(consolidado, recuperacao), fill = TRUE, use.names = TRUE),
+    origem_padrao = "linhagem_importada", abortar = TRUE
+  )
+  assign("MONITORA_METADADOS_SESSOES_LINHAGEM_HERDADOS", combinado, envir = .GlobalEnv)
+  assign("MONITORA_METADADOS_SESSOES_LINHAGEM_STATUS", status, envir = .GlobalEnv)
+  assign("MONITORA_METADADOS_SESSOES_RECUPERACAO_AUDITORIA", data.table::data.table(
+    status = status, n_sessoes_assinadas_entrada = nrow(consolidado),
+    n_sessoes_recuperadas = nrow(recuperacao), n_sessoes_herdadas_resultantes = nrow(combinado),
+    duracao_seg = proc.time()[["elapsed"]] - inicio
+  ), envir = .GlobalEnv)
+  combinado[]
+}
+
+monitora_linhagem_metadados_sessoes_consolidar <- function() {
+  herdados <- data.table::as.data.table(get0("MONITORA_METADADOS_SESSOES_LINHAGEM_HERDADOS", ifnotfound = NULL, inherits = TRUE))
+  atual <- data.table::copy(data.table::as.data.table(get0("MONITORA_METADADOS_SESSAO_PAINEL_ULTIMA", ifnotfound = NULL, inherits = TRUE)))
+  if (nrow(atual)) {
+    if (!("build_sessao" %in% names(atual))) atual[, build_sessao := as.character(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "nao_registrado", inherits = TRUE))[1L]]
+    if (!("metadados_schema_version" %in% names(atual))) atual[, metadados_schema_version := MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL]
+    if (!("origem_metadados" %in% names(atual))) atual[, origem_metadados := "sessao_atual_persistida"]
+    if (!("sidecar_sha256" %in% names(atual))) {
+      arq_meta <- as.character(get0("MONITORA_ARQUIVO_METADADOS_SESSAO_PAINEL", ifnotfound = "", inherits = TRUE))[1L]
+      atual[, sidecar_sha256 := if (nzchar(arq_meta) && file.exists(arq_meta)) monitora_linhagem_hash_arquivo(arq_meta) else ""]
+    }
+  }
+  monitora_linhagem_metadados_sessoes_normalizar(
+    data.table::rbindlist(list(herdados, atual), fill = TRUE, use.names = TRUE),
+    origem_padrao = "linhagem_consolidada", abortar = TRUE
+  )
+}
+
+monitora_linhagem_metadados_sessoes_escrever <- function(dir_lin) {
+  consolidado <- monitora_linhagem_metadados_sessoes_consolidar()
+  arq <- file.path(dir_lin, "metadados_sessoes_painel_consolidado.csv")
+  monitora_fwrite(consolidado, arq, na = "")
+  assign("MONITORA_METADADOS_SESSOES_LINHAGEM_HERDADOS", consolidado, envir = .GlobalEnv)
+  list(arquivo = arq, dados = consolidado, sha256 = monitora_linhagem_hash_arquivo(arq))
+}
+
 monitora_linhagem_sanitizacoes_automaticas_consolidar <- function(dir_lin) {
   herdada <- data.table::as.data.table(get0("MONITORA_AUDITORIA_SANITIZACOES_HERDADA", ifnotfound = data.table::data.table(), inherits = TRUE))
   cpf <- data.table::as.data.table(get0("MONITORA_AUDITORIA_CPF_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
@@ -20827,6 +20999,10 @@ monitora_linhagem_importar_incremental <- function(arquivo_registros) {
       }
     }
   }
+  monitora_linhagem_metadados_sessoes_importar(
+    input_dir = input_dir, manifesto = man,
+    arquivo_ledger = if (length(candidatos)) candidatos[1L] else NA_character_
+  )
   if (!length(candidatos)) {
     MONITORA_TRILHA_SEMANTICA_HERDADA <<- data.table::data.table()
     MONITORA_LINHAGEM_STATUS <<- "proveniencia_historica_incompleta"
@@ -20969,7 +21145,17 @@ monitora_linhagem_inventario_sessoes_dt <- function() {
     fases_aplicacao = character(), status_aplicacoes = character(),
     build_aplicacao = character(), primeira_aplicacao = character()
   )
-  exec_ids <- unique(c(as.character(resumo_apps$exec_id), as.character(resumo_eventos$exec_id), exec_atual))
+  metadados_linhagem <- monitora_linhagem_metadados_sessoes_consolidar()
+  metadados_sessao_atual <- data.table::as.data.table(get0(
+    "MONITORA_METADADOS_SESSAO_PAINEL_ULTIMA", ifnotfound = NULL, inherits = TRUE
+  ))
+  execs_metadados_sessao_atual <- if (nrow(metadados_sessao_atual) && "exec_id" %in% names(metadados_sessao_atual)) {
+    unique(as.character(metadados_sessao_atual$exec_id))
+  } else character()
+  exec_ids <- unique(c(
+    as.character(resumo_apps$exec_id), as.character(resumo_eventos$exec_id),
+    as.character(metadados_linhagem$exec_id), exec_atual
+  ))
   exec_ids <- exec_ids[!is.na(exec_ids) & nzchar(trimws(exec_ids))]
   sessoes <- data.table::data.table(exec_id = exec_ids)
   sessoes <- resumo_eventos[sessoes, on = "exec_id"]
@@ -20977,7 +21163,6 @@ monitora_linhagem_inventario_sessoes_dt <- function() {
   for (cc in c("n_eventos_criados", "n_aplicacoes", "n_eventos_referenciados")) {
     sessoes[is.na(get(cc)), (cc) := 0L]
   }
-  meta_atual <- data.table::as.data.table(get0("MONITORA_METADADOS_SESSAO_PAINEL_ULTIMA", ifnotfound = data.table::data.table(), inherits = TRUE))
   sessoes[, `:=`(
     classificacao_sessao = ifelse(n_eventos_criados > 0L, "sessao_com_decisoes_semanticas", "execucao_sem_decisoes_novas"),
     build = data.table::fifelse(!is.na(build_eventos) & nzchar(build_eventos), build_eventos,
@@ -20986,23 +21171,32 @@ monitora_linhagem_inventario_sessoes_dt <- function() {
     data_hora_referencia = data.table::fifelse(!is.na(primeira_decisao) & nzchar(primeira_decisao), primeira_decisao,
       data.table::fifelse(!is.na(primeira_aplicacao) & nzchar(primeira_aplicacao), primeira_aplicacao, "nao_registrada_no_legado")),
     responsavel = data.table::fifelse(!is.na(responsavel_eventos) & nzchar(responsavel_eventos), responsavel_eventos, "nao_registrado_no_legado"),
-    metadados_sessao = ifelse(exec_id == exec_atual & nrow(meta_atual) > 0L, "registrados_nesta_execucao", "nao_registrados_no_legado"),
+    metadados_sessao = "nao_registrados_no_legado",
     instituicao = "nao_registrada_no_legado",
     modo_execucao = "nao_registrado_no_legado",
     acao_encerramento = "nao_registrada_no_legado",
     n_operacoes_sessao = NA_integer_,
     n_itens_auditaveis_sessao = NA_integer_
   )]
-  if (nrow(meta_atual) && "exec_id" %in% names(meta_atual)) {
-    idx_meta <- which(sessoes$exec_id == as.character(meta_atual$exec_id[1L]))
-    if (length(idx_meta)) {
-      if ("responsavel_sessao" %in% names(meta_atual)) sessoes[idx_meta, responsavel := as.character(meta_atual$responsavel_sessao[1L])]
-      if ("data_hora" %in% names(meta_atual)) sessoes[idx_meta, data_hora_referencia := as.character(meta_atual$data_hora[1L])]
-      if ("instituicao" %in% names(meta_atual)) sessoes[idx_meta, instituicao := as.character(meta_atual$instituicao[1L])]
-      if ("modo_execucao" %in% names(meta_atual)) sessoes[idx_meta, modo_execucao := as.character(meta_atual$modo_execucao[1L])]
-      if ("acao_encerramento" %in% names(meta_atual)) sessoes[idx_meta, acao_encerramento := as.character(meta_atual$acao_encerramento[1L])]
-      if ("n_operacoes_sessao" %in% names(meta_atual)) sessoes[idx_meta, n_operacoes_sessao := suppressWarnings(as.integer(meta_atual$n_operacoes_sessao[1L]))]
-      if ("n_itens_auditaveis_sessao" %in% names(meta_atual)) sessoes[idx_meta, n_itens_auditaveis_sessao := suppressWarnings(as.integer(meta_atual$n_itens_auditaveis_sessao[1L]))]
+  if (nrow(metadados_linhagem)) {
+    idx_meta <- match(sessoes$exec_id, metadados_linhagem$exec_id)
+    tem_meta <- which(!is.na(idx_meta))
+    if (length(tem_meta)) {
+      mm <- metadados_linhagem[idx_meta[tem_meta]]
+      sessoes[tem_meta, `:=`(
+        build = as.character(mm$build_sessao),
+        data_hora_referencia = as.character(mm$data_hora),
+        responsavel = as.character(mm$responsavel_sessao),
+        instituicao = as.character(mm$instituicao),
+        modo_execucao = as.character(mm$modo_execucao),
+        acao_encerramento = as.character(mm$acao_encerramento),
+        n_operacoes_sessao = suppressWarnings(as.integer(mm$n_operacoes_sessao)),
+        n_itens_auditaveis_sessao = suppressWarnings(as.integer(mm$n_itens_auditaveis_sessao)),
+        metadados_sessao = ifelse(
+          sessoes$exec_id[tem_meta] %in% execs_metadados_sessao_atual,
+          "registrados_nesta_execucao", "registrados_na_linhagem"
+        )
+      )]
     }
   }
   data.table::setorder(sessoes, data_hora_referencia, exec_id, na.last = TRUE)
@@ -21047,16 +21241,30 @@ monitora_linhagem_inventario_sessoes_dt <- function() {
     tryCatch(jsonlite::read_json(manifesto[1L], simplifyVector = TRUE), error = function(e) NULL)
   } else NULL
   event_count_manifesto <- if (!is.null(man) && !is.null(man$event_count)) suppressWarnings(as.integer(man$event_count)[1L]) else NA_integer_
+  metadata_count_manifesto <- if (!is.null(man) && !is.null(man$session_metadata_count)) suppressWarnings(as.integer(man$session_metadata_count)[1L]) else NA_integer_
+  metadata_hash_manifesto <- if (!is.null(man) && !is.null(man$metadados_sessoes_sha256)) as.character(man$metadados_sessoes_sha256)[1L] else NA_character_
+  metadata_hash_arquivo <- NA_character_
+  if (is.character(manifesto) && length(manifesto) && file.exists(manifesto[1L])) {
+    arq_metadata <- file.path(dirname(manifesto[1L]), "metadados_sessoes_painel_consolidado.csv")
+    if (file.exists(arq_metadata)) metadata_hash_arquivo <- monitora_linhagem_hash_arquivo(arq_metadata)
+  }
+  n_sessoes_sem_metadados <- sum(sessoes$metadados_sessao == "nao_registrados_no_legado", na.rm = TRUE)
   integridade <- data.table::data.table(
     verificacao = c(
       "eventos_herdados_ausentes_no_acumulado", "eventos_herdados_alterados",
       "falhas_de_aplicacao_registradas", "event_count_manifesto",
-      "eventos_distintos_ledger", "revisao_pai", "revisao_atual"
+      "eventos_distintos_ledger", "metadados_sessoes_manifesto",
+      "metadados_sessoes_distintos_ledger", "execucoes_sem_metadados_persistidos",
+      "hash_metadados_sessoes_manifesto_vs_arquivo", "revisao_pai", "revisao_atual"
     ),
     valor = c(
       length(setdiff(ids_herd, ids_ledger)), 0L, falhas_apps,
       ifelse(is.na(event_count_manifesto), "nao_disponivel", event_count_manifesto),
       n_eventos,
+      ifelse(is.na(metadata_count_manifesto), "nao_disponivel", metadata_count_manifesto),
+      nrow(metadados_linhagem), n_sessoes_sem_metadados,
+      ifelse(is.na(metadata_hash_manifesto) || is.na(metadata_hash_arquivo), "nao_disponivel",
+        ifelse(identical(metadata_hash_manifesto, metadata_hash_arquivo), "coincidente", "divergente")),
       as.character(get0("MONITORA_LINHAGEM_PARENT_REVISION", ifnotfound = NA_character_, inherits = TRUE)),
       if (!is.null(man) && !is.null(man$revision_id)) as.character(man$revision_id)[1L] else "nao_disponivel"
     ),
@@ -21065,7 +21273,12 @@ monitora_linhagem_inventario_sessoes_dt <- function() {
       "ok_preservacao_em_memoria",
       ifelse(falhas_apps == 0L, "ok", "revisar"),
       ifelse(is.na(event_count_manifesto), "nao_disponivel_nesta_etapa", ifelse(event_count_manifesto == n_eventos, "ok", "falha")),
-      "informativo", "informativo", "informativo"
+      "informativo",
+      ifelse(is.na(metadata_count_manifesto), "nao_disponivel_nesta_etapa", ifelse(metadata_count_manifesto == nrow(metadados_linhagem), "ok", "falha")),
+      "informativo", ifelse(n_sessoes_sem_metadados == 0L, "ok", "revisar"),
+      ifelse(is.na(metadata_hash_manifesto) || is.na(metadata_hash_arquivo), "nao_disponivel_nesta_etapa",
+        ifelse(identical(metadata_hash_manifesto, metadata_hash_arquivo), "ok", "falha")),
+      "informativo", "informativo"
     )
   )
   list(
@@ -21100,6 +21313,7 @@ monitora_linhagem_finalizar <- function(arquivo_registros_saida = NA_character_)
   resumo <- monitora_linhagem_resumo_dt()
   monitora_fwrite(resumo, file.path(dir_lin, "resumo_linhagem.csv"), na = "")
   arq_sanitizacoes <- monitora_linhagem_sanitizacoes_automaticas_consolidar(dir_lin)
+  metadados_sessoes <- monitora_linhagem_metadados_sessoes_escrever(dir_lin)
   candidatos_saida <- unique(c(
     as.character(arquivo_registros_saida)[1L],
     tryCatch(monitora_produtos_path_canonico("registros_corrig.csv", out), error = function(e) NA_character_),
@@ -21112,8 +21326,15 @@ monitora_linhagem_finalizar <- function(arquivo_registros_saida = NA_character_)
   output_hash <- monitora_linhagem_hash_arquivo(arq_saida_canonico)
   ledger_hash <- monitora_linhagem_hash_arquivo(arq_ledger)
   sanitizacoes_hash <- monitora_linhagem_hash_arquivo(arq_sanitizacoes)
-  if (is.na(output_hash) || !nzchar(output_hash) || is.na(ledger_hash) || !nzchar(ledger_hash) || is.na(sanitizacoes_hash) || !nzchar(sanitizacoes_hash)) stop("Manifesto de linhagem bloqueado: não foi possível calcular hashes obrigatórios de dados/ledger/sanitizações.", call. = FALSE)
-  revision <- paste0("rev_", substr(monitora_correcao_hash_texto(c(ledger_hash, output_hash, get0("MONITORA_EXEC_ID", ifnotfound = "", inherits = TRUE))), 1L, 16L))
+  metadados_sessoes_hash <- as.character(metadados_sessoes$sha256)[1L]
+  if (any(is.na(c(output_hash, ledger_hash, sanitizacoes_hash, metadados_sessoes_hash))) ||
+      any(!nzchar(c(output_hash, ledger_hash, sanitizacoes_hash, metadados_sessoes_hash)))) {
+    stop("Manifesto de linhagem bloqueado: não foi possível calcular hashes obrigatórios de dados/ledger/sanitizações/metadados das sessões.", call. = FALSE)
+  }
+  revision <- paste0("rev_", substr(monitora_correcao_hash_texto(c(
+    ledger_hash, output_hash, metadados_sessoes_hash,
+    get0("MONITORA_EXEC_ID", ifnotfound = "", inherits = TRUE)
+  )), 1L, 16L))
   manifesto <- list(
     lineage_schema = "monitora_linhagem_v2", revision_id = revision,
     parent_revision_id = get0("MONITORA_LINHAGEM_PARENT_REVISION", ifnotfound = NA_character_, inherits = TRUE),
@@ -21125,9 +21346,13 @@ monitora_linhagem_finalizar <- function(arquivo_registros_saida = NA_character_)
     output_data_path = "01_produtos_dados/registros_corrig.csv",
     ledger_path = "02_painel_correcoes/linhagem/correcoes_semanticas_consolidada.csv",
     sanitizacoes_automaticas_path = "02_painel_correcoes/linhagem/auditoria_sanitizacoes_automaticas.csv",
+    metadados_sessoes_path = "02_painel_correcoes/linhagem/metadados_sessoes_painel_consolidado.csv",
+    metadados_sessoes_schema = MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL,
     output_data_sha256 = output_hash,
     ledger_sha256 = ledger_hash,
     sanitizacoes_automaticas_sha256 = sanitizacoes_hash,
+    metadados_sessoes_sha256 = metadados_sessoes_hash,
+    session_metadata_count = as.integer(nrow(metadados_sessoes$dados)),
     event_count = if (nrow(ledger)) data.table::uniqueN(ledger$event_id) else 0L
   )
   arq_manifesto <- file.path(dir_lin, "manifesto_linhagem.json")
@@ -21141,6 +21366,16 @@ monitora_linhagem_finalizar <- function(arquivo_registros_saida = NA_character_)
   monitora_fwrite(inventario_sessoes$resumo, file.path(dir_lin, "resumo_sessoes_linhagem.csv"), na = "")
   monitora_fwrite(inventario_sessoes$sessoes, file.path(dir_lin, "inventario_sessoes_linhagem.csv"), na = "")
   monitora_fwrite(inventario_sessoes$integridade, file.path(dir_lin, "integridade_sessoes_linhagem.csv"), na = "")
+  auditoria_meta <- data.table::as.data.table(get0("MONITORA_METADADOS_SESSOES_RECUPERACAO_AUDITORIA", ifnotfound = NULL, inherits = TRUE))
+  if (nrow(auditoria_meta)) {
+    dir_aud_meta <- file.path(out, "03_auditorias", "persistencia")
+    dir.create(dir_aud_meta, recursive = TRUE, showWarnings = FALSE)
+    auditoria_meta[, `:=`(
+      n_sessoes_consolidadas_saida = nrow(metadados_sessoes$dados),
+      metadados_sessoes_sha256 = metadados_sessoes_hash
+    )]
+    monitora_fwrite(auditoria_meta, file.path(dir_aud_meta, "auditoria_recuperacao_metadados_sessoes.csv"), na = "")
+  }
   invisible(list(ledger = ledger, aplicacoes = apps, resumo = resumo, inventario_sessoes = inventario_sessoes, manifesto = manifesto))
 }
 
@@ -21152,8 +21387,9 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
   arq_dados <- file.path(output_dir, "01_produtos_dados", "registros_corrig.csv")
   arq_ledger <- file.path(dir_lin, "correcoes_semanticas_consolidada.csv")
   arq_sanitizacoes <- file.path(dir_lin, "auditoria_sanitizacoes_automaticas.csv")
+  arq_metadados_sessoes <- file.path(dir_lin, "metadados_sessoes_painel_consolidado.csv")
   arq_manifesto <- file.path(dir_lin, "manifesto_linhagem.json")
-  if (!all(file.exists(c(arq_dados, arq_ledger, arq_sanitizacoes)))) return(invisible(NULL))
+  if (!all(file.exists(c(arq_dados, arq_ledger, arq_sanitizacoes, arq_metadados_sessoes)))) return(invisible(NULL))
   if (!requireNamespace("jsonlite", quietly = TRUE)) {
     stop("Integridade pós-organização da linhagem exige o pacote jsonlite.", call. = FALSE)
   }
@@ -21168,13 +21404,21 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
   output_hash <- monitora_linhagem_hash_arquivo(arq_dados)
   ledger_hash <- monitora_linhagem_hash_arquivo(arq_ledger)
   sanitizacoes_hash <- monitora_linhagem_hash_arquivo(arq_sanitizacoes)
-  if (any(is.na(c(output_hash, ledger_hash, sanitizacoes_hash))) || any(!nzchar(c(output_hash, ledger_hash, sanitizacoes_hash)))) {
-    stop("Integridade pós-organização bloqueada: hashes físicos de dados/ledger/sanitizações indisponíveis.", call. = FALSE)
+  metadados_sessoes_hash <- monitora_linhagem_hash_arquivo(arq_metadados_sessoes)
+  if (any(is.na(c(output_hash, ledger_hash, sanitizacoes_hash, metadados_sessoes_hash))) ||
+      any(!nzchar(c(output_hash, ledger_hash, sanitizacoes_hash, metadados_sessoes_hash)))) {
+    stop("Integridade pós-organização bloqueada: hashes físicos de dados/ledger/sanitizações/metadados das sessões indisponíveis.", call. = FALSE)
   }
   ledger <- data.table::fread(arq_ledger, colClasses = "character", na.strings = NULL, showProgress = FALSE)
   n_eventos <- if (nrow(ledger) && "event_id" %in% names(ledger)) data.table::uniqueN(ledger$event_id) else 0L
+  metadados_sessoes <- monitora_linhagem_metadados_sessoes_normalizar(
+    data.table::fread(arq_metadados_sessoes, colClasses = "character", na.strings = NULL, showProgress = FALSE),
+    "linhagem_pos_organizacao", abortar = TRUE
+  )
   exec_id <- as.character(valor_anterior("exec_id", get0("MONITORA_EXEC_ID", ifnotfound = NA_character_, inherits = TRUE)))
-  revision <- paste0("rev_", substr(monitora_correcao_hash_texto(c(ledger_hash, output_hash, exec_id)), 1L, 16L))
+  revision <- paste0("rev_", substr(monitora_correcao_hash_texto(c(
+    ledger_hash, output_hash, metadados_sessoes_hash, exec_id
+  )), 1L, 16L))
   manifesto <- list(
     lineage_schema = as.character(valor_anterior("lineage_schema", "monitora_linhagem_v2")),
     revision_id = revision,
@@ -21187,9 +21431,13 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
     output_data_path = "01_produtos_dados/registros_corrig.csv",
     ledger_path = "02_painel_correcoes/linhagem/correcoes_semanticas_consolidada.csv",
     sanitizacoes_automaticas_path = "02_painel_correcoes/linhagem/auditoria_sanitizacoes_automaticas.csv",
+    metadados_sessoes_path = "02_painel_correcoes/linhagem/metadados_sessoes_painel_consolidado.csv",
+    metadados_sessoes_schema = MONITORA_METADADOS_SESSOES_SCHEMA_ATUAL,
     output_data_sha256 = output_hash,
     ledger_sha256 = ledger_hash,
     sanitizacoes_automaticas_sha256 = sanitizacoes_hash,
+    metadados_sessoes_sha256 = metadados_sessoes_hash,
+    session_metadata_count = as.integer(nrow(metadados_sessoes)),
     event_count = as.integer(n_eventos)
   )
   jsonlite::write_json(manifesto, arq_manifesto, pretty = TRUE, auto_unbox = TRUE, na = "null")
@@ -21197,6 +21445,8 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
   if (!identical(as.character(conferido$output_data_sha256), output_hash) ||
       !identical(as.character(conferido$ledger_sha256), ledger_hash) ||
       !identical(as.character(conferido$sanitizacoes_automaticas_sha256), sanitizacoes_hash) ||
+      !identical(as.character(conferido$metadados_sessoes_sha256), metadados_sessoes_hash) ||
+      !identical(as.integer(conferido$session_metadata_count), as.integer(nrow(metadados_sessoes))) ||
       !identical(as.integer(conferido$event_count), as.integer(n_eventos))) {
     stop("Manifesto de linhagem não preservou a assinatura física pós-organização.", call. = FALSE)
   }
@@ -21209,6 +21459,8 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
     ledger_sha256_anterior = as.character(valor_anterior("ledger_sha256", NA_character_)),
     ledger_sha256_final = ledger_hash,
     sanitizacoes_automaticas_sha256_final = sanitizacoes_hash,
+    metadados_sessoes_sha256_final = metadados_sessoes_hash,
+    session_metadata_count = as.integer(nrow(metadados_sessoes)),
     output_data_sha256_final = output_hash,
     event_count = as.integer(n_eventos), status = "hash_fisico_pos_organizacao_verificado",
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
