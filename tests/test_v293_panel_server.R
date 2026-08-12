@@ -287,16 +287,24 @@ shiny::testServer(capturado$serverFuncSource(), {
     just_rotulos_lote = "mudanca_formacao_vegetacional"
   )
   session$flushReact()
-  stopifnot(
-    nrow(just_ocorrencias_exibidas()) == 2L,
-    all(just_ocorrencias_exibidas()$tipo_ocorrencia == "mudanca_formacao_vegetacional")
-  )
+  if (nrow(just_ocorrencias_exibidas()) != 2L ||
+      !all(just_ocorrencias_exibidas()$tipo_ocorrencia == "mudanca_formacao_vegetacional")) {
+    stop(
+      "Filtro de justificativas não restringiu a tabela ao rótulo selecionado; linhas=",
+      nrow(just_ocorrencias_exibidas()), "; tipos=",
+      paste(unique(just_ocorrencias_exibidas()$tipo_ocorrencia), collapse = "|"),
+      call. = FALSE
+    )
+  }
   session$setInputs(just_selecionar_filtradas = 1L)
   session$flushReact()
-  stopifnot(setequal(
-    as.character(rv_painel$justificativas_selec_ids),
-    c("occ_lote_1", "occ_lote_2")
-  ))
+  if (!setequal(as.character(rv_painel$justificativas_selec_ids), c("occ_lote_1", "occ_lote_2"))) {
+    stop(
+      "Seleção em lote não preservou os IDs filtrados; observado=",
+      paste(as.character(rv_painel$justificativas_selec_ids), collapse = "|"),
+      call. = FALSE
+    )
+  }
   session$setInputs(
     just_tipo = "pendencia_legitima",
     just_texto = "Mudança ecológica documentada e confirmada em campo.",
@@ -314,10 +322,42 @@ shiny::testServer(capturado$serverFuncSource(), {
     identical(as.integer(lote$ordem_no_lote), 1:2),
     all(as.integer(lote$n_ocorrencias_lote) == 2L)
   )
-  session$setInputs(just_selecionar_filtradas = 2L)
+  ### Regressão v2.9.6-r03: depois de manter o primeiro lote ativo, a
+  ### reconciliação anterior à adição não pode apagar um segundo lote
+  ### completamente disjunto. O cenário reproduz a sequência real PNCV:
+  ### seca/morta primeiro e outros rótulos depois.
+  session$setInputs(
+    just_rotulos_lote = "seca_morta_em_revisao",
+    just_selecionar_filtradas = 2L
+  )
+  session$flushReact()
+  stopifnot(identical(
+    as.character(rv_painel$justificativas_selec_ids),
+    "occ_outro_rotulo"
+  ))
+  estado_botoes_painel$botoes_ultima_conclusao[["just_adicionar"]] <- Sys.time() - 5
+  session$setInputs(
+    just_tipo = "pendencia_legitima",
+    just_texto = "Ocorrência distinta revisada documentalmente em segundo lote.",
+    just_confirmar_lote = FALSE,
+    just_adicionar = 2L
+  )
+  session$flushReact()
+  lote_disjunto <- data.table::as.data.table(rv_painel$justificativas_sessao)
+  stopifnot(
+    nrow(lote_disjunto) == 3L,
+    data.table::uniqueN(lote_disjunto$evento_lote_id) == 2L,
+    "occ_outro_rotulo" %in% lote_disjunto$ocorrencia_id
+  )
+  ### Restaura o primeiro lote somente para manter independentes os testes
+  ### legados de duplicidade e exclusão que seguem neste mesmo testServer.
+  rv_painel$justificativas_sessao <- data.table::copy(lote)
+  session$setInputs(just_rotulos_lote = "mudanca_formacao_vegetacional")
+  session$flushReact()
+  session$setInputs(just_selecionar_filtradas = 3L)
   session$flushReact()
   estado_botoes_painel$botoes_ultima_conclusao[["just_adicionar"]] <- Sys.time() - 5
-  session$setInputs(just_adicionar = 2L)
+  session$setInputs(just_adicionar = 3L)
   session$flushReact()
   stopifnot(identical(
     data.table::as.data.table(rv_painel$justificativas_sessao), lote
@@ -345,7 +385,7 @@ shiny::testServer(capturado$serverFuncSource(), {
   stopifnot(nrow(data.table::as.data.table(rv_painel$justificativas_sessao)) == 0L)
   session$setInputs(
     just_rotulos_lote = "mudanca_formacao_vegetacional",
-    just_selecionar_filtradas = 3L
+    just_selecionar_filtradas = 4L
   )
   session$flushReact()
   estado_botoes_painel$botoes_ultima_conclusao[["just_adicionar"]] <- Sys.time() - 5
@@ -353,12 +393,29 @@ shiny::testServer(capturado$serverFuncSource(), {
     just_tipo = "pendencia_legitima",
     just_texto = "Mudança ecológica documentada e confirmada em campo.",
     just_confirmar_lote = TRUE,
-    just_adicionar = 3L
+    just_adicionar = 4L
   )
   session$flushReact()
   lote <- data.table::as.data.table(rv_painel$justificativas_sessao)
   justificativas_lote_capturadas <<- data.table::copy(lote)
   stopifnot(nrow(lote) == 2L, data.table::uniqueN(lote$evento_lote_id) == 1L)
+
+  rv_painel$ocorrencias_idx <- rv_painel$ocorrencias_idx[ocorrencia_id != "occ_lote_1"]
+  rec_just <- monitora_painel_reconciliar_justificativas_sessao(
+    ocorrencias = rv_painel$ocorrencias_idx,
+    origem = "homologacao_resolucao_pos_operacao",
+    notificar = FALSE
+  )
+  stopifnot(
+    rec_just$n_encerradas == 1L,
+    nrow(data.table::as.data.table(rv_painel$justificativas_sessao)) == 1L,
+    data.table::as.data.table(rv_painel$justificativas_sessao)$ocorrencia_id[[1L]] == "occ_lote_2",
+    nrow(data.table::as.data.table(rv_painel$justificativas_encerradas_sessao)) == 2L,
+    setequal(
+      as.character(data.table::as.data.table(rv_painel$justificativas_encerradas_sessao)$status_evento),
+      c("vigente", "encerrada_por_resolucao")
+    )
+  )
 })
 
 n_aliases_nome <- length(intersect(c("coletor/nome", "COLETORES", "Coletores"), names(dados)))
