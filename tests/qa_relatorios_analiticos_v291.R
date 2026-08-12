@@ -46,10 +46,15 @@ funcoes <- new.env(parent = globalenv())
 coletar_funcoes <- function(expr) {
   if (!is.call(expr)) return(invisible(NULL))
   op <- as.character(expr[[1L]])[1L]
-  if (op %in% c("<-", "=") && length(expr) >= 3L && is.symbol(expr[[2L]]) &&
-      is.call(expr[[3L]]) && identical(as.character(expr[[3L]][[1L]]), "function")) {
+  if (op %in% c("<-", "=") && length(expr) >= 3L && is.symbol(expr[[2L]])) {
     nome <- as.character(expr[[2L]])
-    if (startsWith(nome, "monitora_relatorios_analiticos_") ||
+    rhs <- expr[[3L]]
+    definicao_funcional <- is.call(rhs) &&
+      identical(as.character(rhs[[1L]]), "function")
+    definicao_funcional <- definicao_funcional ||
+      identical(nome, "monitora_relatorios_analiticos_resolver_pandoc")
+    if (isTRUE(definicao_funcional) && (
+        startsWith(nome, "monitora_relatorios_analiticos_") ||
         startsWith(nome, "monitora_diag_seca_morta_") ||
         nome %in% c(
           "monitora_relatorio_classe_portugues",
@@ -62,7 +67,7 @@ coletar_funcoes <- function(expr) {
           "monitora_relatorio_exoticas_tem_token",
           "monitora_relatorio_exoticas_normalizar_token",
           "monitora_diag_rel_write_dt"
-        )) {
+        ))) {
       eval(expr, envir = funcoes)
     }
     return(invisible(NULL))
@@ -225,6 +230,39 @@ assert(setequal(indice$formato, c("rmd", "md", "html", "docx", "pdf")),
        "Conjunto de formatos divergente.")
 assert(setequal(indice$versao_editorial, c("sintético", "detalhado")),
        "Versões editoriais divergentes.")
+
+auditoria_pdf_isolado <- fread(
+  file.path(dir_rel, "auditoria_renderizacao_pdf_isolada.csv"),
+  encoding = "UTF-8"
+)
+assert(
+  nrow(auditoria_pdf_isolado) == 2L &&
+    all(auditoria_pdf_isolado$ok) &&
+    all(auditoria_pdf_isolado$status_processo == 0L) &&
+    all(auditoria_pdf_isolado$tamanho_bytes > 1000),
+  "Renderização PDF isolada não concluiu e validou os dois relatórios."
+)
+performance_relatorios <- fread(
+  file.path(dir_rel, "performance_relatorios_analiticos.csv"),
+  encoding = "UTF-8"
+)
+etapas_performance_obrigatorias <- c(
+  "relatorios_analiticos_esforco",
+  "relatorios_analiticos_conteudo",
+  "relatorios_analiticos_docx_sintetico",
+  "relatorios_analiticos_html_sintetico",
+  "relatorios_analiticos_pdf_sintetico",
+  "relatorios_analiticos_docx_detalhado",
+  "relatorios_analiticos_html_detalhado",
+  "relatorios_analiticos_pdf_detalhado",
+  "relatorios_analiticos_finalizacao"
+)
+assert(
+  all(etapas_performance_obrigatorias %in% performance_relatorios$etapa) &&
+    all(is.finite(performance_relatorios$duracao_seg)) &&
+    all(performance_relatorios$duracao_seg >= 0),
+  "Performance interna de DOCX, HTML e PDF não foi materializada integralmente."
+)
 
 series_anuais <- fread(
   file.path(dir_rel, "series_anuais_relatorios_por_ua.csv"),
@@ -425,8 +463,12 @@ assert(
   "Produtos editáveis do núcleo ecológico ou de seca/morta estão ausentes."
 )
 assert(
-  any(grepl("não demonstra", textos, fixed = TRUE)) &&
-    any(grepl("Linha de pesquisa", textos, fixed = TRUE)) &&
+  any(grepl("não demonstra|não prova", textos, perl = TRUE)) &&
+    any(grepl(
+      "Resultado observado, hipótese compatível e evidência necessária",
+      textos, fixed = TRUE
+    )) &&
+    any(grepl("Hipóteses, evidências e gestão", textos, fixed = TRUE)) &&
     any(grepl("Cobertura e proporção relativa", textos, fixed = TRUE)),
   "Separação entre resultado, hipótese e evidência necessária não foi materializada."
 )
