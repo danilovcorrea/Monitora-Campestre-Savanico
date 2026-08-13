@@ -1,7 +1,7 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.9
+### Versão do script: 2.9.10
 ### Baseline pública de origem: v2.9.8
 ### Conteúdo acumulado da versão — preserva integralmente o contrato, os
 ### itens congelados e os resultados da v2.9.8, inclusive a arquitetura de
@@ -231,8 +231,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.9"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.9-20260812"
+MONITORA_SCRIPT_VERSAO <- "2.9.10"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.10-20260813"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -20056,10 +20056,10 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
       value = "Dependência legada expandida atomicamente; texto classificado como tipo não especificado."
     )
     data.table::set(op, j = "created_build", value = get0(
-      "MONITORA_SCRIPT_BUILD_ID", ifnotfound = "v2.9.9-20260812", inherits = TRUE
+      "MONITORA_SCRIPT_BUILD_ID", ifnotfound = "v2.9.10-20260813", inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.9", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.10", inherits = TRUE
     ))
     op
   }
@@ -70513,6 +70513,56 @@ monitora_relatorios_analiticos_slug <- function(x) {
   gsub("^_+|_+$", "", y)
 }
 
+### Alguns dispositivos gráficos do Windows ainda falham silenciosamente
+### quando o caminho completo do PNG se aproxima de MAX_PATH, mesmo em versões
+### recentes do R. Preserva o nome editorial nos caminhos curtos e, somente
+### quando necessário, produz um nome compacto, determinístico e sem colisões.
+monitora_relatorios_analiticos_caminho_figura <- function(
+  diretorio,
+  nome_arquivo,
+  limite_windows = 248L
+) {
+  diretorio <- as.character(diretorio)[1L]
+  nome_arquivo <- basename(as.character(nome_arquivo)[1L])
+  caminho <- file.path(diretorio, nome_arquivo)
+  if (!identical(.Platform$OS.type, "windows")) return(caminho)
+
+  diretorio_abs <- normalizePath(
+    diretorio,
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (nchar(file.path(diretorio_abs, nome_arquivo), type = "chars") <=
+      as.integer(limite_windows)) {
+    return(caminho)
+  }
+
+  extensao <- tools::file_ext(nome_arquivo)
+  sufixo_ext <- if (nzchar(extensao)) paste0(".", extensao) else ""
+  base <- if (nzchar(extensao)) {
+    substr(nome_arquivo, 1L, nchar(nome_arquivo) - nchar(sufixo_ext))
+  } else {
+    nome_arquivo
+  }
+  hash <- substr(
+    digest::digest(nome_arquivo, algo = "sha256", serialize = FALSE),
+    1L,
+    12L
+  )
+  orcamento <- as.integer(limite_windows) -
+    nchar(file.path(diretorio_abs, ""), type = "chars") -
+    nchar(sufixo_ext, type = "chars")
+  prefixo_max <- max(1L, orcamento - nchar(hash) - 1L)
+  base <- gsub("[^[:alnum:]_-]+", "_", base)
+  nome_compacto <- paste0(
+    substr(base, 1L, prefixo_max),
+    "_",
+    hash,
+    sufixo_ext
+  )
+  file.path(diretorio, nome_compacto)
+}
+
 monitora_relatorios_analiticos_kable <- function(x, align = NULL) {
   if (is.null(x) || !is.data.frame(x) || !nrow(x)) {
     return("*Não há dados suficientes para esta tabela.*")
@@ -74507,9 +74557,15 @@ monitora_relatorios_analiticos_mapas <- function(
       strip.text = ggplot2::element_text(face = "bold")
     )
 
-  arq_resumo <- file.path(dir_figuras, "mapa_continuidade_uas.png")
-  arq_paineis <- file.path(dir_figuras, "mapa_uas_por_ano.png")
-  arq_satelite <- file.path(dir_figuras, "mapa_continuidade_uas_satelite.png")
+  arq_resumo <- monitora_relatorios_analiticos_caminho_figura(
+    dir_figuras, "mapa_continuidade_uas.png"
+  )
+  arq_paineis <- monitora_relatorios_analiticos_caminho_figura(
+    dir_figuras, "mapa_uas_por_ano.png"
+  )
+  arq_satelite <- monitora_relatorios_analiticos_caminho_figura(
+    dir_figuras, "mapa_continuidade_uas_satelite.png"
+  )
   resultado_satelite <- monitora_relatorios_analiticos_gerar_mapa_satelite(
     ultima[, .(
       UC, ANO,
@@ -74967,7 +75023,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       "cobertura_percent", "ci_lower_percent", "ci_upper_percent"
     )
   }
-  arquivo_categ <- file.path(
+  arquivo_categ <- monitora_relatorios_analiticos_caminho_figura(
     dir_figuras,
     "cobertura_categorias_gerais_serie_temporal.png"
   )
@@ -75086,7 +75142,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     nat_recente <- nat_recente[, head(.SD, 5L), by = Formação]
     nat_recente[, Categoria_quebrada := quebrar(Categoria, 26L)]
   }
-  arquivo_nat <- file.path(
+  arquivo_nat <- monitora_relatorios_analiticos_caminho_figura(
     dir_figuras,
     "cobertura_principais_formas_vida_nativas_recente.png"
   )
@@ -75213,7 +75269,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       "cobertura_percent", "ci_lower_percent", "ci_upper_percent"
     )
   }
-  arquivo_exot <- file.path(
+  arquivo_exot <- monitora_relatorios_analiticos_caminho_figura(
     dir_figuras,
     "cobertura_formas_vida_exoticas_serie_temporal.png"
   )
@@ -75350,7 +75406,7 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     )]
     mud[, Indicador := factor(Indicador, levels = rev(unique(Indicador)))]
   }
-  arquivo_mud <- file.path(
+  arquivo_mud <- monitora_relatorios_analiticos_caminho_figura(
     dir_figuras,
     "mudancas_temporais_prioritarias.png"
   )
@@ -75448,7 +75504,10 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
     col_valor <- if (metrica == "cobertura") "cobertura_percent" else "prop_percent"
     req <- c("ANO", "form_veg", "categoria", "categoria_label")
     if (!nrow(x_alinhado)) req <- c(req, col_valor)
-    arquivo <- file.path(dir_figuras, arquivo_nome)
+    arquivo <- monitora_relatorios_analiticos_caminho_figura(
+      dir_figuras,
+      arquivo_nome
+    )
     if (nrow(x) && all(req %in% names(x))) {
       if (!nrow(x_alinhado)) x[, valor_plot := suppressWarnings(as.numeric(get(col_valor)))]
       x[, `:=`(
@@ -75548,7 +75607,10 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       mudanca_periodo[grupo_grafico == grupo & tipo_metrica == metrica]
     } else data.table::data.table()
     if (!nrow(periodo) || !all(req_periodo %in% names(periodo))) {
-      arquivo_vazio <- file.path(dir_figuras, paste0("evidencia_estatistica_", id, ".png"))
+      arquivo_vazio <- monitora_relatorios_analiticos_caminho_figura(
+        dir_figuras,
+        paste0("evidencia_estatistica_", id, ".png")
+      )
       adicionar(
         paste0("inferencias_", id), grupo, arquivo_vazio,
         "05_estatisticas/estatistica_pareada_periodo_editorial.csv",
@@ -75787,7 +75849,10 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
       "Pares insuficientes" = "#F0F0F0"
     )
     largura_titulo <- if (identical(grupo, "formas_vida_secas_mortas")) 48L else 82L
-    arquivo <- file.path(dir_figuras, paste0("evidencia_estatistica_", id, ".png"))
+    arquivo <- monitora_relatorios_analiticos_caminho_figura(
+      dir_figuras,
+      paste0("evidencia_estatistica_", id, ".png")
+    )
     p <- ggplot2::ggplot(
       dados_plot,
       ggplot2::aes(x = Periodo, y = Indicador, fill = classe_periodo_label)
@@ -77773,7 +77838,10 @@ monitora_relatorios_analiticos_gerar <- function(
       panel.grid.minor = ggplot2::element_blank(),
       legend.position = "bottom"
     )
-  arq_esforco <- file.path(dir_figuras, "esforco_amostral_temporal.png")
+  arq_esforco <- monitora_relatorios_analiticos_caminho_figura(
+    dir_figuras,
+    "esforco_amostral_temporal.png"
+  )
   ggplot2::ggsave(arq_esforco, p_esforco, width = 9.4, height = 5.3, dpi = 240, bg = "white")
   progresso_relatorios(
     "relatorios_analiticos_esforco",
@@ -78974,7 +79042,10 @@ monitora_relatorios_analiticos_gerar <- function(
       rel_mapa_resumo,
       "Distribuição espacial do esforço amostral nas UAs. A formação indicada é a classificação mais recente; mudanças históricas constam nos produtos editáveis."
     ),
-    fig_sint("figuras/esforco_amostral_temporal.png", "Esforço amostral anual por formação vegetacional."),
+    fig_sint(
+      file.path("figuras", basename(arq_esforco)),
+      "Esforço amostral anual por formação vegetacional."
+    ),
     "",
     "# Estado da cobertura vegetal",
     paste0("Cobertura observada na campanha mais recente (**", max(anos), "**) e trajetória anual das categorias gerais:"),
@@ -79052,7 +79123,10 @@ monitora_relatorios_analiticos_gerar <- function(
       rel_mapa_resumo,
       "Distribuição espacial do esforço amostral nas UAs. O mapa representa a rede amostral, não o limite oficial da UC."
     ),
-    fig_det("figuras/esforco_amostral_temporal.png", "Esforço amostral anual por formação vegetacional."),
+    fig_det(
+      file.path("figuras", basename(arq_esforco)),
+      "Esforço amostral anual por formação vegetacional."
+    ),
     "",
     "# Estado da cobertura vegetal",
     "## Categorias gerais na campanha mais recente",
