@@ -17,7 +17,9 @@ arvore <- parse(file = script, keep.source = FALSE)
 env <- new.env(parent = globalenv())
 alvos <- c(
   "monitora_relatorios_analiticos_normalizar_nome_uc",
+  "monitora_relatorios_analiticos_http_get_auditado",
   "monitora_relatorios_analiticos_status_limite_uc",
+  "monitora_relatorios_analiticos_contexto_localizador_sem_uc",
   "monitora_relatorios_analiticos_limite_uc_oficial"
 )
 coletar <- function(x) {
@@ -36,20 +38,36 @@ invisible(lapply(as.list(arvore), coletar))
 stopifnot(all(vapply(alvos, exists, logical(1L), envir = env, inherits = FALSE)))
 env$MONITORA_SCRIPT_VERSAO <- "2.9.5-dev-online-test"
 
-uas <- data.table(
-  UC = "Floresta Nacional de Contendas do Sincorá",
-  lon = -41.1,
-  lat = -13.8
-)
+uas <- if (length(args) >= 2L) {
+  fonte_uas <- normalizePath(args[[2L]], mustWork = TRUE)
+  fonte <- fread(fonte_uas, encoding = "UTF-8", showProgress = FALSE)
+  obrigatorias <- c("UC", "long_ini", "long_fin", "lon_meio", "lat_ini", "lat_fin", "lat_meio")
+  stopifnot(all(obrigatorias %in% names(fonte)), uniqueN(fonte$UC) == 1L)
+  unique(fonte[, ..obrigatorias])
+} else {
+  data.table(
+    UC = "Floresta Nacional de Contendas do Sincorá",
+    long_ini = -41.1054,
+    long_fin = -41.1052,
+    lon_meio = -41.1053,
+    lat_ini = -13.9065,
+    lat_fin = -13.9061,
+    lat_meio = -13.9063
+  )
+}
 resultado <- env$monitora_relatorios_analiticos_limite_uc_oficial(uas, ativado = TRUE)
 status <- as.data.table(resultado$status)
 if (!isTRUE(status$localizado[[1L]]) ||
-    !identical(status$metodo_obtencao[[1L]], "WFS_oficial_ICMBio_INDE")) print(status)
+    !(status$metodo_obtencao[[1L]] %in% c(
+      "WFS_oficial_ICMBio_INDE_por_extensao_da_rede", "ZIP_oficial_ICMBio"
+    ))) print(status)
 stopifnot(
   nrow(status) == 1L,
   isTRUE(status$solicitado[[1L]]),
   isTRUE(status$localizado[[1L]]),
-  identical(status$metodo_obtencao[[1L]], "WFS_oficial_ICMBio_INDE"),
+  status$metodo_obtencao[[1L]] %in% c(
+    "WFS_oficial_ICMBio_INDE_por_extensao_da_rede", "ZIP_oficial_ICMBio"
+  ),
   isTRUE(status$uso_arquivo_temporario[[1L]]),
   identical(status$artefato_espacial_persistido[[1L]], FALSE),
   !is.null(resultado$limite),
@@ -59,4 +77,10 @@ stopifnot(
   isTRUE(status$biomas_localizados[[1L]])
 )
 
-cat("TEST_V295_LOCATOR_ONLINE_OK\n")
+cat(
+  "TEST_V295_LOCATOR_ONLINE_OK\n",
+  "UC=", unique(uas$UC), "\n",
+  "METODO=", status$metodo_obtencao[[1L]], "\n",
+  "COMPONENTES=", status$componentes_localizador[[1L]], "\n",
+  sep = ""
+)

@@ -1,10 +1,10 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.10
-### Baseline pública de origem: v2.9.8
+### Versão do script: 2.9.11
+### Baseline pública de origem: v2.9.10
 ### Conteúdo acumulado da versão — preserva integralmente o contrato, os
-### itens congelados e os resultados da v2.9.8, inclusive a arquitetura de
+### itens congelados e os resultados da v2.9.10, inclusive a arquitetura de
 ### inicialização rápida homologada no RStudio do Windows. Preserva o tratamento
 ### de falhas recuperáveis e o checkpoint integral da r01 e corrige a precondição
 ### de operações de campo superior em lote: o valor amigável exibido no painel
@@ -15,7 +15,12 @@
 ### O relatório de validação passa a representar integralmente os 22 campos do
 ### inventário de sessões em tabelas temáticas legíveis, sem alterar a linhagem,
 ### os produtos de dados ou a semântica das sessões sem decisões novas.
-### Esta r03 separa falha de persistência de operação de pendência impeditiva
+### A r02 torna a busca Sentinel-2 temporalmente progressiva até o início da
+### missão, registra a janela efetivamente necessária no mapa e impede que a
+### homologação confunda uma execução com a opção desligada com mapa orbital
+### concluído. A ampliação só ocorre quando a janela mais recente não contém
+### aquisição com cobertura e qualidade adequadas.
+### A baseline v2.9.10 separou falha de persistência de operação de pendência impeditiva
 ### dos dados e migra atomicamente operações legadas que preencheram a descrição
 ### de impacto sem os campos condicionantes. O texto livre é preservado como tipo
 ### não especificado (`outros`), sem inferir incêndio, queima prescrita ou causa.
@@ -24,6 +29,12 @@
 ### Na continuação por abrir_painel_cache, a linhagem assinada de input/ é
 ### importada como proveniência, sem replay e sem modificar a tabela preservada
 ### no cache; fora desse modo, a revisão não acrescenta custo de execução.
+### A candidata acrescenta suporte analítico a uma única campanha sem inferir
+### tendência temporal, corrige o rótulo editorial legado de espécie, usa
+### caminho temporário curto para DOCX no Windows, torna a aquisição cartográfica
+### oficial independente e auditável e tolera bloqueios transitórios de arquivos
+### com publicação transacional e rollback. A prévia integral reutiliza o
+### contrato de edição calculado uma única vez, sem alterar regras ou resultados.
 ### Correções de campos, operações espaciais, justificativas e auditorias seguem
 ### preservadas atomicamente, com restauração automática apenas sobre a mesma
 ### base. A compatibilidade com o checkpoint legado de justificativas permanece.
@@ -231,8 +242,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.10"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.10-20260813"
+MONITORA_SCRIPT_VERSAO <- "2.9.11"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.11-20260814"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -15515,7 +15526,24 @@ monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list
   list(ok = TRUE, status = "ok", mensagem = "texto compatível")
 }
 
-monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo, corr_linha = NULL, dicionario = NULL, meta_xls = NULL) {
+monitora_correcao_contrato_edicao_precalcular <- function(dt, dicionario = NULL, meta_xls = NULL) {
+  dicionario_validacao <- if (!is.null(dicionario) && nrow(data.table::as.data.table(dicionario))) {
+    data.table::as.data.table(dicionario)
+  } else {
+    monitora_correcao_dicionario_atributos(dt, meta_xls)
+  }
+  cols_gate_escopo_cu <- intersect(
+    c("escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico", "motivo_escopo_contrato_unico"),
+    names(dicionario_validacao)
+  )
+  if (length(cols_gate_escopo_cu)) {
+    dicionario_validacao <- dicionario_validacao[, setdiff(names(dicionario_validacao), cols_gate_escopo_cu), with = FALSE]
+  }
+  monitora_correcao_contrato_edicao(dt, meta_xls, dicionario_validacao)
+}
+
+monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo, corr_linha = NULL, dicionario = NULL, meta_xls = NULL,
+                                                       contrato_edicao_precalculado = NULL) {
   col <- as.character(col)[1L]
   acao_norm <- monitora_correcao_acao_normalizar(acao)
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) return(list(ok = FALSE, status = "falha", mensagem = "coluna de destino inexistente"))
@@ -15607,19 +15635,11 @@ monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo,
  ### Corrigido removendo apenas esses 3 campos do dicionário antes de repassar a
  ### monitora_correcao_contrato_edicao — a função e sua regra de gate
  ### permanecem intocadas; nenhuma coluna nem regra nova foi criada.
-  dicionario_validacao <- if (!is.null(dicionario) && nrow(data.table::as.data.table(dicionario))) {
-    data.table::as.data.table(dicionario)
+  contrato <- if (!is.null(contrato_edicao_precalculado)) {
+    data.table::as.data.table(contrato_edicao_precalculado)
   } else {
-    monitora_correcao_dicionario_atributos(dt, meta_xls)
+    monitora_correcao_contrato_edicao_precalcular(dt, dicionario, meta_xls)
   }
-  cols_gate_escopo_cu <- intersect(
-    c("escopo_operacional_contrato_unico", "escopos_permitidos_contrato_unico", "motivo_escopo_contrato_unico"),
-    names(dicionario_validacao)
-  )
-  if (length(cols_gate_escopo_cu)) {
-    dicionario_validacao <- dicionario_validacao[, setdiff(names(dicionario_validacao), cols_gate_escopo_cu), with = FALSE]
-  }
-  contrato <- monitora_correcao_contrato_edicao(dt, meta_xls, dicionario_validacao)
   info <- contrato[atributo_coluna_registros_corrig == col]
   if (!nrow(info)) return(list(ok = FALSE, status = "bloqueada_contrato_ausente", mensagem = paste0("atributo sem contrato de edição: ", col)))
   info <- info[1L]
@@ -15639,11 +15659,16 @@ monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo,
   monitora_correcao_validar_formato_valor(valor_novo, info$tipo_base_edicao, acao_norm, info$xlsform_list_name, meta_xls, valor_original, escolhas_fallback = escolhas_fallback)
 }
 
-monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo, corr_linha, dicionario = NULL, meta_xls = NULL) {
+monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo, corr_linha, dicionario = NULL, meta_xls = NULL,
+                                                        contrato_edicao_precalculado = NULL) {
   if (is.na(col) || !nzchar(col) || !(col %in% names(dt))) {
     return(list(ok = FALSE, status = "falha", mensagem = "coluna de destino inexistente"))
   }
-  valid_contrato <- monitora_correcao_validar_contrato_edicao(dt, col, acao, valor_novo, corr_linha, dicionario = dicionario, meta_xls = meta_xls)
+  valid_contrato <- monitora_correcao_validar_contrato_edicao(
+    dt, col, acao, valor_novo, corr_linha,
+    dicionario = dicionario, meta_xls = meta_xls,
+    contrato_edicao_precalculado = contrato_edicao_precalculado
+  )
   if (!isTRUE(valid_contrato$ok)) return(valid_contrato)
   papel <- monitora_correcao_papel_coluna_canonico(col)
   acao <- monitora_correcao_acao_normalizar(acao)
@@ -19582,6 +19607,13 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   corr[, ordem_tmp := seq_len(.N)]
   corr_plano_finalizacao <- data.table::copy(corr)
   indice_linhas <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
+  contrato_edicao_sessao <- NULL
+  contrato_edicao_obter <- function() {
+    if (is.null(contrato_edicao_sessao)) {
+      contrato_edicao_sessao <<- monitora_correcao_contrato_edicao_precalcular(dt, dicionario)
+    }
+    contrato_edicao_sessao
+  }
 
   ### Verificação antecipada e barata das precondições dos lotes de atributos
   ### superiores. Ela não altera dados nem reordena operações: apenas impede que
@@ -19859,7 +19891,10 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
         ), fill = TRUE, use.names = TRUE)
         next
       }
-      valid_dest <- monitora_correcao_validar_destino_operacao(dt, attr, ac, linha_corr$valor_novo[1L], linha_corr, dicionario)
+      valid_dest <- monitora_correcao_validar_destino_operacao(
+        dt, attr, ac, linha_corr$valor_novo[1L], linha_corr, dicionario,
+        contrato_edicao_precalculado = contrato_edicao_obter()
+      )
       antes <- as.character(dt[[attr]][lin])
       esperado <- linha_corr$valor_original_esperado[1L]
       precond <- monitora_publicacao_d_precondicao_valor_original(antes, ac, linha_corr$valor_novo[1L], esperado)
@@ -20056,10 +20091,10 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
       value = "Dependência legada expandida atomicamente; texto classificado como tipo não especificado."
     )
     data.table::set(op, j = "created_build", value = get0(
-      "MONITORA_SCRIPT_BUILD_ID", ifnotfound = "v2.9.10-20260813", inherits = TRUE
+      "MONITORA_SCRIPT_BUILD_ID", ifnotfound = "v2.9.11-20260814", inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.10", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.11", inherits = TRUE
     ))
     op
   }
@@ -20241,6 +20276,16 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
   snapshot_colunas_protegidas_antes <- monitora_correcao_snapshot_colunas_protegidas(dt)
   chaves <- monitora_correcao_colunas_chave(dt)
   indice_linhas <- monitora_correcao_criar_indice_linhas(dt, chaves)
+  ### O contrato de edição depende do schema/dicionário, não do conteúdo das
+  ### células. Reutilizá-lo dentro desta transação preserva todos os gates e
+  ### evita reconstruí-lo uma vez por item auditável.
+  contrato_edicao_sessao <- NULL
+  contrato_edicao_obter <- function() {
+    if (is.null(contrato_edicao_sessao)) {
+      contrato_edicao_sessao <<- monitora_correcao_contrato_edicao_precalcular(dt, dicionario)
+    }
+    contrato_edicao_sessao
+  }
   auditoria_semantica_pre <- data.table::data.table()
   linhas_semantica_alvo <- integer(0)
   auditoria_semantica_completa <- isTRUE(if (exists("MONITORA_AUDITORIA_SEMANTICA_CORRECOES_COMPLETA", inherits = TRUE)) get("MONITORA_AUDITORIA_SEMANTICA_CORRECOES_COMPLETA", inherits = TRUE) else FALSE)
@@ -20895,7 +20940,10 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
     } else if (!is.na(n_esperado) && n_esperado > 0L && length(linhas) != n_esperado) {
       status <- "falha"; msg <- paste0("n_linhas_alvo=", length(linhas), " diferente de n_linhas_esperado=", n_esperado)
     } else {
-      valid_dest <- monitora_correcao_validar_destino_operacao(dt, col, acao, linha_corr$valor_novo[1], linha_corr, dicionario)
+      valid_dest <- monitora_correcao_validar_destino_operacao(
+        dt, col, acao, linha_corr$valor_novo[1], linha_corr, dicionario,
+        contrato_edicao_precalculado = contrato_edicao_obter()
+      )
       if (!isTRUE(valid_dest$ok)) {
         status <- valid_dest$status
         msg <- valid_dest$mensagem
@@ -28100,9 +28148,82 @@ monitora_pendencias_justificativas_excluir_atomico <- function(
   list(ok = TRUE, erro = "", dados = validacao$dados, n_excluidas = length(ids))
 }
 
-### Publicação transacional do histórico e do snapshot. Os dois candidatos são
-### gravados e relidos antes da troca. Todos os destinos antigos são protegidos;
-### se qualquer rename falhar, o conjunto anterior completo é restaurado.
+### Operações de arquivo com retentativas curtas e limitadas. O caminho rápido
+### executa uma única tentativa, sem espera; as esperas só existem após falha
+### de compartilhamento/antivírus/sincronização observada no Windows.
+monitora_arquivo_retentativas <- function(operacao,
+                                         origem = "",
+                                         destino = "",
+                                         esperas_s = c(0, 0.04, 0.12, 0.30, 0.70, 1.20)) {
+  operacao <- match.arg(as.character(operacao)[1L], c("copiar", "remover", "renomear"))
+  origem <- as.character(origem)[1L]
+  destino <- as.character(destino)[1L]
+  esperas_s <- as.numeric(esperas_s)
+  esperas_s <- esperas_s[is.finite(esperas_s) & esperas_s >= 0]
+  if (!length(esperas_s)) esperas_s <- 0
+  tentativas <- vector("list", length(esperas_s))
+  ok <- FALSE
+  for (ii in seq_along(esperas_s)) {
+    if (ii > 1L && esperas_s[ii] > 0) Sys.sleep(esperas_s[ii])
+    inicio <- Sys.time()
+    ok <- suppressWarnings(tryCatch(
+      switch(
+        operacao,
+        copiar = isTRUE(file.copy(origem, destino, overwrite = TRUE, copy.mode = TRUE)),
+        remover = !file.exists(origem) || (unlink(origem, force = TRUE) == 0L && !file.exists(origem)),
+        renomear = isTRUE(file.rename(origem, destino))
+      ),
+      error = function(e) FALSE
+    ))
+    tentativas[[ii]] <- data.table::data.table(
+      operacao = operacao,
+      tentativa = ii,
+      inicio = format(inicio, "%Y-%m-%d %H:%M:%OS6 %z"),
+      duracao_s = as.numeric(difftime(Sys.time(), inicio, units = "secs")),
+      resultado = if (isTRUE(ok)) "sucesso" else "falha",
+      origem = origem,
+      destino = destino
+    )
+    if (isTRUE(ok)) break
+  }
+  list(ok = isTRUE(ok), auditoria = data.table::rbindlist(tentativas[seq_len(ii)], fill = TRUE))
+}
+
+monitora_arquivo_hash_transacao <- function(path) {
+  if (!file.exists(path) || dir.exists(path)) return(NA_character_)
+  if (requireNamespace("digest", quietly = TRUE)) {
+    return(tryCatch(digest::digest(file = path, algo = "sha256"), error = function(e) NA_character_))
+  }
+  unname(tools::md5sum(path))[1L]
+}
+
+### Substitui um arquivo por renames no mesmo diretório. O destino anterior é
+### primeiro deslocado para um nome privado; se estiver bloqueado no Windows,
+### essa primeira operação falha e o original permanece no lugar. O destino
+### nunca é apagado antes de existir uma via de restauração validada.
+monitora_arquivo_publicar_candidato <- function(candidato, destino) {
+  auditoria <- list()
+  deslocado <- ""
+  if (file.exists(destino)) {
+    deslocado <- tempfile(pattern = ".anterior_transacao_", tmpdir = dirname(destino))
+    mov <- monitora_arquivo_retentativas("renomear", origem = destino, destino = deslocado)
+    auditoria[[length(auditoria) + 1L]] <- mov$auditoria
+    if (!isTRUE(mov$ok)) return(list(ok = FALSE, auditoria = data.table::rbindlist(auditoria, fill = TRUE)))
+  }
+  ren <- monitora_arquivo_retentativas("renomear", origem = candidato, destino = destino)
+  auditoria[[length(auditoria) + 1L]] <- ren$auditoria
+  if (!isTRUE(ren$ok) && nzchar(deslocado) && file.exists(deslocado)) {
+    restaurar <- monitora_arquivo_retentativas("renomear", origem = deslocado, destino = destino)
+    auditoria[[length(auditoria) + 1L]] <- restaurar$auditoria
+  }
+  if (isTRUE(ren$ok) && nzchar(deslocado) && file.exists(deslocado)) unlink(deslocado, force = TRUE)
+  list(ok = isTRUE(ren$ok), auditoria = data.table::rbindlist(auditoria, fill = TRUE))
+}
+
+### Publicação transacional do histórico e do snapshot. Os candidatos são
+### gravados, relidos e validados por hash antes da troca. Backups por cópia
+### preservam o par anterior sem tentar renomear um destino eventualmente
+### bloqueado. Qualquer falha restaura byte a byte o conjunto anterior.
 monitora_pendencias_justificativas_publicar_par_atomico <- function(
     historico,
     snapshot,
@@ -28115,16 +28236,41 @@ monitora_pendencias_justificativas_publicar_par_atomico <- function(
     stop("Destinos inválidos para a persistência atômica das justificativas.", call. = FALSE)
   }
   temporarios <- backups <- rep("", 2L)
+  hashes_candidatos <- hashes_anteriores <- rep(NA_character_, 2L)
+  existiam <- file.exists(destinos)
   publicados <- rep(FALSE, 2L)
   concluido <- FALSE
+  auditoria <- list()
+  arq_auditoria <- file.path(dirname(destinos[1L]), "auditoria_transacao_justificativas_ultima_execucao.csv")
   on.exit({
     for (tmp in temporarios[nzchar(temporarios)]) if (file.exists(tmp)) unlink(tmp, force = TRUE)
     if (!isTRUE(concluido)) {
-      for (ii in which(publicados)) if (file.exists(destinos[ii])) unlink(destinos[ii], force = TRUE)
-      for (ii in seq_along(backups)) {
-        if (nzchar(backups[ii]) && file.exists(backups[ii])) file.rename(backups[ii], destinos[ii])
+      for (ii in seq_along(destinos)) {
+        precisa_restaurar <- isTRUE(publicados[ii]) || !file.exists(destinos[ii])
+        if (isTRUE(existiam[ii]) && isTRUE(precisa_restaurar) &&
+            nzchar(backups[ii]) && file.exists(backups[ii])) {
+          restauracao <- tempfile(pattern = ".restauracao_justificativas_", tmpdir = dirname(destinos[ii]), fileext = ".csv")
+          cp <- monitora_arquivo_retentativas("copiar", origem = backups[ii], destino = restauracao)
+          auditoria[[length(auditoria) + 1L]] <- cp$auditoria[, etapa := paste0("rollback_preparar_", ii)]
+          pub <- if (isTRUE(cp$ok)) monitora_arquivo_publicar_candidato(restauracao, destinos[ii]) else list(ok = FALSE, auditoria = data.table::data.table())
+          if (nrow(pub$auditoria)) auditoria[[length(auditoria) + 1L]] <- pub$auditoria[, etapa := paste0("rollback_publicar_", ii)]
+          if (file.exists(restauracao)) unlink(restauracao, force = TRUE)
+        } else if (!isTRUE(existiam[ii]) && isTRUE(publicados[ii]) && file.exists(destinos[ii])) {
+          rmv <- monitora_arquivo_retentativas("remover", origem = destinos[ii])
+          auditoria[[length(auditoria) + 1L]] <- rmv$auditoria[, etapa := paste0("rollback_remover_novo_", ii)]
+        }
       }
     }
+    aud <- data.table::rbindlist(auditoria, fill = TRUE, use.names = TRUE)
+    if (nrow(aud)) {
+      aud[, `:=`(
+        transacao_concluida = isTRUE(concluido),
+        hash_candidato_1 = hashes_candidatos[1L], hash_candidato_2 = hashes_candidatos[2L],
+        hash_anterior_1 = hashes_anteriores[1L], hash_anterior_2 = hashes_anteriores[2L]
+      )]
+      try(monitora_fwrite(aud, arq_auditoria, na = ""), silent = TRUE)
+    }
+    for (backup in backups[nzchar(backups)]) if (file.exists(backup)) unlink(backup, force = TRUE)
   }, add = TRUE)
   for (ii in seq_along(destinos)) {
     dir.create(dirname(destinos[ii]), recursive = TRUE, showWarnings = FALSE)
@@ -28141,27 +28287,35 @@ monitora_pendencias_justificativas_publicar_par_atomico <- function(
         !identical(names(conferido), names(objetos[[ii]]))) {
       stop("Falha ao validar candidato transacional de justificativas: ", basename(destinos[ii]), ".", call. = FALSE)
     }
+    hashes_candidatos[ii] <- monitora_arquivo_hash_transacao(temporarios[ii])
+    if (is.na(hashes_candidatos[ii]) || !nzchar(hashes_candidatos[ii])) {
+      stop("Falha ao calcular o hash do candidato de justificativas: ", basename(destinos[ii]), ".", call. = FALSE)
+    }
   }
   for (ii in seq_along(destinos)) {
-    if (file.exists(destinos[ii])) {
+    if (isTRUE(existiam[ii])) {
+      hashes_anteriores[ii] <- monitora_arquivo_hash_transacao(destinos[ii])
       backups[ii] <- tempfile(
         pattern = paste0(".", basename(destinos[ii]), "_backup_"),
         tmpdir = dirname(destinos[ii]), fileext = ".csv"
       )
-      if (!file.rename(destinos[ii], backups[ii])) {
+      cp <- monitora_arquivo_retentativas("copiar", origem = destinos[ii], destino = backups[ii])
+      auditoria[[length(auditoria) + 1L]] <- cp$auditoria[, etapa := paste0("backup_", ii)]
+      if (!isTRUE(cp$ok) || !identical(monitora_arquivo_hash_transacao(backups[ii]), hashes_anteriores[ii])) {
         stop("Não foi possível proteger o arquivo anterior de justificativas: ", basename(destinos[ii]), ".", call. = FALSE)
       }
     }
   }
   for (ii in seq_along(destinos)) {
-    if (!file.rename(temporarios[ii], destinos[ii])) {
+    pub <- monitora_arquivo_publicar_candidato(temporarios[ii], destinos[ii])
+    auditoria[[length(auditoria) + 1L]] <- pub$auditoria[, etapa := paste0("publicacao_", ii)]
+    if (!isTRUE(pub$ok) || !identical(monitora_arquivo_hash_transacao(destinos[ii]), hashes_candidatos[ii])) {
       stop("Não foi possível publicar atomicamente o arquivo de justificativas: ", basename(destinos[ii]), ".", call. = FALSE)
     }
     publicados[ii] <- TRUE
     temporarios[ii] <- ""
   }
   concluido <- TRUE
-  for (backup in backups[nzchar(backups)]) if (file.exists(backup)) unlink(backup, force = TRUE)
   invisible(destinos)
 }
 
@@ -29341,7 +29495,13 @@ monitora_painel_transacao_arquivos_iniciar <- function(arquivos) {
   if (any(existiam)) {
     idx <- which(existiam)
     backups[idx] <- file.path(backup_dir, sprintf("%05d.bak", idx))
-    ok <- file.copy(caminhos[idx], backups[idx], overwrite = TRUE, copy.mode = TRUE)
+    ok <- vapply(idx, function(ii) {
+      res <- monitora_arquivo_retentativas("copiar", origem = caminhos[ii], destino = backups[ii])
+      isTRUE(res$ok) && identical(
+        monitora_arquivo_hash_transacao(caminhos[ii]),
+        monitora_arquivo_hash_transacao(backups[ii])
+      )
+    }, logical(1L))
     if (!all(ok)) {
       unlink(backup_dir, recursive = TRUE, force = TRUE)
       stop("Não foi possível proteger todos os arquivos do commit do painel.", call. = FALSE)
@@ -29357,7 +29517,14 @@ monitora_painel_transacao_arquivos_rollback <- function(tx) {
     destino <- tx$arquivos[ii]
     if (isTRUE(tx$existiam[ii])) {
       dir.create(dirname(destino), recursive = TRUE, showWarnings = FALSE)
-      ok <- file.copy(tx$backups[ii], destino, overwrite = TRUE, copy.mode = TRUE)
+      candidato <- tempfile(pattern = ".rollback_painel_", tmpdir = dirname(destino))
+      cp <- monitora_arquivo_retentativas("copiar", origem = tx$backups[ii], destino = candidato)
+      pub <- if (isTRUE(cp$ok)) monitora_arquivo_publicar_candidato(candidato, destino) else list(ok = FALSE)
+      if (file.exists(candidato)) unlink(candidato, force = TRUE)
+      ok <- isTRUE(pub$ok) && identical(
+        monitora_arquivo_hash_transacao(tx$backups[ii]),
+        monitora_arquivo_hash_transacao(destino)
+      )
       if (!isTRUE(ok)) erros <- c(erros, destino)
     } else if (file.exists(destino) && !dir.exists(destino)) {
       ok <- unlink(destino, force = TRUE) == 0L
@@ -29550,13 +29717,24 @@ monitora_pendencias_justificativas_checkpoint_recuperavel <- function(
     stop("Falha ao validar o checkpoint recuperável integral do painel.", call. = FALSE)
   }
   backup <- ""
-  if (file.exists(destino)) {
+  existia <- file.exists(destino)
+  if (isTRUE(existia)) {
     backup <- tempfile(pattern = paste0(".", basename(destino), "_backup_"), tmpdir = base, fileext = ".rds")
-    if (!file.rename(destino, backup)) stop("Falha ao proteger o checkpoint recuperável anterior.", call. = FALSE)
+    cp_backup <- monitora_arquivo_retentativas("copiar", origem = destino, destino = backup)
+    if (!isTRUE(cp_backup$ok) || !identical(
+      monitora_arquivo_hash_transacao(destino),
+      monitora_arquivo_hash_transacao(backup)
+    )) stop("Falha ao proteger o checkpoint recuperável anterior.", call. = FALSE)
   }
-  publicado <- file.rename(temporario, destino)
-  if (!isTRUE(publicado)) {
-    if (nzchar(backup) && file.exists(backup)) file.rename(backup, destino)
+  hash_candidato <- monitora_arquivo_hash_transacao(temporario)
+  publicado <- monitora_arquivo_publicar_candidato(temporario, destino)
+  if (!isTRUE(publicado$ok) || !identical(monitora_arquivo_hash_transacao(destino), hash_candidato)) {
+    if (isTRUE(existia) && nzchar(backup) && file.exists(backup)) {
+      restauracao <- tempfile(pattern = ".restauracao_checkpoint_", tmpdir = base, fileext = ".rds")
+      cp_rest <- monitora_arquivo_retentativas("copiar", origem = backup, destino = restauracao)
+      if (isTRUE(cp_rest$ok)) monitora_arquivo_publicar_candidato(restauracao, destino)
+      if (file.exists(restauracao)) unlink(restauracao, force = TRUE)
+    }
     stop("Falha ao publicar o checkpoint recuperável do painel.", call. = FALSE)
   }
   temporario <- ""
@@ -29902,6 +30080,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       lab <- monitora_painel_limpar_html_rotulo(d$xlsform_label)
       labels_base <- ifelse(nzchar(lab), monitora_painel_rotulo_token(lab, vals), labels_base)
     }
+    ### Alias histórico preservado no produto, rótulo editorial resolvido pelo
+    ### contrato único vigente. O valor enviado pelo widget continua sendo o
+    ### name real `amostragem/especie`; somente a apresentação é corrigida.
+    idx_especie_legado <- vals == "amostragem/especie"
+    labels_base[idx_especie_legado] <- paste0(
+      "Haverá identificação de espécie ou outro nível taxonômico? — ",
+      "amostragem/especie"
+    )
     labels <- labels_base
     if ("atributos_template_sismonitora" %in% names(d)) {
       tpl <- as.character(d$atributos_template_sismonitora)
@@ -39560,8 +39746,6 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         file.path(MONITORA_CORRECOES_DIR, paste0("metadados_sessao_painel_", exec_id_painel, ".csv")),
         file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_reconciliacao_justificativas_", exec_id_painel, ".csv")),
         file.path(MONITORA_CORRECOES_DIR, "auditoria_reconciliacao_justificativas_ultima_execucao.csv"),
-        justificativas_preparadas$arquivo_historico,
-        justificativas_preparadas$arquivo_pendencias,
         file.path(base_esp_tx, paste0(prefixo_esp_tx, c("_recebidas.csv", "_sanitizadas.csv", "_descartadas.csv", "_conflitos_precedencia.csv", "_auditoria_precedencia.csv"))),
         file.path(base_esp_tx, paste0("auditoria_sanitizacao_", prefixo_esp_tx, ".csv")),
         file.path(base_esp_tx, paste0("auditoria_operacoes_", prefixo_esp_tx, ".csv")),
@@ -70865,7 +71049,11 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     chave_persistida = FALSE,
     url_credencial_persistida = FALSE,
     atribuicao = NA_character_,
-    legenda_relatorio = NA_character_
+    legenda_relatorio = NA_character_,
+    inicio_catalogo_consultado = NA_character_,
+    fim_catalogo_consultado = NA_character_,
+    n_janelas_consultadas = NA_integer_,
+    janelas_consultadas_dias = NA_character_
   )
 }
 
@@ -71033,19 +71221,62 @@ monitora_relatorios_analiticos_aoi_satelite <- function(bbox) {
   )
 }
 
+monitora_relatorios_analiticos_janelas_sentinel2 <- function(
+  janela_inicial_dias = 60L,
+  hoje = Sys.Date(),
+  inicio_missao = as.Date("2015-06-23")
+) {
+  hoje <- as.Date(hoje)
+  inicio_missao <- as.Date(inicio_missao)
+  janela_inicial_dias <- suppressWarnings(as.integer(janela_inicial_dias)[1L])
+  if (!is.finite(janela_inicial_dias) || janela_inicial_dias <= 0L) {
+    janela_inicial_dias <- 60L
+  }
+  dias_missao <- max(1L, as.integer(hoje - inicio_missao) + 1L)
+  limites <- sort(unique(c(
+    janela_inicial_dias,
+    120L, 180L, 365L, 730L, 1460L, 2920L,
+    dias_missao
+  )))
+  limites <- limites[limites >= janela_inicial_dias & limites <= dias_missao]
+  if (!length(limites) || tail(limites, 1L) < dias_missao) {
+    limites <- c(limites, dias_missao)
+  }
+  anteriores <- c(0L, head(limites, -1L))
+  data.table::data.table(
+    ordem = seq_along(limites),
+    janela_acumulada_dias = as.integer(limites),
+    data_inicio = as.Date(pmax(
+      as.numeric(inicio_missao),
+      as.numeric(hoje - limites + 1L)
+    ), origin = "1970-01-01"),
+    data_fim = as.Date(pmax(
+      as.numeric(inicio_missao),
+      as.numeric(hoje - anteriores)
+    ), origin = "1970-01-01")
+  )[data_inicio <= data_fim]
+}
+
 monitora_relatorios_analiticos_consultar_sentinel2 <- function(
   bbox,
   janela_busca_dias = 60L,
-  limite_itens = 100L
+  limite_itens = 100L,
+  data_inicio = NULL,
+  data_fim = NULL
 ) {
   hoje <- Sys.Date()
-  inicio <- hoje - as.integer(janela_busca_dias)
+  inicio <- if (is.null(data_inicio)) {
+    hoje - as.integer(janela_busca_dias) + 1L
+  } else {
+    as.Date(data_inicio)
+  }
+  fim <- if (is.null(data_fim)) hoje else as.Date(data_fim)
   corpo <- list(
     collections = list("sentinel-2-l2a"),
     bbox = as.list(as.numeric(bbox[c("xmin", "ymin", "xmax", "ymax")])),
     datetime = paste0(
       format(inicio, "%Y-%m-%d"), "T00:00:00Z/",
-      format(hoje, "%Y-%m-%d"), "T23:59:59Z"
+      format(fim, "%Y-%m-%d"), "T23:59:59Z"
     ),
     limit = as.integer(limite_itens),
     sortby = list(list(
@@ -71053,7 +71284,8 @@ monitora_relatorios_analiticos_consultar_sentinel2 <- function(
       direction = "desc"
     ))
   )
-  resposta <- httr::POST(
+  resposta <- httr::RETRY(
+    "POST",
     "https://earth-search.aws.element84.com/v1/search",
     body = corpo,
     encode = "json",
@@ -71061,7 +71293,12 @@ monitora_relatorios_analiticos_consultar_sentinel2 <- function(
     httr::user_agent(paste0(
       "Monitora-Campestre-Savanico/",
       get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "dev", inherits = TRUE)
-    ))
+    )),
+    times = 3L,
+    pause_base = 1,
+    pause_cap = 4,
+    terminate_on = c(400L, 401L, 403L, 404L),
+    quiet = TRUE
   )
   httr::stop_for_status(resposta)
   conteudo <- httr::content(
@@ -71512,8 +71749,26 @@ monitora_relatorios_analiticos_crs_utm_dinamico <- function(
 monitora_relatorios_analiticos_normalizar_nome_uc <- function(x) {
   x <- iconv(as.character(x), from = "", to = "ASCII//TRANSLIT")
   x <- toupper(x)
+  ### Expansões são de categorias oficiais, não de UCs específicas. Com isso
+  ### siglas e formas por extenso convergem antes da confirmação nominal.
+  expansoes <- c(
+    "PARNA" = "PARQUE NACIONAL", "FLONA" = "FLORESTA NACIONAL",
+    "ESEC" = "ESTACAO ECOLOGICA", "REBIO" = "RESERVA BIOLOGICA",
+    "RESEX" = "RESERVA EXTRATIVISTA", "REVIS" = "REFUGIO DE VIDA SILVESTRE",
+    "MONA" = "MONUMENTO NATURAL", "APA" = "AREA DE PROTECAO AMBIENTAL",
+    "ARIE" = "AREA DE RELEVANTE INTERESSE ECOLOGICO",
+    "RDS" = "RESERVA DE DESENVOLVIMENTO SUSTENTAVEL"
+  )
+  for (sigla in names(expansoes)) {
+    x <- gsub(paste0("(^|[^A-Z0-9])", sigla, "([^A-Z0-9]|$)"), paste0(" ", expansoes[[sigla]], " "), x, perl = TRUE)
+  }
   x <- gsub("[^A-Z0-9]+", " ", x, perl = TRUE)
   x <- gsub("\\b(DE|DA|DO|DAS|DOS|E)\\b", " ", x, perl = TRUE)
+  x <- gsub("\\bECOLOGICAS\\b", "ECOLOGICA", x, perl = TRUE)
+  x <- gsub("\\bNACIONAIS\\b", "NACIONAL", x, perl = TRUE)
+  x <- gsub("\\bFLORESTAS\\b", "FLORESTA", x, perl = TRUE)
+  x <- gsub("\\bPARQUES\\b", "PARQUE", x, perl = TRUE)
+  x <- gsub("\\bRESERVAS\\b", "RESERVA", x, perl = TRUE)
   trimws(gsub("[[:space:]]+", " ", x, perl = TRUE))
 }
 
@@ -71530,6 +71785,62 @@ monitora_relatorios_analiticos_preposicao_uc <- function(nome_uc) {
   if (primeiro %in% tipos_masculinos) return("no")
   if (primeiro %in% tipos_femininos) return("na")
   "na"
+}
+
+monitora_relatorios_analiticos_http_get_auditado <- function(
+  camada,
+  fonte,
+  estrategia,
+  query = NULL,
+  destino = NULL,
+  timeout_s = 30,
+  max_tentativas = 3L
+) {
+  max_tentativas <- max(1L, min(3L, as.integer(max_tentativas)[1L]))
+  auditoria <- vector("list", max_tentativas)
+  resposta_final <- NULL
+  transitorios <- c(408L, 425L, 429L, 500L, 502L, 503L, 504L)
+  for (tentativa in seq_len(max_tentativas)) {
+    if (!is.null(destino) && file.exists(destino)) unlink(destino, force = TRUE)
+    inicio <- proc.time()[["elapsed"]]
+    args_get <- list(
+      url = fonte,
+      httr::timeout(timeout_s),
+      httr::user_agent(paste0(
+        "Monitora-Campestre-Savanico/",
+        get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "dev", inherits = TRUE)
+      ))
+    )
+    ### httr::GET(query = NULL) remove a query já embutida na URL. Isso pode
+    ### converter uma resposta GeoJSON válida em outra representação padrão
+    ### sem gerar erro HTTP. Só encaminhe `query` quando houver parâmetros.
+    if (!is.null(query) && length(query)) {
+      args_get <- append(args_get, list(query = query), after = 1L)
+    }
+    if (!is.null(destino)) {
+      args_get <- c(args_get, list(httr::write_disk(destino, overwrite = TRUE)))
+    }
+    resposta <- tryCatch(do.call(httr::GET, args_get), error = function(e) e)
+    duracao <- proc.time()[["elapsed"]] - inicio
+    http <- if (inherits(resposta, "error")) NA_integer_ else httr::status_code(resposta)
+    bytes <- if (!is.null(destino) && file.exists(destino)) suppressWarnings(as.numeric(file.info(destino)$size)) else NA_real_
+    tipo <- if (!inherits(resposta, "error")) as.character(httr::headers(resposta)[["content-type"]]) else NA_character_
+    auditoria[[tentativa]] <- data.table::data.table(
+      camada = as.character(camada), estrategia = as.character(estrategia),
+      fonte_efetiva = as.character(fonte), tentativa = tentativa,
+      duracao_s = round(duracao, 3L), http = http, bytes = bytes,
+      tipo_conteudo = tipo,
+      resultado_http = if (inherits(resposta, "error")) conditionMessage(resposta) else paste0("HTTP ", http)
+    )
+    resposta_final <- resposta
+    deve_repetir <- inherits(resposta, "error") || (!is.na(http) && http %in% transitorios)
+    if (!isTRUE(deve_repetir) || tentativa >= max_tentativas) break
+    Sys.sleep(c(0.15, 0.45)[min(tentativa, 2L)])
+  }
+  list(
+    resposta = resposta_final,
+    auditoria = data.table::rbindlist(auditoria[!vapply(auditoria, is.null, logical(1L))], fill = TRUE)
+  )
 }
 
 monitora_relatorios_analiticos_status_limite_uc <- function(
@@ -71570,9 +71881,149 @@ monitora_relatorios_analiticos_status_limite_uc <- function(
     ),
     versao_estados = NA_character_,
     versao_biomas = NA_character_,
+    motivo_estados = "não consultado",
+    motivo_biomas = "não consultado",
+    componentes_localizador = "rede",
+    localizador_completo = FALSE,
     consulta_utc = NA_character_,
     uso_arquivo_temporario = FALSE,
     artefato_espacial_persistido = FALSE
+  )
+}
+
+### Fallback independente do localizador -----------------------------------
+### Uma indisponibilidade, mudança de nome ou schema do limite da UC não pode
+### impedir as consultas oficiais de estados e biomas. Esta rotina só é
+### acionada no caminho de falha da UC; portanto, não acrescenta requisições ou
+### processamento ao caminho normal. Cada camada tem tentativas, resultado e
+### fonte próprios. Os arquivos continuam exclusivamente temporários.
+monitora_relatorios_analiticos_contexto_localizador_sem_uc <- function(
+  uas,
+  status,
+  dir_temporario,
+  auditoria_previa = list()
+) {
+  materializar <- function(x) {
+    dados <- terra::as.data.frame(x, geom = "WKT")
+    terra::vect(dados, geom = tail(names(dados), 1L), crs = terra::crs(x))
+  }
+  auditorias <- auditoria_previa
+  estados <- NULL
+  biomas <- NULL
+
+  arquivo_estados <- file.path(dir_temporario, "estados_ibge_fallback.geojson")
+  req_estados <- monitora_relatorios_analiticos_http_get_auditado(
+    "estados", status$fonte_estados[[1L]], "API_IBGE_malhas_v3_independente",
+    destino = arquivo_estados, timeout_s = 60, max_tentativas = 3L
+  )
+  auditorias[[length(auditorias) + 1L]] <- req_estados$auditoria
+  resp_estados <- req_estados$resposta
+  ok_estados <- !inherits(resp_estados, "error") &&
+    !httr::http_error(resp_estados) && file.exists(arquivo_estados) &&
+    isTRUE(file.info(arquivo_estados)$size > 1000L)
+  if (isTRUE(ok_estados)) {
+    estados <- tryCatch(terra::vect(arquivo_estados), error = function(e) NULL)
+    if (!is.null(estados) && nrow(estados)) {
+      estados <- materializar(estados)
+      status[, `:=`(
+        estados_localizados = TRUE,
+        motivo_estados = "malha oficial validada independentemente do limite da UC",
+        versao_estados = paste0("API de Malhas do IBGE v3; consulta ", substr(consulta_utc, 1L, 10L))
+      )]
+    }
+  }
+  if (!isTRUE(status$estados_localizados[[1L]])) {
+    status[, motivo_estados := if (inherits(resp_estados, "error")) {
+      paste0("falha de consulta: ", conditionMessage(resp_estados))
+    } else if (!is.null(resp_estados) && httr::http_error(resp_estados)) {
+      paste0("HTTP ", httr::status_code(resp_estados))
+    } else "resposta ausente, vazia ou incompatível com GeoJSON vetorial"]
+  }
+
+  diretorio_biomas <- dirname(status$fonte_biomas[[1L]])
+  req_indice <- monitora_relatorios_analiticos_http_get_auditado(
+    "biomas", diretorio_biomas, "indice_publico_IBGE",
+    timeout_s = 30, max_tentativas = 3L
+  )
+  auditorias[[length(auditorias) + 1L]] <- req_indice$auditoria
+  links <- character()
+  if (!inherits(req_indice$resposta, "error") && !httr::http_error(req_indice$resposta)) {
+    html <- httr::content(req_indice$resposta, as = "text", encoding = "UTF-8")
+    links <- regmatches(html, gregexpr("href=[\"'][^\"']+\\.zip[\"']", html, perl = TRUE, ignore.case = TRUE))[[1L]]
+    links <- gsub("^href=[\"']|[\"']$", "", links, perl = TRUE)
+    links <- links[grepl("bioma", links, ignore.case = TRUE)]
+  }
+  links <- unique(c(
+    links[grepl("^20[0-9]{2}.*bioma.*shp", links, ignore.case = TRUE)],
+    basename(status$fonte_biomas[[1L]]), "Biomas_250mil.zip"
+  ))
+  fontes <- ifelse(startsWith(links, "http"), links, paste0(diretorio_biomas, "/", links))
+  arquivo_zip <- file.path(dir_temporario, "biomas_ibge_fallback.zip")
+  fonte_escolhida <- NA_character_
+  resposta_biomas <- NULL
+  for (ii in seq_along(fontes)) {
+    req <- monitora_relatorios_analiticos_http_get_auditado(
+      "biomas", fontes[[ii]], paste0("ZIP_oficial_IBGE_candidato_", ii),
+      destino = arquivo_zip, timeout_s = 120, max_tentativas = 3L
+    )
+    auditorias[[length(auditorias) + 1L]] <- req$auditoria
+    resposta_biomas <- req$resposta
+    ok <- !inherits(resposta_biomas, "error") && !httr::http_error(resposta_biomas) &&
+      file.exists(arquivo_zip) && isTRUE(file.info(arquivo_zip)$size > 10000L)
+    if (isTRUE(ok)) {
+      fonte_escolhida <- fontes[[ii]]
+      break
+    }
+  }
+  if (!is.na(fonte_escolhida)) {
+    pasta <- file.path(dir_temporario, "biomas_ibge_fallback")
+    dir.create(pasta, recursive = TRUE, showWarnings = FALSE)
+    extraido <- tryCatch({ utils::unzip(arquivo_zip, exdir = pasta); TRUE }, error = function(e) FALSE)
+    shp <- if (isTRUE(extraido)) list.files(pasta, "\\.shp$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE) else character()
+    if (length(shp)) {
+      biomas <- tryCatch(terra::vect(shp[[1L]]), error = function(e) NULL)
+      if (!is.null(biomas) && nrow(biomas)) {
+        campo <- names(biomas)[toupper(names(biomas)) %in% c("NOM_BIOMA", "NM_BIOMA", "NOME_BIOMA")]
+        if (length(campo)) biomas$NOM_BIOMA <- as.character(biomas[[campo[[1L]]]][, 1L])
+        biomas <- materializar(biomas)
+        status[, `:=`(
+          biomas_localizados = TRUE,
+          motivo_biomas = "camada oficial validada independentemente do limite da UC",
+          versao_biomas = paste0("IBGE, ", basename(fonte_escolhida)),
+          fonte_biomas = fonte_escolhida
+        )]
+      }
+    }
+  }
+  if (!isTRUE(status$biomas_localizados[[1L]])) {
+    status[, motivo_biomas := if (inherits(resposta_biomas, "error")) {
+      paste0("falha de consulta: ", conditionMessage(resposta_biomas))
+    } else if (!is.null(resposta_biomas) && httr::http_error(resposta_biomas)) {
+      paste0("HTTP ", httr::status_code(resposta_biomas))
+    } else "ZIP/camada oficial ausente, vazio ou incompatível"]
+  }
+  componentes <- c(
+    "rede",
+    if (isTRUE(status$estados_localizados[[1L]])) "estados" else character(),
+    if (isTRUE(status$biomas_localizados[[1L]])) "biomas" else character()
+  )
+  status[, `:=`(
+    componentes_localizador = paste(componentes, collapse = " | "),
+    localizador_completo = FALSE
+  )]
+  resumo <- data.table::data.table(
+    camada = c("limite_uc", "estados", "biomas"),
+    localizado = c(FALSE, isTRUE(status$estados_localizados[[1L]]), isTRUE(status$biomas_localizados[[1L]])),
+    fonte_efetiva = c(as.character(status$fonte[[1L]]), as.character(status$fonte_estados[[1L]]), as.character(status$fonte_biomas[[1L]])),
+    metodo = c("consultas_oficiais_sem_associacao_aproximada", "API_IBGE_malhas_v3", "diretorio_publico_IBGE_com_fallbacks"),
+    resultado = c(as.character(status$motivo[[1L]]), as.character(status$motivo_estados[[1L]]), as.character(status$motivo_biomas[[1L]])),
+    temporario = TRUE,
+    artefato_espacial_persistido = FALSE,
+    consulta_utc = as.character(status$consulta_utc[[1L]])
+  )
+  list(
+    limite = NULL, estados = estados, biomas = biomas, status = status[],
+    auditoria_aquisicao = data.table::rbindlist(c(auditorias, list(resumo)), fill = TRUE)
   )
 }
 
@@ -71585,13 +72036,13 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
     motivo = if (isTRUE(ativado)) "pendente" else "não solicitado"
   )
   if (!isTRUE(ativado) || !nrow(uas)) {
-    return(list(limite = NULL, status = status))
+    return(list(limite = NULL, estados = NULL, biomas = NULL, status = status))
   }
   ucs <- unique(trimws(as.character(uas$UC)))
   ucs <- ucs[!is.na(ucs) & nzchar(ucs)]
   if (length(ucs) != 1L) {
     status[, motivo := "o mapa não possui exatamente uma UC identificável"]
-    return(list(limite = NULL, status = status))
+    return(list(limite = NULL, estados = NULL, biomas = NULL, status = status))
   }
   status[, nome_uc_entrada := ucs[[1L]]]
   status[, consulta_utc := format(
@@ -71603,7 +72054,7 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   dir.create(dir_limites, recursive = TRUE, showWarnings = FALSE)
   if (!dir.exists(dir_limites)) {
     status[, motivo := "não foi possível criar o diretório temporário do limite oficial"]
-    return(list(limite = NULL, status = status))
+    return(list(limite = NULL, estados = NULL, biomas = NULL, status = status))
   }
   on.exit(unlink(dir_limites, recursive = TRUE, force = TRUE), add = TRUE)
   status[, uso_arquivo_temporario := TRUE]
@@ -71611,70 +72062,81 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   arquivo_fonte <- NA_character_
   link_zip <- NA_character_
   metodo_obtencao_usado <- NA_character_
+  auditoria_tentativas <- list()
 
-  ### Fonte preferencial: WFS oficial ICMBio/INDE. O filtro reduz o tráfego,
-  ### mas a associação final continua exigindo correspondência nominal
-  ### inequívoca depois de normalizada; o nome da UC nunca é aceito apenas pelo
-  ### resultado do filtro remoto.
+  ### Fonte preferencial: WFS oficial ICMBio/INDE. A camada e o atributo do
+  ### nome são descobertos por GetCapabilities/DescribeFeatureType. A consulta
+  ### usa a extensão da rede, não uma palavra do nome da UC; assim acentos,
+  ### categoria por extenso/sigla, singular/plural e grafias não são enviados
+  ### como filtro frágil ao servidor.
   chave_uc <- monitora_relatorios_analiticos_normalizar_nome_uc(ucs[[1L]])
-  ### O filtro remoto preserva acentos do nome informado. Usar o nome já
-  ### transliterado falhava em UCs como "Sincorá", pois o ILIKE do GeoServer
-  ### não é necessariamente insensível a diacríticos. Entre as palavras
-  ### informativas, escolhe-se deterministicamente a mais longa; termos de
-  ### categoria e conectivos são descartados sem qualquer lista específica de UC.
-  palavras_uc_originais <- unlist(strsplit(
-    gsub("[^[:alpha:]À-ÿ-]+", " ", ucs[[1L]], perl = TRUE),
-    "[[:space:]]+",
-    perl = TRUE
-  ), use.names = FALSE)
-  palavras_uc_originais <- palavras_uc_originais[nzchar(palavras_uc_originais)]
-  genericas_uc <- c(
-    "area", "parque", "nacional", "floresta", "reserva", "estacao",
-    "ecologica", "extrativista", "biologica", "monumento", "refugio",
-    "vida", "silvestre", "protecao", "ambiental", "interesse",
-    "ecologico", "relevante", "desenvolvimento", "sustentavel",
-    "do", "da", "dos", "das", "de", "e"
+  coords_rede <- suppressWarnings(as.numeric(unlist(
+    uas[, intersect(c("long_ini", "long_fin", "lon_meio", "lat_ini", "lat_fin", "lat_meio"), names(uas)), with = FALSE],
+    use.names = FALSE
+  )))
+  longitudes <- suppressWarnings(as.numeric(unlist(
+    uas[, intersect(c("long_ini", "long_fin", "lon_meio"), names(uas)), with = FALSE],
+    use.names = FALSE
+  )))
+  latitudes <- suppressWarnings(as.numeric(unlist(
+    uas[, intersect(c("lat_ini", "lat_fin", "lat_meio"), names(uas)), with = FALSE],
+    use.names = FALSE
+  )))
+  longitudes <- longitudes[is.finite(longitudes) & abs(longitudes) <= 180]
+  latitudes <- latitudes[is.finite(latitudes) & abs(latitudes) <= 90]
+  bbox_rede <- if (length(longitudes) && length(latitudes)) {
+    folga_x <- max(0.02, diff(range(longitudes)) * 0.15)
+    folga_y <- max(0.02, diff(range(latitudes)) * 0.15)
+    c(
+      min(longitudes) - folga_x, min(latitudes) - folga_y,
+      max(longitudes) + folga_x, max(latitudes) + folga_y
+    )
+  } else numeric()
+  arquivo_capabilities <- file.path(dir_limites, "capabilities_icmbio_wfs.xml")
+  consulta_capabilities <- monitora_relatorios_analiticos_http_get_auditado(
+    "limite_uc", status$fonte_wfs[[1L]], "WFS_GetCapabilities",
+    query = list(service = "WFS", version = "2.0.0", request = "GetCapabilities"),
+    destino = arquivo_capabilities, timeout_s = 30, max_tentativas = 3L
   )
-  chaves_palavras <- monitora_relatorios_analiticos_normalizar_nome_uc(
-    palavras_uc_originais
-  )
-  candidatas_busca <- palavras_uc_originais[
-    !(chaves_palavras %in% genericas_uc) & nchar(chaves_palavras) >= 4L
-  ]
-  if (!length(candidatas_busca)) candidatas_busca <- palavras_uc_originais
-  token_busca <- if (length(candidatas_busca)) {
-    candidatas_busca[[which.max(nchar(candidatas_busca, type = "chars"))]]
-  } else ""
-  token_busca <- gsub("'", "''", token_busca, fixed = TRUE)
+  resposta_capabilities <- consulta_capabilities$resposta
+  auditoria_tentativas[[length(auditoria_tentativas) + 1L]] <- consulta_capabilities$auditoria
+  camada_wfs <- NA_character_
+  if (!inherits(resposta_capabilities, "error") && !httr::http_error(resposta_capabilities) &&
+      file.exists(arquivo_capabilities) && file.info(arquivo_capabilities)$size > 1000L) {
+    xml_cap <- paste(readLines(arquivo_capabilities, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    nomes_camadas <- regmatches(xml_cap, gregexpr("(?<=<Name>)[^<]+(?=</Name>)", xml_cap, perl = TRUE))[[1L]]
+    chaves_camadas <- monitora_relatorios_analiticos_normalizar_nome_uc(sub("^.*:", "", nomes_camadas))
+    candidatas_camadas <- nomes_camadas[
+      grepl("LIMITE", chaves_camadas) & grepl("UC", chaves_camadas) & grepl("FEDERA", chaves_camadas)
+    ]
+    if (length(candidatas_camadas)) camada_wfs <- sort(unique(candidatas_camadas))[[1L]]
+  }
   arquivo_wfs <- file.path(dir_limites, "limite_uc_icmbio_wfs.geojson")
-  resposta_wfs <- if (nzchar(token_busca)) tryCatch(
-    httr::GET(
-      status$fonte_wfs[[1L]],
+  consulta_wfs <- if (!is.na(camada_wfs) && nzchar(camada_wfs) && length(bbox_rede) == 4L) {
+    monitora_relatorios_analiticos_http_get_auditado(
+      "limite_uc", status$fonte_wfs[[1L]], "WFS_GetFeature_BBOX_rede",
       query = list(
         service = "WFS", version = "2.0.0", request = "GetFeature",
-        typeNames = "ICMBio:limiteucsfederais_a",
+        typeNames = camada_wfs,
         outputFormat = "application/json",
-        CQL_FILTER = paste0("nomeuc ILIKE '%", token_busca, "%'" )
-      ),
-      httr::timeout(120),
-      httr::user_agent(paste0(
-        "Monitora-Campestre-Savanico/",
-        get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "dev", inherits = TRUE)
-      )),
-      httr::write_disk(arquivo_wfs, overwrite = TRUE)
-    ),
-    error = function(e) e
-  ) else NULL
+        srsName = "EPSG:4326",
+        bbox = paste(c(bbox_rede, "EPSG:4326"), collapse = ",")
+      ), destino = arquivo_wfs, timeout_s = 120, max_tentativas = 3L
+    )
+  } else NULL
+  resposta_wfs <- if (!is.null(consulta_wfs)) consulta_wfs$resposta else NULL
+  if (!is.null(consulta_wfs)) auditoria_tentativas[[length(auditoria_tentativas) + 1L]] <- consulta_wfs$auditoria
   wfs_baixado <- !is.null(resposta_wfs) &&
     !inherits(resposta_wfs, "error") &&
     !httr::http_error(resposta_wfs) &&
-    file.exists(arquivo_wfs) && file.info(arquivo_wfs)$size > 1000L
+    file.exists(arquivo_wfs) && file.info(arquivo_wfs)$size > 100L &&
+    grepl("FeatureCollection", paste(readLines(arquivo_wfs, n = 2L, warn = FALSE), collapse = ""), fixed = TRUE)
   if (isTRUE(wfs_baixado)) {
     limites_wfs <- tryCatch(terra::vect(arquivo_wfs), error = function(e) NULL)
     if (!is.null(limites_wfs) && nrow(limites_wfs)) {
       limites <- limites_wfs
       arquivo_fonte <- arquivo_wfs
-      metodo_obtencao_usado <- "WFS_oficial_ICMBio_INDE"
+      metodo_obtencao_usado <- "WFS_oficial_ICMBio_INDE_por_extensao_da_rede"
       status[, fonte := fonte_wfs]
     }
   }
@@ -71700,14 +72162,18 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
       "falha ao consultar a página oficial do ICMBio: ",
       conditionMessage(pagina)
     )]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   if (httr::http_error(pagina)) {
     status[, motivo := paste0(
       "página oficial do ICMBio retornou HTTP ",
       httr::status_code(pagina)
     )]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   html <- httr::content(pagina, as = "text", encoding = "UTF-8")
   ocorrencias <- regmatches(
@@ -71720,17 +72186,22 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
     )
   )[[1L]]
   links <- gsub("^href=[\"']|[\"']$", "", ocorrencias, perl = TRUE)
-  links <- links[grepl(
-    "(?:limite.*uc.*federal|uc.*federal.*limite).*\\.zip",
-    links,
-    ignore.case = TRUE,
-    perl = TRUE
-  )]
+  links <- unique(links)
   if (!length(links)) {
     status[, motivo := "a página oficial não informou um ZIP reconhecível de limites federais"]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
-  link_zip <- links[[1L]]
+  ### A escolha preliminar serve apenas para reduzir downloads. A aceitação
+  ### definitiva ocorre pelo conteúdo do arquivo (vetor poligonal, atributos
+  ### de nome/CNUC e centenas de feições), nunca pelo nome do ZIP/SHP.
+  pontuacao_links <- rowSums(vapply(
+    c("limite", "uc", "feder"),
+    function(tok) grepl(tolower(tok), tolower(links), fixed = TRUE),
+    logical(length(links))
+  ))
+  link_zip <- links[[order(-pontuacao_links, nchar(links))[[1L]]]]
   if (startsWith(link_zip, "/")) {
     link_zip <- paste0("https://www.gov.br", link_zip)
   } else if (!startsWith(link_zip, "http")) {
@@ -71756,7 +72227,9 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
     file.info(arquivo_zip)$size > 10000L
   if (!isTRUE(baixado)) {
     status[, motivo := "falha ao baixar o ZIP oficial de limites federais do ICMBio"]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   extraido <- tryCatch(
     {
@@ -71767,7 +72240,9 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   )
   if (!isTRUE(extraido)) {
     status[, motivo := "falha ao extrair o ZIP oficial de limites federais do ICMBio"]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   arquivos_shp <- list.files(
     dir_limites,
@@ -71776,23 +72251,38 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
     full.names = TRUE,
     ignore.case = TRUE
   )
-  arquivos_shp <- arquivos_shp[grepl(
-    "limite.*uc.*feder|uc.*feder.*limite",
-    basename(arquivos_shp),
-    ignore.case = TRUE,
-    perl = TRUE
-  )]
   if (!length(arquivos_shp)) {
-    status[, motivo := "o ZIP oficial não contém shapefile de limites federais reconhecível"]
-    return(list(limite = NULL, status = status))
+    status[, motivo := "o ZIP oficial não contém camada vetorial em formato shapefile"]
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
-  shp <- arquivos_shp[[which.max(file.info(arquivos_shp)$mtime)]]
-  limites <- tryCatch(terra::vect(shp), error = function(e) e)
+  camadas_zip <- lapply(arquivos_shp, function(shp_candidato) {
+    obj <- tryCatch(terra::vect(shp_candidato), error = function(e) NULL)
+    if (is.null(obj) || !nrow(obj)) return(NULL)
+    nms <- tolower(names(obj))
+    tem_nome <- any(nms %in% c("nomeuc", "nome_uc", "nome", "nm_uc"))
+    tem_id <- any(nms %in% c("cnuc", "id", "codigo", "cod_uc"))
+    if (!isTRUE(tem_nome) || nrow(obj) < 50L) return(NULL)
+    list(obj = obj, shp = shp_candidato, pontuacao = nrow(obj) + 10000L * tem_id)
+  })
+  camadas_zip <- camadas_zip[!vapply(camadas_zip, is.null, logical(1L))]
+  if (!length(camadas_zip)) {
+    status[, motivo := "o ZIP oficial não contém camada compatível com limites de UCs federais"]
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
+  }
+  idx_camada <- which.max(vapply(camadas_zip, `[[`, numeric(1L), "pontuacao"))
+  shp <- camadas_zip[[idx_camada]]$shp
+  limites <- camadas_zip[[idx_camada]]$obj
   if (inherits(limites, "error")) {
     status[, motivo := paste0(
       "falha ao abrir o limite oficial: ", conditionMessage(limites)
     )]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   arquivo_fonte <- shp
   metodo_obtencao_usado <- "ZIP_oficial_ICMBio"
@@ -71801,20 +72291,23 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   coluna_nome <- nomes[tolower(nomes) %in% c("nomeuc", "nome_uc", "nome")]
   if (!length(coluna_nome)) {
     status[, motivo := "a base oficial não contém atributo reconhecível para o nome da UC"]
-    return(list(limite = NULL, status = status))
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   valores_nome <- as.character(limites[[coluna_nome[[1L]]]][, 1L])
   alvo <- monitora_relatorios_analiticos_normalizar_nome_uc(ucs[[1L]])
   chaves <- monitora_relatorios_analiticos_normalizar_nome_uc(valores_nome)
   indices <- which(chaves == alvo)
-  if (!length(indices)) {
-    distancia <- as.numeric(adist(alvo, chaves, partial = FALSE))
-    tolerancia <- max(2, ceiling(nchar(alvo) * 0.12))
-    indices <- which(distancia == min(distancia, na.rm = TRUE) & distancia <= tolerancia)
-  }
   if (length(indices) != 1L) {
-    status[, motivo := "não foi possível associar inequivocamente a UC de entrada ao limite oficial"]
-    return(list(limite = NULL, status = status))
+    status[, motivo := if (length(indices) > 1L) {
+      "mais de um limite oficial corresponde exatamente ao nome normalizado da UC"
+    } else {
+      "nenhum limite oficial corresponde exatamente ao nome normalizado da UC; associação aproximada não foi aplicada"
+    }]
+    return(monitora_relatorios_analiticos_contexto_localizador_sem_uc(
+      uas, status, dir_limites, auditoria_tentativas
+    ))
   }
   limite <- limites[indices[[1L]], ]
   ### Materializa a geometria em memória antes da remoção do diretório
@@ -71831,7 +72324,7 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
     valor <- as.character(limite[[coluna[[1L]]]][1L, 1L])
     if (!length(valor) || is.na(valor) || !nzchar(trimws(valor))) NA_character_ else valor
   }
-  versao <- if (identical(metodo_obtencao_usado, "WFS_oficial_ICMBio_INDE")) {
+  versao <- if (startsWith(metodo_obtencao_usado, "WFS_oficial_ICMBio_INDE")) {
     paste0("WFS ICMBio/INDE; consulta ", substr(status$consulta_utc[[1L]], 1L, 10L))
   } else {
     nome_versao <- basename(link_zip)
@@ -71847,7 +72340,7 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   }
   status[, `:=`(
     localizado = TRUE,
-    motivo = "limite oficial localizado por correspondência nominal",
+    motivo = "limite oficial localizado pela extensão da rede e confirmado por correspondência nominal exata",
     nome_uc_oficial = valores_nome[[indices[[1L]]]],
     cnuc = obter(c("cnuc")),
     uf = obter(c("uf")),
@@ -71870,14 +72363,12 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
   ### descartado com o mesmo diretório temporário usado pelo limite da UC.
   estados <- NULL
   arquivo_estados <- file.path(dir_limites, "estados_ibge.geojson")
-  resposta_estados <- tryCatch(
-    httr::GET(
-      status$fonte_estados[[1L]],
-      httr::timeout(60),
-      httr::write_disk(arquivo_estados, overwrite = TRUE)
-    ),
-    error = function(e) e
+  consulta_estados <- monitora_relatorios_analiticos_http_get_auditado(
+    "estados", status$fonte_estados[[1L]], "API_IBGE_malhas_v3",
+    destino = arquivo_estados, timeout_s = 60, max_tentativas = 3L
   )
+  resposta_estados <- consulta_estados$resposta
+  auditoria_tentativas[[length(auditoria_tentativas) + 1L]] <- consulta_estados$auditoria
   estados_ok <- !inherits(resposta_estados, "error") &&
     !httr::http_error(resposta_estados) &&
     file.exists(arquivo_estados) && file.info(arquivo_estados)$size > 1000L
@@ -71910,6 +72401,7 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
       estados <- materializar_vetor(estados)
       status[, `:=`(
         estados_localizados = TRUE,
+        motivo_estados = "malha oficial validada",
         versao_estados = paste0(
           "API de Malhas do IBGE v3, qualidade mínima; consulta ",
           substr(consulta_utc, 1L, 10L)
@@ -71917,23 +72409,64 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
       )]
     }
   }
+  if (!isTRUE(status$estados_localizados[[1L]])) {
+    status[, motivo_estados := if (inherits(resposta_estados, "error")) {
+      paste0("falha de consulta: ", conditionMessage(resposta_estados))
+    } else if (!is.null(resposta_estados) && httr::http_error(resposta_estados)) {
+      paste0("HTTP ", httr::status_code(resposta_estados))
+    } else {
+      "resposta ausente, vazia ou incompatível com GeoJSON vetorial"
+    }]
+  }
 
-  ### Biomas: a escala 1:5.000.000 é suficiente para o pequeno localizador
-  ### e reduz o download para menos de 0,5 MB.
+  ### Biomas: descobre no diretório público do IBGE a edição mais recente
+  ### compatível, com fallback para a base simplificada. A camada é aceita por
+  ### geometria e schema; nomes antigos NOM_BIOMA e atuais NM_BIOMA convergem.
   biomas <- NULL
-  arquivo_biomas_zip <- file.path(dir_limites, "biomas_ibge_5000mil.zip")
-  resposta_biomas <- tryCatch(
-    httr::GET(
-      status$fonte_biomas[[1L]],
-      httr::timeout(120),
-      httr::write_disk(arquivo_biomas_zip, overwrite = TRUE)
-    ),
-    error = function(e) e
+  diretorio_biomas <- dirname(status$fonte_biomas[[1L]])
+  consulta_indice_biomas <- monitora_relatorios_analiticos_http_get_auditado(
+    "biomas", diretorio_biomas, "indice_publico_IBGE",
+    timeout_s = 30, max_tentativas = 3L
   )
-  biomas_ok <- !inherits(resposta_biomas, "error") &&
-    !httr::http_error(resposta_biomas) &&
-    file.exists(arquivo_biomas_zip) &&
-    file.info(arquivo_biomas_zip)$size > 10000L
+  indice_biomas <- consulta_indice_biomas$resposta
+  auditoria_tentativas[[length(auditoria_tentativas) + 1L]] <- consulta_indice_biomas$auditoria
+  links_biomas <- character()
+  if (!inherits(indice_biomas, "error") && !httr::http_error(indice_biomas)) {
+    html_biomas <- httr::content(indice_biomas, as = "text", encoding = "UTF-8")
+    links_biomas <- regmatches(html_biomas, gregexpr("href=[\"'][^\"']+\\.zip[\"']", html_biomas, perl = TRUE, ignore.case = TRUE))[[1L]]
+    links_biomas <- gsub("^href=[\"']|[\"']$", "", links_biomas, perl = TRUE)
+    links_biomas <- links_biomas[grepl("bioma", links_biomas, ignore.case = TRUE)]
+  }
+  links_biomas <- unique(c(
+    links_biomas[grepl("^20[0-9]{2}.*bioma.*shp", links_biomas, ignore.case = TRUE)],
+    basename(status$fonte_biomas[[1L]]),
+    "Biomas_250mil.zip"
+  ))
+  fontes_biomas <- ifelse(startsWith(links_biomas, "http"), links_biomas, paste0(diretorio_biomas, "/", links_biomas))
+  fonte_biomas_escolhida <- NA_character_
+  resposta_biomas <- NULL
+  arquivo_biomas_zip <- file.path(dir_limites, "biomas_ibge.zip")
+  for (fonte_biomas_candidata in unique(fontes_biomas)) {
+    if (file.exists(arquivo_biomas_zip)) unlink(arquivo_biomas_zip, force = TRUE)
+    consulta_tentativa <- monitora_relatorios_analiticos_http_get_auditado(
+      "biomas", fonte_biomas_candidata,
+      paste0("ZIP_oficial_IBGE_candidato_", match(fonte_biomas_candidata, unique(fontes_biomas))),
+      destino = arquivo_biomas_zip, timeout_s = 120, max_tentativas = 3L
+    )
+    resposta_tentativa <- consulta_tentativa$resposta
+    auditoria_tentativas[[length(auditoria_tentativas) + 1L]] <- consulta_tentativa$auditoria
+    tentativa_ok <- !inherits(resposta_tentativa, "error") &&
+      !httr::http_error(resposta_tentativa) &&
+      file.exists(arquivo_biomas_zip) &&
+      file.info(arquivo_biomas_zip)$size > 10000L
+    resposta_biomas <- resposta_tentativa
+    if (isTRUE(tentativa_ok)) {
+      fonte_biomas_escolhida <- fonte_biomas_candidata
+      break
+    }
+  }
+  status[, fonte_biomas := fonte_biomas_escolhida]
+  biomas_ok <- !is.na(fonte_biomas_escolhida)
   if (isTRUE(biomas_ok)) {
     pasta_biomas <- file.path(dir_limites, "biomas_ibge")
     dir.create(pasta_biomas, recursive = TRUE, showWarnings = FALSE)
@@ -71973,9 +72506,10 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
             )
           }
         }
-        if ("NOM_BIOMA" %in% names(biomas)) {
+        coluna_nome_bioma <- names(biomas)[toupper(names(biomas)) %in% c("NOM_BIOMA", "NM_BIOMA", "NOME_BIOMA")]
+        if (length(coluna_nome_bioma)) {
           biomas$NOM_BIOMA <- iconv(
-            as.character(biomas$NOM_BIOMA),
+            as.character(biomas[[coluna_nome_bioma[[1L]]]][, 1L]),
             from = "latin1",
             to = "UTF-8"
           )
@@ -71994,22 +72528,72 @@ monitora_relatorios_analiticos_limite_uc_oficial <- function(
         biomas <- materializar_vetor(biomas)
         status[, `:=`(
           biomas_localizados = TRUE,
+          motivo_biomas = "camada oficial validada",
           bioma_uc = if (length(nomes_biomas)) {
             paste(sort(nomes_biomas), collapse = " | ")
           } else {
             NA_character_
           },
-          versao_biomas = "IBGE, Biomas 1:5.000.000, disponibilização 2019"
+          versao_biomas = paste0("IBGE, ", basename(fonte_biomas_escolhida))
         )]
       }
     }
   }
 
+  if (!isTRUE(status$biomas_localizados[[1L]])) {
+    status[, motivo_biomas := if (inherits(resposta_biomas, "error")) {
+      paste0("falha de consulta: ", conditionMessage(resposta_biomas))
+    } else if (!is.null(resposta_biomas) && httr::http_error(resposta_biomas)) {
+      paste0("HTTP ", httr::status_code(resposta_biomas))
+    } else {
+      "ZIP/camada oficial ausente, vazio ou incompatível"
+    }]
+  }
+  componentes <- c(
+    "rede",
+    if (isTRUE(status$localizado[[1L]])) "UC" else character(),
+    if (isTRUE(status$estados_localizados[[1L]])) "estados" else character(),
+    if (isTRUE(status$biomas_localizados[[1L]])) "biomas" else character()
+  )
+  status[, `:=`(
+    componentes_localizador = paste(componentes, collapse = " | "),
+    localizador_completo = all(c("rede", "UC", "estados", "biomas") %in% componentes)
+  )]
+
   list(
     limite = limite,
     estados = estados,
     biomas = biomas,
-    status = status[]
+    status = status[],
+    auditoria_aquisicao = data.table::rbindlist(list(
+      data.table::rbindlist(auditoria_tentativas, fill = TRUE),
+      data.table::data.table(
+      camada = c("limite_uc", "estados", "biomas"),
+      localizado = c(
+        isTRUE(status$localizado[[1L]]),
+        isTRUE(status$estados_localizados[[1L]]),
+        isTRUE(status$biomas_localizados[[1L]])
+      ),
+      fonte_efetiva = c(
+        as.character(status$fonte[[1L]]),
+        as.character(status$fonte_estados[[1L]]),
+        as.character(status$fonte_biomas[[1L]])
+      ),
+      metodo = c(
+        as.character(status$metodo_obtencao[[1L]]),
+        "API_IBGE_malhas_v3",
+        "diretorio_publico_IBGE_com_fallbacks"
+      ),
+      resultado = c(
+        as.character(status$motivo[[1L]]),
+        as.character(status$motivo_estados[[1L]]),
+        as.character(status$motivo_biomas[[1L]])
+      ),
+      temporario = TRUE,
+      artefato_espacial_persistido = FALSE,
+      consulta_utc = as.character(status$consulta_utc[[1L]])
+      )
+    ), fill = TRUE)
   )
 }
 
@@ -72706,6 +73290,8 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   uas,
   destino,
   data_aquisicao,
+  dias_defasagem = NA_integer_,
+  janela_busca_dias = NA_integer_,
   nuvens_area_pct,
   atribuicao,
   cenas = NA_character_,
@@ -72863,6 +73449,16 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     ),
     paste0(
       "Aquisição: ", data_aquisicao,
+      if (is.finite(suppressWarnings(as.numeric(dias_defasagem)))) {
+        paste0(" | defasagem: ", as.integer(dias_defasagem), " dias")
+      } else {
+        ""
+      },
+      if (is.finite(suppressWarnings(as.numeric(janela_busca_dias)))) {
+        paste0(" | janela consultada: ", as.integer(janela_busca_dias), " dias")
+      } else {
+        ""
+      },
       " | nuvens/sombras: ",
       formatC(
         nuvens_area_pct,
@@ -73705,6 +74301,57 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
       border = "#52645B",
       lwd = 1.0
     )
+  } else if (
+    (!is.null(estados) && nrow(estados)) ||
+      (!is.null(biomas) && nrow(biomas))
+  ) {
+    ### Fallback honesto: sem limite oficial da UC, ainda situa a rede nas
+    ### camadas públicas obtidas independentemente. Não desenha limite
+    ### aproximado nem afirma associação nominal; a moldura informa a ausência.
+    contexto <- if (!is.null(estados) && nrow(estados)) estados else biomas
+    contexto <- terra::project(contexto, crs_mapa$crs)
+    rede_ext <- terra::ext(rgb)
+    centro_x <- mean(c(rede_ext$xmin, rede_ext$xmax))
+    centro_y <- mean(c(rede_ext$ymin, rede_ext$ymax))
+    largura_rede <- max(1, as.numeric(rede_ext$xmax - rede_ext$xmin))
+    altura_rede <- max(1, as.numeric(rede_ext$ymax - rede_ext$ymin))
+    ext_localizador <- terra::ext(
+      centro_x - max(350000, 10 * largura_rede),
+      centro_x + max(350000, 10 * largura_rede),
+      centro_y - max(350000, 10 * altura_rede),
+      centro_y + max(350000, 10 * altura_rede)
+    )
+    estados_proj <- if (!is.null(estados) && nrow(estados)) terra::project(estados, crs_mapa$crs) else NULL
+    biomas_proj <- if (!is.null(biomas) && nrow(biomas)) terra::project(biomas, crs_mapa$crs) else NULL
+    estados_recorte <- if (!is.null(estados_proj)) tryCatch(terra::crop(estados_proj, ext_localizador), error = function(e) NULL) else NULL
+    biomas_recorte <- if (!is.null(biomas_proj)) tryCatch(terra::crop(biomas_proj, ext_localizador), error = function(e) NULL) else NULL
+    fig_localizador <- c(margem_ndc_x, 0.185, margem_ndc_y, 0.24 - margem_ndc_y)
+    graphics::par(fig = fig_localizador, mar = c(0, 0, 0, 0), new = TRUE, xaxs = "i", yaxs = "i", family = "sans")
+    terra::plot(
+      contexto, col = NA, border = NA, axes = FALSE, legend = FALSE,
+      xlim = c(ext_localizador$xmin, ext_localizador$xmax),
+      ylim = c(ext_localizador$ymin, ext_localizador$ymax),
+      mar = c(0, 0, 0, 0), asp = 1
+    )
+    usr <- graphics::par("usr")
+    graphics::rect(usr[[1L]], usr[[3L]], usr[[2L]], usr[[4L]], col = "#F7F5EF", border = NA)
+    if (!is.null(biomas_recorte) && nrow(biomas_recorte)) {
+      terra::plot(biomas_recorte, add = TRUE, col = "#DDE3B2", border = "#8A806D", lwd = 0.55, legend = FALSE)
+    }
+    if (!is.null(estados_recorte) && nrow(estados_recorte)) {
+      terra::plot(estados_recorte, add = TRUE, col = grDevices::adjustcolor("white", alpha.f = 0.08), border = "#FFFFFF", lwd = 1, legend = FALSE)
+    }
+    graphics::points(centro_x, centro_y, pch = 21, bg = "#FFEB3B", col = "#174B3B", lwd = 0.9, cex = 0.95)
+    graphics::rect(
+      centro_x - max(largura_rede / 2, 18000), centro_y - max(altura_rede / 2, 18000),
+      centro_x + max(largura_rede / 2, 18000), centro_y + max(altura_rede / 2, 18000),
+      border = "#C62828", lwd = 2
+    )
+    altura_usr <- usr[[4L]] - usr[[3L]]
+    graphics::rect(usr[[1L]], usr[[4L]] - 0.20 * altura_usr, usr[[2L]], usr[[4L]], col = grDevices::adjustcolor("white", 0.88), border = NA)
+    graphics::text(mean(usr[1:2]), usr[[4L]] - 0.065 * altura_usr, labels = "Localizador", cex = 0.68, font = 2, col = "#174B3B")
+    graphics::text(mean(usr[1:2]), usr[[4L]] - 0.145 * altura_usr, labels = "limite oficial da UC indisponível", cex = 0.47, col = "#52645B")
+    graphics::rect(usr[[1L]], usr[[3L]], usr[[2L]], usr[[4L]], col = NA, border = "#52645B", lwd = 1)
   } else {
     fig_localizador <- c(
       margem_ndc_x,
@@ -73769,9 +74416,21 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   ativado = FALSE,
   janela_busca_dias = 60L,
   limite_nuvens_area_pct = 20,
-  max_datas_avaliadas = 8L,
+  max_datas_avaliadas = 16L,
   progresso = NULL
 ) {
+  ### Use nomes diferentes das colunas do objeto `status`: dentro de `DT[i, j]`,
+  ### data.table prioriza colunas homônimas aos argumentos da função. Sem esta
+  ### separação, a auditoria de uma busca sem cena elegível herdava o NA inicial
+  ### da coluna em vez dos parâmetros efetivamente utilizados.
+  janela_busca_config <- suppressWarnings(as.integer(janela_busca_dias)[1L])
+  if (!is.finite(janela_busca_config) || janela_busca_config <= 0L) {
+    janela_busca_config <- 60L
+  }
+  limite_nuvens_config <- suppressWarnings(as.numeric(limite_nuvens_area_pct)[1L])
+  if (!is.finite(limite_nuvens_config) || limite_nuvens_config < 0) {
+    limite_nuvens_config <- 20
+  }
   status <- monitora_relatorios_analiticos_status_mapa_satelite(
     solicitado = ativado,
     provedor = if (isTRUE(ativado)) {
@@ -73783,6 +74442,10 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     motivo = if (isTRUE(ativado)) "pendente" else "opção N",
     n_uas = nrow(uas)
   )
+  status[, `:=`(
+    janela_busca_dias = janela_busca_config,
+    limite_nuvens_area_pct = limite_nuvens_config
+  )]
   candidatos <- data.table::data.table()
   if (!isTRUE(ativado) || !nrow(uas)) {
     return(list(status = status, candidatos = candidatos))
@@ -73817,131 +74480,169 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     add = TRUE
   )
 
-  monitora_relatorios_analiticos_emitir_progresso(
-    progresso,
-    "relatorios_analiticos_sentinel_catalogo",
-    paste0(
-      "consultando o catálogo público Earth Search nos últimos ",
-      janela_busca_dias,
-      " dias"
-    ),
-    9560L,
-    concluir = FALSE
-  )
-  itens <- tryCatch(
-    monitora_relatorios_analiticos_consultar_sentinel2(
-      bbox,
-      janela_busca_dias = janela_busca_dias
-    ),
-    error = function(e) e
-  )
-  if (inherits(itens, "error")) {
-    status[, motivo := paste0(
-      "falha ao consultar o catálogo público Earth Search: ",
-      conditionMessage(itens)
-    )]
-    return(list(status = status, candidatos = candidatos))
-  }
-  if (!nrow(itens)) {
-    status[, motivo := paste0(
-      "nenhuma cena Sentinel-2 L2A encontrada nos últimos ",
-      janela_busca_dias,
-      " dias"
-    )]
-    return(list(status = status, candidatos = candidatos))
-  }
-  monitora_relatorios_analiticos_emitir_progresso(
-    progresso,
-    "relatorios_analiticos_sentinel_catalogo",
-    paste0(
-      nrow(itens),
-      " cena(s) localizada(s); iniciando avaliação de cobertura e nuvens"
-    ),
-    9570L,
-    concluir = TRUE
-  )
-
   template_scl <- monitora_relatorios_analiticos_template_satelite(
     aoi,
     resolucao_m = 20,
     max_celulas = 2000000
   )
-  datas <- head(unique(itens$data_aquisicao), as.integer(max_datas_avaliadas))
-  avaliacoes <- vector("list", length(datas))
+  janelas <- monitora_relatorios_analiticos_janelas_sentinel2(
+    janela_inicial_dias = janela_busca_config
+  )
+  avaliacoes <- list()
+  itens_catalogo <- list()
+  erros_catalogo <- character()
   data_selecionada <- NA_character_
   criterio_selecao <- NA_character_
-  for (ii in seq_along(datas)) {
-    data_i <- datas[[ii]]
-    itens_i <- itens[data_aquisicao == data_i]
+  janela_selecionada_dias <- NA_integer_
+  n_janelas_executadas <- 0L
+  inicio_catalogo_real <- NA_character_
+  fim_catalogo_real <- NA_character_
+  for (jj in seq_len(nrow(janelas))) {
+    janela_j <- janelas[jj]
+    n_janelas_executadas <- n_janelas_executadas + 1L
+    inicio_catalogo_real <- format(janela_j$data_inicio[[1L]], "%Y-%m-%d")
+    if (is.na(fim_catalogo_real)) {
+      fim_catalogo_real <- format(janela_j$data_fim[[1L]], "%Y-%m-%d")
+    }
     monitora_relatorios_analiticos_emitir_progresso(
       progresso,
-      "relatorios_analiticos_sentinel_avaliacao",
+      "relatorios_analiticos_sentinel_catalogo",
       paste0(
-        "avaliando aquisição ", ii, "/", length(datas),
-        " (", data_i, "; ", nrow(itens_i), " tile(s))"
+        "consultando janela ", jj, "/", nrow(janelas), " do Earth Search: ",
+        format(janela_j$data_inicio[[1L]], "%Y-%m-%d"), " a ",
+        format(janela_j$data_fim[[1L]], "%Y-%m-%d"),
+        " (alcance acumulado: ", janela_j$janela_acumulada_dias[[1L]], " dias)"
       ),
-      9570L + min(20L, ii),
+      9560L + min(9L, jj),
       concluir = FALSE
     )
-    scl_obj <- monitora_relatorios_analiticos_mosaico_cogs(
-      itens_i$scl_href,
-      aoi,
-      template_scl,
-      metodo = "near"
+    itens_j <- tryCatch(
+      monitora_relatorios_analiticos_consultar_sentinel2(
+        bbox,
+        janela_busca_dias = janela_j$janela_acumulada_dias[[1L]],
+        data_inicio = janela_j$data_inicio[[1L]],
+        data_fim = janela_j$data_fim[[1L]]
+      ),
+      error = function(e) e
     )
-    metricas <- monitora_relatorios_analiticos_avaliar_scl(scl_obj$raster)
-    nuvens_catalogo <- suppressWarnings(max(
-      itens_i$nuvens_catalogo_pct,
-      na.rm = TRUE
-    ))
-    if (!is.finite(nuvens_catalogo)) nuvens_catalogo <- NA_real_
-    avaliacoes[[ii]] <- data.table::data.table(
-      data_aquisicao = data_i,
-      dias_defasagem = as.integer(Sys.Date() - as.Date(data_i)),
-      n_tiles_catalogo = nrow(itens_i),
-      n_tiles_scl_lidos = scl_obj$n_tiles_sucesso,
-      nuvens_catalogo_max_pct = nuvens_catalogo,
-      nuvens_area_pct = metricas$nuvens_pct,
-      cobertura_area_pct = metricas$cobertura_pct,
-      cenas = paste(itens_i$id, collapse = " | "),
-      falhas_scl = paste(scl_obj$falhas, collapse = " | "),
-      selecionada = FALSE,
-      criterio = ""
-    )
+    if (inherits(itens_j, "error")) {
+      erros_catalogo <- c(
+        erros_catalogo,
+        paste0(
+          format(janela_j$data_inicio[[1L]], "%Y-%m-%d"), "/",
+          format(janela_j$data_fim[[1L]], "%Y-%m-%d"), ": ",
+          conditionMessage(itens_j)
+        )
+      )
+      next
+    }
     monitora_relatorios_analiticos_emitir_progresso(
       progresso,
-      "relatorios_analiticos_sentinel_avaliacao",
-      paste0(
-        "aquisição ", ii, "/", length(datas), " avaliada; cobertura=",
-        if (is.finite(metricas$cobertura_pct)) {
-          paste0(formatC(metricas$cobertura_pct, format = "f", digits = 1L), "%")
-        } else {
-          "não estimada"
-        },
-        "; nuvens/sombras=",
-        if (is.finite(metricas$nuvens_pct)) {
-          paste0(formatC(metricas$nuvens_pct, format = "f", digits = 1L), "%")
-        } else {
-          "não estimadas"
-        }
-      ),
-      9580L + min(20L, ii),
+      "relatorios_analiticos_sentinel_catalogo",
+      if (nrow(itens_j)) {
+        paste0(
+          nrow(itens_j), " cena(s) localizada(s) na janela ", jj,
+          "; avaliando cobertura e nuvens"
+        )
+      } else {
+        paste0("nenhuma cena localizada na janela ", jj, "; ampliando a busca")
+      },
+      9565L + min(9L, jj),
       concluir = TRUE
     )
-    if (is.finite(metricas$cobertura_pct) &&
-        metricas$cobertura_pct >= 95 &&
-        is.finite(metricas$nuvens_pct) &&
-        metricas$nuvens_pct <= limite_nuvens_area_pct) {
-      data_selecionada <- data_i
-      criterio_selecao <- "aquisição mais recente dentro do limite local de nuvens/sombras"
-      break
+    if (!nrow(itens_j)) next
+    itens_j[, `:=`(
+      janela_acumulada_dias = janela_j$janela_acumulada_dias[[1L]],
+      intervalo_consulta_inicio = format(janela_j$data_inicio[[1L]], "%Y-%m-%d"),
+      intervalo_consulta_fim = format(janela_j$data_fim[[1L]], "%Y-%m-%d")
+    )]
+    itens_catalogo[[length(itens_catalogo) + 1L]] <- itens_j
+    datas <- head(
+      unique(itens_j$data_aquisicao),
+      max(1L, as.integer(max_datas_avaliadas))
+    )
+    for (ii in seq_along(datas)) {
+      data_i <- datas[[ii]]
+      itens_i <- itens_j[data_aquisicao == data_i]
+      monitora_relatorios_analiticos_emitir_progresso(
+        progresso,
+        "relatorios_analiticos_sentinel_avaliacao",
+        paste0(
+          "janela ", jj, ": avaliando aquisição ", ii, "/", length(datas),
+          " (", data_i, "; ", nrow(itens_i), " tile(s))"
+        ),
+        9570L + min(20L, ii),
+        concluir = FALSE
+      )
+      scl_obj <- monitora_relatorios_analiticos_mosaico_cogs(
+        itens_i$scl_href,
+        aoi,
+        template_scl,
+        metodo = "near"
+      )
+      metricas <- monitora_relatorios_analiticos_avaliar_scl(scl_obj$raster)
+      nuvens_catalogo <- suppressWarnings(max(
+        itens_i$nuvens_catalogo_pct,
+        na.rm = TRUE
+      ))
+      if (!is.finite(nuvens_catalogo)) nuvens_catalogo <- NA_real_
+      avaliacoes[[length(avaliacoes) + 1L]] <- data.table::data.table(
+        data_aquisicao = data_i,
+        dias_defasagem = as.integer(Sys.Date() - as.Date(data_i)),
+        janela_acumulada_dias = janela_j$janela_acumulada_dias[[1L]],
+        intervalo_consulta_inicio = format(janela_j$data_inicio[[1L]], "%Y-%m-%d"),
+        intervalo_consulta_fim = format(janela_j$data_fim[[1L]], "%Y-%m-%d"),
+        n_tiles_catalogo = nrow(itens_i),
+        n_tiles_scl_lidos = scl_obj$n_tiles_sucesso,
+        nuvens_catalogo_max_pct = nuvens_catalogo,
+        nuvens_area_pct = metricas$nuvens_pct,
+        cobertura_area_pct = metricas$cobertura_pct,
+        cenas = paste(itens_i$id, collapse = " | "),
+        falhas_scl = paste(scl_obj$falhas, collapse = " | "),
+        selecionada = FALSE,
+        criterio = ""
+      )
+      monitora_relatorios_analiticos_emitir_progresso(
+        progresso,
+        "relatorios_analiticos_sentinel_avaliacao",
+        paste0(
+          "aquisição ", data_i, " avaliada; cobertura=",
+          if (is.finite(metricas$cobertura_pct)) {
+            paste0(formatC(metricas$cobertura_pct, format = "f", digits = 1L), "%")
+          } else {
+            "não estimada"
+          },
+          "; nuvens/sombras=",
+          if (is.finite(metricas$nuvens_pct)) {
+            paste0(formatC(metricas$nuvens_pct, format = "f", digits = 1L), "%")
+          } else {
+            "não estimadas"
+          }
+        ),
+        9580L + min(20L, ii),
+        concluir = TRUE
+      )
+      if (is.finite(metricas$cobertura_pct) &&
+          metricas$cobertura_pct >= 95 &&
+          is.finite(metricas$nuvens_pct) &&
+          metricas$nuvens_pct <= limite_nuvens_config) {
+        data_selecionada <- data_i
+        janela_selecionada_dias <- janela_j$janela_acumulada_dias[[1L]]
+        criterio_selecao <- paste0(
+          "aquisição mais recente aceitável; janela temporal ampliada até ",
+          janela_selecionada_dias, " dias"
+        )
+        break
+      }
     }
+    if (!is.na(data_selecionada)) break
   }
   candidatos <- data.table::rbindlist(
-    avaliacoes[!vapply(avaliacoes, is.null, logical(1L))],
+    avaliacoes,
     use.names = TRUE,
     fill = TRUE
   )
+  itens <- data.table::rbindlist(itens_catalogo, use.names = TRUE, fill = TRUE)
   if (is.na(data_selecionada)) {
     elegiveis <- candidatos[
       is.finite(cobertura_area_pct) & cobertura_area_pct >= 95 &
@@ -73951,10 +74652,12 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       data.table::setorder(elegiveis, nuvens_area_pct, -data_aquisicao)
       if (elegiveis$nuvens_area_pct[[1L]] <= 60) {
         data_selecionada <- elegiveis$data_aquisicao[[1L]]
+        janela_selecionada_dias <- elegiveis$janela_acumulada_dias[[1L]]
         criterio_selecao <- paste0(
-          "nenhuma aquisição atendeu ao limite de ",
-          limite_nuvens_area_pct,
-          "%; selecionada a menor cobertura local de nuvens/sombras"
+          "arquivo histórico consultado até o início da missão; nenhuma aquisição ",
+          "atendeu ao limite de ", limite_nuvens_config,
+          "%; selecionada a menor cobertura local de nuvens/sombras (",
+          formatC(elegiveis$nuvens_area_pct[[1L]], format = "f", digits = 1L), "%)"
         )
       }
     }
@@ -73964,10 +74667,22 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       fonte_catalogo = "https://earth-search.aws.element84.com/v1",
       motivo = paste0(
         "nenhuma aquisição apresentou cobertura espacial e nuvens aceitáveis ",
-        "na janela de ", janela_busca_dias, " dias"
+        "após consulta progressiva até o início da missão",
+        if (length(erros_catalogo)) {
+          paste0("; falhas de catálogo: ", paste(erros_catalogo, collapse = " | "))
+        } else {
+          ""
+        }
       ),
-      janela_busca_dias = as.integer(janela_busca_dias),
-      limite_nuvens_area_pct = as.numeric(limite_nuvens_area_pct)
+      janela_busca_dias = max(janelas$janela_acumulada_dias),
+      limite_nuvens_area_pct = limite_nuvens_config,
+      inicio_catalogo_consultado = inicio_catalogo_real,
+      fim_catalogo_consultado = fim_catalogo_real,
+      n_janelas_consultadas = n_janelas_executadas,
+      janelas_consultadas_dias = paste(
+        head(janelas$janela_acumulada_dias, n_janelas_executadas),
+        collapse = " | "
+      )
     )]
     return(list(status = status, candidatos = candidatos))
   }
@@ -73977,7 +74692,10 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     criterio = criterio_selecao
   )]
   selecionada <- candidatos[data_aquisicao == data_selecionada][1L]
-  itens_selecionados <- itens[data_aquisicao == data_selecionada]
+  itens_selecionados <- itens[
+    data_aquisicao == data_selecionada &
+      janela_acumulada_dias == janela_selecionada_dias
+  ]
   dir.create(dir_cache, recursive = TRUE, showWarnings = FALSE)
   chave_cache <- digest::digest(
     paste(
@@ -74104,6 +74822,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       uas,
       destino,
       data_aquisicao = data_selecionada,
+      dias_defasagem = as.integer(Sys.Date() - as.Date(data_selecionada)),
+      janela_busca_dias = janela_selecionada_dias,
       nuvens_area_pct = selecionada$nuvens_area_pct[[1L]],
       atribuicao = texto_atribuicao,
       cenas = paste(itens_selecionados$id, collapse = " | "),
@@ -74127,6 +74847,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       status = status,
       candidatos = candidatos,
       status_limite_uc = limite_uc_resultado$status,
+      auditoria_aquisicao_cartografica = limite_uc_resultado$auditoria_aquisicao,
       metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
@@ -74151,8 +74872,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     nuvens_catalogo_max_pct = nuvens_catalogo,
     nuvens_area_pct = selecionada$nuvens_area_pct[[1L]],
     cobertura_area_pct = selecionada$cobertura_area_pct[[1L]],
-    janela_busca_dias = as.integer(janela_busca_dias),
-    limite_nuvens_area_pct = as.numeric(limite_nuvens_area_pct),
+    janela_busca_dias = janela_selecionada_dias,
+    limite_nuvens_area_pct = limite_nuvens_config,
     resolucao_m = resolucao_origem_m,
     crs_imagem = terra::crs(rgb, proj = TRUE),
     referencial_mapa = crs_mapa$referencial,
@@ -74163,9 +74884,17 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     responsabilidade = "CBC/ICMBio",
     cache_reutilizado = cache_reutilizado,
     atribuicao = texto_atribuicao,
+    inicio_catalogo_consultado = inicio_catalogo_real,
+    fim_catalogo_consultado = fim_catalogo_real,
+    n_janelas_consultadas = n_janelas_executadas,
+    janelas_consultadas_dias = paste(
+      head(janelas$janela_acumulada_dias, n_janelas_executadas),
+      collapse = " | "
+    ),
     legenda_relatorio = paste0(
       "Continuidade das UAs sobre imagem Sentinel-2 L2A em cor natural, ",
       "adquirida em ", data_selecionada,
+      " após busca progressiva até ", janela_selecionada_dias, " dias",
       ". A estimativa de nuvens e sombras na extensão exibida foi de ",
       formatC(
         selecionada$nuvens_area_pct[[1L]],
@@ -74183,6 +74912,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     status = status,
     candidatos = candidatos,
     status_limite_uc = limite_uc_resultado$status,
+    auditoria_aquisicao_cartografica = limite_uc_resultado$auditoria_aquisicao,
     metadados_cartograficos = metadados_cartograficos
   )
 }
@@ -74205,6 +74935,7 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
       ),
       candidatos = data.table::data.table(),
       status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      auditoria_aquisicao_cartografica = data.table::data.table(),
       metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
@@ -74217,6 +74948,7 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
       ),
       candidatos = data.table::data.table(),
       status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      auditoria_aquisicao_cartografica = data.table::data.table(),
       metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
@@ -74237,6 +74969,9 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
     if (is.null(resultado$metadados_cartograficos)) {
       resultado$metadados_cartograficos <- monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     }
+    if (is.null(resultado$auditoria_aquisicao_cartografica)) {
+      resultado$auditoria_aquisicao_cartografica <- data.table::data.table()
+    }
     return(resultado)
   }
   list(
@@ -74248,6 +74983,7 @@ monitora_relatorios_analiticos_gerar_mapa_satelite <- function(
     ),
     candidatos = data.table::data.table(),
     status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+    auditoria_aquisicao_cartografica = data.table::data.table(),
     metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
   )
 }
@@ -74282,6 +75018,7 @@ monitora_relatorios_analiticos_mapas <- function(
       candidatos_satelite = data.table::data.table(),
       resumo_espacial = data.table::data.table(),
       status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      auditoria_aquisicao_cartografica = data.table::data.table(),
       metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
@@ -74318,6 +75055,7 @@ monitora_relatorios_analiticos_mapas <- function(
       candidatos_satelite = data.table::data.table(),
       resumo_espacial = data.table::data.table(),
       status_limite_uc = monitora_relatorios_analiticos_status_limite_uc(),
+      auditoria_aquisicao_cartografica = data.table::data.table(),
       metadados_cartograficos = monitora_relatorios_analiticos_metadados_cartograficos_vazio()
     ))
   }
@@ -74609,6 +75347,7 @@ monitora_relatorios_analiticos_mapas <- function(
     candidatos_satelite = resultado_satelite$candidatos[],
     resumo_espacial = resumo_espacial[],
     status_limite_uc = resultado_satelite$status_limite_uc[],
+    auditoria_aquisicao_cartografica = resultado_satelite$auditoria_aquisicao_cartografica[],
     metadados_cartograficos = resultado_satelite$metadados_cartograficos[]
   )
 }
@@ -75069,11 +75808,22 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         x = "Ano",
         y = "Cobertura média por UA (%)",
         colour = "Categoria",
-        title = "Estado anual das categorias gerais",
-        subtitle = "Média e IC95% entre UAs; a mudança temporal é testada nas UAs pareadas",
-        caption = paste0(
+        title = if (data.table::uniqueN(categ$ANO) > 1L) {
+          "Estado anual das categorias gerais"
+        } else {
+          "Linha de base das categorias gerais"
+        },
+        subtitle = if (data.table::uniqueN(categ$ANO) > 1L) {
+          "Média e IC95% entre UAs; a mudança temporal é testada nas UAs pareadas"
+        } else {
+          "Média e IC95% entre UAs; comparação temporal não aplicável a uma campanha"
+        },
+        caption = if (data.table::uniqueN(categ$ANO) > 1L) paste0(
           "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; . inconclusivo; — sem comparação pareada suficiente. ",
           "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(categ)
+        ) else paste0(
+          "Linha de base transversal; sem símbolo ou inferência temporal. UAs disponíveis: ",
+          resumo_esforco(categ)
         )
       )
     p_categ <- tema_grafico(p_categ)
@@ -75313,10 +76063,17 @@ monitora_relatorios_analiticos_graficos_editoriais <- function(
         y = "Cobertura média por UA (%)",
         colour = "Forma de vida exótica",
         title = "Formas de vida exóticas observadas",
-        subtitle = "Média e IC95% entre UAs; são exibidas somente categorias com ocorrência",
-        caption = paste0(
+        subtitle = if (data.table::uniqueN(exot$ANO) > 1L) {
+          "Média e IC95% entre UAs; são exibidas somente categorias com ocorrência"
+        } else {
+          "Linha de base: média e IC95% entre UAs; somente categorias com ocorrência"
+        },
+        caption = if (data.table::uniqueN(exot$ANO) > 1L) paste0(
           "Símbolos: ↑ aumento; ↓ redução; ≈ estabilidade/equivalência; . inconclusivo; — sem comparação pareada suficiente. ",
           "Primeiro ano sem símbolo. UAs disponíveis: ", resumo_esforco(exot)
+        ) else paste0(
+          "Uma campanha: sem símbolo ou inferência temporal. UAs disponíveis: ",
+          resumo_esforco(exot)
         )
       ) +
       ggplot2::guides(
@@ -77312,19 +78069,25 @@ monitora_relatorios_analiticos_renderizar <- function(
         "DOCX não gerado porque o arquivo Rmd desta execução está ausente."
       )
     } else {
-      rmd_docx <- tempfile(
-        pattern = paste0(".", base_nome, "_docx_"),
-        tmpdir = dir_relatorio,
-        fileext = ".Rmd"
-      )
-      referencia_docx <- tempfile(
-        pattern = ".monitora_referencia_docx_",
-        tmpdir = dir_relatorio,
-        fileext = ".docx"
-      )
+      ### O render do Word cria nomes internos adicionais. Em diretórios
+      ### profundos do Windows isso ultrapassava MAX_PATH. Todo o trabalho
+      ### intermediário ocorre em diretório temporário curto e determinístico;
+      ### apenas o DOCX validado é publicado no destino final.
+      raiz_temporaria_docx <- normalizePath(tempdir(), winslash = "/", mustWork = TRUE)
+      id_docx_curto <- substr(digest::digest(
+        paste(normalizePath(dir_relatorio, winslash = "/", mustWork = TRUE), base_nome, sep = "|"),
+        algo = "sha256", serialize = FALSE
+      ), 1L, 10L)
+      dir_docx_curto <- file.path(raiz_temporaria_docx, paste0("mra_", id_docx_curto))
+      dir.create(dir_docx_curto, recursive = TRUE, showWarnings = FALSE)
+      rmd_docx <- file.path(dir_docx_curto, "r.Rmd")
+      referencia_docx <- file.path(dir_docx_curto, "ref.docx")
+      docx_candidato <- file.path(dir_docx_curto, "out.docx")
       on.exit({
-        if (file.exists(rmd_docx)) unlink(rmd_docx, force = TRUE)
-        if (file.exists(referencia_docx)) unlink(referencia_docx, force = TRUE)
+        if (dir.exists(dir_docx_curto) && startsWith(
+          normalizePath(dir_docx_curto, winslash = "/", mustWork = TRUE),
+          paste0(raiz_temporaria_docx, "/")
+        )) unlink(dir_docx_curto, recursive = TRUE, force = TRUE)
       }, add = TRUE)
       tryCatch({
         writeLines(
@@ -77338,9 +78101,9 @@ monitora_relatorios_analiticos_renderizar <- function(
         local({
           antigo <- getwd()
           on.exit(setwd(antigo), add = TRUE)
-          setwd(dir_relatorio)
+          setwd(dir_docx_curto)
           rmarkdown::render(
-            input = basename(rmd_docx),
+            input = rmd_docx,
             output_format = rmarkdown::word_document(
               toc = FALSE,
               number_sections = FALSE,
@@ -77351,16 +78114,34 @@ monitora_relatorios_analiticos_renderizar <- function(
                 winslash = "/",
                 mustWork = TRUE
               ),
-              pandoc_args = "--wrap=none"
+              pandoc_args = c(
+                "--wrap=none",
+                paste0(
+                  "--resource-path=",
+                  normalizePath(dir_relatorio, winslash = "/", mustWork = TRUE)
+                )
+              )
             ),
-            output_file = basename(docx),
-            output_dir = dir_relatorio,
+            output_file = basename(docx_candidato),
+            output_dir = dir_docx_curto,
             quiet = TRUE,
             clean = TRUE,
             envir = new.env(parent = globalenv())
           )
         })
-        monitora_relatorios_analiticos_docx_preservar_linhas_tabela(docx)
+        monitora_relatorios_analiticos_docx_preservar_linhas_tabela(docx_candidato)
+        if (!file.exists(docx_candidato) || file.info(docx_candidato)$size <= 1000L) {
+          stop("DOCX candidato ausente ou vazio após a renderização em caminho curto.", call. = FALSE)
+        }
+        candidato_publicacao <- tempfile(pattern = ".docx_publicacao_", tmpdir = dirname(docx), fileext = ".docx")
+        if (!file.copy(docx_candidato, candidato_publicacao, overwrite = TRUE)) {
+          stop("Não foi possível preparar o DOCX para publicação no diretório final.", call. = FALSE)
+        }
+        pub_docx <- monitora_arquivo_publicar_candidato(candidato_publicacao, docx)
+        if (!isTRUE(pub_docx$ok) || !identical(
+          monitora_arquivo_hash_transacao(docx_candidato),
+          monitora_arquivo_hash_transacao(docx)
+        )) stop("Falha ao publicar o DOCX validado no diretório final.", call. = FALSE)
       }, error = function(e) {
         registrar_erro("docx", "renderizacao_docx", conditionMessage(e))
       })
@@ -77747,6 +78528,12 @@ monitora_relatorios_analiticos_gerar <- function(
   anos <- sort(unique(suppressWarnings(as.integer(as.character(stat$ANO)))))
   anos <- anos[is.finite(anos)]
   if (!length(anos)) stop("Nenhum ano analítico válido foi localizado.", call. = FALSE)
+  tem_serie_temporal <- length(anos) >= 2L
+  estado_inferencia_temporal <- if (isTRUE(tem_serie_temporal)) {
+    "aplicavel_serie_temporal"
+  } else {
+    "nao_aplicavel_serie_temporal_uma_campanha"
+  }
   periodo <- if (length(anos) == 1L) as.character(anos) else paste0(min(anos), "-", max(anos))
   uc_slug <- monitora_relatorios_analiticos_slug(uc)
   dir_relatorio <- file.path(output_dir, "08_relatorios_analiticos", uc_slug)
@@ -77758,6 +78545,27 @@ monitora_relatorios_analiticos_gerar <- function(
     uc_slug
   )
   dir.create(dir_figuras, recursive = TRUE, showWarnings = FALSE)
+
+  data.table::fwrite(
+    data.table::data.table(
+      estado = estado_inferencia_temporal,
+      n_campanhas_anuais = length(anos),
+      anos = paste(anos, collapse = " | "),
+      unidade_analitica = "UA",
+      comparacao_temporal_executada = isTRUE(tem_serie_temporal),
+      interpretacao = if (isTRUE(tem_serie_temporal)) {
+        "A série permite avaliar comparações temporais somente onde há UAs pareadas suficientes."
+      } else {
+        paste0(
+          "Campanha única: o relatório apresenta uma linha de base transversal entre UAs, ",
+          "sem classificar aumento, redução, estabilidade ou tendência temporal."
+        )
+      }
+    ),
+    file.path(dir_relatorio, "auditoria_aplicabilidade_inferencia_temporal.csv"),
+    bom = TRUE,
+    na = ""
+  )
 
   esforco_obj <- monitora_relatorios_analiticos_esforco(registros, stat)
   data.table::fwrite(
@@ -77871,6 +78679,14 @@ monitora_relatorios_analiticos_gerar <- function(
     bom = TRUE,
     na = ""
   )
+  if (nrow(mapas$auditoria_aquisicao_cartografica)) {
+    data.table::fwrite(
+      mapas$auditoria_aquisicao_cartografica,
+      file.path(dir_relatorio, "auditoria_aquisicao_camadas_cartograficas.csv"),
+      bom = TRUE,
+      na = ""
+    )
+  }
   arquivos_metadados_cartograficos <-
     monitora_relatorios_analiticos_gravar_metadados_cartograficos(
       mapas$metadados_cartograficos,
@@ -78749,6 +79565,20 @@ monitora_relatorios_analiticos_gerar <- function(
       "Usar as classes atuais como regra transparente e reavaliável, não como limiar biológico universal."
     )
   )
+  if (!isTRUE(tem_serie_temporal)) {
+    componentes_temporais <- c(
+      "Pareamento temporal", "Multiplicidade", "Mudança direcional",
+      "Estabilidade/equivalência", "Linha de base", "Modelo longitudinal global"
+    )
+    auditoria_robustez[componente %in% componentes_temporais, `:=`(
+      status = "não aplicável — uma campanha",
+      implementacao_ou_limite = paste0(
+        "Não executado: a base contém uma única campanha anual. ",
+        "Não se classificam aumento, redução, estabilidade ou tendência."
+      ),
+      implicacao = "Interpretar somente a linha de base transversal entre UAs desta campanha."
+    )]
+  }
   data.table::fwrite(
     auditoria_robustez,
     file.path(dir_relatorio, "auditoria_robustez_inferencial_relatorio.csv"),
@@ -78795,6 +79625,17 @@ monitora_relatorios_analiticos_gerar <- function(
   )
   if (is.null(auditoria_estatistica_graficos)) {
     auditoria_estatistica_graficos <- data.table::data.table()
+  }
+  if (!ncol(auditoria_estatistica_graficos)) {
+    auditoria_estatistica_graficos <- data.table::data.table(
+      plot_id = character(), tipo_resultado = character(),
+      grupo_grafico = character(), tipo_metrica = character(),
+      form_veg = character(), categoria = character(), ano_1 = integer(),
+      ano_2 = integer(), n_UA_pareadas = integer(), estimativa = numeric(),
+      ci95_lower = numeric(), ci95_upper = numeric(), q_ajustado = numeric(),
+      classe_periodo = character(), associacao_nao_causal = logical(),
+      hash_conteudo_resultado = character()
+    )
   }
   auditoria_simbolos_series <- data.table::as.data.table(
     attr(graficos, "auditoria_simbolos_series")
@@ -78881,11 +79722,21 @@ monitora_relatorios_analiticos_gerar <- function(
     grepl("^inferencias_", id) & disponivel == TRUE,
     sum(n_resultados_estatisticos, na.rm = TRUE)
   ]
-  if (n_paineis_inferenciais < 1L ||
+  gate_inferencial_falhou <- if (isTRUE(tem_serie_temporal)) {
+    n_paineis_inferenciais < 1L ||
       nrow(auditoria_estatistica_graficos) != n_resultados_indice ||
-      any(auditoria_estatistica_graficos$associacao_nao_causal %in% FALSE, na.rm = TRUE)) {
+      any(auditoria_estatistica_graficos$associacao_nao_causal %in% FALSE, na.rm = TRUE)
+  } else {
+    n_paineis_inferenciais != 0L || nrow(auditoria_estatistica_graficos) != 0L ||
+      n_resultados_indice != 0L
+  }
+  if (isTRUE(gate_inferencial_falhou)) {
     stop(
-      "Gate de integração estatística dos relatórios falhou: painéis ausentes, contagem divergente ou cautela causal não preservada.",
+      if (isTRUE(tem_serie_temporal)) {
+        "Gate de integração estatística dos relatórios falhou: painéis ausentes, contagem divergente ou cautela causal não preservada."
+      } else {
+        "Gate de campanha única falhou: foi produzido conteúdo inferencial temporal sem série temporal aplicável."
+      },
       call. = FALSE
     )
   }
@@ -78997,7 +79848,14 @@ monitora_relatorios_analiticos_gerar <- function(
         " resultados de estabilidade/equivalência."
       )
     } else {
-      "Não há comparação temporal pareada disponível para esta série."
+      if (isTRUE(tem_serie_temporal)) {
+        "Não há comparação temporal pareada com UAs suficientes disponível para esta série."
+      } else {
+        paste0(
+          "A base contém uma única campanha. Este documento estabelece a linha de base ",
+          "transversal entre UAs e não classifica aumento, redução, estabilidade ou tendência temporal."
+        )
+      }
     }
   )
 
@@ -79048,9 +79906,20 @@ monitora_relatorios_analiticos_gerar <- function(
     ),
     "",
     "# Estado da cobertura vegetal",
-    paste0("Cobertura observada na campanha mais recente (**", max(anos), "**) e trajetória anual das categorias gerais:"),
+    if (isTRUE(tem_serie_temporal)) {
+      paste0("Cobertura observada na campanha mais recente (**", max(anos), "**) e trajetória anual das categorias gerais:")
+    } else {
+      paste0("Cobertura observada na campanha única (**", max(anos), "**), apresentada como linha de base transversal entre UAs:")
+    },
     monitora_relatorios_analiticos_kable(estado_atual),
-    fig_sint(fig_por_id("categorias_temporal"), "Média anual e IC95% da cobertura entre UAs; os símbolos junto às médias derivam dos testes pareados auditados."),
+    fig_sint(
+      fig_por_id("categorias_temporal"),
+      if (isTRUE(tem_serie_temporal)) {
+        "Média anual e IC95% da cobertura entre UAs; os símbolos junto às médias derivam dos testes pareados auditados."
+      } else {
+        "Linha de base da cobertura: média e IC95% entre UAs; comparação temporal não aplicável a uma campanha."
+      }
+    ),
     "",
     "# Indicadores ecológicos prioritários",
     "Cobertura descreve a frequência absoluta de contatos; proporção relativa descreve o balanço composicional. A tabela reúne os componentes mais representativos de cada eixo e os produtos CSV preservam todos os indicadores.",
@@ -79063,9 +79932,17 @@ monitora_relatorios_analiticos_gerar <- function(
     "",
     '<div class="callout"><strong>Leitura para gestão.</strong> Exóticas exigem identificação e delimitação antes de inferir invasão; seca ou mortalidade pode refletir fenologia, déficit hídrico, fogo ou outros danos; material em decomposição não mede diretamente carga de combustível; e solo exposto/rochas não demonstra erosão ou desertificação isoladamente.</div>',
     "",
-    "# Resultados temporais",
-    "A seleção é determinística e balanceia mudanças direcionais, estabilidade/equivalência e resultados inconclusivos. Todos os testes, inclusive os não impressos, permanecem nos CSVs e PNGs técnicos.",
-    fig_sint(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
+    if (isTRUE(tem_serie_temporal)) "# Resultados temporais" else "# Linha de base da campanha",
+    if (isTRUE(tem_serie_temporal)) {
+      "A seleção é determinística e balanceia mudanças direcionais, estabilidade/equivalência e resultados inconclusivos. Todos os testes, inclusive os não impressos, permanecem nos CSVs e PNGs técnicos."
+    } else {
+      paste0(
+        "As médias, os IC95% entre UAs e o número de UAs descrevem a campanha. ",
+        "Eles quantificam heterogeneidade espacial da amostra, não mudança temporal. ",
+        "Uma nova campanha será necessária para comparações pareadas nas mesmas UAs."
+      )
+    },
+    if (isTRUE(tem_serie_temporal)) fig_sint(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado.") else "",
     "",
     "# Recomendações, limites e rastreabilidade",
     monitora_relatorios_analiticos_kable(head(recomendacoes[, .(
@@ -79166,17 +80043,29 @@ monitora_relatorios_analiticos_gerar <- function(
     fig_det(fig_por_id("material_botanico_cobertura"), "Cobertura de material botânico em decomposição."),
     "Material em decomposição pode refletir produtividade, fenologia, umidade, inundação, fogo ou manejo e não equivale a impacto negativo nem a carga de combustível medida. Como o protocolo agrega solo nu e rochas, alterações desse indicador requerem inspeção de campo e medidas independentes antes de discutir erosão, compactação ou desertificação.",
     "",
-    "# Resultados temporais",
-    "A tabela apresenta uma seleção editorial determinística. A classificação vem do produto estatístico e a consistência informa se a linha de base acumulada confirmou a direção; os resultados completos permanecem nos produtos técnicos.",
-    monitora_relatorios_analiticos_kable(tabela_achados(10L)),
+    if (isTRUE(tem_serie_temporal)) "# Resultados temporais" else "# Linha de base da campanha",
+    if (isTRUE(tem_serie_temporal)) {
+      "A tabela apresenta uma seleção editorial determinística. A classificação vem do produto estatístico e a consistência informa se a linha de base acumulada confirmou a direção; os resultados completos permanecem nos produtos técnicos."
+    } else {
+      paste0(
+        "Há uma única campanha anual. Os valores por UA, suas médias e IC95% ",
+        "constituem referência transversal; não há comparação anterior, linha de base ",
+        "temporal acumulada nem evidência de estabilidade ou mudança."
+      )
+    },
+    if (isTRUE(tem_serie_temporal)) monitora_relatorios_analiticos_kable(tabela_achados(10L)) else "",
     "",
-    fig_det(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado."),
+    if (isTRUE(tem_serie_temporal)) fig_det(fig_por_id("mudancas_prioritarias"), "Síntese balanceada de mudanças direcionais, estabilidade/equivalência e resultados inconclusivos, com IC95%, n e q ajustado.") else "",
     "",
     "# Composição geral",
-    if (nrow(comp_detalhe)) monitora_relatorios_analiticos_kable(
+    if (isTRUE(tem_serie_temporal) && nrow(comp_detalhe)) monitora_relatorios_analiticos_kable(
       comp_detalhe[, head(.SD, 3L), by = Interpretação]
-    ) else "Não houve resultado multivariado com pares suficientes para apresentação.",
-    "A análise de composição complementa, mas não substitui, a leitura dos indicadores individuais. Uma distância elevada com resultado inconclusivo é um sinal a investigar, não mudança demonstrada.",
+    ) else if (isTRUE(tem_serie_temporal)) {
+      "Não houve resultado multivariado com pares suficientes para apresentação."
+    } else {
+      "A composição da campanha é apresentada descritivamente nos indicadores; não há teste multivariado temporal aplicável com uma única campanha."
+    },
+    if (isTRUE(tem_serie_temporal)) "A análise de composição complementa, mas não substitui, a leitura dos indicadores individuais. Uma distância elevada com resultado inconclusivo é um sinal a investigar, não mudança demonstrada." else "Comparações futuras deverão parear as mesmas UAs e preservar a formação vegetacional na interpretação.",
     "",
     "# Hipóteses, evidências e gestão",
     monitora_relatorios_analiticos_kable(matriz_interpretacao[, .(
@@ -79447,7 +80336,7 @@ monitora_relatorios_analiticos_gerar <- function(
   manifesto <- data.table::data.table(
     item = c(
       "versao_script", "build_script", "uc", "periodo",
-      "status_validacao", "n_anos", "n_uas_fisicas",
+      "status_validacao", "n_anos", "estado_inferencia_temporal", "n_uas_fisicas",
       "n_pontos_amostrais", "n_evidencias_selecionadas",
       "n_figuras_preexistentes_selecionadas",
       "n_series_anuais_ua", "n_paineis_inferenciais",
@@ -79469,6 +80358,7 @@ monitora_relatorios_analiticos_gerar <- function(
       periodo,
       status_validacao,
       length(anos),
+      estado_inferencia_temporal,
       data.table::uniqueN(esforco_obj$pontos_form$UA),
       nrow(esforco_obj$pontos_form),
       nrow(evid_selecao),

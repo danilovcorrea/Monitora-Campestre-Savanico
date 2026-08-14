@@ -7,7 +7,8 @@ fonte <- if (length(args) >= 2L) args[[2L]] else
   Sys.getenv("MONITORA_QA_OUTPUT_FONTE", unset = "")
 dir_qa_base <- if (length(args) >= 3L) args[[3L]] else file.path("tmp", "pdfs")
 ativar_sentinel <- identical(
-  toupper(trimws(Sys.getenv("MONITORA_QA_SENTINEL2", unset = "N"))),
+  toupper(trimws(if (length(args) >= 5L) args[[5L]] else
+    Sys.getenv("MONITORA_QA_SENTINEL2", unset = "S"))),
   "S"
 )
 dir_qa_fixo <- if (length(args) >= 4L) {
@@ -25,6 +26,10 @@ dir_qa <- if (nzchar(dir_qa_fixo)) {
   tempfile("v290_relatorios_qa_", tmpdir = dir_qa_base)
 }
 dir.create(dir_qa, recursive = TRUE, showWarnings = FALSE)
+### O processo Windows iniciado a partir do WSL pode herdar `C:\\Windows` como
+### diretório de trabalho. Fixar o diretório temporário de QA impede que um
+### dispositivo gráfico implícito tente criar `Rplots.pdf` em área protegida.
+setwd(normalizePath(dir_qa, winslash = "/", mustWork = TRUE))
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -57,6 +62,9 @@ coletar_funcoes <- function(expr) {
         startsWith(nome, "monitora_relatorios_analiticos_") ||
         startsWith(nome, "monitora_diag_seca_morta_") ||
         nome %in% c(
+          "monitora_arquivo_retentativas",
+          "monitora_arquivo_hash_transacao",
+          "monitora_arquivo_publicar_candidato",
           "monitora_relatorio_classe_portugues",
           "monitora_relatorio_rotulo_metrica",
           "monitora_relatorio_rotulo_grupo",
@@ -282,31 +290,56 @@ indice_graficos <- fread(
 paineis_inferenciais <- indice_graficos[
   grepl("^inferencias_", id) & disponivel == TRUE
 ]
-assert(nrow(paineis_inferenciais) == 12L, "Os 12 painéis inferenciais temáticos não foram gerados.")
-assert(
-  all(paineis_inferenciais$estatistica_incorporada == TRUE) &&
-    all(paineis_inferenciais$n_resultados_estatisticos > 0L),
-  "Painel inferencial sem estatística incorporada ou sem resultados."
-)
-assert(
-  !any(grepl("(^|;[[:space:]]*)NA($|;)", paineis_inferenciais$classes_incorporadas)) &&
-    any(grepl("Mudança na composição", paineis_inferenciais$classes_incorporadas, fixed = TRUE)),
-  "Há classe inferencial não mapeada ou a mudança composicional não foi representada visualmente."
-)
-auditoria_estatistica <- fread(
-  file.path(dir_rel, "auditoria_integracao_estatistica_graficos_relatorio.csv"),
-  encoding = "UTF-8"
-)
-assert(
-  nrow(auditoria_estatistica) == nrow(periodo) + nrow(composicao_periodo),
-  "Auditoria dos gráficos não cobre exatamente os testes por categoria e de composição."
-)
-assert(
-  all(auditoria_estatistica$associacao_nao_causal %in% TRUE) &&
-    all(nzchar(auditoria_estatistica$hash_conteudo_resultado)),
-  "Cautela causal ou hash de rastreabilidade ausente na integração estatística."
-)
-assert(
+if (data.table::uniqueN(stat$ANO) >= 2L) {
+  pares_inferenciais_esperados <- unique(periodo[
+    !is.na(grupo_grafico) & nzchar(grupo_grafico) &
+      !is.na(tipo_metrica) & nzchar(tipo_metrica),
+    paste(grupo_grafico, tipo_metrica, sep = "__")
+  ])
+  pares_inferenciais_gerados <- unique(paineis_inferenciais[
+    , paste(tema, metrica, sep = "__")
+  ])
+  assert(
+    setequal(pares_inferenciais_gerados, pares_inferenciais_esperados),
+    paste0(
+      "Os painéis inferenciais não correspondem exatamente aos temas/métricas ",
+      "com testes estatísticos disponíveis (esperados=", length(pares_inferenciais_esperados),
+      "; gerados=", length(pares_inferenciais_gerados), ")."
+    )
+  )
+  assert(
+    all(paineis_inferenciais$estatistica_incorporada == TRUE) &&
+      all(paineis_inferenciais$n_resultados_estatisticos > 0L),
+    "Painel inferencial sem estatística incorporada ou sem resultados."
+  )
+  assert(
+    !any(grepl("(^|;[[:space:]]*)NA($|;)", paineis_inferenciais$classes_incorporadas)) &&
+      any(grepl("Mudança na composição", paineis_inferenciais$classes_incorporadas, fixed = TRUE)),
+    "Há classe inferencial não mapeada ou a mudança composicional não foi representada visualmente."
+  )
+  auditoria_estatistica <- fread(
+    file.path(dir_rel, "auditoria_integracao_estatistica_graficos_relatorio.csv"),
+    encoding = "UTF-8"
+  )
+  assert(
+    nrow(auditoria_estatistica) == nrow(periodo) + nrow(composicao_periodo),
+    "Auditoria dos gráficos não cobre exatamente os testes por categoria e de composição."
+  )
+  assert(
+    all(auditoria_estatistica$associacao_nao_causal %in% TRUE) &&
+      all(nzchar(auditoria_estatistica$hash_conteudo_resultado)),
+    "Cautela causal ou hash de rastreabilidade ausente na integração estatística."
+  )
+} else {
+  assert(nrow(paineis_inferenciais) == 0L, "Campanha única gerou painel inferencial temporal indevido.")
+  aplicabilidade <- fread(file.path(dir_rel, "auditoria_aplicabilidade_inferencia_temporal.csv"))
+  assert(
+    identical(aplicabilidade$estado[[1L]], "nao_aplicavel_serie_temporal_uma_campanha") &&
+      !isTRUE(aplicabilidade$comparacao_temporal_executada[[1L]]),
+    "Campanha única não declarou a inaplicabilidade da inferência temporal."
+  )
+}
+if (data.table::uniqueN(stat$ANO) >= 2L) assert(
   setequal(
     unique(na.omit(auditoria_estatistica$classe_periodo)),
     unique(c(na.omit(periodo$classe_mudanca), na.omit(composicao_periodo$classe_mudanca_composicao)))
@@ -318,7 +351,8 @@ auditoria_robustez <- fread(
   encoding = "UTF-8"
 )
 assert(
-  all(c("atendido", "limitação explícita", "requer validação por indicador") %in% auditoria_robustez$status),
+  all(c("atendido", "requer validação por indicador") %in% auditoria_robustez$status) &&
+    (data.table::uniqueN(stat$ANO) == 1L || "limitação explícita" %in% auditoria_robustez$status),
   "Auditoria de robustez não explicita implementação, limitações e validação de margens."
 )
 docx_relatorios <- file.path(dir_qa, indice[formato == "docx", caminho_relativo])
@@ -402,10 +436,14 @@ graficos_essenciais <- c("categorias_temporal", "formas_nativas_recente")
 graficos_essenciais <- c(
   graficos_essenciais,
   "herbaceas_lenhosas_cobertura", "herbaceas_lenhosas_proporcao",
-  "categorias_proporcao", "formas_nativas_proporcao",
-  "formas_secas_mortas_cobertura", "formas_secas_mortas_proporcao",
-  "material_botanico_cobertura", "material_botanico_proporcao"
+  "categorias_proporcao", "formas_nativas_proporcao"
 )
+if (nrow(cob_exot)) graficos_essenciais <- c(graficos_essenciais, "formas_exoticas_temporal")
+if (nrow(prop_exot)) graficos_essenciais <- c(graficos_essenciais, "formas_exoticas_proporcao")
+if (nrow(cob_seca)) graficos_essenciais <- c(graficos_essenciais, "formas_secas_mortas_cobertura")
+if (nrow(prop_seca)) graficos_essenciais <- c(graficos_essenciais, "formas_secas_mortas_proporcao")
+if (nrow(cob_material)) graficos_essenciais <- c(graficos_essenciais, "material_botanico_cobertura")
+if (nrow(prop_material)) graficos_essenciais <- c(graficos_essenciais, "material_botanico_proporcao")
 if (data.table::uniqueN(stat$ANO) > 1L && nrow(periodo)) {
   graficos_essenciais <- c(graficos_essenciais, "mudancas_prioritarias")
 }
@@ -419,9 +457,15 @@ assert(all(file.exists(file.path(
 
 rotulos <- fread(file.path(dir_rel, "dicionario_rotulos_relatorio.csv"), encoding = "UTF-8")
 assert(all(rotulos$valido_para_apresentacao), "Dicionário contém rótulo editorial inválido.")
-assert(any(rotulos$codigo == "savanica" & rotulos$rotulo == "Savânica") ||
-       any(rotulos$codigo == "Savânica" & rotulos$rotulo == "Savânica"),
-       "Rótulo Savânica não foi resolvido.")
+formacoes_esperadas <- unique(monitora_relatorio_rotulo_formacao(
+  stat$form_veg,
+  inicial_maiuscula = TRUE
+))
+formacoes_esperadas <- formacoes_esperadas[!is.na(formacoes_esperadas) & nzchar(formacoes_esperadas)]
+assert(
+  all(formacoes_esperadas %in% rotulos$rotulo),
+  "Uma formação presente no dataset não foi resolvida pelo dicionário editorial."
+)
 
 textos <- unlist(lapply(
   list.files(dir_rel, pattern = "\\.(Rmd|md)$", full.names = TRUE),
@@ -499,6 +543,8 @@ if (isTRUE(ativar_sentinel)) {
     file.path(dir_rel, "auditoria_mapa_satelite.csv"),
     encoding = "UTF-8"
   )
+  assert(status_satelite$solicitado[[1L]],
+         "A homologação exigiu Sentinel-2, mas a consulta foi registrada como não solicitada.")
   assert(status_satelite$gerado[[1L]], paste0(
     "Mapa Sentinel-2 não foi gerado: ",
     status_satelite$motivo[[1L]]
@@ -517,6 +563,13 @@ if (isTRUE(ativar_sentinel)) {
     "Cobertura local de nuvens/sombras não foi registrada."
   )
   assert(
+    is.finite(status_satelite$janela_busca_dias[[1L]]) &&
+      status_satelite$janela_busca_dias[[1L]] >= 60L &&
+      is.finite(status_satelite$n_janelas_consultadas[[1L]]) &&
+      status_satelite$n_janelas_consultadas[[1L]] >= 1L,
+    "Janela progressiva e número de consultas Sentinel-2 não foram auditados."
+  )
+  assert(
     !status_satelite$chave_persistida[[1L]] &&
       !status_satelite$url_credencial_persistida[[1L]],
     "A auditoria Sentinel-2 indicou credencial persistida."
@@ -530,8 +583,13 @@ if (isTRUE(ativar_sentinel)) {
     encoding = "UTF-8"
   )
   assert(
-    status_limite$localizado[[1L]],
-    paste0("Limite oficial da UC não foi localizado: ", status_limite$motivo[[1L]])
+    status_limite$localizado[[1L]] &&
+      status_limite$estados_localizados[[1L]] &&
+      status_limite$biomas_localizados[[1L]] &&
+      status_limite$localizador_completo[[1L]] &&
+      all(c("rede", "UC", "estados", "biomas") %in%
+        trimws(strsplit(status_limite$componentes_localizador[[1L]], "\\|", perl = TRUE)[[1L]])),
+    paste0("Localizador cartográfico incompleto: ", status_limite$motivo[[1L]])
   )
   metadados_mgb2 <- fread(
     file.path(dir_rel, "metadados_cartograficos_mgb2.csv"),
@@ -553,6 +611,11 @@ if (isTRUE(ativar_sentinel)) {
   )
   assert(sum(candidatos_satelite$selecionada) == 1L,
          "Auditoria não identifica exatamente uma aquisição selecionada.")
+  assert(
+    identical(valor_manifesto[["mapa_satelite_solicitado"]], "TRUE") &&
+      identical(valor_manifesto[["mapa_satelite_gerado"]], "TRUE"),
+    "Manifesto não confirma solicitação e geração do mapa Sentinel-2."
+  )
 }
 
 stat_multi <- rbind(stat, copy(stat[1L])[, UC := "Outra UC de QA"])
