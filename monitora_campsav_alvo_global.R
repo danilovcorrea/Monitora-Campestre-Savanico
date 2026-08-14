@@ -1,25 +1,31 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.11
-### Baseline pública de origem: v2.9.10
-### Conteúdo acumulado da versão — preserva integralmente o contrato, os
-### itens congelados e os resultados da v2.9.10, inclusive a arquitetura de
-### inicialização rápida homologada no RStudio do Windows. Preserva o tratamento
-### de falhas recuperáveis e o checkpoint integral da r01 e corrige a precondição
-### de operações de campo superior em lote: o valor amigável exibido no painel
-### deixa de ser reutilizado como trava transacional, que passa a conservar o
-### valor bruto exato de cada COLETA. Checkpoints integrais afetados pela r01 são
-### migrados somente quando a base é a mesma e a divergência comprovada se limita
-### a espaços nas extremidades; divergências materiais continuam bloqueadas.
-### O relatório de validação passa a representar integralmente os 22 campos do
-### inventário de sessões em tabelas temáticas legíveis, sem alterar a linhagem,
-### os produtos de dados ou a semântica das sessões sem decisões novas.
-### A r02 torna a busca Sentinel-2 temporalmente progressiva até o início da
-### missão, registra a janela efetivamente necessária no mapa e impede que a
-### homologação confunda uma execução com a opção desligada com mapa orbital
-### concluído. A ampliação só ocorre quando a janela mais recente não contém
-### aquisição com cobertura e qualidade adequadas.
+### Versão do script: 2.9.12
+### Baseline pública de origem: v2.9.11
+### A v2.9.12 acrescenta ao mapa Sentinel o contorno oficial da UC, na mesma
+### cor empregada no localizador, e sua identificação na legenda. O
+### desenho e o item da legenda só existem quando a linha do limite intercepta
+### a moldura exibida; uma rede integralmente interior conserva o limite apenas
+### no localizador. O limite já obtido temporariamente é reutilizado, sem nova
+### consulta, hardcode ou custo fora desse produto.
+### A versão também alinha a largura externa da composição cartográfica — incluindo
+### moldura e rótulos de coordenadas — à largura da faixa editorial inferior.
+### A prancha passa a 2.800 x 3.200 px, com faixa inferior de 21% e margem
+### externa comum de 3 mm. A proporção espacial do raster é preservada: não há
+### estiramento da imagem, deslocamento das UAs nem mudança de escala por
+### hardcode; a altura adicional apenas permite que redes de diferentes
+### proporções utilizem a largura editorial disponível.
+### O botão geral "Limpar filtros" passa a reiniciar todos os filtros, campos
+### transitórios, buscas e seleções das abas de
+### Correções, Equipe, Validação espacial, Justificar pendências e Auditoria
+### opt-in. O responsável e as filas auditáveis já
+### adicionadas permanecem intactos. A operação atua apenas sobre widgets,
+### estados leves de seleção e proxies das tabelas; não recalcula a prévia
+### integral, não relê arquivos e não percorre os registros.
+### O contrato único, os itens congelados, os produtos, a linhagem e a
+### arquitetura de inicialização rápida homologada no RStudio do Windows
+### permanecem preservados integralmente em relação à v2.9.11.
 ### A baseline v2.9.10 separou falha de persistência de operação de pendência impeditiva
 ### dos dados e migra atomicamente operações legadas que preencheram a descrição
 ### de impacto sem os campos condicionantes. O texto livre é preservado como tipo
@@ -29,7 +35,7 @@
 ### Na continuação por abrir_painel_cache, a linhagem assinada de input/ é
 ### importada como proveniência, sem replay e sem modificar a tabela preservada
 ### no cache; fora desse modo, a revisão não acrescenta custo de execução.
-### A candidata acrescenta suporte analítico a uma única campanha sem inferir
+### A v2.9.11 acrescentou suporte analítico a uma única campanha sem inferir
 ### tendência temporal, corrige o rótulo editorial legado de espécie, usa
 ### caminho temporário curto para DOCX no Windows, torna a aquisição cartográfica
 ### oficial independente e auditável e tolera bloqueios transitórios de arquivos
@@ -242,8 +248,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.11"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.11-20260814"
+MONITORA_SCRIPT_VERSAO <- "2.9.12"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.12-20260814"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -20091,10 +20097,12 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
       value = "Dependência legada expandida atomicamente; texto classificado como tipo não especificado."
     )
     data.table::set(op, j = "created_build", value = get0(
-      "MONITORA_SCRIPT_BUILD_ID", ifnotfound = "v2.9.11-20260814", inherits = TRUE
+      "MONITORA_SCRIPT_BUILD_ID",
+      ifnotfound = "v2.9.12-20260814",
+      inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.11", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.12", inherits = TRUE
     ))
     op
   }
@@ -36729,58 +36737,210 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       monitora_painel_notificar(paste0(length(ids_remover), " operação(ões) espacial(is) atômica(s) pendente(s) excluída(s)."), type = "message", duration = 6)
     }, ignoreInit = TRUE)
 
-    monitora_painel_limpar_estado <- function(incluir_geral = TRUE) {
-      rv$reset_painel_em_andamento <- TRUE
-      ids_esp_selectize <- c(
-        "esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano", "esp_ua_fonte", "esp_ua_destino",
-        "esp_lote_uas", "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte",
-        "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino", "esp_lote_ano_fonte",
-        "esp_lote_ano_destino"
+    ### Contrato central da limpeza visual. Todo controle editável ou filtrável
+    ### do painel deve estar classificado aqui ou entre os itens preservados.
+    ### As filas auditáveis não aparecem nas listas de atualização e nunca são
+    ### modificadas por esta rotina.
+    monitora_painel_contrato_limpeza <- list(
+      preservar = c(
+        "responsavel", "rv$correcoes", "rv$correcoes_solicitadas",
+        "rv$correcoes_espaciais", "rv$justificativas_sessao",
+        "rv$correcoes_historico_intencoes", "rv$auditoria_conciliacao_semantica",
+        "rv$auditoria_espacial_sessao", "rv$auditoria_reconciliacao_justificativas"
+      ),
+      geral = list(
+        selectize = c(
+          "filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo",
+          "filtro_campanha", "filtro_ua", "coleta", "coletas_lote",
+          "atributo", "mv_lote_formas", "mv_lote_forma_destino",
+          "triagem_forma_valida"
+        ),
+        select = c(
+          "acao", "ponto", "habito_correcao_contratual", "mv_forma",
+          "mv_origem", "mv_destino", "mv_forma_destino", "mv_habito",
+          "mv_lote_origem", "mv_lote_habito_padrao", "mv_lote_destino",
+          "mv_lote_habito_destino", "triagem_destino_desconhecida",
+          "triagem_habito"
+        ),
+        textarea = c("valor_original", "motivo"),
+        checkbox_group = c(
+          "filtros_triagem_coleta_impeditivas",
+          "filtros_triagem_coleta_outras"
+        ),
+        checkbox = c("confirmar_abrangencia" = FALSE),
+        radio = c(
+          "escopo_coletas" = "coleta_individual",
+          "escopo" = "coleta_inteira"
+        ),
+        numeric = c("n_esperado" = 101)
+      ),
+      equipe = list(
+        text = c("coletor_nome", "coletor_cpf"),
+        textarea = c("coletor_motivo"),
+        checkbox = c("coletor_confirmar" = FALSE)
+      ),
+      espacial = list(
+        selectize = c(
+          "esp_filtro_status", "esp_filtro_ua", "esp_filtro_ano",
+          "esp_ua_fonte", "esp_ua_destino", "esp_lote_uas",
+          "esp_lote_coletas_alvo", "esp_coleta_alvo", "esp_coleta_fonte",
+          "esp_coletas_destino", "esp_ano_fonte", "esp_ano_destino",
+          "esp_lote_ano_fonte", "esp_lote_ano_destino"
+        ),
+        select = c(
+          "esp_tipo_operacao", "esp_tipo_origem", "esp_escopo_destino",
+          "esp_origem_coordenada", "esp_lote_tipo_operacao"
+        ),
+        textarea = c(
+          "esp_coord_inicio_nova", "esp_coord_fim_nova",
+          "esp_justificativa", "esp_lote_justificativa"
+        ),
+        checkbox = c(
+          "esp_somente_pendencias" = FALSE,
+          "esp_confirmar_abrangencia" = FALSE,
+          "esp_lote_confirmar_abrangencia" = FALSE
+        ),
+        radio = c("esp_modo_fluxo" = "guiado")
+      ),
+      justificativas = list(
+        selectize = c(
+          "just_rotulos_lote", "just_sessao_filtro_rotulos",
+          "just_sessao_filtro_coletas", "just_sessao_filtro_classes"
+        ),
+        select = c("just_tipo"),
+        textarea = c("just_texto"),
+        checkbox = c("just_confirmar_lote" = FALSE)
+      ),
+      tabelas = list(
+        geral = c(
+          "tabela", "tabela_exoticas", "preview_lote_multicoletas",
+          "correcoes"
+        ),
+        equipe = c("coletores_tabela"),
+        espacial = c(
+          "esp_tabela_pendencias", "esp_previa_correcao", "esp_correcoes"
+        ),
+        justificativas = c("just_tabela_ocorrencias", "just_tabela_sessao"),
+        auditoria = c("auditoria_perfil_painel_contrato_unico")
       )
-      for (id in ids_esp_selectize) {
+    )
+
+    monitora_painel_limpar_widgets <- function(configuracao) {
+      for (id in configuracao$selectize %||% character()) {
         try(shiny::freezeReactiveValue(input, id), silent = TRUE)
-        try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
+        try(shiny::updateSelectizeInput(
+          session, id, selected = character(0)
+        ), silent = TRUE)
       }
-      for (id in c("esp_tipo_operacao", "esp_tipo_origem", "esp_escopo_destino", "esp_origem_coordenada", "esp_lote_tipo_operacao")) {
+      for (id in configuracao$select %||% character()) {
         try(shiny::freezeReactiveValue(input, id), silent = TRUE)
         try(shiny::updateSelectInput(session, id, selected = ""), silent = TRUE)
       }
-      for (id in c("esp_coord_inicio_nova", "esp_coord_fim_nova", "esp_justificativa", "esp_lote_justificativa")) {
+      for (id in configuracao$text %||% character()) {
+        try(shiny::freezeReactiveValue(input, id), silent = TRUE)
+        try(shiny::updateTextInput(session, id, value = ""), silent = TRUE)
+      }
+      for (id in configuracao$textarea %||% character()) {
         try(shiny::freezeReactiveValue(input, id), silent = TRUE)
         try(shiny::updateTextAreaInput(session, id, value = ""), silent = TRUE)
       }
-      try(shiny::updateCheckboxInput(session, "esp_somente_pendencias", value = FALSE), silent = TRUE)
-      try(shiny::updateCheckboxInput(session, "esp_confirmar_abrangencia", value = FALSE), silent = TRUE)
-      try(shiny::updateCheckboxInput(session, "esp_lote_confirmar_abrangencia", value = FALSE), silent = TRUE)
-      try(shiny::updateRadioButtons(session, "esp_modo_fluxo", selected = "guiado"), silent = TRUE)
+      for (id in configuracao$checkbox_group %||% character()) {
+        try(shiny::freezeReactiveValue(input, id), silent = TRUE)
+        try(shiny::updateCheckboxGroupInput(
+          session, id, selected = character(0)
+        ), silent = TRUE)
+      }
+      if (length(configuracao$checkbox %||% logical())) {
+        for (id in names(configuracao$checkbox)) {
+          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
+          try(shiny::updateCheckboxInput(
+            session, id, value = isTRUE(configuracao$checkbox[[id]])
+          ), silent = TRUE)
+        }
+      }
+      if (length(configuracao$radio %||% character())) {
+        for (id in names(configuracao$radio)) {
+          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
+          try(shiny::updateRadioButtons(
+            session, id, selected = unname(configuracao$radio[[id]])
+          ), silent = TRUE)
+        }
+      }
+      if (length(configuracao$numeric %||% numeric())) {
+        for (id in names(configuracao$numeric)) {
+          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
+          try(shiny::updateNumericInput(
+            session, id, value = unname(configuracao$numeric[[id]])
+          ), silent = TRUE)
+        }
+      }
+      invisible(TRUE)
+    }
 
+    monitora_painel_limpar_tabelas <- function(ids) {
+      for (id in unique(as.character(ids))) {
+        proxy <- tryCatch(
+          DT::dataTableProxy(id, session = session),
+          error = function(e) NULL
+        )
+        if (is.null(proxy)) next
+        try(DT::selectRows(proxy, NULL), silent = TRUE)
+        ### `clearSearch()` reinicia tanto a busca global quanto eventuais
+        ### filtros por coluna; `selectRows()` sozinho não altera buscas.
+        try(DT::clearSearch(proxy), silent = TRUE)
+      }
+      invisible(TRUE)
+    }
+
+    monitora_painel_limpar_estado <- function(incluir_geral = TRUE) {
+      rv$reset_painel_em_andamento <- TRUE
+
+      ### O botão espacial sempre reinicia somente o seu módulo. O botão geral
+      ### passa adicionalmente por todas as outras abas.
+      monitora_painel_limpar_widgets(
+        monitora_painel_contrato_limpeza$espacial
+      )
+
+      tabelas_limpar <- monitora_painel_contrato_limpeza$tabelas$espacial
       if (isTRUE(incluir_geral)) {
-        for (id in c("filtro_uc", "filtro_ea", "filtro_ano", "filtro_ciclo", "filtro_campanha", "filtro_ua", "coleta", "coletas_lote", "atributo", "mv_lote_formas", "mv_lote_forma_destino", "triagem_forma_valida")) {
-          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
-          try(shiny::updateSelectizeInput(session, id, selected = character(0)), silent = TRUE)
-        }
-        for (id in c("acao", "mv_forma", "mv_origem", "mv_destino", "mv_forma_destino", "mv_habito", "mv_lote_origem", "mv_lote_habito_padrao", "mv_lote_destino", "mv_lote_habito_destino", "triagem_destino_desconhecida", "triagem_habito")) {
-          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
-          try(shiny::updateSelectInput(session, id, selected = ""), silent = TRUE)
-        }
-        for (id in c("valor_original", "motivo")) {
-          try(shiny::freezeReactiveValue(input, id), silent = TRUE)
-          try(shiny::updateTextAreaInput(session, id, value = ""), silent = TRUE)
-        }
-        try(shiny::updateTextAreaInput(session, "valor_novo", value = ""), silent = TRUE)
-        try(shiny::updateTextInput(session, "valor_novo", value = ""), silent = TRUE)
-        try(shiny::updateSelectizeInput(session, "valor_novo", selected = character(0)), silent = TRUE)
-        try(shiny::updateCheckboxGroupInput(session, "filtros_triagem_coleta_impeditivas", selected = character(0)), silent = TRUE)
-        try(shiny::updateCheckboxGroupInput(session, "filtros_triagem_coleta_outras", selected = character(0)), silent = TRUE)
-        try(shiny::updateCheckboxInput(session, "confirmar_abrangencia", value = FALSE), silent = TRUE)
-        try(shiny::updateRadioButtons(session, "escopo_coletas", selected = "coleta_individual"), silent = TRUE)
-        try(shiny::updateRadioButtons(session, "escopo", selected = "coleta_inteira"), silent = TRUE)
         rv$ponto_alvo <- ""
         rv$movimento_alvo <- data.table::data.table()
+        rv$justificativas_selec_ids <- character(0)
+        rv$justificativas_sessao_selec_ids <- character(0)
+        rv$justificativas_exclusao_ids_pendente <- character(0)
+
+        monitora_painel_limpar_widgets(
+          monitora_painel_contrato_limpeza$geral
+        )
+        monitora_painel_limpar_widgets(
+          monitora_painel_contrato_limpeza$equipe
+        )
+        monitora_painel_limpar_widgets(
+          monitora_painel_contrato_limpeza$justificativas
+        )
+
+        ### `valor_novo` é dinâmico e pode ser textInput, textAreaInput ou
+        ### selectizeInput conforme o contrato do atributo.
+        try(shiny::freezeReactiveValue(input, "valor_novo"), silent = TRUE)
+        try(shiny::updateTextAreaInput(
+          session, "valor_novo", value = ""
+        ), silent = TRUE)
+        try(shiny::updateTextInput(
+          session, "valor_novo", value = ""
+        ), silent = TRUE)
+        try(shiny::updateSelectizeInput(
+          session, "valor_novo", selected = character(0)
+        ), silent = TRUE)
+
+        tabelas_limpar <- unique(unlist(
+          monitora_painel_contrato_limpeza$tabelas,
+          use.names = FALSE
+        ))
       }
 
-      for (id in c("tabela", "tabela_exoticas", "preview_lote_multicoletas", "correcoes", "esp_tabela_pendencias", "esp_previa_correcao", "esp_correcoes")) {
-        try(DT::selectRows(DT::dataTableProxy(id, session = session), NULL), silent = TRUE)
+      monitora_painel_limpar_tabelas(tabelas_limpar)
+      if (isTRUE(incluir_geral)) {
+        try(monitora_just_dt_sincronizar_selecao(), silent = TRUE)
       }
       session$onFlushed(function() {
         rv$reset_painel_em_andamento <- FALSE
@@ -36790,12 +36950,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
 
     shiny::observeEvent(input$limpar_filtros, {
       monitora_painel_limpar_estado(incluir_geral = TRUE)
-      monitora_painel_notificar("Filtros, COLETA selecionada, lote, campos de operação e seleções de tabelas foram limpos. As correções já adicionadas à fila foram preservadas.", type = "message", duration = 7)
+      monitora_painel_notificar("Filtros, buscas, COLETA, lote, campos transitórios e seleções das abas foram limpos. Responsável, correções, operações espaciais e justificativas já adicionadas às filas foram preservados.", type = "message", duration = 8)
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$esp_limpar_filtros, {
       monitora_painel_limpar_estado(incluir_geral = FALSE)
-      monitora_painel_notificar("Filtros, COLETA selecionada, coordenadas, lote e demais campos da correção espacial foram limpos.", type = "message", duration = 6)
+      monitora_painel_notificar("Filtros, buscas, COLETAS espaciais, coordenadas, lote e demais campos da correção espacial foram limpos; as outras abas foram preservadas.", type = "message", duration = 7)
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$excluir_correcoes_pendentes, {
@@ -71028,6 +71188,7 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     mapa_tipo = as.character(mapa_tipo)[1L],
     motivo = as.character(motivo)[1L],
     n_uas = as.integer(n_uas)[1L],
+    limite_uc_mapa_principal = FALSE,
     data_aquisicao = NA_character_,
     dias_defasagem = NA_integer_,
     cenas = NA_character_,
@@ -72614,7 +72775,8 @@ monitora_relatorios_analiticos_metadados_cartograficos <- function(
   cenas,
   resolucao_origem_m,
   status_limite_uc,
-  escala_numerica
+  escala_numerica,
+  limite_uc_mapa_principal = FALSE
 ) {
   ucs <- unique(trimws(as.character(uas$UC)))
   ucs <- ucs[!is.na(ucs) & nzchar(ucs)]
@@ -72709,7 +72871,12 @@ monitora_relatorios_analiticos_metadados_cartograficos <- function(
     as.character(atribuicao),
     paste0(
       "Registros processados pelo script; imagem Sentinel-2 L2A selecionada no ",
-      "catálogo Earth Search; limite oficial do ICMBio usado apenas no localizador."
+      "catálogo Earth Search; limite oficial do ICMBio usado ",
+      if (isTRUE(limite_uc_mapa_principal)) {
+        "no mapa principal e no localizador."
+      } else {
+        "apenas no localizador, pois o contorno não intercepta a moldura principal."
+      }
     ),
     paste0(
       "PEC/PEC-PCD não avaliada. Produto impróprio para demarcação fundiária ou ",
@@ -73285,6 +73452,27 @@ monitora_relatorios_analiticos_logos_embutidas <- function() {
   )
 }
 
+monitora_relatorios_analiticos_limite_intercepta_moldura <- function(
+  limite_uc_mapa,
+  referencia_mapa
+) {
+  if (is.null(limite_uc_mapa) || is.null(referencia_mapa)) return(FALSE)
+  if (suppressWarnings(nrow(limite_uc_mapa)) < 1L) return(FALSE)
+  tryCatch({
+    linhas_limite_uc <- terra::as.lines(limite_uc_mapa)
+    moldura_mapa <- terra::as.polygons(
+      terra::ext(referencia_mapa),
+      crs = terra::crs(referencia_mapa)
+    )
+    intersecoes <- terra::relate(
+      linhas_limite_uc,
+      moldura_mapa,
+      "intersects"
+    )
+    isTRUE(any(intersecoes, na.rm = TRUE))
+  }, error = function(e) FALSE)
+}
+
 monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   rgb,
   uas,
@@ -73327,6 +73515,25 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   xy_ini <- terra::crds(terra::project(pontos_ini, crs_rgb))
   xy_fin <- terra::crds(terra::project(pontos_fin, crs_rgb))
   xy_meio <- terra::crds(terra::project(pontos_meio, crs_rgb))
+  cor_limite_uc <- "#F4C300"
+  limite_uc_mapa <- if (
+    !is.null(limite_uc) &&
+      isTRUE(status_limite_uc$localizado[[1L]])
+  ) {
+    tryCatch(
+      terra::project(limite_uc, crs_rgb),
+      error = function(e) NULL
+    )
+  } else {
+    NULL
+  }
+  tem_limite_uc_mapa <- !is.null(limite_uc_mapa) &&
+    suppressWarnings(nrow(limite_uc_mapa)) > 0L
+  limite_uc_visivel_mapa_principal <-
+    monitora_relatorios_analiticos_limite_intercepta_moldura(
+      limite_uc_mapa,
+      rgb
+    )
 
   ### A reprojeção de uma imagem retangular pode criar cunhas NA nas bordas.
   ### Elas são preenchidas somente para a composição visual, por expansão
@@ -73486,10 +73693,18 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
       )
     )
   )
+  ### A faixa editorial conserva aproximadamente a altura física da composição
+  ### homologada. A altura adicional da prancha é destinada ao mapa, permitindo
+  ### que sua moldura e os rótulos de coordenadas ocupem a mesma largura útil da
+  ### faixa inferior sem deformar o raster ou alterar a razão entre os eixos.
+  largura_prancha_px <- 2800L
+  altura_prancha_px <- 3200L
+  fracao_faixa_inferior <- 0.21
+  margem_lateral_mapa_linhas <- 2.0
   grDevices::png(
     destino,
-    width = 2800,
-    height = 2800,
+    width = largura_prancha_px,
+    height = altura_prancha_px,
     res = 240,
     bg = "white"
   )
@@ -73500,12 +73715,12 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   graficos_antigos <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(graficos_antigos), add = TRUE)
 
-  ### Layout cartográfico padrão quadrado (4 x 4). O mapa ocupa os 76%
-  ### superiores e uma faixa editorial exclusiva recebe os quadros e as marcas
-  ### institucionais nos 24% finais.
+  ### Layout cartográfico vertical intermediário entre 4 x 4 e 4 x 5. O mapa
+  ### ocupa os 79% superiores e uma faixa editorial exclusiva recebe quadros e
+  ### marcas institucionais nos 21% finais.
   graphics::par(
-    fig = c(0, 1, 0.24, 1),
-    mar = c(3.7, 4.6, 4.7, 3.8),
+    fig = c(0, 1, fracao_faixa_inferior, 1),
+    mar = c(3.7, margem_lateral_mapa_linhas, 4.7, margem_lateral_mapa_linhas),
     xaxs = "i",
     yaxs = "i",
     mgp = c(1.9, 0.52, 0),
@@ -73518,7 +73733,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     b = 3L,
     scale = 255,
     axes = FALSE,
-    mar = c(3.7, 4.6, 4.7, 3.8),
+    mar = c(3.7, margem_lateral_mapa_linhas, 4.7, margem_lateral_mapa_linhas),
     maxcell = 2000000
   )
   ### Margem física única dos quadros: 3 mm medidos a partir da moldura
@@ -73554,6 +73769,18 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   }
   for (linha in graticula$linhas_lat) {
     graphics::lines(linha[, 1L], linha[, 2L], col = cor_grade, lwd = 0.45)
+  }
+  ### Contorno oficial simples, sem preenchimento ou halo. É desenhado antes
+  ### das UAs para preservar a hierarquia visual do esforço amostral.
+  if (isTRUE(limite_uc_visivel_mapa_principal)) {
+    terra::plot(
+      limite_uc_mapa,
+      add = TRUE,
+      col = NA,
+      border = cor_limite_uc,
+      lwd = 2.8,
+      legend = FALSE
+    )
   }
   graphics::segments(
     xy_ini[, 1L], xy_ini[, 2L],
@@ -73719,7 +73946,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
 
   ### Faixa editorial inferior. O fundo e a linha superior tornam explícita
   ### a separação entre a área cartográfica e os elementos explicativos.
-  fig_faixa_inferior <- c(0, 1, 0, 0.24)
+  fig_faixa_inferior <- c(0, 1, 0, fracao_faixa_inferior)
   graphics::par(
     fig = fig_faixa_inferior,
     mar = c(0, 0, 0, 0),
@@ -73745,7 +73972,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     c(caixa[[1L]], caixa[[2L]], caixa[[3L]], caixa[[4L]])
   }
   margem_faixa_x <- margem_ndc_x
-  margem_faixa_y <- margem_ndc_y / 0.24
+  margem_faixa_y <- margem_ndc_y / fracao_faixa_inferior
   caixa_legenda <- c(
     0.200,
     0.425,
@@ -73904,23 +74131,52 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   x_rotulo <- area_legenda[[1L]] + 0.209 * largura_area_legenda
   graphics::text(
     mean(area_legenda[1:2]),
-    area_legenda[[4L]] - 0.119 * altura_area_legenda,
+    area_legenda[[4L]] - 0.092 * altura_area_legenda,
     labels = "Legenda",
     cex = 1.05,
     font = 2,
     col = "#174B3B"
   )
+  if (isTRUE(limite_uc_visivel_mapa_principal)) {
+    y_limite_uc <- area_legenda[[4L]] - 0.205 * altura_area_legenda
+    graphics::segments(
+      x_simbolo - 0.043 * largura_area_legenda,
+      y_limite_uc,
+      x_simbolo + 0.043 * largura_area_legenda,
+      y_limite_uc,
+      col = cor_limite_uc,
+      lwd = 3.0
+    )
+    graphics::text(
+      x_rotulo,
+      y_limite_uc,
+      labels = "Limite da UC",
+      adj = c(0, 0.5),
+      cex = 0.72,
+      col = "#263238"
+    )
+  }
+  posicao_titulo_continuidade <- if (isTRUE(limite_uc_visivel_mapa_principal)) {
+    0.325
+  } else {
+    0.247
+  }
   graphics::text(
     x_legenda,
-    area_legenda[[4L]] - 0.247 * altura_area_legenda,
+    area_legenda[[4L]] - posicao_titulo_continuidade * altura_area_legenda,
     labels = "Continuidade do esforço\namostral nas UAs",
     adj = c(0, 0.5),
     cex = 0.78,
     font = 2,
     col = "#263238"
   )
+  posicoes_continuidade <- if (isTRUE(limite_uc_visivel_mapa_principal)) {
+    c(0.455, 0.555, 0.655)
+  } else {
+    c(0.413, 0.519, 0.625)
+  }
   y_continuidade <- area_legenda[[4L]] -
-    c(0.413, 0.519, 0.625) * altura_area_legenda
+    posicoes_continuidade * altura_area_legenda
   graphics::points(
     rep(x_simbolo, 3L), y_continuidade,
     pch = 21,
@@ -73938,15 +74194,22 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   )
   graphics::text(
     x_legenda,
-    area_legenda[[4L]] - 0.734 * altura_area_legenda,
+    area_legenda[[4L]] -
+      (if (isTRUE(limite_uc_visivel_mapa_principal)) 0.755 else 0.734) *
+        altura_area_legenda,
     labels = "Formação vegetacional",
     adj = c(0, 0.5),
     cex = 0.84,
     font = 2,
     col = "#263238"
   )
+  posicoes_formacao <- if (isTRUE(limite_uc_visivel_mapa_principal)) {
+    c(0.855, 0.940)
+  } else {
+    c(0.844, 0.938)
+  }
   y_formacao <- area_legenda[[4L]] -
-    c(0.844, 0.938) * altura_area_legenda
+    posicoes_formacao * altura_area_legenda
   graphics::points(
     rep(x_simbolo, 2L), y_formacao,
     pch = c(21, 24),
@@ -73972,7 +74235,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     altura_disponivel <- area_disponivel[[4L]] - area_disponivel[[3L]]
     aspecto_imagem <- dim(imagem)[[2L]] / dim(imagem)[[1L]]
     aspecto_fisico_faixa <- tamanho_dispositivo_pol[[1L]] /
-      (0.24 * tamanho_dispositivo_pol[[2L]])
+      (fracao_faixa_inferior * tamanho_dispositivo_pol[[2L]])
     aspecto_fisico_disponivel <- largura_disponivel /
       altura_disponivel * aspecto_fisico_faixa
     if (aspecto_fisico_disponivel > aspecto_imagem) {
@@ -74027,8 +74290,10 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
 
   ### Localizador integrado no canto superior esquerdo. O objeto vetorial
   ### está em memória; ZIP e shapefile temporários já foram eliminados.
-  if (!is.null(limite_uc) && isTRUE(status_limite_uc$localizado[[1L]])) {
-    limite_localizador <- terra::project(limite_uc, crs_mapa$crs)
+  if (isTRUE(tem_limite_uc_mapa)) {
+    ### Reutiliza a projeção já calculada para o mapa principal. Assim, a nova
+    ### camada não acrescenta uma segunda reprojeção vetorial ao localizador.
+    limite_localizador <- limite_uc_mapa
     estados_localizador <- if (!is.null(estados) && nrow(estados)) {
       terra::project(estados, crs_mapa$crs)
     } else {
@@ -74132,7 +74397,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     esquerda_slot_localizador <- margem_ndc_x
     direita_slot_localizador <- 0.185
     inferior_slot_localizador <- margem_ndc_y
-    superior_slot_localizador <- 0.24 - margem_ndc_y
+    superior_slot_localizador <- fracao_faixa_inferior - margem_ndc_y
     largura_slot_localizador <- direita_slot_localizador -
       esquerda_slot_localizador
     altura_slot_localizador <- superior_slot_localizador -
@@ -74242,7 +74507,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
       limite_localizador,
       add = TRUE,
       col = grDevices::adjustcolor("#FFEB3B", alpha.f = 0.42),
-      border = "#F4C300",
+      border = cor_limite_uc,
       lwd = 2.0,
       legend = FALSE
     )
@@ -74325,7 +74590,12 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     biomas_proj <- if (!is.null(biomas) && nrow(biomas)) terra::project(biomas, crs_mapa$crs) else NULL
     estados_recorte <- if (!is.null(estados_proj)) tryCatch(terra::crop(estados_proj, ext_localizador), error = function(e) NULL) else NULL
     biomas_recorte <- if (!is.null(biomas_proj)) tryCatch(terra::crop(biomas_proj, ext_localizador), error = function(e) NULL) else NULL
-    fig_localizador <- c(margem_ndc_x, 0.185, margem_ndc_y, 0.24 - margem_ndc_y)
+    fig_localizador <- c(
+      margem_ndc_x,
+      0.185,
+      margem_ndc_y,
+      fracao_faixa_inferior - margem_ndc_y
+    )
     graphics::par(fig = fig_localizador, mar = c(0, 0, 0, 0), new = TRUE, xaxs = "i", yaxs = "i", family = "sans")
     terra::plot(
       contexto, col = NA, border = NA, axes = FALSE, legend = FALSE,
@@ -74357,7 +74627,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
       margem_ndc_x,
       0.185,
       margem_ndc_y,
-      0.24 - margem_ndc_y
+      fracao_faixa_inferior - margem_ndc_y
     )
     graphics::par(
       fig = fig_localizador,
@@ -74400,13 +74670,17 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
       cenas = cenas,
       resolucao_origem_m = resolucao_origem_m,
       status_limite_uc = status_limite_uc,
-      escala_numerica = escala_numerica
+      escala_numerica = escala_numerica,
+      limite_uc_mapa_principal = limite_uc_visivel_mapa_principal
     )
   } else {
     monitora_relatorios_analiticos_metadados_cartograficos_vazio()
   }
   attr(ok, "metadados_cartograficos") <- metadados
   attr(ok, "crs_mapa") <- crs_mapa
+  attr(ok, "limite_uc_mapa_principal") <- isTRUE(
+    limite_uc_visivel_mapa_principal
+  )
   ok
 }
 monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
@@ -74860,9 +75134,14 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   )
   metadados_cartograficos <- attr(mapa_ok, "metadados_cartograficos")
   crs_mapa <- attr(mapa_ok, "crs_mapa")
+  limite_uc_mapa_principal_renderizado <- isTRUE(attr(
+    mapa_ok,
+    "limite_uc_mapa_principal"
+  ))
   nuvens_catalogo <- selecionada$nuvens_catalogo_max_pct[[1L]]
   status[, `:=`(
     gerado = TRUE,
+    limite_uc_mapa_principal = limite_uc_mapa_principal_renderizado,
     fonte_catalogo = "https://earth-search.aws.element84.com/v1",
     motivo = criterio_selecao,
     data_aquisicao = data_selecionada,
@@ -74904,6 +75183,11 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       ),
       "%. Verde: todas as campanhas; amarelo: amostragem intermitente; ",
       "vermelho: uma campanha. ",
+      if (isTRUE(limite_uc_mapa_principal_renderizado)) {
+        "Contorno amarelo: limite oficial da UC. "
+      } else {
+        ""
+      },
       texto_atribuicao,
       "."
     )
