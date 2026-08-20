@@ -1,8 +1,16 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão do script: 2.9.13
-### Baseline pública de origem: v2.9.12
+### Versão do script: 2.9.14
+### Baseline pública de origem: v2.9.13
+### A v2.9.14 corrige a preparação isolada de novas COLETAs no Windows sem
+### alterar o caminho rápido quando a opção permanece em "N". O subprocesso
+### passa a receber as opções por wrapper R temporário autogerado, preserva os
+### diagnósticos antes da limpeza e bloqueia atomicamente COLETAs quarentenadas
+### por incompletude. A leitura padrão passa a converter também XLS, e a edição
+### de UA aceita qualquer valor contratual UA-001_VgCS...UA-999_VgCS, mesmo que
+### ainda não observado no dataset, com validação idêntica na UI e no servidor.
+###
 ### A v2.9.13 condiciona a seção de hipóteses ecológicas às evidências
 ### selecionadas para cada UC, reorganiza as tabelas de estado e apresenta o
 ### contexto de fogo por COLETAs únicas e subcontextos auditáveis. Menções
@@ -285,8 +293,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.13"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.13-20260819"
+MONITORA_SCRIPT_VERSAO <- "2.9.14"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.14-20260819"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -15537,6 +15545,43 @@ monitora_correcao_sugerir_opcoes_msg <- function(invalidos, opcoes, max_n = 5L) 
   paste(out, collapse = "; ")
 }
 
+monitora_correcao_atributo_eh_ua <- function(atributo) {
+  atributo <- as.character(atributo)
+  atributo <- atributo[!is.na(atributo) & nzchar(trimws(atributo))]
+  if (!length(atributo)) return(FALSE)
+  atributo <- iconv(atributo, from = "", to = "ASCII//TRANSLIT")
+  atributo[is.na(atributo)] <- ""
+  atributo <- tolower(trimws(atributo))
+  atributo <- sub("^.*/", "", atributo)
+  atributo <- gsub("[^a-z0-9]+", "_", atributo, perl = TRUE)
+  atributo <- gsub("^_+|_+$", "", atributo, perl = TRUE)
+  any(atributo %in% c("ua", "unidade_amostral"))
+}
+
+monitora_correcao_validar_ua_contratual <- function(valor) {
+  valor <- as.character(valor)[1L]
+  if (is.na(valor)) valor <- ""
+  ok <- grepl(
+    "^UA-(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})_VgCS$",
+    valor, perl = TRUE
+  )
+  if (!isTRUE(ok)) {
+    return(list(
+      ok = FALSE,
+      status = "bloqueada_formato_ua",
+      mensagem = paste0(
+        "UA inválida. Informe o valor completo no padrão UA-XXX_VgCS, ",
+        "com numeração de 001 a 999; exemplo: UA-004_VgCS."
+      )
+    ))
+  }
+  list(
+    ok = TRUE,
+    status = "ok",
+    mensagem = "UA válida no contrato UA-001_VgCS a UA-999_VgCS"
+  )
+}
+
 monitora_correcao_exemplos_formato_msg <- function(tipo_base, atributo = NA_character_) {
   tipo_base <- as.character(tipo_base)[1L]
   if (is.na(tipo_base)) tipo_base <- ""
@@ -15546,8 +15591,8 @@ monitora_correcao_exemplos_formato_msg <- function(tipo_base, atributo = NA_char
  ### para atributos administrativos específicos (UA/EA), sem criar nova lista
  ### de domínio nem restringir o valor a ela — é só texto de ajuda.
   att_final <- tolower(sub("^.*/", "", as.character(atributo)[1L]))
-  if (!is.na(att_final) && identical(att_final, "ua")) {
-    return("Padrão observado/contratual do atributo UA: ex. UA-001_VgCS. Informe o valor completo conforme o padrão já usado na coleta; não é restrito a uma lista de domínio.")
+  if (isTRUE(monitora_correcao_atributo_eh_ua(atributo))) {
+    return("Padrão contratual do atributo UA: UA-XXX_VgCS, com numeração de 001 a 999; ex. UA-004_VgCS. O valor não é restrito às UAs já observadas no dataset.")
   }
   if (!is.na(att_final) && identical(att_final, "ea")) {
     return("Padrão observado/contratual do atributo EA: siga o padrão já usado no template/coleta para esta UC. Informe o valor completo; não é restrito a uma lista de domínio.")
@@ -15570,7 +15615,7 @@ monitora_correcao_exemplos_formato_msg <- function(tipo_base, atributo = NA_char
   "Preencha conforme o tipo do campo no contrato XLSForm."
 }
 
-monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list_name = NA_character_, meta_xls = NULL, valor_original = NA_character_, escolhas_fallback = character(0)) {
+monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list_name = NA_character_, meta_xls = NULL, valor_original = NA_character_, escolhas_fallback = character(0), atributo = NA_character_) {
   acao <- monitora_correcao_acao_normalizar(acao)
   tipo_base <- as.character(tipo_base)[1L]
   valor <- as.character(valor)[1L]
@@ -15578,6 +15623,9 @@ monitora_correcao_validar_formato_valor <- function(valor, tipo_base, acao, list
   if (is.na(valor)) valor <- ""
   if (is.na(valor_original)) valor_original <- ""
   if (acao %in% c("clear", "recalcular_tipo_forma_vida")) return(list(ok = TRUE, status = "ok", mensagem = "formato compatível"))
+  if (identical(tipo_base, "select_one") && isTRUE(monitora_correcao_atributo_eh_ua(atributo))) {
+    return(monitora_correcao_validar_ua_contratual(valor))
+  }
   if (tipo_base %in% c("select_one", "select_multiple")) {
     escolhas <- monitora_correcao_choices_xlsform(list_name, meta_xls)
     if (!length(escolhas) && tipo_base == "select_one") {
@@ -15791,7 +15839,11 @@ monitora_correcao_validar_contrato_edicao <- function(dt, col, acao, valor_novo,
     escolhas_fallback <- unique(trimws(as.character(dt[[col]])))
     escolhas_fallback <- escolhas_fallback[!is.na(escolhas_fallback) & nzchar(escolhas_fallback)]
   }
-  monitora_correcao_validar_formato_valor(valor_novo, info$tipo_base_edicao, acao_norm, info$xlsform_list_name, meta_xls, valor_original, escolhas_fallback = escolhas_fallback)
+  monitora_correcao_validar_formato_valor(
+    valor_novo, info$tipo_base_edicao, acao_norm,
+    info$xlsform_list_name, meta_xls, valor_original,
+    escolhas_fallback = escolhas_fallback, atributo = col
+  )
 }
 
 monitora_correcao_validar_destino_operacao <- function(dt, col, acao, valor_novo, corr_linha, dicionario = NULL, meta_xls = NULL,
@@ -20227,11 +20279,11 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.13-20260819",
+      ifnotfound = "v2.9.14-20260819",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.13", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.14", inherits = TRUE
     ))
     op
   }
@@ -30375,6 +30427,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     acao_norm <- monitora_correcao_acao_normalizar(acao)
     if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
     if (acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) return("sem_valor_novo")
+    if (isTRUE(monitora_correcao_atributo_eh_ua(c(atributo, info$col)))) return("texto_ua_contratual")
     if (tipo == "select_one") return("selectize_unico")
     if (tipo == "select_multiple") return("selectize_tokens")
     if (tipo == "date") return("date")
@@ -30419,6 +30472,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     aud[tipo_base_edicao %in% c("select_one", "select_multiple") & n_opcoes_xlsform < 1L, status_controle := "bloqueado_sem_dominio_xlsform"]
     aud[tipo_base_edicao == "select_one" & n_opcoes_xlsform < 1L & n_opcoes_dominio_observado >= 1L, status_controle := "ok"]
     aud[tipo_base_edicao == "select_multiple" & grepl("(^|;)update(;|$)|(^|;)clear(;|$)", acoes_permitidas, perl = TRUE), status_controle := "erro_lista_tokens_com_operacao_valor_total"]
+    idx_ua_contratual <- vapply(
+      aud$atributo_coluna_registros_corrig,
+      monitora_correcao_atributo_eh_ua,
+      logical(1L)
+    )
+    aud[idx_ua_contratual, `:=`(
+      widget_valor = "texto_ua_contratual",
+      status_controle = "ok"
+    )]
     aud[, timestamp := format(Sys.time(), "%Y-%m-%d %H:%M:%S")]
     cols <- intersect(c(
       "timestamp", "atributo_coluna_registros_corrig", "ordem_template_sismonitora", "atributos_template_sismonitora",
@@ -33866,6 +33928,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       if (is.na(tipo) || !nzchar(tipo)) tipo <- "text"
       if (acao_norm %in% c("clear", "recalcular_tipo_forma_vida")) {
         return(shiny::div(class = "alert alert-warning", "Esta ação não usa valor novo. O valor será limpo ou recalculado pelo contrato do script."))
+      }
+      if (isTRUE(monitora_correcao_atributo_eh_ua(c(atributo, info$col)))) {
+        return(shiny::textInput(
+          "valor_novo", "Valor novo",
+          value = "", placeholder = "UA-004_VgCS"
+        ))
       }
       if (tipo == "select_one") {
         choices <- monitora_painel_choices_valor_atributo(atributo, acao_norm, incluir_observados = FALSE)
@@ -52993,6 +53061,86 @@ monitora_incorporacao_copiar_arvore <- function(origem, destino) {
   invisible(TRUE)
 }
 
+monitora_incorporacao_diagnostico_dir <- function() {
+  file.path(
+    get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
+    "03_auditorias", "incorporacao_novas_coletas"
+  )
+}
+
+monitora_incorporacao_publicar_diagnostico_filho <- function(
+    dir_tmp, log_child, inventario = NULL) {
+  dir_aud <- monitora_incorporacao_diagnostico_dir()
+  dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(log_child)) {
+    file.copy(
+      log_child,
+      file.path(dir_aud, "preparacao_isolada_console.txt"),
+      overwrite = TRUE, copy.mode = FALSE, copy.date = FALSE
+    )
+  }
+  if (!is.null(inventario)) {
+    try(monitora_fwrite(
+      data.table::as.data.table(inventario),
+      file.path(dir_aud, "inventario_fontes_novas_coletas.csv"), na = ""
+    ), silent = TRUE)
+  }
+  dir_aud_filho <- file.path(dir_tmp, "output", "03_auditorias")
+  if (dir.exists(dir_aud_filho)) {
+    arquivos_diag <- unique(c(
+      list.files(
+        file.path(dir_aud_filho, "completude"), recursive = TRUE,
+        full.names = TRUE, all.files = FALSE, no.. = TRUE
+      ),
+      file.path(
+        dir_aud_filho, "importacao",
+        "auditoria_deduplicacao_final_ponto_ano_ultima_execucao.csv"
+      ),
+      file.path(
+        dir_aud_filho, "pendencias_impeditivas",
+        "resumo_pendencias_impeditivas_registros_corrig.csv"
+      )
+    ))
+    arquivos_diag <- arquivos_diag[file.exists(arquivos_diag) & !dir.exists(arquivos_diag)]
+    destino <- file.path(dir_aud, "preparacao_isolada")
+    if (dir.exists(destino)) unlink(destino, recursive = TRUE, force = TRUE)
+    for (arquivo_diag in arquivos_diag) {
+      rel <- substring(
+        normalizePath(arquivo_diag, winslash = "/", mustWork = TRUE),
+        nchar(normalizePath(dir_aud_filho, winslash = "/", mustWork = TRUE)) + 2L
+      )
+      alvo_diag <- file.path(destino, rel)
+      dir.create(dirname(alvo_diag), recursive = TRUE, showWarnings = FALSE)
+      file.copy(
+        arquivo_diag, alvo_diag, overwrite = TRUE,
+        copy.mode = FALSE, copy.date = FALSE
+      )
+    }
+  }
+  normalizePath(dir_aud, winslash = "/", mustWork = FALSE)
+}
+
+monitora_incorporacao_auditoria_completude_filho <- function(dir_tmp) {
+  candidatos <- c(
+    file.path(
+      dir_tmp, "output", "03_auditorias", "completude",
+      "auditoria_completude_101_pontos_por_coleta_pre_painel.csv"
+    ),
+    file.path(
+      dir_tmp, "output", "auditoria_completude_101_pontos_por_coleta_pre_painel.csv"
+    )
+  )
+  arquivo <- candidatos[file.exists(candidatos)][1L]
+  if (is.na(arquivo) || !nzchar(arquivo)) return(data.table::data.table())
+  tryCatch(
+    data.table::fread(
+      arquivo, colClasses = "character", na.strings = NULL,
+      showProgress = FALSE, encoding = "UTF-8"
+    ),
+    error = function(e) data.table::data.table()
+  )
+}
+
 monitora_incorporacao_preparar_checkpoint_isolado <- function(
     dir_novas,
     script_ativo = monitora_io_arquivo_script_ativo()) {
@@ -53012,6 +53160,14 @@ monitora_incorporacao_preparar_checkpoint_isolado <- function(
     stop("Falha ao materializar a cópia isolada do script para as novas COLETAs.", call. = FALSE)
   }
   monitora_incorporacao_copiar_arvore(dir_novas, file.path(dir_tmp, "input"))
+  inventario <- data.table::data.table(
+    arquivo = substring(
+      normalizePath(arquivos, winslash = "/", mustWork = TRUE),
+      nchar(normalizePath(dir_novas, winslash = "/", mustWork = TRUE)) + 2L
+    ),
+    tamanho_bytes = as.numeric(file.info(arquivos)$size),
+    sha256 = vapply(arquivos, monitora_linhagem_hash_arquivo, character(1L))
+  )
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   if (!file.exists(rscript)) rscript <- Sys.which("Rscript")
   if (!nzchar(rscript) || !file.exists(rscript)) stop(
@@ -53033,35 +53189,85 @@ monitora_incorporacao_preparar_checkpoint_isolado <- function(
     "MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS=N",
     "MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES=N"
   )
-  ### source(..., echo=FALSE) evita que o processo isolado pague o custo de
-  ### impressão/análise do arquivo inteiro pela via --file em IDEs/plataformas
-  ### nas quais esse custo é material. A cópia continua autossuficiente.
-  expressao_source <- paste0(
-    "source(", encodeString(normalizePath(script_tmp, winslash = "/", mustWork = TRUE), quote = "'"),
-    ", echo=FALSE)"
+  ### No R/Windows, system2(..., env=) pode terminar com status 5 antes de o
+  ### processo filho iniciar. Um wrapper R temporário e autogerado aplica as
+  ### mesmas opções por Sys.setenv() dentro do filho; não é dependência externa
+  ### nem altera o ambiente do processo pai. source(..., echo=FALSE) preserva o
+  ### comportamento rápido já homologado para scripts grandes.
+  env_nomes <- sub("=.*$", "", env_child)
+  env_valores <- sub("^[^=]*=", "", env_child)
+  wrapper_child <- file.path(dir_tmp, "preparar_novas_coletas.R")
+  env_linhas <- paste0(
+    "  ", encodeString(env_nomes, quote = "'"), " = ",
+    encodeString(env_valores, quote = "'")
   )
-  status <- suppressWarnings(system2(
-    rscript, args = c("--vanilla", "-e", shQuote(expressao_source)),
-    stdout = log_child, stderr = log_child, env = env_child, wait = TRUE
-  ))
+  if (length(env_linhas) > 1L) env_linhas[-length(env_linhas)] <- paste0(env_linhas[-length(env_linhas)], ",")
+  writeLines(c(
+    "monitora_child_env <- c(",
+    env_linhas,
+    ")",
+    "do.call(Sys.setenv, as.list(monitora_child_env))",
+    paste0(
+      "source(",
+      encodeString(normalizePath(script_tmp, winslash = "/", mustWork = TRUE), quote = "'"),
+      ", echo=FALSE)"
+    )
+  ), wrapper_child, useBytes = TRUE)
+  status <- tryCatch(
+    suppressWarnings(system2(
+      rscript,
+      args = c(
+        "--vanilla",
+        shQuote(normalizePath(wrapper_child, winslash = "/", mustWork = TRUE))
+      ),
+      stdout = log_child, stderr = log_child, wait = TRUE
+    )),
+    error = function(e) {
+      write(paste0("Falha ao iniciar Rscript: ", conditionMessage(e)), file = log_child, append = TRUE)
+      127L
+    }
+  )
   candidatos <- c(
     file.path(dir_tmp, "output", "01_produtos_dados", "registros_corrig.csv"),
     file.path(dir_tmp, "output", "registros_corrig.csv")
   )
   checkpoint <- candidatos[file.exists(candidatos)][1L]
+  dir_aud <- monitora_incorporacao_publicar_diagnostico_filho(
+    dir_tmp, log_child, inventario
+  )
   if (!identical(as.integer(status), 0L) || is.na(checkpoint) || !nzchar(checkpoint)) {
     linhas_log <- if (file.exists(log_child)) utils::tail(readLines(log_child, warn = FALSE, encoding = "UTF-8"), 30L) else "log indisponível"
     stop(
       "Falha na preparação isolada das novas COLETAs (status ", status, "). Últimas mensagens: ",
-      paste(linhas_log, collapse = " | "), call. = FALSE
+      paste(linhas_log, collapse = " | "), ". Diagnóstico preservado em ",
+      dir_aud, ".", call. = FALSE
     )
   }
+  completude_filho <- monitora_incorporacao_auditoria_completude_filho(dir_tmp)
+  if (nrow(completude_filho)) {
+    completa <- tolower(trimws(as.character(completude_filho$completa_101))) %in%
+      c("true", "t", "1", "sim", "s")
+    incompletas <- completude_filho[!completa]
+    if (nrow(incompletas)) {
+      stop(
+        "Incorporação atômica bloqueada: ", nrow(incompletas),
+        " COLETA(s) adicional(is) não contém(êm) exatamente os 101 pontos ",
+        "distintos de 1 a 101. Nenhuma linha foi incorporada. Consulte ",
+        file.path(
+          dir_aud, "preparacao_isolada", "completude",
+          "auditoria_completude_101_pontos_por_coleta_pre_painel.csv"
+        ), ".", call. = FALSE
+      )
+    }
+  }
   novas <- monitora_registros_corrig_ler_csv_normalizado(checkpoint, modo = "incorporacao_novas_coletas_isolada")
-  inventario <- data.table::data.table(
-    arquivo = substring(normalizePath(arquivos, winslash = "/", mustWork = TRUE), nchar(normalizePath(dir_novas, winslash = "/", mustWork = TRUE)) + 2L),
-    tamanho_bytes = as.numeric(file.info(arquivos)$size),
-    sha256 = vapply(arquivos, monitora_linhagem_hash_arquivo, character(1L))
-  )
+  if (!nrow(novas)) {
+    stop(
+      "Incorporação atômica bloqueada: a preparação isolada não produziu ",
+      "nenhuma linha elegível para classificação. Nenhuma linha foi incorporada. ",
+      "Consulte ", dir_aud, ".", call. = FALSE
+    )
+  }
   list(dados = novas[], inventario = inventario[], console = if (file.exists(log_child)) readLines(log_child, warn = FALSE, encoding = "UTF-8") else character())
 }
 
@@ -53074,7 +53280,7 @@ monitora_incorporacao_novas_coletas_executar <- function(base) {
   )
   preparado <- monitora_incorporacao_preparar_checkpoint_isolado(dir_novas)
   classificado <- monitora_incorporacao_classificar(base, preparado$dados)
-  dir_aud <- file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "incorporacao_novas_coletas")
+  dir_aud <- monitora_incorporacao_diagnostico_dir()
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(classificado$resumo, file.path(dir_aud, "auditoria_incorporacao_novas_coletas.csv"), na = "")
   monitora_fwrite(preparado$inventario, file.path(dir_aud, "inventario_fontes_novas_coletas.csv"), na = "")
@@ -57162,11 +57368,11 @@ monitora_io_extrair_zips_recursivos(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRA
 monitora_recurso_controlar("apos_extracao_recursiva_zips", risco = "normal", force_log = TRUE)
 monitora_perf_registrar_checkpoint("extracao_recursiva_zips", "extração de ZIPs externos e internos")
 
-### Conversão defensiva de XLSX para CSV apenas nas áreas de entrada/extração, não em output/log.
-xlsx_files <- list.files(c(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRACT_DIR), pattern = "\\.xlsx$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+### Conversão defensiva de XLSX/XLS para CSV apenas nas áreas de entrada/extração, não em output/log.
+xlsx_files <- list.files(c(MONITORA_IO_DIRETORIOS_FONTE, MONITORA_EXTRACT_DIR), pattern = "\\.xlsx?$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
 xlsx_files <- xlsx_files[!grepl("/(output|log)/", normalizePath(xlsx_files, winslash = "/", mustWork = FALSE))]
 for (xlsx_file in xlsx_files) {
-  csv_file <- sub("\\.xlsx$", ".csv", xlsx_file, ignore.case = TRUE)
+  csv_file <- sub("\\.xlsx?$", ".csv", xlsx_file, ignore.case = TRUE)
   if (!file.exists(csv_file)) {
     data <- read_excel(xlsx_file)
     data.table::fwrite(data.table::as.data.table(monitora_sanitizar_ausencias_produto(data)), file = csv_file, na = "NA")
@@ -57176,7 +57382,7 @@ for (xlsx_file in xlsx_files) {
   }
 }
 monitora_rm_seguro("data", "csv_file", "xlsx_file", "xlsx_files")
-monitora_perf_registrar_checkpoint("conversao_xlsx", "conversão defensiva de XLSX para CSV, quando aplicável")
+monitora_perf_registrar_checkpoint("conversao_xlsx", "conversão defensiva de XLSX/XLS para CSV, quando aplicável")
 
 ### Leitura e concatenação dos CSVs de entrada.
 ### Importante: arquivos registros_corrig*.csv são aceitos como entrada válida apenas quando colocados em
