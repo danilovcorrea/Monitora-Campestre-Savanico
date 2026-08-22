@@ -37,7 +37,7 @@ exigir(
 
 for (trecho in c(
   'MONITORA_SCRIPT_VERSAO <- "2.9.16"',
-  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r03"',
+  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260822-r04"',
   'monitora_correcao_validar_ua_contratual <- function',
   '"^UA-(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})_VgCS$"',
   'return("texto_ua_contratual")',
@@ -58,7 +58,12 @@ for (trecho in c(
   'monitora_linhagem_inventario_sessoes_importar <- function',
   'inventario_sessoes_sha256',
   'session_inventory_count',
-  'ordem_sessao_herdada_aux'
+  'ordem_sessao_herdada_aux',
+  'monitora_relatorios_analiticos_destino_fisico <- function',
+  'situacao_caminho_office',
+  'produto_logico = contextos$nome_arquivo_logico[ii]',
+  'base_relatorio_fisica <- "validacao_consolidado"',
+  'metadados_caminho_relatorio.csv'
 )) exigir(grepl(trecho, texto, fixed = TRUE), paste0("Revisão focal ausente: ", trecho))
 
 inicio_incorporacao <- grep(

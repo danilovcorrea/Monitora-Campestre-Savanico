@@ -58,6 +58,10 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 
 - A geração de figuras em caminhos longos no Windows continua usando nomes
   compactos, determinísticos e sem colisões somente quando necessário.
+- Relatórios analíticos e planilhas SISMONITORA também compactam somente o nome
+  físico quando o caminho excede o orçamento conservador do Word ou Excel no
+  Windows. O nome lógico e o contexto permanecem nos índices e manifestos; em
+  caminhos seguros, o nome anterior é preservado sem alteração.
 - Lotes de atributos superiores e listas de tokens usam o valor bruto esperado
   específico de cada COLETA; a verificação atômica ocorre antes de movimentos
   volumosos e nenhuma mutação parcial permanece quando uma precondição falha.
@@ -68,8 +72,9 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 - O manual cobre os 13 modos e os principais percursos operacionais em
   `manual_usuario/`. A geração do PDF tem opção independente, padrão `N`, e
   permanece fora do caminho crítico.
-- Índice de produtos, README do output, migração de caminhos legados e
-  organização final foram atualizados para os novos produtos documentais.
+- O índice de produtos informa o comprimento, o limite recomendado e a situação
+  de abertura no Windows. README do output, migração de caminhos legados e
+  organização final permanecem alinhados aos produtos documentais.
 - A inicialização rápida homologada na v2.9.1, a linhagem cumulativa da v2.9.7,
   o contrato único, os 13 modos e todos os produtos anteriores permanecem
   preservados.
