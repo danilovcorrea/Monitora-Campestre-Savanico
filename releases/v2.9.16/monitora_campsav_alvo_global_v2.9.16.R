@@ -315,7 +315,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.16"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r02"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r03"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -20367,7 +20367,7 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.16-20260821-r02",
+      ifnotfound = "v2.9.16-20260821-r03",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
@@ -73473,6 +73473,21 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     resolucao_alvo_render_m = NA_real_,
     limite_resolucao_aceitavel_m = NA_real_,
     qualidade_resolucao_aprovada = FALSE,
+    largura_exibicao_pixels = NA_real_,
+    densidade_impressao_ppi = NA_real_,
+    ampliacao_impressao_fator = NA_real_,
+    qualidade_densidade_aprovada = FALSE,
+    brilho_medio_pre_ajuste = NA_real_,
+    contraste_pre_ajuste = NA_real_,
+    nitidez_pre_ajuste = NA_real_,
+    entropia_pre_ajuste = NA_real_,
+    brilho_medio_pos_ajuste = NA_real_,
+    contraste_pos_ajuste = NA_real_,
+    nitidez_pos_ajuste = NA_real_,
+    entropia_pos_ajuste = NA_real_,
+    ajuste_radiometrico_aplicado = FALSE,
+    n_alertas_radiometricos = NA_integer_,
+    qualidade_radiometrica_aprovada = FALSE,
     tempo_orcamento_mosaico_seg = NA_real_,
     tempo_mosaico_rgb_seg = NA_real_
   )
@@ -73579,7 +73594,10 @@ monitora_relatorios_analiticos_bbox_satelite <- function(
   uas,
   margem_proporcional = 0.08,
   margem_minima_graus = 0.0025,
-  proporcao_mapa = 1.30
+  proporcao_mapa = 1.30,
+  largura_impressao_cm = 17.6,
+  densidade_minima_ppi = 150,
+  resolucao_fonte_m = 10
 ) {
   lon <- suppressWarnings(as.numeric(c(
     uas$long_ini, uas$long_fin, uas$lon_meio
@@ -73602,6 +73620,29 @@ monitora_relatorios_analiticos_bbox_satelite <- function(
     xmax = rx[[2L]] + dx,
     ymax = ry[[2L]] + dy
   )
+  ### Redes muito compactas não podem ocupar poucos pixels e ser ampliadas na
+  ### prancha. A extensão mínima abaixo garante, já na consulta, a quantidade
+  ### de pixels Sentinel de 10 m necessária a pelo menos 150 ppi na largura
+  ### útil de 17,6 cm. A ampliação da área contextual é local, determinística e
+  ### não acrescenta consultas, tentativas ou downloads ao fluxo.
+  largura_minima_m <-
+    (largura_impressao_cm / 2.54) * densidade_minima_ppi * resolucao_fonte_m
+  altura_minima_m <- largura_minima_m / proporcao_mapa
+  latitude_media <- mean(bbox[c("ymin", "ymax")])
+  metros_grau_lat <- 111320
+  metros_grau_lon <- max(11132, metros_grau_lat * cos(latitude_media * pi / 180))
+  largura_atual_m <- diff(bbox[c("xmin", "xmax")]) * metros_grau_lon
+  altura_atual_m <- diff(bbox[c("ymin", "ymax")]) * metros_grau_lat
+  if (is.finite(largura_atual_m) && largura_atual_m < largura_minima_m) {
+    centro_lon <- mean(bbox[c("xmin", "xmax")])
+    meia_largura_graus <- 0.5 * largura_minima_m / metros_grau_lon
+    bbox[c("xmin", "xmax")] <- centro_lon + c(-1, 1) * meia_largura_graus
+  }
+  if (is.finite(altura_atual_m) && altura_atual_m < altura_minima_m) {
+    centro_lat <- mean(bbox[c("ymin", "ymax")])
+    meia_altura_graus <- 0.5 * altura_minima_m / metros_grau_lat
+    bbox[c("ymin", "ymax")] <- centro_lat + c(-1, 1) * meia_altura_graus
+  }
   ### Expande somente a dimensão curta para que o raster ocupe o quadro
   ### editorial. A compensação por latitude aproxima a proporção em metros e
   ### evita faixas brancas em redes amostrais muito alongadas.
@@ -73622,6 +73663,109 @@ monitora_relatorios_analiticos_bbox_satelite <- function(
   bbox[c("xmin", "xmax")] <- pmax(-180, pmin(180, bbox[c("xmin", "xmax")]))
   bbox[c("ymin", "ymax")] <- pmax(-90, pmin(90, bbox[c("ymin", "ymax")]))
   bbox
+}
+
+monitora_relatorios_analiticos_metricas_radiometricas <- function(rgb) {
+  vazio <- list(
+    brilho = NA_real_, contraste = NA_real_, nitidez = NA_real_,
+    entropia = NA_real_, n_alertas = NA_integer_
+  )
+  if (is.null(rgb) || terra::nlyr(rgb) < 3L || terra::ncell(rgb) < 4L) {
+    return(vazio)
+  }
+  fator <- max(1L, as.integer(ceiling(max(
+    terra::nrow(rgb), terra::ncol(rgb)
+  ) / 400)))
+  amostra <- if (fator > 1L) {
+    terra::aggregate(rgb[[1:3]], fact = fator, fun = mean, na.rm = TRUE)
+  } else {
+    rgb[[1:3]]
+  }
+  valores <- terra::values(amostra, mat = TRUE)
+  if (!nrow(valores)) return(vazio)
+  validas <- stats::complete.cases(valores)
+  cinza <- rep(NA_real_, nrow(valores))
+  cinza[validas] <- rowMeans(valores[validas, 1:3, drop = FALSE])
+  cinza_valida <- cinza[is.finite(cinza)]
+  if (length(cinza_valida) < 100L) return(vazio)
+  matriz <- matrix(
+    cinza,
+    nrow = terra::nrow(amostra),
+    ncol = terra::ncol(amostra),
+    byrow = TRUE
+  )
+  gradientes <- c(
+    abs(matriz[-1L, , drop = FALSE] - matriz[-nrow(matriz), , drop = FALSE]),
+    abs(matriz[, -1L, drop = FALSE] - matriz[, -ncol(matriz), drop = FALSE])
+  )
+  gradientes <- gradientes[is.finite(gradientes)]
+  classes <- pmax(0L, pmin(63L, as.integer(floor(cinza_valida / 4))))
+  frequencias <- tabulate(classes + 1L, nbins = 64L)
+  probabilidades <- frequencias[frequencias > 0L] / sum(frequencias)
+  brilho <- mean(cinza_valida)
+  contraste <- stats::sd(cinza_valida)
+  nitidez <- if (length(gradientes)) mean(gradientes) else NA_real_
+  entropia <- -sum(probabilidades * log2(probabilidades))
+  alertas <- c(
+    is.finite(brilho) && (brilho < 40 || brilho > 215),
+    is.finite(contraste) && contraste < 8,
+    is.finite(nitidez) && nitidez < 1.6,
+    is.finite(entropia) && entropia < 4.6
+  )
+  list(
+    brilho = brilho,
+    contraste = contraste,
+    nitidez = nitidez,
+    entropia = entropia,
+    n_alertas = sum(alertas)
+  )
+}
+
+monitora_relatorios_analiticos_ajustar_radiometria <- function(rgb, metricas) {
+  brilho <- suppressWarnings(as.numeric(metricas$brilho)[1L])
+  contraste <- suppressWarnings(as.numeric(metricas$contraste)[1L])
+  if (!is.finite(brilho) || !is.finite(contraste) || contraste <= 0) return(rgb)
+  fator_contraste <- if (contraste < 10) min(2, 10 / contraste) else 1
+  brilho_alvo <- if (brilho < 40) 50 else if (brilho > 215) 200 else brilho
+  ajustado <- (rgb[[1:3]] - brilho) * fator_contraste + brilho_alvo
+  terra::clamp(ajustado, lower = 0, upper = 255, values = TRUE)
+}
+
+monitora_relatorios_analiticos_avaliar_rgb_mapa <- function(
+  rgb,
+  aoi_exibicao,
+  largura_impressao_cm = 17.6,
+  densidade_minima_ppi = 150
+) {
+  pre <- monitora_relatorios_analiticos_metricas_radiometricas(rgb)
+  aplicar_ajuste <- is.finite(pre$n_alertas) && pre$n_alertas > 0L &&
+    ((is.finite(pre$brilho) && (pre$brilho < 40 || pre$brilho > 215)) ||
+       (is.finite(pre$contraste) && pre$contraste < 10))
+  rgb_final <- if (isTRUE(aplicar_ajuste)) {
+    monitora_relatorios_analiticos_ajustar_radiometria(rgb, pre)
+  } else {
+    rgb
+  }
+  pos <- monitora_relatorios_analiticos_metricas_radiometricas(rgb_final)
+  aoi_nativo <- terra::project(aoi_exibicao, terra::crs(rgb_final))
+  extensao <- terra::ext(aoi_nativo)
+  largura_m <- as.numeric(extensao$xmax - extensao$xmin)
+  resolucao_x <- abs(terra::res(rgb_final)[[1L]])
+  largura_pixels <- largura_m / resolucao_x
+  densidade_ppi <- largura_pixels / (largura_impressao_cm / 2.54)
+  list(
+    rgb = rgb_final,
+    pre = pre,
+    pos = pos,
+    ajuste_aplicado = isTRUE(aplicar_ajuste),
+    largura_exibicao_pixels = largura_pixels,
+    densidade_impressao_ppi = densidade_ppi,
+    ampliacao_impressao_fator = 300 / densidade_ppi,
+    qualidade_densidade_aprovada = is.finite(densidade_ppi) &&
+      densidade_ppi >= densidade_minima_ppi,
+    qualidade_radiometrica_aprovada = is.finite(pos$n_alertas) &&
+      pos$n_alertas <= 1L
+  )
 }
 
 monitora_relatorios_analiticos_aoi_satelite <- function(bbox) {
@@ -78428,6 +78572,17 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         datas_cache <- datas_cache[!is.na(datas_cache) & nzchar(datas_cache)]
         nuvens_cache <- suppressWarnings(as.numeric(meta_cache$nuvens_area_pct)[1L])
         if (!is.finite(nuvens_cache)) nuvens_cache <- NA_real_
+        avaliacao_cache <- monitora_relatorios_analiticos_avaliar_rgb_mapa(
+          rgb_cache,
+          aoi_exibicao,
+          largura_impressao_cm = 17.6,
+          densidade_minima_ppi = 150
+        )
+        if (!isTRUE(avaliacao_cache$qualidade_densidade_aprovada) ||
+            !isTRUE(avaliacao_cache$qualidade_radiometrica_aprovada)) {
+          stop("cache persistente reprovado pelos gates cartográficos", call. = FALSE)
+        }
+        rgb_cache <- avaliacao_cache$rgb
         mapa_cache <- monitora_relatorios_analiticos_renderizar_sentinel2(
           rgb_cache,
           uas,
@@ -78452,6 +78607,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         list(
           mapa = mapa_cache,
           meta = meta_cache,
+          avaliacao = avaliacao_cache,
           arquivo_rgb = arquivo_rgb_cache,
           limite = limite_cache,
           persistente = startsWith(
@@ -78476,6 +78632,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       cobertura_cache <- suppressWarnings(as.numeric(attr(
         mapa_cache, "cobertura_visual_pos_reprojecao_pct"
       ))[1L])
+      avaliacao_cache <- fallback_cache$avaliacao
       status[, `:=`(
         gerado = TRUE,
         fonte_catalogo = "cache Sentinel validado em execução anterior",
@@ -78521,6 +78678,22 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         resolucao_alvo_render_m = suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L]),
         limite_resolucao_aceitavel_m = 1.15 * suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L]),
         qualidade_resolucao_aprovada = TRUE,
+        largura_exibicao_pixels = avaliacao_cache$largura_exibicao_pixels,
+        densidade_impressao_ppi = avaliacao_cache$densidade_impressao_ppi,
+        ampliacao_impressao_fator = avaliacao_cache$ampliacao_impressao_fator,
+        qualidade_densidade_aprovada = avaliacao_cache$qualidade_densidade_aprovada,
+        brilho_medio_pre_ajuste = avaliacao_cache$pre$brilho,
+        contraste_pre_ajuste = avaliacao_cache$pre$contraste,
+        nitidez_pre_ajuste = avaliacao_cache$pre$nitidez,
+        entropia_pre_ajuste = avaliacao_cache$pre$entropia,
+        brilho_medio_pos_ajuste = avaliacao_cache$pos$brilho,
+        contraste_pos_ajuste = avaliacao_cache$pos$contraste,
+        nitidez_pos_ajuste = avaliacao_cache$pos$nitidez,
+        entropia_pos_ajuste = avaliacao_cache$pos$entropia,
+        ajuste_radiometrico_aplicado = avaliacao_cache$ajuste_aplicado,
+        n_alertas_radiometricos = as.integer(avaliacao_cache$pos$n_alertas),
+        qualidade_radiometrica_aprovada =
+          avaliacao_cache$qualidade_radiometrica_aprovada,
         tempo_orcamento_mosaico_seg = 180,
         tempo_mosaico_rgb_seg = 0,
         cobertura_visual_pos_reprojecao_pct = cobertura_cache,
@@ -79189,6 +79362,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   itens_renderizados <- itens_data_primaria
   modos_tentativa <- c("cog_visual", "cog_bandas_rgb")
   rgb_base_alta_resolucao <- NULL
+  avaliacao_rgb <- NULL
   inicio_mosaico_rgb <- proc.time()[["elapsed"]]
   executar_mosaico_com_orcamento <- function(fun, segundos) {
     on.exit(
@@ -79286,6 +79460,38 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       )
       next
     }
+    avaliacao_rgb <- tryCatch(
+      monitora_relatorios_analiticos_avaliar_rgb_mapa(
+        rgb,
+        aoi_exibicao,
+        largura_impressao_cm = 17.6,
+        densidade_minima_ppi = 150
+      ),
+      error = function(e) e
+    )
+    if (inherits(avaliacao_rgb, "error")) {
+      erros_mosaico_rgb <- c(
+        erros_mosaico_rgb,
+        paste0("gate cartográfico: ", conditionMessage(avaliacao_rgb))
+      )
+      next
+    }
+    if (!isTRUE(avaliacao_rgb$qualidade_densidade_aprovada) ||
+        !isTRUE(avaliacao_rgb$qualidade_radiometrica_aprovada)) {
+      erros_mosaico_rgb <- c(
+        erros_mosaico_rgb,
+        paste0(
+          "gate cartográfico reprovado: densidade=",
+          formatC(
+            avaliacao_rgb$densidade_impressao_ppi,
+            format = "f", digits = 1L
+          ),
+          " ppi; alertas radiométricos=", avaliacao_rgb$pos$n_alertas
+        )
+      )
+      next
+    }
+    rgb <- avaliacao_rgb$rgb
     if (identical(modo_i, "cog_bandas_rgb")) {
       datas_composicao_usadas <- data_selecionada
       itens_renderizados <- itens_data_primaria
@@ -79389,6 +79595,17 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         datas_cache <- as.character(meta_cache$datas_composicao)
         datas_cache <- datas_cache[!is.na(datas_cache) & nzchar(datas_cache)]
         if (!length(datas_cache)) datas_cache <- as.character(meta_cache$data_aquisicao)[1L]
+        avaliacao_cache <- monitora_relatorios_analiticos_avaliar_rgb_mapa(
+          rgb_cache,
+          aoi_exibicao,
+          largura_impressao_cm = 17.6,
+          densidade_minima_ppi = 150
+        )
+        if (!isTRUE(avaliacao_cache$qualidade_densidade_aprovada) ||
+            !isTRUE(avaliacao_cache$qualidade_radiometrica_aprovada)) {
+          stop("cache reprovado pelos gates cartográficos", call. = FALSE)
+        }
+        rgb_cache <- avaliacao_cache$rgb
         mapa_cache <- monitora_relatorios_analiticos_renderizar_sentinel2(
           rgb_cache,
           uas,
@@ -79412,7 +79629,13 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
           datas_composicao = datas_cache
         )
         if (!isTRUE(mapa_cache)) stop("cache não produziu mapa válido", call. = FALSE)
-        list(rgb = rgb_cache, meta = meta_cache, mapa = mapa_cache, datas = datas_cache)
+        list(
+          rgb = rgb_cache,
+          meta = meta_cache,
+          mapa = mapa_cache,
+          datas = datas_cache,
+          avaliacao = avaliacao_cache
+        )
       }, error = function(e) NULL)
       if (is.null(recuperado)) next
       rgb <- recuperado$rgb
@@ -79447,6 +79670,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         "Sentinel de alta resolução previamente validado"
       )
       nivel_contingencia_selecao <- "ultima_composicao_sentinel_alta_resolucao_valida"
+      avaliacao_rgb <- recuperado$avaliacao
       break
     }
   }
@@ -79524,6 +79748,33 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     as.numeric(limite_resolucao_aceitavel_m)[1L]
   auditoria_qualidade_resolucao_aprovada <-
     isTRUE(qualidade_resolucao_aprovada)
+  auditoria_largura_exibicao_pixels <- if (is.list(avaliacao_rgb)) {
+    as.numeric(avaliacao_rgb$largura_exibicao_pixels)[1L]
+  } else {
+    NA_real_
+  }
+  auditoria_densidade_impressao_ppi <- if (is.list(avaliacao_rgb)) {
+    as.numeric(avaliacao_rgb$densidade_impressao_ppi)[1L]
+  } else {
+    NA_real_
+  }
+  auditoria_ampliacao_impressao_fator <- if (is.list(avaliacao_rgb)) {
+    as.numeric(avaliacao_rgb$ampliacao_impressao_fator)[1L]
+  } else {
+    NA_real_
+  }
+  auditoria_qualidade_densidade_aprovada <- is.list(avaliacao_rgb) &&
+    isTRUE(avaliacao_rgb$qualidade_densidade_aprovada)
+  auditoria_qualidade_radiometrica_aprovada <- is.list(avaliacao_rgb) &&
+    isTRUE(avaliacao_rgb$qualidade_radiometrica_aprovada)
+  auditoria_ajuste_radiometrico_aplicado <- is.list(avaliacao_rgb) &&
+    isTRUE(avaliacao_rgb$ajuste_aplicado)
+  valor_metrica_rgb <- function(fase, nome) {
+    if (!is.list(avaliacao_rgb) || !is.list(avaliacao_rgb[[fase]])) {
+      return(NA_real_)
+    }
+    suppressWarnings(as.numeric(avaliacao_rgb[[fase]][[nome]])[1L])
+  }
   auditoria_n_tentativas_rgb <- as.integer(tentativas_mosaico_rgb)[1L]
   if (!is.finite(auditoria_n_tentativas_rgb) || auditoria_n_tentativas_rgb < 1L) {
     auditoria_n_tentativas_rgb <- as.integer(ii_rgb)[1L]
@@ -79636,6 +79887,21 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     resolucao_alvo_render_m = auditoria_resolucao_alvo_render_m,
     limite_resolucao_aceitavel_m = auditoria_limite_resolucao_aceitavel_m,
     qualidade_resolucao_aprovada = auditoria_qualidade_resolucao_aprovada,
+    largura_exibicao_pixels = auditoria_largura_exibicao_pixels,
+    densidade_impressao_ppi = auditoria_densidade_impressao_ppi,
+    ampliacao_impressao_fator = auditoria_ampliacao_impressao_fator,
+    qualidade_densidade_aprovada = auditoria_qualidade_densidade_aprovada,
+    brilho_medio_pre_ajuste = valor_metrica_rgb("pre", "brilho"),
+    contraste_pre_ajuste = valor_metrica_rgb("pre", "contraste"),
+    nitidez_pre_ajuste = valor_metrica_rgb("pre", "nitidez"),
+    entropia_pre_ajuste = valor_metrica_rgb("pre", "entropia"),
+    brilho_medio_pos_ajuste = valor_metrica_rgb("pos", "brilho"),
+    contraste_pos_ajuste = valor_metrica_rgb("pos", "contraste"),
+    nitidez_pos_ajuste = valor_metrica_rgb("pos", "nitidez"),
+    entropia_pos_ajuste = valor_metrica_rgb("pos", "entropia"),
+    ajuste_radiometrico_aplicado = auditoria_ajuste_radiometrico_aplicado,
+    n_alertas_radiometricos = as.integer(valor_metrica_rgb("pos", "n_alertas")),
+    qualidade_radiometrica_aprovada = auditoria_qualidade_radiometrica_aprovada,
     tempo_orcamento_mosaico_seg = orcamento_total_mapa_seg,
     tempo_mosaico_rgb_seg = round(
       proc.time()[["elapsed"]] - inicio_mosaico_rgb,

@@ -38,7 +38,11 @@ alvos <- c(
   "monitora_relatorios_analiticos_aoi_satelite",
   "monitora_relatorios_analiticos_template_satelite",
   "monitora_relatorios_analiticos_status_mapa_satelite",
-  "monitora_relatorios_analiticos_tiles_minimos_bbox"
+  "monitora_relatorios_analiticos_tiles_minimos_bbox",
+  "monitora_relatorios_analiticos_bbox_satelite",
+  "monitora_relatorios_analiticos_metricas_radiometricas",
+  "monitora_relatorios_analiticos_ajustar_radiometria",
+  "monitora_relatorios_analiticos_avaliar_rgb_mapa"
 )
 coletar <- function(x) {
   if (!is.call(x)) return(invisible(NULL))
@@ -76,9 +80,46 @@ stopifnot(all(c(
   "resolucao_alvo_render_m",
   "limite_resolucao_aceitavel_m",
   "qualidade_resolucao_aprovada",
+  "densidade_impressao_ppi",
+  "qualidade_densidade_aprovada",
+  "qualidade_radiometrica_aprovada",
   "tempo_orcamento_mosaico_seg",
   "tempo_mosaico_rgb_seg"
 ) %in% names(status)))
+
+uas_compactas <- data.table::data.table(
+  long_ini = -52.0005, long_fin = -51.9995, lon_meio = -52,
+  lat_ini = -18.0005, lat_fin = -17.9995, lat_meio = -18
+)
+bbox_compacto <- env$monitora_relatorios_analiticos_bbox_satelite(uas_compactas)
+largura_m_aprox <- diff(bbox_compacto[c("xmin", "xmax")]) *
+  111320 * cos(mean(bbox_compacto[c("ymin", "ymax")]) * pi / 180)
+stopifnot(largura_m_aprox >= 10300)
+
+rgb_teste <- terra::rast(
+  nrows = 800, ncols = 1040,
+  xmin = 0, xmax = 10400, ymin = 0, ymax = 8000,
+  crs = "EPSG:3857", nlyrs = 3
+)
+set.seed(2916)
+cinza_teste <- pmax(
+  0,
+  pmin(255, stats::rnorm(terra::ncell(rgb_teste), 38, 6))
+)
+valores_teste <- cbind(cinza_teste, cinza_teste, cinza_teste)
+terra::values(rgb_teste) <- valores_teste
+aoi_teste <- terra::as.polygons(terra::ext(rgb_teste))
+terra::crs(aoi_teste) <- terra::crs(rgb_teste)
+avaliacao <- env$monitora_relatorios_analiticos_avaliar_rgb_mapa(
+  rgb_teste, aoi_teste
+)
+stopifnot(
+  isTRUE(avaliacao$ajuste_aplicado),
+  isTRUE(avaliacao$qualidade_densidade_aprovada),
+  avaliacao$densidade_impressao_ppi >= 150,
+  avaliacao$pos$brilho > avaliacao$pre$brilho,
+  avaliacao$pos$n_alertas <= avaliacao$pre$n_alertas
+)
 
 tiles <- data.frame(
   id = c("oeste", "centro", "leste_redundante"),
