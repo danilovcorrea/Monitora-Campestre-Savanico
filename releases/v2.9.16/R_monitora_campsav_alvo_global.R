@@ -315,7 +315,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.16"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r02"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -20367,7 +20367,7 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.16-20260821",
+      ifnotfound = "v2.9.16-20260821-r02",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
@@ -73468,7 +73468,13 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     n_datas_composicao = NA_integer_,
     cache_persistente_reutilizado = FALSE,
     nivel_contingencia = NA_character_,
-    resolucao_visual_aproximada_m = NA_real_
+    resolucao_visual_aproximada_m = NA_real_,
+    resolucao_fonte_m = NA_real_,
+    resolucao_alvo_render_m = NA_real_,
+    limite_resolucao_aceitavel_m = NA_real_,
+    qualidade_resolucao_aprovada = FALSE,
+    tempo_orcamento_mosaico_seg = NA_real_,
+    tempo_mosaico_rgb_seg = NA_real_
   )
 }
 
@@ -73744,6 +73750,9 @@ monitora_relatorios_analiticos_consultar_sentinel2 <- function(
         propriedades[["eo:cloud_cover"]]
       )),
       visual_href = valor_chr(assets$visual$href),
+      red_href = valor_chr(assets$red$href),
+      green_href = valor_chr(assets$green$href),
+      blue_href = valor_chr(assets$blue$href),
       scl_href = valor_chr(assets$scl$href),
       thumbnail_href = valor_chr(assets$thumbnail$href),
       proj_epsg = suppressWarnings(as.integer(propriedades[["proj:epsg"]])[1L]),
@@ -74024,10 +74033,11 @@ monitora_relatorios_analiticos_restaurar_gdal_cog <- function(anteriores) {
 monitora_relatorios_analiticos_template_satelite <- function(
   aoi,
   resolucao_m,
-  max_celulas
+  max_celulas,
+  crs_destino = "EPSG:3857"
 ) {
-  aoi_3857 <- terra::project(aoi, "EPSG:3857")
-  extensao <- terra::ext(aoi_3857)
+  aoi_projetado <- terra::project(aoi, crs_destino)
+  extensao <- terra::ext(aoi_projetado)
   largura <- as.numeric(extensao$xmax - extensao$xmin)
   altura <- as.numeric(extensao$ymax - extensao$ymin)
   resolucao_efetiva <- max(
@@ -74040,7 +74050,7 @@ monitora_relatorios_analiticos_template_satelite <- function(
     nrows = nrows,
     ncols = ncols,
     ext = extensao,
-    crs = "EPSG:3857"
+    crs = crs_destino
   )
 }
 
@@ -74053,15 +74063,39 @@ monitora_relatorios_analiticos_ler_cog_recortado <- function(
   if (is.na(href) || !startsWith(href, "https://")) {
     stop("Asset COG público inválido.", call. = FALSE)
   }
-  raster_remoto <- terra::rast(paste0("/vsicurl/", href))
-  aoi_nativo <- terra::project(aoi, terra::crs(raster_remoto))
-  recorte <- terra::crop(raster_remoto, aoi_nativo, snap = "out")
-  if (!terra::ncell(recorte) || !terra::nlyr(recorte)) {
-    stop("Asset COG não cobre a extensão solicitada.", call. = FALSE)
+  caminho_cog <- paste0("/vsicurl/", href)
+  raster_nativo <- terra::rast(caminho_cog)
+  resolucao_nativa <- mean(abs(terra::res(raster_nativo)))
+  resolucao_destino <- mean(abs(terra::res(template)))
+  nivel_overview <- if (is.finite(resolucao_nativa) &&
+      is.finite(resolucao_destino) && resolucao_destino > resolucao_nativa) {
+    min(5L, 1L + max(0L, floor(log2(resolucao_destino / resolucao_nativa))))
+  } else {
+    1L
   }
-  ### A leitura efetiva ocorre uma única vez na gravação atômica do mosaico.
-  ### O tratador de warnings dessa gravação rejeita blocos TIFF incompletos.
-  terra::project(recorte, template, method = metodo)
+  raster_remoto <- raster_nativo
+  if (nivel_overview > 1L) {
+    overview <- tryCatch(
+      suppressWarnings(terra::rast(paste0(
+        "GTIFF_DIR:", nivel_overview, ":", caminho_cog
+      ))),
+      error = function(e) NULL
+    )
+    if (!is.null(overview) && terra::nlyr(overview) == terra::nlyr(raster_nativo)) {
+      ### O driver expõe a pirâmide interna sem georreferenciamento; a extensão
+      ### e o CRS são idênticos aos do IFD principal e são restaurados aqui.
+      terra::ext(overview) <- terra::ext(raster_nativo)
+      terra::crs(overview) <- terra::crs(raster_nativo)
+      raster_remoto <- overview
+    }
+  }
+  ### Projetar diretamente para o template deixa o GDAL escolher a pirâmide
+  ### interna adequada do COG. A seleção explícita do IFD garante esse uso
+  ### também nas versões do GDAL que não o faziam automaticamente. Recortar
+  ### primeiro preservava a grade nativa de 10 m e obrigava a leitura de
+  ### centenas de milhões de pixels que seriam descartados na prancha.
+  ### A extensão do template já limita rigorosamente a leitura espacial.
+  terra::project(raster_remoto, template, method = metodo)
 }
 
 monitora_relatorios_analiticos_mosaico_cogs <- function(
@@ -74107,6 +74141,144 @@ monitora_relatorios_analiticos_mosaico_cogs <- function(
     n_tiles_sucesso = sucessos,
     falhas = falhas
   )
+}
+
+monitora_relatorios_analiticos_mosaico_bandas_rgb <- function(
+  itens,
+  aoi,
+  template,
+  dir_temporario
+) {
+  itens <- data.table::as.data.table(data.table::copy(itens))
+  colunas <- c("red_href", "green_href", "blue_href")
+  if (!nrow(itens) || !all(colunas %in% names(itens))) {
+    return(list(raster = NULL, falhas = "assets RGB individuais ausentes"))
+  }
+  dir.create(dir_temporario, recursive = TRUE, showWarnings = FALSE)
+  caminhos <- file.path(
+    dir_temporario,
+    paste0("sentinel_banda_", c("red", "green", "blue"), "_", Sys.getpid(), ".tif")
+  )
+  unlink(caminhos, force = TRUE)
+  especificacoes <- Map(
+    function(coluna, destino) list(
+      hrefs = unique(as.character(itens[[coluna]])),
+      destino = destino
+    ),
+    colunas,
+    caminhos
+  )
+  ext_aoi <- as.vector(terra::ext(aoi))
+  crs_aoi <- terra::crs(aoi)
+  ext_template <- as.vector(terra::ext(template))
+  crs_template <- terra::crs(template)
+  nrows_template <- terra::nrow(template)
+  ncols_template <- terra::ncol(template)
+  processar_banda <- function(
+    especificacao,
+    ext_aoi,
+    crs_aoi,
+    ext_template,
+    crs_template,
+    nrows_template,
+    ncols_template
+  ) {
+    tryCatch({
+      terra::setGDALconfig("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
+      terra::setGDALconfig("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".tif,.TIF")
+      terra::setGDALconfig("GDAL_HTTP_MULTIRANGE", "YES")
+      terra::setGDALconfig("GDAL_HTTP_MULTIPLEX", "YES")
+      terra::setGDALconfig("GDAL_HTTP_TIMEOUT", "18")
+      terra::setGDALconfig("GDAL_HTTP_MAX_RETRY", "3")
+      aoi_worker <- terra::as.polygons(terra::ext(ext_aoi))
+      terra::crs(aoi_worker) <- crs_aoi
+      template_worker <- terra::rast(
+        nrows = nrows_template,
+        ncols = ncols_template,
+        ext = terra::ext(ext_template),
+        crs = crs_template
+      )
+      hrefs <- especificacao$hrefs
+      hrefs <- hrefs[!is.na(hrefs) & startsWith(hrefs, "https://")]
+      mosaico <- NULL
+      for (href in hrefs) {
+        camada <- tryCatch({
+          remoto <- terra::rast(paste0("/vsicurl/", href))
+          aoi_nativo <- terra::project(aoi_worker, terra::crs(remoto))
+          recorte <- terra::crop(remoto, aoi_nativo, snap = "out")
+          if (!terra::ncell(recorte)) stop("recorte vazio", call. = FALSE)
+          terra::project(recorte, template_worker, method = "bilinear")
+        }, error = function(e) NULL)
+        if (is.null(camada)) next
+        mosaico <- if (is.null(mosaico)) camada else terra::cover(mosaico, camada)
+      }
+      if (is.null(mosaico)) stop("nenhum COG da banda foi lido", call. = FALSE)
+      terra::writeRaster(
+        mosaico,
+        especificacao$destino,
+        overwrite = TRUE,
+        datatype = "INT2U",
+        gdal = c("COMPRESS=DEFLATE", "TILED=YES")
+      )
+      list(ok = TRUE, caminho = especificacao$destino, erro = "")
+    }, error = function(e) {
+      list(ok = FALSE, caminho = especificacao$destino, erro = conditionMessage(e))
+    })
+  }
+  nucleos <- suppressWarnings(as.integer(parallel::detectCores(logical = FALSE))[1L])
+  if (!is.finite(nucleos) || nucleos < 2L) nucleos <- 1L
+  trabalhadores <- min(3L, max(1L, nucleos - 1L))
+  executar <- function() {
+    if (trabalhadores <= 1L) {
+      return(lapply(especificacoes, processar_banda,
+        ext_aoi = ext_aoi,
+        crs_aoi = crs_aoi,
+        ext_template = ext_template,
+        crs_template = crs_template,
+        nrows_template = nrows_template,
+        ncols_template = ncols_template
+      ))
+    }
+    cluster <- parallel::makePSOCKcluster(trabalhadores, outfile = "")
+    on.exit(parallel::stopCluster(cluster), add = TRUE)
+    parallel::parLapply(
+      cluster,
+      especificacoes,
+      processar_banda,
+      ext_aoi = ext_aoi,
+      crs_aoi = crs_aoi,
+      ext_template = ext_template,
+      crs_template = crs_template,
+      nrows_template = nrows_template,
+      ncols_template = ncols_template
+    )
+  }
+  resultados <- tryCatch(executar(), error = function(e) {
+    list(list(ok = FALSE, caminho = "", erro = conditionMessage(e)))
+  })
+  ok <- length(resultados) == 3L && all(vapply(
+    resultados,
+    function(z) isTRUE(z$ok) && file.exists(z$caminho),
+    logical(1L)
+  ))
+  falhas <- unlist(lapply(resultados, function(z) z$erro), use.names = FALSE)
+  falhas <- falhas[!is.na(falhas) & nzchar(falhas)]
+  if (!isTRUE(ok)) {
+    unlink(caminhos, force = TRUE)
+    return(list(raster = NULL, falhas = falhas))
+  }
+  bandas <- lapply(caminhos, terra::rast)
+  rgb_arquivo <- do.call(c, bandas)
+  rgb <- terra::rast(
+    nrows = terra::nrow(rgb_arquivo),
+    ncols = terra::ncol(rgb_arquivo),
+    nlyrs = 3L,
+    ext = terra::ext(rgb_arquivo),
+    crs = terra::crs(rgb_arquivo)
+  )
+  terra::values(rgb) <- terra::values(rgb_arquivo, mat = TRUE)
+  unlink(caminhos, force = TRUE)
+  list(raster = rgb, falhas = falhas)
 }
 
 monitora_relatorios_analiticos_avaliar_scl <- function(scl) {
@@ -76740,7 +76912,7 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
     colNA = "#263238",
     axes = FALSE,
     mar = c(3.7, margem_lateral_mapa_linhas, 4.7, margem_lateral_mapa_linhas),
-    maxcell = 2000000
+    maxcell = 3000000
   )
   ### Margem física única dos quadros: 3 mm medidos a partir da moldura
   ### interna do mapa, independentemente do dispositivo ou da extensão.
@@ -77722,7 +77894,7 @@ monitora_relatorios_analiticos_selecionar_candidato_sentinel <- function(
 monitora_relatorios_analiticos_datas_sentinel_avaliar <- function(
   itens,
   max_datas = 16L,
-  n_recentes = 4L
+  n_recentes = 2L
 ) {
   itens <- data.table::as.data.table(data.table::copy(itens))
   if (!nrow(itens) || !all(c("data_aquisicao", "nuvens_catalogo_pct") %in% names(itens))) return(character())
@@ -77745,6 +77917,69 @@ monitora_relatorios_analiticos_datas_sentinel_avaliar <- function(
   )), max_datas)
 }
 
+monitora_relatorios_analiticos_tiles_minimos_bbox <- function(
+  itens,
+  bbox,
+  tamanho_grade = 160L
+) {
+  x <- data.table::as.data.table(data.table::copy(itens))
+  colunas_bbox <- c("item_xmin", "item_ymin", "item_xmax", "item_ymax")
+  if (nrow(x) <= 1L || !all(colunas_bbox %in% names(x)) ||
+      is.null(bbox) || length(bbox) != 4L) return(x)
+  bbox <- suppressWarnings(as.numeric(bbox))
+  if (any(!is.finite(bbox)) || bbox[[1L]] >= bbox[[3L]] ||
+      bbox[[2L]] >= bbox[[4L]]) return(x)
+  conhecidos <- vapply(
+    colunas_bbox,
+    function(nome) is.finite(x[[nome]]),
+    logical(nrow(x))
+  )
+  conhecidos <- if (is.matrix(conhecidos)) rowSums(conhecidos) == 4L else {
+    rep(FALSE, nrow(x))
+  }
+  indices_desconhecidos <- which(!conhecidos)
+  indices_conhecidos <- which(conhecidos)
+  if (length(indices_conhecidos) <= 1L) return(x)
+  tamanho_grade <- max(40L, suppressWarnings(as.integer(tamanho_grade)[1L]))
+  centros_x <- head(seq(bbox[[1L]], bbox[[3L]], length.out = tamanho_grade + 1L), -1L) +
+    diff(bbox[c(1L, 3L)]) / (2 * tamanho_grade)
+  centros_y <- head(seq(bbox[[2L]], bbox[[4L]], length.out = tamanho_grade + 1L), -1L) +
+    diff(bbox[c(2L, 4L)]) / (2 * tamanho_grade)
+  grade <- data.table::CJ(x = centros_x, y = centros_y)
+  cobertura <- vapply(indices_conhecidos, function(ii) {
+    grade$x >= x$item_xmin[[ii]] & grade$x <= x$item_xmax[[ii]] &
+      grade$y >= x$item_ymin[[ii]] & grade$y <= x$item_ymax[[ii]]
+  }, logical(nrow(grade)))
+  if (!is.matrix(cobertura)) cobertura <- matrix(cobertura, ncol = 1L)
+  universo <- rowSums(cobertura) > 0L
+  if (!any(universo)) return(x)
+  faltantes <- universo
+  selecionados_locais <- integer()
+  nuvens <- if ("nuvens_catalogo_pct" %in% names(x)) {
+    z <- suppressWarnings(as.numeric(x$nuvens_catalogo_pct[indices_conhecidos]))
+    z[!is.finite(z)] <- Inf
+    z
+  } else {
+    rep(Inf, length(indices_conhecidos))
+  }
+  while (any(faltantes)) {
+    ganhos <- colSums(cobertura[faltantes, , drop = FALSE])
+    if (length(selecionados_locais)) ganhos[selecionados_locais] <- -1L
+    ganho_maximo <- max(ganhos)
+    if (!is.finite(ganho_maximo) || ganho_maximo <= 0L) break
+    empatados <- which(ganhos == ganho_maximo)
+    escolhido <- empatados[which.min(nuvens[empatados])]
+    selecionados_locais <- c(selecionados_locais, escolhido)
+    faltantes <- faltantes & !cobertura[, escolhido]
+  }
+  indices_selecionados <- unique(c(
+    indices_conhecidos[selecionados_locais],
+    indices_desconhecidos
+  ))
+  if (!length(indices_selecionados)) return(x)
+  x[sort(indices_selecionados)]
+}
+
 monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   uas,
   destino,
@@ -77753,8 +77988,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   janela_busca_dias = 60L,
   limite_nuvens_area_pct = 20,
   max_datas_avaliadas = 8L,
-  alvo_nuvens_area_pct = 2,
-  max_datas_total = 20L,
+  alvo_nuvens_area_pct = 0.1,
+  max_datas_total = 12L,
   tempo_maximo_busca_seg = 120,
   progresso = NULL
 ) {
@@ -77832,25 +78067,38 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   dir_cache_persistente_fallback <-
     monitora_relatorios_analiticos_cache_sentinel_persistente()
   caminhos_ultimo_cache <- unique(c(
-    file.path(dir_cache, paste0("sentinel2_ultimo_", chave_uc_cache)),
+    file.path(dir_cache, paste0("sentinel2_hires_ultimo_", chave_uc_cache)),
     if (nzchar(dir_cache_persistente_fallback)) {
       file.path(
         dir_cache_persistente_fallback,
-        paste0("sentinel2_ultimo_", chave_uc_cache)
+        paste0("sentinel2_hires_ultimo_", chave_uc_cache)
       )
     } else {
       character()
     }
   ))
-  ### Catálogo, assets e renderização compartilham exatamente a mesma extensão
-  ### técnica máxima. A v2.9.15 consultava 65%, mas depois tentava renderizar
-  ### até 80%; os tiles das bordas jamais poderiam ser recuperados nesse caso.
-  margem_tecnica_rgb <- 0.80
+  ### A caixa de exibição já contém margem e foi ajustada à proporção editorial.
+  ### A própria caixa editorial é transformada integralmente para o CRS do mapa.
+  ### Uma folga técnica de 5% é suficiente para a interpolação de borda e evita
+  ### ler quadrículas redundantes. A cobertura da moldura e de todas as UAs é
+  ### comprovada depois da reprojeção; qualquer lacuna reprova a tentativa.
+  margem_tecnica_rgb <- 0.05
+  ### Dois milhões de células preservam a densidade efetivamente discernível na
+  ### prancha do relatório e coincide com a resolução visual dos mapas já
+  ### homologados para redes muito extensas, sem reamostrar milhões de pixels
+  ### que serão descartados na impressão. Redes compactas continuam próximas
+  ### do grão nativo. A fonte auditada permanece Sentinel-2 de 10 m.
+  max_celulas_mapa_relatorio <- 2000000L
+  orcamento_total_mapa_seg <- 180
   bbox_catalogo <- monitora_relatorios_analiticos_expandir_bbox(
     bbox_exibicao,
     margem_proporcional = margem_tecnica_rgb
   )
   aoi_exibicao <- monitora_relatorios_analiticos_aoi_satelite(bbox_exibicao)
+  crs_visual_relatorio <- monitora_relatorios_analiticos_crs_utm_dinamico(
+    c(uas$long_ini, uas$long_fin, uas$lon_meio),
+    c(uas$lat_ini, uas$lat_fin, uas$lat_meio)
+  )$crs
   config_gdal <- monitora_relatorios_analiticos_configurar_gdal_cog()
   on.exit(
     monitora_relatorios_analiticos_restaurar_gdal_cog(config_gdal),
@@ -77879,6 +78127,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   paginas_catalogo_total <- 0L
   catalogo_truncado_algum <- FALSE
   motivos_catalogo <- character()
+  meta_qualidade_encontrada <- FALSE
   for (jj in seq_len(nrow(janelas))) {
     if (tempo_busca_sentinel() >= tempo_maximo_config ||
         n_datas_avaliadas_total >= max_datas_total_config) {
@@ -77971,7 +78220,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         max(1L, as.integer(max_datas_avaliadas)),
         max_datas_total_config - n_datas_avaliadas_total
       ),
-      n_recentes = 4L
+      n_recentes = 2L
     )
     for (ii in seq_along(datas)) {
       if (tempo_busca_sentinel() >= tempo_maximo_config ||
@@ -77984,7 +78233,10 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         break
       }
       data_i <- datas[[ii]]
-      itens_i <- itens_j[data_aquisicao == data_i]
+      itens_i <- monitora_relatorios_analiticos_tiles_minimos_bbox(
+        itens_j[data_aquisicao == data_i],
+        bbox_catalogo
+      )
       n_datas_avaliadas_total <- n_datas_avaliadas_total + 1L
       monitora_relatorios_analiticos_emitir_progresso(
         progresso,
@@ -78045,11 +78297,18 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         concluir = TRUE
       )
       if (is.finite(metricas$cobertura_pct) && metricas$cobertura_pct >= 99.9 &&
-          is.finite(metricas$nuvens_pct) && metricas$nuvens_pct <= 0.01) {
+          is.finite(metricas$nuvens_pct) &&
+          metricas$nuvens_pct <= alvo_nuvens_config) {
+        meta_qualidade_encontrada <- TRUE
+      }
+      if (isTRUE(meta_qualidade_encontrada) && n_datas_avaliadas_total >= 2L) {
         ### Cobertura praticamente integral e ausência mensurável de nuvens/
         ### sombras formam um ótimo técnico: candidatos mais antigos não podem
         ### melhorar a qualidade e só aumentariam tempo e tráfego de rede.
-        motivo_interrupcao_busca <- "aquisição sem nuvens/sombras e com cobertura integral localizada"
+        motivo_interrupcao_busca <- paste0(
+          "aquisição dentro da meta de nuvens/sombras e com cobertura integral localizada (até ",
+          formatC(alvo_nuvens_config, format = "f", digits = 1L), "%)"
+        )
         break
       }
     }
@@ -78065,7 +78324,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     )
     if (nrow(melhor_ate_janela) &&
         is.finite(melhor_ate_janela$nuvens_area_pct[[1L]]) &&
-        melhor_ate_janela$nuvens_area_pct[[1L]] <= alvo_nuvens_config) {
+        melhor_ate_janela$nuvens_area_pct[[1L]] <= alvo_nuvens_config &&
+        n_datas_avaliadas_total >= 2L) {
       if (!nzchar(motivo_interrupcao_busca)) {
         motivo_interrupcao_busca <- "meta de imagem praticamente sem nuvens atingida"
       }
@@ -78152,6 +78412,13 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         if (terra::nlyr(rgb_cache) < 3L || !is.list(meta_cache)) {
           stop("cache persistente inválido", call. = FALSE)
         }
+        modo_cache <- as.character(meta_cache$modo_composicao)[1L]
+        resolucao_cache <- suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L])
+        if (is.na(modo_cache) || !nzchar(modo_cache) ||
+            grepl("preview", modo_cache, ignore.case = TRUE) ||
+            !is.finite(resolucao_cache) || resolucao_cache <= 0) {
+          stop("cache persistente não atende ao contrato de alta resolução", call. = FALSE)
+        }
         limite_cache <- monitora_relatorios_analiticos_limite_uc_oficial(
           uas,
           ativado = TRUE
@@ -78177,8 +78444,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
           estados = limite_cache$estados,
           biomas = limite_cache$biomas,
           status_limite_uc = limite_cache$status,
-          permitir_cobertura_parcial = TRUE,
-          modo_composicao = "cache_persistente_contingencia",
+          permitir_cobertura_parcial = FALSE,
+          modo_composicao = "cache_persistente_alta_resolucao",
           datas_composicao = datas_cache
         )
         if (!isTRUE(mapa_cache)) stop("cache não produziu mapa válido", call. = FALSE)
@@ -78243,10 +78510,19 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         atribuicao = as.character(meta_cache$atribuicao)[1L],
         paginas_catalogo = paginas_catalogo_total,
         catalogo_truncado = catalogo_truncado_algum,
-        modo_composicao = "cache_persistente_contingencia",
+        modo_composicao = "cache_persistente_alta_resolucao",
         datas_composicao = paste(as.character(meta_cache$datas_composicao), collapse = " | "),
         n_datas_composicao = length(as.character(meta_cache$datas_composicao)),
-        nivel_contingencia = "ultima_composicao_sentinel_valida",
+        nivel_contingencia = "ultima_composicao_sentinel_alta_resolucao_valida",
+        resolucao_visual_aproximada_m = suppressWarnings(as.numeric(
+          meta_cache$resolucao_m
+        )[1L]),
+        resolucao_fonte_m = 10,
+        resolucao_alvo_render_m = suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L]),
+        limite_resolucao_aceitavel_m = 1.15 * suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L]),
+        qualidade_resolucao_aprovada = TRUE,
+        tempo_orcamento_mosaico_seg = 180,
+        tempo_mosaico_rgb_seg = 0,
         cobertura_visual_pos_reprojecao_pct = cobertura_cache,
         uas_sobre_pixels_validos = isTRUE(attr(mapa_cache, "uas_sobre_pixels_validos")),
         duracao_busca_sentinel_seg = round(tempo_busca_sentinel(), 3L),
@@ -78314,45 +78590,56 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       janela_acumulada_dias == janela_selecionada_dias
   ][1L]
   datas_composicao <- data_selecionada
-  if (!is.finite(selecionada$nuvens_area_pct[[1L]]) ||
-      selecionada$nuvens_area_pct[[1L]] > alvo_nuvens_config ||
-      !is.finite(selecionada$cobertura_area_pct[[1L]]) ||
-      selecionada$cobertura_area_pct[[1L]] < 99.9) {
-    alternativas <- data.table::copy(candidatos)[
+  ### Até duas aquisições claras adicionais ficam disponíveis somente para
+  ### preencher lacunas reais do COG primário. Elas não são materializadas no
+  ### caminho normal e, portanto, não acrescentam custo quando o primeiro
+  ### mosaico cobre integralmente a moldura.
+  alternativas <- data.table::copy(candidatos)[
+    data_aquisicao != data_selecionada &
       is.finite(cobertura_area_pct) & cobertura_area_pct > 0 &
-        is.finite(nuvens_area_pct)
-    ]
-    if (nrow(alternativas)) {
-      alternativas[, data_ordem := suppressWarnings(as.integer(
-        as.Date(data_aquisicao)
-      ))]
-      data.table::setorder(
-        alternativas,
-        nuvens_area_pct,
-        -cobertura_area_pct,
-        -data_ordem
-      )
-      datas_composicao <- unique(c(
-        data_selecionada,
-        head(alternativas$data_aquisicao, 5L)
-      ))
-    }
+      is.finite(nuvens_area_pct)
+  ]
+  if (nrow(alternativas)) {
+    alternativas[, data_ordem := suppressWarnings(as.integer(
+      as.Date(data_aquisicao)
+    ))]
+    data.table::setorder(
+      alternativas,
+      nuvens_area_pct,
+      -cobertura_area_pct,
+      -data_ordem
+    )
+    datas_composicao <- unique(c(
+      data_selecionada,
+      head(alternativas$data_aquisicao, 2L)
+    ))
   }
   itens_datas_exatas <- list()
   erros_catalogo_datas_exatas <- character()
   for (data_comp in datas_composicao) {
-    itens_data <- tryCatch(
-      monitora_relatorios_analiticos_consultar_sentinel2(
-        bbox_catalogo,
-        data_inicio = as.Date(data_comp),
-        data_fim = as.Date(data_comp),
-        limite_itens = 100L,
-        max_paginas = 10L,
-        max_itens_total = 1000L,
-        tempo_maximo_seg = 30
-      ),
-      error = function(e) e
-    )
+    ### O catálogo paginado já contém os assets da data selecionada. Consultá-la
+    ### novamente acrescentava latência sem ganho quando a paginação havia sido
+    ### concluída. A consulta exata permanece como contingência somente quando a
+    ### resposta foi truncada ou não trouxe itens daquela data.
+    itens_data_catalogo <- itens[data_aquisicao == data_comp]
+    consultar_data_exata <- !nrow(itens_data_catalogo) ||
+      isTRUE(catalogo_truncado_algum)
+    itens_data <- if (!isTRUE(consultar_data_exata)) {
+      itens_data_catalogo
+    } else {
+      tryCatch(
+        monitora_relatorios_analiticos_consultar_sentinel2(
+          bbox_catalogo,
+          data_inicio = as.Date(data_comp),
+          data_fim = as.Date(data_comp),
+          limite_itens = 100L,
+          max_paginas = 10L,
+          max_itens_total = 1000L,
+          tempo_maximo_seg = 30
+        ),
+        error = function(e) e
+      )
+    }
     if (inherits(itens_data, "error") || !nrow(itens_data)) {
       erros_catalogo_datas_exatas <- c(
         erros_catalogo_datas_exatas,
@@ -78374,7 +78661,13 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       catalogo_truncado_algum <- isTRUE(catalogo_truncado_algum) ||
         isTRUE(attr(itens_data, "catalogo_truncado", exact = TRUE))
     }
-    if (nrow(itens_data)) itens_datas_exatas[[data_comp]] <- itens_data
+    if (nrow(itens_data)) {
+      itens_datas_exatas[[data_comp]] <-
+        monitora_relatorios_analiticos_tiles_minimos_bbox(
+          itens_data,
+          bbox_catalogo
+        )
+    }
   }
   itens_selecionados <- data.table::rbindlist(
     itens_datas_exatas,
@@ -78385,6 +78678,21 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     itens_selecionados <- itens[data_aquisicao %in% datas_composicao]
   }
   itens_selecionados <- unique(itens_selecionados, by = "id")
+  ### Alguns catálogos devolvem tiles limítrofes cuja caixa não intercepta a
+  ### extensão técnica. Rejeitá-los antes da abertura COG evita timeouts e
+  ### tentativas remotas sem alterar a cobertura do mapa.
+  bbox_item_intersecta <- function(x, bbox) {
+    colunas <- c("item_xmin", "item_ymin", "item_xmax", "item_ymax")
+    if (!all(colunas %in% names(x))) return(rep(TRUE, nrow(x)))
+    desconhecido <- !is.finite(x$item_xmin) | !is.finite(x$item_ymin) |
+      !is.finite(x$item_xmax) | !is.finite(x$item_ymax)
+    desconhecido |
+      (x$item_xmax >= bbox[["xmin"]] & x$item_xmin <= bbox[["xmax"]] &
+         x$item_ymax >= bbox[["ymin"]] & x$item_ymin <= bbox[["ymax"]])
+  }
+  itens_selecionados <- itens_selecionados[
+    bbox_item_intersecta(itens_selecionados, bbox_catalogo)
+  ]
   itens_data_primaria <- itens_selecionados[
     data_aquisicao == data_selecionada
   ]
@@ -78447,7 +78755,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         raster_rgb[[1:3]],
         cache_temporario,
         overwrite = TRUE,
-        datatype = "INT1U",
+        datatype = "INT2U",
+        NAflag = 65535,
         gdal = c("COMPRESS=DEFLATE", "TILED=YES")
       )
       if (length(avisos_cache_criticos)) {
@@ -78496,7 +78805,12 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     list(rgb = terra::rast(arquivo_cache), falhas = falhas)
   }
 
-  obter_rgb_cog <- function(margem_proporcional) {
+  obter_rgb_cog <- function(
+    margem_proporcional,
+    itens_rgb = itens_data_primaria,
+    rgb_base = NULL,
+    modo = "cog_cor_natural_alta_resolucao"
+  ) {
     bbox_rgb <- monitora_relatorios_analiticos_expandir_bbox(
       bbox_exibicao,
       margem_proporcional = margem_proporcional
@@ -78504,8 +78818,11 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     aoi_rgb <- monitora_relatorios_analiticos_aoi_satelite(bbox_rgb)
     chave_cache <- digest::digest(
       paste(
-        "sentinel2-v2916-cog-v1",
-        paste(sort(itens_data_primaria$id), collapse = "|"),
+        "sentinel2-v2916-hires-cog-v6",
+        crs_visual_relatorio,
+        as.character(modo)[1L],
+        max_celulas_mapa_relatorio,
+        paste(sort(itens_rgb$id), collapse = "|"),
         paste(round(as.numeric(bbox_rgb), 7L), collapse = "|"),
         sep = "||"
       ),
@@ -78520,16 +78837,31 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       template_visual <- monitora_relatorios_analiticos_template_satelite(
         aoi_rgb,
         resolucao_m = 10,
-        max_celulas = 2000000
+        max_celulas = max_celulas_mapa_relatorio,
+        crs_destino = crs_visual_relatorio
       )
       visual_obj <- monitora_relatorios_analiticos_mosaico_cogs(
-        itens_data_primaria$visual_href,
+        itens_rgb$visual_href,
         aoi_rgb,
         template_visual,
         metodo = "bilinear"
       )
       raster_rgb <- visual_obj$raster
       falhas <- visual_obj$falhas
+      if (!is.null(rgb_base) && terra::nlyr(rgb_base) >= 3L) {
+        base_alinhada <- if (isTRUE(terra::compareGeom(
+          rgb_base[[1:3]], template_visual, stopOnError = FALSE
+        ))) {
+          rgb_base[[1:3]]
+        } else {
+          terra::resample(rgb_base[[1:3]], template_visual, method = "bilinear")
+        }
+        raster_rgb <- if (is.null(raster_rgb)) {
+          base_alinhada
+        } else {
+          terra::cover(base_alinhada, raster_rgb[[1:3]])
+        }
+      }
       if (!is.null(raster_rgb) && terra::nlyr(raster_rgb) >= 3L) {
         gravado <- gravar_cache_rgb(raster_rgb[[1:3]], cache_info, falhas)
         raster_rgb <- gravado$rgb
@@ -78542,7 +78874,162 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       cache_persistente_reutilizado = isTRUE(cache_info$persistente),
       margem_proporcional = margem_proporcional,
       falhas = falhas,
-      modo = "cog_cor_natural"
+      modo = as.character(modo)[1L],
+      resolucao_fonte_m = 10,
+      resolucao_alvo_render_m = if (!is.null(raster_rgb)) {
+        mean(terra::res(raster_rgb))
+      } else {
+        NA_real_
+      }
+    )
+  }
+
+  obter_rgb_bandas <- function(margem_proporcional, rgb_base = NULL) {
+    bbox_rgb <- monitora_relatorios_analiticos_expandir_bbox(
+      bbox_exibicao,
+      margem_proporcional = margem_proporcional
+    )
+    aoi_rgb <- monitora_relatorios_analiticos_aoi_satelite(bbox_rgb)
+    chave_cache <- digest::digest(
+      paste(
+        "sentinel2-v2916-hires-bandas-v6",
+        crs_visual_relatorio,
+        max_celulas_mapa_relatorio,
+        paste(sort(itens_data_primaria$id), collapse = "|"),
+        paste(round(as.numeric(bbox_rgb), 7L), collapse = "|"),
+        sep = "||"
+      ),
+      algo = "sha256",
+      serialize = FALSE
+    )
+    cache_info <- obter_cache_rgb(chave_cache, "sentinel2_bandas_rgb_cog")
+    if (isTRUE(cache_info$reutilizado)) {
+      return(list(
+        rgb = cache_info$rgb,
+        cache_reutilizado = TRUE,
+        cache_persistente_reutilizado = isTRUE(cache_info$persistente),
+        margem_proporcional = margem_proporcional,
+        falhas = character(),
+        modo = "cog_bandas_rgb_alta_resolucao_cache",
+        resolucao_fonte_m = 10,
+        resolucao_alvo_render_m = mean(terra::res(cache_info$rgb))
+      ))
+    }
+    template_visual <- monitora_relatorios_analiticos_template_satelite(
+      aoi_rgb,
+      resolucao_m = 10,
+      max_celulas = max_celulas_mapa_relatorio,
+      crs_destino = crs_visual_relatorio
+    )
+    bandas_obj <- monitora_relatorios_analiticos_mosaico_bandas_rgb(
+      itens_data_primaria,
+      aoi_rgb,
+      template_visual,
+      file.path(dir_cache, "bandas_rgb_temporarias")
+    )
+    bandas <- bandas_obj$raster
+    falhas <- bandas_obj$falhas
+    if (is.null(bandas) || terra::nlyr(bandas) < 3L) {
+      return(list(
+        rgb = NULL,
+        cache_reutilizado = FALSE,
+        cache_persistente_reutilizado = FALSE,
+        falhas = falhas,
+        modo = "cog_bandas_rgb_alta_resolucao"
+      ))
+    }
+    bandas_ajustadas <- vector("list", 3L)
+    tem_base_visual <- !is.null(rgb_base) && terra::nlyr(rgb_base) >= 3L
+    if (isTRUE(tem_base_visual)) {
+      base_alinhada <- if (isTRUE(terra::compareGeom(
+        rgb_base[[1:3]], template_visual, stopOnError = FALSE
+      ))) {
+        rgb_base[[1:3]]
+      } else {
+        terra::resample(rgb_base[[1:3]], template_visual, method = "bilinear")
+      }
+      for (bb in seq_len(3L)) {
+        amostra <- terra::spatSample(
+          c(base_alinhada[[bb]], bandas[[bb]]),
+          size = 50000L,
+          method = "regular",
+          na.rm = TRUE,
+          as.df = TRUE,
+          values = TRUE
+        )
+        amostra <- amostra[stats::complete.cases(amostra), , drop = FALSE]
+        if (nrow(amostra) >= 100L) {
+          q_tci <- as.numeric(stats::quantile(
+            amostra[[1L]], c(0.02, 0.98), na.rm = TRUE, names = FALSE
+          ))
+          q_banda <- as.numeric(stats::quantile(
+            amostra[[2L]], c(0.02, 0.98), na.rm = TRUE, names = FALSE
+          ))
+        } else {
+          q_tci <- c(0, 255)
+          q_banda <- c(0, 3000)
+        }
+        if (!all(is.finite(c(q_tci, q_banda))) || diff(q_banda) <= 0) {
+          q_tci <- c(0, 255)
+          q_banda <- c(0, 3000)
+        }
+        ajustada <- (bandas[[bb]] - q_banda[[1L]]) *
+          (diff(q_tci) / diff(q_banda)) + q_tci[[1L]]
+        bandas_ajustadas[[bb]] <- terra::clamp(
+          ajustada, lower = 0, upper = 255, values = TRUE
+        )
+      }
+      rgb_preenchido <- terra::cover(
+        base_alinhada,
+        do.call(c, bandas_ajustadas)
+      )
+    } else {
+      ### Um único estiramento robusto para as três bandas preserva as relações
+      ### cromáticas da composição natural, ao contrário de estirar cada canal
+      ### de modo independente.
+      amostra <- terra::spatSample(
+        bandas,
+        size = 100000L,
+        method = "regular",
+        na.rm = TRUE,
+        as.df = TRUE,
+        values = TRUE
+      )
+      valores_amostra <- suppressWarnings(as.numeric(unlist(
+        amostra,
+        use.names = FALSE
+      )))
+      valores_amostra <- valores_amostra[is.finite(valores_amostra)]
+      q_banda <- if (length(valores_amostra) >= 300L) {
+        as.numeric(stats::quantile(
+          valores_amostra, c(0.02, 0.98), na.rm = TRUE, names = FALSE
+        ))
+      } else {
+        c(0, 3000)
+      }
+      if (!all(is.finite(q_banda)) || diff(q_banda) <= 0) q_banda <- c(0, 3000)
+      for (bb in seq_len(3L)) {
+        ajustada <- (bandas[[bb]] - q_banda[[1L]]) * 255 / diff(q_banda)
+        bandas_ajustadas[[bb]] <- terra::clamp(
+          ajustada, lower = 0, upper = 255, values = TRUE
+        )
+      }
+      rgb_preenchido <- do.call(c, bandas_ajustadas)
+    }
+    gravado <- gravar_cache_rgb(rgb_preenchido, cache_info, falhas)
+    list(
+      rgb = gravado$rgb,
+      cache_reutilizado = FALSE,
+      cache_persistente_reutilizado = FALSE,
+      margem_proporcional = margem_proporcional,
+      falhas = gravado$falhas,
+      modo = "cog_bandas_rgb_alta_resolucao",
+      resolucao_fonte_m = 10,
+      resolucao_alvo_render_m = if (!is.null(gravado$rgb)) {
+        mean(terra::res(gravado$rgb))
+      } else {
+        NA_real_
+      }
     )
   }
 
@@ -78687,10 +79174,11 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     9618L,
     concluir = TRUE
   )
-  ### A extensão técnica é calculada uma única vez e coincide com a consulta do
-  ### catálogo. Aquisições pequenas e limpas preservam o COG; redes extensas ou
-  ### cenas muito nubladas usam a composição rápida de prévias georreferenciadas
-  ### Sentinel, impedindo três reconstruções remotas integrais sucessivas.
+  ### O COG Sentinel-2 de cor natural é a fonte primária do produto final: ele
+  ### já reúne B04-B03-B02 em 10 m e exige apenas uma leitura por quadrícula.
+  ### As bandas individuais permanecem como contingência de alta resolução.
+  ### Prévia pode existir como recurso diagnóstico, mas jamais passa pelo gate
+  ### cartográfico nem é promovida a mapa de relatório.
   erros_mosaico_rgb <- character()
   mapa_ok <- FALSE
   margem_rgb_usada <- margem_tecnica_rgb
@@ -78699,19 +79187,16 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   modo_composicao_usado <- NA_character_
   datas_composicao_usadas <- data_selecionada
   itens_renderizados <- itens_data_primaria
-  ### O custo remoto do COG depende do conjunto técnico completo da aquisição,
-  ### inclusive dos recortes usados para garantir cobertura nas bordas. Limitar
-  ### pelo total impede que uma rede aparentemente pequena dispare downloads
-  ### caros por ter muitos recortes no catálogo.
-  aquisicao_cog_preferida <- nrow(itens_data_primaria) <= 4L &&
-    is.finite(selecionada$cobertura_area_pct[[1L]]) &&
-    selecionada$cobertura_area_pct[[1L]] >= 99.9 &&
-    is.finite(selecionada$nuvens_area_pct[[1L]]) &&
-    selecionada$nuvens_area_pct[[1L]] <= limite_nuvens_config
-  modos_tentativa <- if (isTRUE(aquisicao_cog_preferida)) {
-    c("cog", "preview")
-  } else {
-    c("preview", "cog")
+  modos_tentativa <- c("cog_visual", "cog_bandas_rgb")
+  rgb_base_alta_resolucao <- NULL
+  inicio_mosaico_rgb <- proc.time()[["elapsed"]]
+  executar_mosaico_com_orcamento <- function(fun, segundos) {
+    on.exit(
+      setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE),
+      add = TRUE
+    )
+    setTimeLimit(cpu = Inf, elapsed = segundos, transient = TRUE)
+    fun()
   }
   for (ii_rgb in seq_along(modos_tentativa)) {
     tentativas_mosaico_rgb <- ii_rgb
@@ -78722,8 +79207,10 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       paste0(
         "tentativa ", ii_rgb, "/", length(modos_tentativa),
         ": compondo mosaico Sentinel por ",
-        if (identical(modo_i, "cog")) "COGs de cor natural" else {
-          "prévias georreferenciadas e composição temporal"
+        if (identical(modo_i, "cog_bandas_rgb")) {
+          "bandas B04–B03–B02 nativas de 10 m com composição natural"
+        } else {
+          "COGs visuais de cor natural em resolução compatível com a impressão"
         },
         "; margem técnica única de ",
         formatC(100 * margem_tecnica_rgb, format = "f", digits = 0L), "%"
@@ -78731,12 +79218,28 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       9598L + ii_rgb,
       concluir = FALSE
     )
+    tempo_restante_mosaico <- max(
+      1,
+      orcamento_total_mapa_seg - tempo_busca_sentinel()
+    )
     rgb_obj <- tryCatch(
-      if (identical(modo_i, "cog")) {
-        obter_rgb_cog(margem_tecnica_rgb)
-      } else {
-        obter_rgb_preview(margem_tecnica_rgb)
-      },
+      executar_mosaico_com_orcamento(
+        function() {
+          if (identical(modo_i, "cog_bandas_rgb")) {
+            obter_rgb_bandas(
+              margem_tecnica_rgb,
+              rgb_base = NULL
+            )
+          } else {
+            obter_rgb_cog(
+              margem_tecnica_rgb,
+              itens_rgb = itens_data_primaria,
+              modo = "cog_cor_natural_alta_resolucao"
+            )
+          }
+        },
+        tempo_restante_mosaico
+      ),
       error = function(e) e
     )
     if (inherits(rgb_obj, "error") || is.null(rgb_obj$rgb) ||
@@ -78753,14 +79256,39 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       next
     }
     rgb <- rgb_obj$rgb
+    if (identical(modo_i, "cog_bandas_rgb")) {
+      rgb_base_alta_resolucao <- rgb
+    }
     cache_reutilizado <- isTRUE(cache_reutilizado) || isTRUE(rgb_obj$cache_reutilizado)
     cache_persistente_reutilizado <- isTRUE(cache_persistente_reutilizado) ||
       isTRUE(rgb_obj$cache_persistente_reutilizado)
     resolucao_origem_m <- mean(terra::res(rgb))
     modo_composicao_usado <- as.character(rgb_obj$modo)[1L]
-    if (identical(modo_i, "preview")) {
-      datas_composicao_usadas <- sort(unique(datas_composicao), decreasing = TRUE)
-      itens_renderizados <- itens_selecionados
+    resolucao_alvo_render_m <- suppressWarnings(as.numeric(
+      rgb_obj$resolucao_alvo_render_m
+    )[1L])
+    if (!is.finite(resolucao_alvo_render_m) || resolucao_alvo_render_m <= 0) {
+      resolucao_alvo_render_m <- resolucao_origem_m
+    }
+    limite_resolucao_aceitavel_m <- max(12, 1.15 * resolucao_alvo_render_m)
+    qualidade_resolucao_aprovada <- is.finite(resolucao_origem_m) &&
+      resolucao_origem_m <= limite_resolucao_aceitavel_m &&
+      !grepl("preview", modo_composicao_usado, ignore.case = TRUE)
+    if (!isTRUE(qualidade_resolucao_aprovada)) {
+      erros_mosaico_rgb <- c(
+        erros_mosaico_rgb,
+        paste0(
+          "gate de resolução reprovado: modo=", modo_composicao_usado,
+          "; resolução=", formatC(resolucao_origem_m, format = "f", digits = 2L),
+          " m; limite=", formatC(limite_resolucao_aceitavel_m, format = "f", digits = 2L),
+          " m"
+        )
+      )
+      next
+    }
+    if (identical(modo_i, "cog_bandas_rgb")) {
+      datas_composicao_usadas <- data_selecionada
+      itens_renderizados <- itens_data_primaria
     } else {
       datas_composicao_usadas <- data_selecionada
       itens_renderizados <- itens_data_primaria
@@ -78798,7 +79326,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         estados = limite_uc_resultado$estados,
         biomas = limite_uc_resultado$biomas,
         status_limite_uc = limite_uc_resultado$status,
-        permitir_cobertura_parcial = identical(modo_i, "preview"),
+        permitir_cobertura_parcial = FALSE,
         modo_composicao = modo_composicao_usado,
         datas_composicao = datas_composicao_usadas
       ),
@@ -78840,10 +79368,92 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       concluir = TRUE
     )
   }
+  ### Falha remota depois de uma seleção válida não autoriza prévia degradada.
+  ### A única contingência é o último mosaico COG de alta resolução, gravado
+  ### pelo próprio script e novamente submetido aos gates de cobertura.
+  if (!isTRUE(mapa_ok)) {
+    for (base_cache in caminhos_ultimo_cache) {
+      arquivo_rgb_cache <- paste0(base_cache, ".tif")
+      arquivo_meta_cache <- paste0(base_cache, ".rds")
+      if (!file.exists(arquivo_rgb_cache) || !file.exists(arquivo_meta_cache)) next
+      recuperado <- tryCatch({
+        meta_cache <- readRDS(arquivo_meta_cache)
+        rgb_cache <- terra::rast(arquivo_rgb_cache)
+        modo_cache <- as.character(meta_cache$modo_composicao)[1L]
+        resolucao_cache <- suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L])
+        if (!is.list(meta_cache) || terra::nlyr(rgb_cache) < 3L ||
+            is.na(modo_cache) || grepl("preview", modo_cache, ignore.case = TRUE) ||
+            !is.finite(resolucao_cache) || resolucao_cache <= 0) {
+          stop("cache fora do contrato de alta resolução", call. = FALSE)
+        }
+        datas_cache <- as.character(meta_cache$datas_composicao)
+        datas_cache <- datas_cache[!is.na(datas_cache) & nzchar(datas_cache)]
+        if (!length(datas_cache)) datas_cache <- as.character(meta_cache$data_aquisicao)[1L]
+        mapa_cache <- monitora_relatorios_analiticos_renderizar_sentinel2(
+          rgb_cache,
+          uas,
+          destino,
+          data_aquisicao = as.character(meta_cache$data_aquisicao)[1L],
+          dias_defasagem = suppressWarnings(as.integer(
+            Sys.Date() - as.Date(as.character(meta_cache$data_aquisicao)[1L])
+          )),
+          janela_busca_dias = suppressWarnings(as.integer(meta_cache$janela_busca_dias)[1L]),
+          nuvens_area_pct = suppressWarnings(as.numeric(meta_cache$nuvens_area_pct)[1L]),
+          atribuicao = as.character(meta_cache$atribuicao)[1L],
+          cenas = as.character(meta_cache$cenas)[1L],
+          resolucao_origem_m = resolucao_cache,
+          bbox_exibicao = bbox_exibicao,
+          limite_uc = limite_uc_resultado$limite,
+          estados = limite_uc_resultado$estados,
+          biomas = limite_uc_resultado$biomas,
+          status_limite_uc = limite_uc_resultado$status,
+          permitir_cobertura_parcial = FALSE,
+          modo_composicao = "cache_persistente_alta_resolucao",
+          datas_composicao = datas_cache
+        )
+        if (!isTRUE(mapa_cache)) stop("cache não produziu mapa válido", call. = FALSE)
+        list(rgb = rgb_cache, meta = meta_cache, mapa = mapa_cache, datas = datas_cache)
+      }, error = function(e) NULL)
+      if (is.null(recuperado)) next
+      rgb <- recuperado$rgb
+      mapa_ok <- recuperado$mapa
+      meta_cache <- recuperado$meta
+      data_selecionada <- as.character(meta_cache$data_aquisicao)[1L]
+      datas_composicao_usadas <- recuperado$datas
+      cenas_cache <- strsplit(
+        as.character(meta_cache$cenas)[1L],
+        " | ",
+        fixed = TRUE
+      )[[1L]]
+      cenas_cache <- cenas_cache[!is.na(cenas_cache) & nzchar(cenas_cache)]
+      itens_renderizados <- data.table::data.table(id = cenas_cache)
+      resolucao_origem_m <- suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L])
+      resolucao_alvo_render_m <- suppressWarnings(as.numeric(
+        meta_cache$resolucao_alvo_render_m
+      )[1L])
+      if (!is.finite(resolucao_alvo_render_m)) resolucao_alvo_render_m <- resolucao_origem_m
+      limite_resolucao_aceitavel_m <- max(12, 1.15 * resolucao_alvo_render_m)
+      qualidade_resolucao_aprovada <- TRUE
+      modo_composicao_usado <- "cache_persistente_alta_resolucao"
+      texto_atribuicao <- as.character(meta_cache$atribuicao)[1L]
+      cache_reutilizado <- TRUE
+      cache_persistente_reutilizado <- TRUE
+      selecionada$nuvens_area_pct <- suppressWarnings(as.numeric(meta_cache$nuvens_area_pct)[1L])
+      selecionada$cobertura_area_pct <- suppressWarnings(as.numeric(meta_cache$cobertura_area_pct)[1L])
+      selecionada$nuvens_catalogo_max_pct <- NA_real_
+      janela_selecionada_dias <- suppressWarnings(as.integer(meta_cache$janela_busca_dias)[1L])
+      criterio_selecao <- paste0(
+        "aquisição COG atual indisponível dentro do orçamento; reutilizado cache ",
+        "Sentinel de alta resolução previamente validado"
+      )
+      nivel_contingencia_selecao <- "ultima_composicao_sentinel_alta_resolucao_valida"
+      break
+    }
+  }
   if (!isTRUE(mapa_ok)) {
     status[, `:=`(
       motivo = paste0(
-        "falha após as contingências COG e prévia georreferenciada Sentinel: ",
+        "falha na aquisição COG Sentinel de alta resolução: ",
         paste(erros_mosaico_rgb, collapse = " || ")
       ),
       margem_consulta_rgb_percentual = 100 * margem_tecnica_rgb,
@@ -78853,7 +79463,13 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       modo_composicao = paste(modos_tentativa, collapse = " -> "),
       datas_composicao = paste(datas_composicao, collapse = " | "),
       n_datas_composicao = length(datas_composicao),
-      nivel_contingencia = "falha_de_todas_as_fontes"
+      nivel_contingencia = "falha_cog_alta_resolucao",
+      resolucao_fonte_m = 10,
+      tempo_orcamento_mosaico_seg = orcamento_total_mapa_seg,
+      tempo_mosaico_rgb_seg = round(
+        proc.time()[["elapsed"]] - inicio_mosaico_rgb,
+        3L
+      )
     )]
     if (file.exists(destino)) unlink(destino, force = TRUE)
     return(list(
@@ -78903,6 +79519,11 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   auditoria_cache_rgb_reutilizado <- isTRUE(cache_reutilizado) ||
     (exists("rgb_obj", inherits = FALSE) &&
        is.list(rgb_obj) && isTRUE(rgb_obj$cache_reutilizado))
+  auditoria_resolucao_alvo_render_m <- as.numeric(resolucao_alvo_render_m)[1L]
+  auditoria_limite_resolucao_aceitavel_m <-
+    as.numeric(limite_resolucao_aceitavel_m)[1L]
+  auditoria_qualidade_resolucao_aprovada <-
+    isTRUE(qualidade_resolucao_aprovada)
   auditoria_n_tentativas_rgb <- as.integer(tentativas_mosaico_rgb)[1L]
   if (!is.finite(auditoria_n_tentativas_rgb) || auditoria_n_tentativas_rgb < 1L) {
     auditoria_n_tentativas_rgb <- as.integer(ii_rgb)[1L]
@@ -78911,6 +79532,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   auditoria_uas_pixels_validos <- isTRUE(uas_sobre_pixels_validos)
   nuvens_catalogo <- selecionada$nuvens_catalogo_max_pct[[1L]]
   meta_ultimo_cache <- list(
+    versao_cache = "sentinel2-hires-v2",
     data_aquisicao = data_selecionada,
     datas_composicao = datas_composicao_usadas,
     cenas = paste(itens_renderizados$id, collapse = " | "),
@@ -78919,6 +79541,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     cobertura_area_pct = selecionada$cobertura_area_pct[[1L]],
     janela_busca_dias = janela_selecionada_dias,
     resolucao_m = resolucao_origem_m,
+    resolucao_fonte_m = 10,
+    resolucao_alvo_render_m = resolucao_alvo_render_m,
     atribuicao = texto_atribuicao,
     modo_composicao = modo_composicao_usado,
     bbox_exibicao = as.numeric(bbox_exibicao),
@@ -78934,7 +79558,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       terra::writeRaster(
         rgb[[1:3]], temporario_rgb,
         overwrite = TRUE,
-        datatype = "INT1U",
+        datatype = "INT2U",
+        NAflag = 65535,
         gdal = c("COMPRESS=DEFLATE", "TILED=YES"),
         filetype = "GTiff"
       )
@@ -79007,6 +79632,15 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       nivel_contingencia_selecao
     },
     resolucao_visual_aproximada_m = resolucao_origem_m,
+    resolucao_fonte_m = 10,
+    resolucao_alvo_render_m = auditoria_resolucao_alvo_render_m,
+    limite_resolucao_aceitavel_m = auditoria_limite_resolucao_aceitavel_m,
+    qualidade_resolucao_aprovada = auditoria_qualidade_resolucao_aprovada,
+    tempo_orcamento_mosaico_seg = orcamento_total_mapa_seg,
+    tempo_mosaico_rgb_seg = round(
+      proc.time()[["elapsed"]] - inicio_mosaico_rgb,
+      3L
+    ),
     janelas_consultadas_dias = paste(
       head(janelas$janela_acumulada_dias, n_janelas_executadas),
       collapse = " | "

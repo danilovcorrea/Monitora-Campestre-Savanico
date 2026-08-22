@@ -2,13 +2,28 @@
 
 ## v2.9.16 - 2026-08-21
 
+### Revisão pública r02
+
+- Substituída a contingência final por prévia georreferenciada de baixa
+  resolução: o produto cartográfico agora exige COG em cor natural, bandas RGB
+  nativas ou cache persistente previamente validado em alta resolução.
+- Fonte Sentinel-2 nativa de 10 m, renderização limitada a dois milhões de
+  células úteis e leitura explícita do nível interno adequado do COG evitam
+  tanto a degradação visual quanto o processamento de pixels descartados.
+- Gate final exige 100% de cobertura visual, todas as UAs sobre pixels válidos
+  e resolução compatível com a extensão. Dez UCs reais foram aprovadas com
+  resolução efetiva de 10,0 m a 92,1 m e nuvens/sombras de 0% a 0,0058%.
+- As rodadas completas foram atualizadas focalmente, sem recalcular produtos
+  de dados, estatísticas ou linhagem; HTML e DOCX receberam a figura homologada
+  e apenas os PDFs foram reimpressos.
+
 ### Sentinel-2
 
 - Consulta STAC paginada, janela temporal progressiva e seleção por cobertura,
   nebulosidade local e recência, com limite explícito de tempo.
 - Extensão técnica única e um mosaico por aquisição; contingências auditáveis
-  por COG, prévia georreferenciada, composição temporal e último cache validado
-  da mesma UC.
+  por COG, bandas RGB nativas, composição temporal e último cache de alta
+  resolução validado da mesma UC.
 - O mapa solicitado deixa de ser omitido apenas porque não existe uma cena no
   alvo ideal de qualidade e só é aprovado após materialização do arquivo e da
   auditoria.

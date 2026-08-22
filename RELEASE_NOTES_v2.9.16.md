@@ -2,19 +2,27 @@
 
 Publicada em 21 de agosto de 2026 sobre a v2.9.15.
 
+Revisão pública `r02`: substitui a contingência cartográfica de baixa
+resolução sem alterar o número da versão, os produtos de dados ou a linhagem.
+
 ## Sentinel-2 resiliente e auditável
 
 - A consulta STAC percorre páginas sucessivas e amplia a janela temporal de
   forma progressiva e limitada, sem abandonar o mapa apenas porque a janela
   inicial não atende ao alvo preferencial de qualidade.
-- A extensão técnica máxima é compartilhada entre catálogo, assets e
-  renderização. A rotina evita reconstruções redundantes do mesmo mosaico.
+- A fonte RGB utiliza os COGs Sentinel-2 em resolução nativa de 10 m. A
+  resolução de renderização é dimensionada para a extensão e para o tamanho
+  final da figura, com limite de dois milhões de células, sem processar pixels
+  que seriam descartados na página do relatório.
 - Cobertura da área, nuvens e sombras locais orientam a seleção; recência é
   usada como desempate. Quando necessário, a rotina utiliza a melhor aquisição
   integral disponível ou uma composição temporal auditável.
-- As contingências por COG, prévia georreferenciada e último cache validado da
-  mesma UC são limitadas em tempo e registradas. O mapa somente é considerado
-  concluído quando o arquivo e sua auditoria existem e são válidos.
+- Prévia georreferenciada de baixa resolução pode apoiar o diagnóstico, mas
+  não é aceita como mapa final. COG em cor natural, bandas RGB nativas e o
+  último cache de alta resolução validado são as contingências permitidas.
+- O mapa somente é concluído quando apresenta cobertura visual integral, todas
+  as UAs sobre pixels válidos e resolução aprovada; fonte, resolução efetiva,
+  nuvens, composição e tempos ficam registrados na auditoria.
 - Localizador, limite oficial de UC, estados e biomas continuam vinculados às
   fontes oficiais ICMBio/INDE e IBGE, sem incorporar arquivos espaciais locais
   ao script ou à release.
@@ -45,6 +53,9 @@ Publicada em 21 de agosto de 2026 sobre a v2.9.15.
   possuírem pendências impeditivas.
 - PNGSV, com uma campanha, manteve relatório transversal sem inferência
   temporal indevida.
+- A revisão `r02` foi homologada cartograficamente em dez UCs. Todas alcançaram
+  100% de cobertura visual, nuvens e sombras entre 0% e 0,0058%, fonte nativa
+  de 10 m e resolução efetiva entre 10,0 m e 92,1 m conforme a extensão.
 - Um teste de continuidade sobre linhagem já assinada preservou as duas sessões
   herdadas, acrescentou uma terceira, manteve 23.937 registros e confirmou o
   novo hash do inventário.
@@ -65,4 +76,4 @@ Publicada em 21 de agosto de 2026 sobre a v2.9.15.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.16.R`. O build exibido no console é
-`v2.9.16-20260821`.
+`v2.9.16-20260821-r02`.

@@ -47,15 +47,18 @@ exigir(
 
 for (trecho in c(
   'MONITORA_SCRIPT_VERSAO <- "2.9.16"',
-  'margem_tecnica_rgb <- 0.80',
+  'margem_tecnica_rgb <- 0.05',
   'max_paginas = 20L',
   'catalogo_truncado',
   'monitora_relatorios_analiticos_mosaico_previews <- function',
   'preview_multitemporal',
   'cache_persistente_reutilizado',
-  'aquisicao_cog_preferida <- nrow(itens_data_primaria) <= 4L',
+  'c("cog_visual", "cog_bandas_rgb")',
+  'sentinel2-v2916-hires-cog-v6',
+  'cache persistente não atende ao contrato de alta resolução',
+  'Prévia pode existir como recurso diagnóstico, mas jamais passa pelo gate',
   'última composição Sentinel-2 L2A',
-  'falha após as contingências COG e prévia georreferenciada Sentinel'
+  'falha na aquisição COG Sentinel de alta resolução'
 )) exigir(grepl(trecho, texto, fixed = TRUE), paste0("Revisão ausente: ", trecho))
 exigir(
   !grepl('margens_rgb <- c(0.50, 0.65, 0.80)', texto, fixed = TRUE),
