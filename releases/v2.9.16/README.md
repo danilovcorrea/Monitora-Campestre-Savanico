@@ -23,8 +23,11 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
   temporal de forma limitada e prioriza cobertura, baixa nebulosidade local e
   recência sem deixar o mapa sem fundo quando o cenário ideal não existe.
 - A rotina usa uma única extensão técnica em todas as etapas, evita remontagens
-  redundantes e emprega contingências auditáveis por COG, prévia
-  georreferenciada, composição temporal e último cache validado da mesma UC.
+  redundantes e utiliza os COGs Sentinel-2 de fonte nativa de 10 m. Prévia
+  georreferenciada de baixa resolução não é aceita como mapa final.
+- A resolução de renderização é adequada à extensão e à dimensão final da
+  figura, com limite de dois milhões de células. O gate exige cobertura visual
+  integral, UAs sobre pixels válidos e resolução aprovada antes da publicação.
 - O mapa somente é declarado concluído depois da materialização do arquivo e
   de sua auditoria; data, qualidade, cobertura, modo de composição, paginação
   e eventual contingência permanecem transparentes.
