@@ -2,8 +2,27 @@
 
 Publicada em 21 de agosto de 2026 sobre a v2.9.15.
 
-Revisão pública `r02`: substitui a contingência cartográfica de baixa
-resolução sem alterar o número da versão, os produtos de dados ou a linhagem.
+Revisão pública `r03`: preserva a aquisição Sentinel-2 nativa da `r02` e
+acrescenta controles de qualidade para a dimensão final do mapa no relatório,
+sem alterar o número da versão, os produtos de dados ou a linhagem.
+
+## Controle cartográfico da revisão r03
+
+- O enquadramento de redes amostrais compactas é ampliado somente até assegurar
+  densidade mínima de 150 ppi na largura de impressão do relatório, evitando
+  ampliar poucos pixels e preservando a resolução nativa de 10 m.
+- Brilho, contraste, nitidez e entropia são avaliados antes e depois da
+  composição. Quando estritamente necessário, aplica-se correção radiométrica
+  moderada e local, sem nova consulta, download ou tentativa de aquisição.
+- Densidade, fator de ampliação, métricas radiométricas, ajustes e alertas
+  passam a integrar a auditoria cartográfica e o gate do produto final.
+- O orçamento existente de 180 segundos, as janelas de busca e o número de
+  consultas permanecem inalterados. Com o mapa desativado, o custo continua
+  nulo.
+- Cinco mapas anteriormente abaixo do novo padrão foram substituídos
+  focalmente em EEC, FNC, PNCA, PNGSV e PNM, sem reprocessar dados, estatística
+  ou linhagem. PNCG recebeu uma atualização completa; PNCV e PNCF já atendiam
+  aos novos critérios e não precisaram de nova execução.
 
 ## Sentinel-2 resiliente e auditável
 
@@ -76,4 +95,4 @@ resolução sem alterar o número da versão, os produtos de dados ou a linhagem
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.16.R`. O build exibido no console é
-`v2.9.16-20260821-r02`.
+`v2.9.16-20260821-r03`.

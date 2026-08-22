@@ -2,6 +2,22 @@
 
 ## v2.9.16 - 2026-08-21
 
+### Revisão pública r03
+
+- Enquadramento mínimo para 150 ppi na largura final do mapa, impedindo a
+  ampliação excessiva de redes amostrais compactas sem aumentar a resolução
+  solicitada ao Sentinel-2.
+- Gate radiométrico com métricas de brilho, contraste, nitidez e entropia;
+  correção local moderada somente quando necessária, sem consultas ou downloads
+  adicionais.
+- Auditoria cartográfica ampliada com densidade, fator de ampliação, métricas
+  pré/pós-ajuste e decisão de qualidade.
+- Orçamento cartográfico de 180 segundos e estratégia de aquisição preservados;
+  custo nulo quando o mapa está desativado.
+- Mapas de EEC, FNC, PNCA, PNGSV e PNM atualizados focalmente; PNCG atualizada
+  integralmente; PNCV e PNCF dispensadas de nova execução por já atenderem aos
+  gates da revisão.
+
 ### Revisão pública r02
 
 - Substituída a contingência final por prévia georreferenciada de baixa

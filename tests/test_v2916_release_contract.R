@@ -37,7 +37,7 @@ exigir(
 
 for (trecho in c(
   'MONITORA_SCRIPT_VERSAO <- "2.9.16"',
-  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r02"',
+  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r03"',
   'monitora_correcao_validar_ua_contratual <- function',
   '"^UA-(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})_VgCS$"',
   'return("texto_ua_contratual")',
