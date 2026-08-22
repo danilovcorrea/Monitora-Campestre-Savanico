@@ -500,6 +500,13 @@ a coleta, o ano de referência espacial e os demais metadados disponíveis.
 - `manual_usuario/`, quando o manual estiver habilitado
 - `log/`
 
+Em diretórios muito profundos no Windows, o script pode usar nomes físicos
+compactos para relatórios analíticos e planilhas SISMONITORA. Isso não altera o
+conteúdo nem o nome lógico: consulte `indice_produtos.csv`, o índice dos
+relatórios ou o manifesto das planilhas para a correspondência completa. As
+colunas de compatibilidade do índice indicam quando outro arquivo deve ser
+copiado para uma pasta mais curta antes de ser aberto no Word ou Excel.
+
 ## Dados sensíveis
 
 Não publique pastas de execução. `input/`, `output/`, `log/` e `extracted/` podem conter dados pessoais, coordenadas, fotos, UUIDs e observações de campo.

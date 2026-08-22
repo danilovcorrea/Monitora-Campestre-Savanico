@@ -2,6 +2,21 @@
 
 ## v2.9.16 - 2026-08-21
 
+### Revisão pública r04
+
+- Caminhos físicos de relatórios analíticos e planilhas SISMONITORA passam a
+  ser compactados de modo determinístico somente quando o destino ultrapassa
+  os orçamentos conservadores de abertura no Word ou Excel para Windows.
+- Nomes editoriais/lógicos, UC, período e contexto permanecem registrados nos
+  índices e manifestos; conteúdo, hashes, dados e linhagem não são alterados.
+- `indice_produtos.csv` passa a informar comprimento, limite recomendado e
+  situação de abertura de cada produto documental no Windows.
+- A atualização das rodadas existentes é focal: move os mesmos arquivos,
+  confirma seus hashes e atualiza referências, sem recalcular dados,
+  estatísticas, mapas ou relatórios.
+- Caminhos curtos mantêm exatamente os nomes anteriores. O custo adicional é
+  apenas vetorial e restrito aos produtos opcionais ativos.
+
 ### Revisão pública r03
 
 - Enquadramento mínimo para 150 ppi na largura final do mapa, impedindo a

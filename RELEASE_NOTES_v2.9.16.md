@@ -2,9 +2,25 @@
 
 Publicada em 21 de agosto de 2026 sobre a v2.9.15.
 
-Revisão pública `r03`: preserva a aquisição Sentinel-2 nativa da `r02` e
-acrescenta controles de qualidade para a dimensão final do mapa no relatório,
-sem alterar o número da versão, os produtos de dados ou a linhagem.
+Revisão pública `r04`: preserva integralmente a aquisição Sentinel-2 e os
+controles cartográficos da `r03` e acrescenta proteção contra caminhos físicos
+longos no Word e Excel para Windows, sem alterar o número da versão, o conteúdo
+dos produtos de dados ou a linhagem.
+
+## Compatibilidade de caminhos da revisão r04
+
+- Em caminhos seguros, os nomes físicos permanecem exatamente como antes.
+- Quando o destino ultrapassa o orçamento conservador do aplicativo, relatórios
+  analíticos e planilhas SISMONITORA recebem identificadores físicos compactos,
+  determinísticos e sem colisão.
+- O nome lógico, a UC, o período e o contexto completo permanecem nos índices e
+  manifestos. `indice_produtos.csv` informa comprimento, limite recomendado e
+  situação de abertura no Windows.
+- A escolha do nome executa apenas operações vetoriais quando o respectivo
+  produto opcional está ativo; não lê novamente os dados e não altera o caminho
+  rápido quando o produto está desativado.
+- As rodadas recuperadas/atualizadas podem receber a mesma correção por mudança
+  focal de caminhos, com confirmação de hash, sem reprocessar produtos.
 
 ## Controle cartográfico da revisão r03
 
@@ -95,4 +111,4 @@ sem alterar o número da versão, os produtos de dados ou a linhagem.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.16.R`. O build exibido no console é
-`v2.9.16-20260821-r03`.
+`v2.9.16-20260822-r04`.

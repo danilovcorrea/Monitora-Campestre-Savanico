@@ -315,7 +315,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.16"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260821-r03"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260822-r04"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -350,10 +350,12 @@ MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES <- "S"
 MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS <- "S"
 ### Produto derivado opcional, solicitado no padrão operacional desta versão.
 ### Quando "S", exige registros_validados.csv apto e gera uma planilha por
-### contexto UC + ciclo + campanha a partir do modelo 21FEV25. Com um único
-### contexto, preserva o nome registros_validados_importacao_sismonitora.xlsx;
-### com múltiplos contextos, acrescenta ao nome um identificador determinístico
-### e rótulos seguros de UC, ciclo e campanha. Cada planilha preserva as três
+### contexto UC + ciclo + campanha a partir do modelo 21FEV25. O nome lógico
+### registros_validados_importacao_sismonitora.xlsx permanece preservado; se o
+### caminho estiver próximo do limite do Excel no Windows, somente o nome físico
+### é compactado e sua correspondência fica registrada no manifesto. Com
+### múltiplos contextos, os identificadores permanecem determinísticos. Cada
+### planilha preserva as três
 ### abas do modelo, inclui explicitamente a coluna obrigatória uc em
 ### Preenchimento. As colunas uuid e amostragem/registro/uuid permanecem sempre
 ### no schema. A opção imediatamente abaixo controla somente seus valores no
@@ -2204,7 +2206,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     ),
     valores = c("S ou N", "S ou N"),
     finalidade = c(
-      "Gera uma planilha de importação para cada contexto UC + ciclo + campanha a partir do registros_validados.csv materializado e validado na mesma execução. Um contexto preserva o nome canônico; múltiplos contextos recebem nomes inequívocos.",
+      "Gera uma planilha de importação para cada contexto UC + ciclo + campanha a partir do registros_validados.csv materializado e validado na mesma execução. O nome lógico permanece canônico; somente o nome físico pode ser compactado para respeitar o limite do Excel no Windows, sempre com correspondência no manifesto.",
       "Controla somente os valores das colunas uuid e amostragem/registro/uuid no XLSX: S os remove para inclusão de registros novos; N preserva os valores da fonte para eventual atualização por UUID."
     ),
     cuidados = c(
@@ -2526,6 +2528,15 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   base_dir <- monitora_doc_dir(output_dir, "07_relatorio_validacao")
   data_dir <- monitora_doc_dir(base_dir, "dados_apoio")
   exec_id <- monitora_doc_chr(exec_id, format(Sys.time(), "%Y%m%d_%H%M%S"))
+  base_relatorio_logica <- paste0("relatorio_validacao_consolidado_", exec_id)
+  base_relatorio_fisica <- base_relatorio_logica
+  caminhos_documentais_logicos <- file.path(
+    base_dir,
+    paste0(base_relatorio_logica, c(".html", ".pdf"))
+  )
+  if (any(nchar(caminhos_documentais_logicos, type = "chars") > 240L)) {
+    base_relatorio_fisica <- "validacao_consolidado"
+  }
   responsavel <- monitora_doc_resolver_responsavel(responsavel)
   instituicao <- monitora_doc_chr(instituicao, "ICMBio")
   formatos <- unique(tolower(as.character(formatos)))
@@ -2789,9 +2800,15 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     oraculo_info <- data.table::data.table(arquivo = character(), extensao = character(), tamanho_bytes = numeric(), data_modificacao = character(), tipo_diagnostico = character(), interpretacao = character())
   }
   arq_oraculo <- file.path(data_dir, paste0("diagnostico_oraculo_replay_", exec_id, ".csv")); monitora_doc_fwrite(oraculo_info, arq_oraculo)
-  if (requireNamespace("jsonlite", quietly = TRUE)) jsonlite::write_json(list(metadados = meta, produtos_dados = produtos_dados, resumo_input = input_resumo, resumo_output = output_resumo, sanitizacoes_automaticas = sanitizacoes_auto, resumo_sanitizacao_coletores = sanitizacao_coletores$resumo, resumo_pendencias_remanescentes = pendencias_justificadas$resumo, replay_contrato = replay_contrato, linhagem_correcoes = linhagem_resumo, resumo_sessoes_linhagem = linhagem_sessoes$resumo, inventario_sessoes_linhagem = linhagem_sessoes$sessoes, integridade_sessoes_linhagem = linhagem_sessoes$integridade, mapa = mapa_rel, diagnostico_oraculo = oraculo_info), path = file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".json")), pretty = TRUE, auto_unbox = TRUE, na = "null")
-  rmd <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".Rmd"))
-  md <- file.path(base_dir, paste0("relatorio_validacao_consolidado_", exec_id, ".md"))
+  if (requireNamespace("jsonlite", quietly = TRUE)) jsonlite::write_json(list(metadados = meta, produtos_dados = produtos_dados, resumo_input = input_resumo, resumo_output = output_resumo, sanitizacoes_automaticas = sanitizacoes_auto, resumo_sanitizacao_coletores = sanitizacao_coletores$resumo, resumo_pendencias_remanescentes = pendencias_justificadas$resumo, replay_contrato = replay_contrato, linhagem_correcoes = linhagem_resumo, resumo_sessoes_linhagem = linhagem_sessoes$resumo, inventario_sessoes_linhagem = linhagem_sessoes$sessoes, integridade_sessoes_linhagem = linhagem_sessoes$integridade, mapa = mapa_rel, diagnostico_oraculo = oraculo_info), path = file.path(base_dir, paste0(base_relatorio_fisica, ".json")), pretty = TRUE, auto_unbox = TRUE, na = "null")
+  rmd <- file.path(base_dir, paste0(base_relatorio_fisica, ".Rmd"))
+  md <- file.path(base_dir, paste0(base_relatorio_fisica, ".md"))
+  monitora_doc_fwrite(data.table::data.table(
+    nome_logico = paste0(base_relatorio_logica, ".{Rmd,md,html,pdf,json}"),
+    base_fisica = base_relatorio_fisica,
+    caminho_fisico_compactado = !identical(base_relatorio_fisica, base_relatorio_logica),
+    exec_id = exec_id
+  ), file.path(data_dir, "metadados_caminho_relatorio.csv"))
   mapa_bloco <- if (file.exists(mapa) && grepl("\\.png$", mapa, ignore.case = TRUE)) c("```{r mapa-coletas, echo=FALSE, out.width='100%'}", paste0("knitr::include_graphics(", shQuote(mapa_rel), ")"), "```") else paste0("Mapa automático: `", monitora_doc_chr(mapa_rel, "não gerado"), "`.")
   conteudo <- c("---", "title: 'Relatório de validação de dados das campanhas amostrais do Protocolo de Monitoramento do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico - Programa Monitora'", paste0("subtitle: 'Script de tratamento, validação e análise de dados do Alvo Global Plantas Herbáceas e Lenhosas do Componente Campestre Savânico - Programa Monitora - versão ", versao_script, " — build ", build_script, "'"), "output:", "  html_document:", "    toc: true", "    toc_depth: 3", "    number_sections: true", "  pdf_document:", "    toc: true", "    number_sections: true", "header-includes:", "  - \\usepackage{longtable}", "  - \\usepackage{booktabs}", "geometry: margin=1.2cm", "fontsize: 10pt", "---", "", monitora_doc_rmd_setup(), "",
     "# Identificação da execução", "", monitora_doc_rmd_table_chunk(arq_meta, "tab-metadados", 100L, c("item", "valor"), 85L), "",
@@ -20367,7 +20384,7 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.16-20260821-r03",
+      ifnotfound = "v2.9.16-20260822-r04",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
@@ -49679,6 +49696,32 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
   produtos_dir <- file.path(output_dir, "01_produtos_dados")
   dir.create(produtos_dir, recursive = TRUE, showWarnings = FALSE)
 
+  ### O contrato editorial continua visível em nome_arquivo_logico. O nome
+  ### físico só é reduzido quando o caminho completo ultrapassaria o orçamento
+  ### conservador de 210 caracteres do Excel no Windows. A decisão é vetorizada,
+  ### executada apenas quando este produto opcional está ativo e não lê arquivos.
+  contextos[, nome_arquivo_logico := nome_arquivo]
+  dir_produtos_abs <- normalizePath(
+    produtos_dir,
+    winslash = "/",
+    mustWork = TRUE
+  )
+  caminhos_logicos <- file.path(dir_produtos_abs, contextos$nome_arquivo)
+  compactar_nome <- nchar(caminhos_logicos, type = "chars") > 210L
+  if (any(compactar_nome)) {
+    contextos[compactar_nome, nome_arquivo := paste0(
+      "sis_", contexto_id, ".xlsx"
+    )]
+    caminhos_compactos <- file.path(dir_produtos_abs, contextos$nome_arquivo)
+    compactar_mais <- nchar(caminhos_compactos, type = "chars") > 210L
+    contextos[compactar_mais, nome_arquivo := paste0(
+      "s_", contexto_hash, ".xlsx"
+    )]
+  }
+  if (anyDuplicated(contextos$nome_arquivo)) {
+    stop("Colisão inesperada entre nomes físicos compactos das planilhas SISMONITORA.", call. = FALSE)
+  }
+
   preparados <- vector("list", n_contextos)
   temporarios <- character(n_contextos)
   destinos <- file.path(produtos_dir, contextos$nome_arquivo)
@@ -49698,7 +49741,7 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
     )
     temporarios[ii] <- tempfile(
       pattern = paste0(
-        ".registros_validados_importacao_sismonitora_",
+        ".sis_",
         contextos$contexto_id[ii],
         "_"
       ),
@@ -49733,18 +49776,19 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
       contexto_ordem = contextos$contexto_ordem[ii],
       n_contextos_execucao = n_contextos,
       produto = basename(destinos[ii]),
+      produto_logico = contextos$nome_arquivo_logico[ii],
       caminho_relativo = caminho_relativo
     )]
     data.table::setcolorder(
       auditoria_contexto,
       c(
         "contexto_id", "contexto_ordem", "n_contextos_execucao",
-        "produto", "caminho_relativo",
+        "produto", "produto_logico", "caminho_relativo",
         setdiff(
           names(auditoria_contexto),
           c(
             "contexto_id", "contexto_ordem", "n_contextos_execucao",
-            "produto", "caminho_relativo"
+            "produto", "produto_logico", "caminho_relativo"
           )
         )
       )
@@ -49752,6 +49796,7 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
     auditorias[[ii]] <- auditoria_contexto
     manifestos[[ii]] <- data.table::data.table(
       produto = basename(destinos[ii]),
+      produto_logico = contextos$nome_arquivo_logico[ii],
       caminho_relativo = caminho_relativo,
       contexto_id = contextos$contexto_id[ii],
       contexto_ordem = contextos$contexto_ordem[ii],
@@ -56846,6 +56891,25 @@ monitora_output_escrever_indice_produtos <- function(
   } else {
     character()
   }
+  extensoes <- tolower(tools::file_ext(todos))
+  limite_office_windows <- ifelse(
+    extensoes %in% c("xls", "xlsx", "csv"),
+    210L,
+    ifelse(extensoes %in% c("doc", "docx", "pdf", "html", "htm"), 240L, NA_integer_)
+  )
+  comprimento_caminho <- nchar(
+    gsub("\\\\", "/", todos),
+    type = "chars"
+  )
+  situacao_caminho_office <- ifelse(
+    is.na(limite_office_windows),
+    "nao_aplicavel",
+    ifelse(
+      comprimento_caminho <= limite_office_windows,
+      "apto_abertura_windows",
+      "revisar_caminho_windows"
+    )
+  )
   ind <- data.table::data.table(
     exec_id = as.character(exec_id),
     contexto = as.character(contexto)[1L],
@@ -56867,6 +56931,9 @@ monitora_output_escrever_indice_produtos <- function(
     ),
     produto_dados_canonico = grepl("^01_produtos_dados/", rel) &
       basename(todos) %in% produtos_centrais,
+    comprimento_caminho_caracteres = comprimento_caminho,
+    limite_recomendado_windows = limite_office_windows,
+    situacao_caminho_office = situacao_caminho_office,
     tamanho_bytes = if (length(todos)) as.numeric(info$size) else numeric(),
     md5 = hashes,
     hash_verificavel = TRUE,
@@ -56888,6 +56955,11 @@ monitora_output_escrever_indice_produtos <- function(
     papel_produto = "inventario_output",
     status_canonico = "canonico_autorreferente",
     produto_dados_canonico = FALSE,
+    comprimento_caminho_caracteres = nchar(indice_path, type = "chars"),
+    limite_recomendado_windows = 210L,
+    situacao_caminho_office = if (
+      nchar(indice_path, type = "chars") <= 210L
+    ) "apto_abertura_windows" else "revisar_caminho_windows",
     tamanho_bytes = NA_real_,
     md5 = NA_character_,
     hash_verificavel = FALSE,
@@ -57041,8 +57113,12 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "Arquivos em operacoes_sessao/ são evidências da rodada e não substituem o histórico cumulativo.",
     "",
     "RELATÓRIO DE VALIDAÇÃO",
-    "Comece por 07_relatorio_validacao/relatorio_validacao_consolidado_*.html ou PDF.",
+    "Comece pelo HTML ou PDF em 07_relatorio_validacao/. Em caminhos longos, consulte dados_apoio/metadados_caminho_relatorio.csv para a correspondência entre nome lógico e físico.",
     "O detalhamento editável fica em 07_relatorio_validacao/dados_apoio/.",
+    "",
+    "COMPATIBILIDADE DE CAMINHOS",
+    "Nomes físicos de relatórios e planilhas podem ser compactados automaticamente somente quando necessário para abertura no Windows; os nomes lógicos e a correspondência permanecem nos respectivos índices e manifestos.",
+    "As colunas comprimento_caminho_caracteres, limite_recomendado_windows e situacao_caminho_office do índice permitem identificar outros arquivos que dependam de uma pasta de execução mais curta.",
     "",
     "indice_produtos.csv inventaria todos os arquivos. A própria linha do índice não possui tamanho/hash por ser autorreferente."
   )
@@ -72695,6 +72771,60 @@ monitora_relatorios_analiticos_slug <- function(x) {
   gsub("^_+|_+$", "", y)
 }
 
+monitora_relatorios_analiticos_destino_fisico <- function(
+  output_dir,
+  uc,
+  uc_slug,
+  periodo,
+  limite_windows = 240L
+) {
+  diretorio_logico <- file.path(output_dir, "08_relatorios_analiticos", uc_slug)
+  base_sint_logica <- paste0(
+    "relatorio_analitico_sintetico_", uc_slug, "_", periodo
+  )
+  base_det_logica <- paste0(
+    "relatorio_analitico_detalhado_", uc_slug, "_", periodo
+  )
+  caminhos_docx <- file.path(
+    diretorio_logico,
+    paste0(c(base_sint_logica, base_det_logica), ".docx")
+  )
+  compactar <- any(
+    nchar(caminhos_docx, type = "chars") > as.integer(limite_windows)[1L]
+  )
+  if (!isTRUE(compactar)) {
+    return(list(
+      diretorio = diretorio_logico,
+      diretorio_id = uc_slug,
+      base_sint = base_sint_logica,
+      base_det = base_det_logica,
+      base_sint_logica = base_sint_logica,
+      base_det_logica = base_det_logica,
+      compactado = FALSE
+    ))
+  }
+  chave_uc <- paste0(
+    nchar(enc2utf8(as.character(uc)[1L]), type = "bytes"),
+    ":",
+    enc2utf8(as.character(uc)[1L])
+  )
+  diretorio_id <- paste0(
+    "uc-",
+    substr(digest::digest(chave_uc, algo = "sha256", serialize = FALSE), 1L, 10L)
+  )
+  list(
+    diretorio = file.path(
+      output_dir, "08_relatorios_analiticos", diretorio_id
+    ),
+    diretorio_id = diretorio_id,
+    base_sint = "analitico_sintetico",
+    base_det = "analitico_detalhado",
+    base_sint_logica = base_sint_logica,
+    base_det_logica = base_det_logica,
+    compactado = TRUE
+  )
+}
+
 ### Alguns dispositivos gráficos do Windows ainda falham silenciosamente
 ### quando o caminho completo do PNG se aproxima de MAX_PATH, mesmo em versões
 ### recentes do R. Preserva o nome editorial nos caminhos curtos e, somente
@@ -84449,7 +84579,13 @@ monitora_relatorios_analiticos_gerar <- function(
   }
   periodo <- if (length(anos) == 1L) as.character(anos) else paste0(min(anos), "-", max(anos))
   uc_slug <- monitora_relatorios_analiticos_slug(uc)
-  dir_relatorio <- file.path(output_dir, "08_relatorios_analiticos", uc_slug)
+  destino_relatorio <- monitora_relatorios_analiticos_destino_fisico(
+    output_dir = output_dir,
+    uc = uc,
+    uc_slug = uc_slug,
+    periodo = periodo
+  )
+  dir_relatorio <- destino_relatorio$diretorio
   dir_figuras <- file.path(dir_relatorio, "figuras")
   dir_cache_satelite <- file.path(
     output_dir,
@@ -86936,12 +87072,8 @@ monitora_relatorios_analiticos_gerar <- function(
     concluir = TRUE
   )
 
-  base_sint <- paste0(
-    "relatorio_analitico_sintetico_", uc_slug, "_", periodo
-  )
-  base_det <- paste0(
-    "relatorio_analitico_detalhado_", uc_slug, "_", periodo
-  )
+  base_sint <- destino_relatorio$base_sint
+  base_det <- destino_relatorio$base_det
   prod_sint <- monitora_relatorios_analiticos_renderizar(
     conteudo_sintetico,
     base_sint,
@@ -86995,6 +87127,20 @@ monitora_relatorios_analiticos_gerar <- function(
       serialize = FALSE
     ),
     character(1L)
+  )]
+  indice_relatorios[, `:=`(
+    uc = uc,
+    periodo = periodo,
+    diretorio_contexto = destino_relatorio$diretorio_id,
+    caminho_fisico_compactado = isTRUE(destino_relatorio$compactado),
+    nome_logico = paste0(
+      ifelse(
+        versao_editorial == "sintético",
+        destino_relatorio$base_sint_logica,
+        destino_relatorio$base_det_logica
+      ),
+      ifelse(formato == "rmd", ".Rmd", paste0(".", formato))
+    )
   )]
   indice_relatorios[, caminho := NULL]
   data.table::setcolorder(
