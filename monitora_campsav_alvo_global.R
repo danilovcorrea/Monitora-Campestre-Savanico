@@ -1,8 +1,29 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão pública do script: 2.9.16
-### Baseline pública de origem: v2.9.15
+### Versão pública do script: 2.9.17
+### Baseline pública de origem: v2.9.16
+### A v2.9.17 conecta o fechamento hierárquico e todos os consumidores
+### de contexto de impactos ao contrato único embutido. Campos de espécie
+### aberta passam a herdar forma e categoria exclusivamente das dependências
+### `relevant` do XLSForm 21FEV25, inclusive relações transitivas; texto livre
+### nunca mais é interpretado como token. A triagem de secas ou mortas e a
+### síntese analítica resolvem os quatro atributos de impacto por path, name,
+### label ou alias contratuais exatos, distinguindo campo vazio, campo ausente
+### e resolução ambígua. A resolução é fail-closed, memorizada pela assinatura
+### das colunas e não percorre linhas adicionais do dataset.
+###
+### A mesma versão explicita, nos achados prioritários, a população
+### analítica efetivamente comparada: ano inicial do painel fixo, número de UAs
+### acompanhadas e direção observada em cada painel de esforço ampliado. A
+### apresentação deixa de permitir que resultados com estimandos distintos
+### pareçam contraditórios e corrige a redação de desigualdades do valor de p.
+### O relatório consolidado de validação passa a materializar Markdown
+### realmente renderizado e DOCX editável, além de Rmd, HTML e PDF. O DOCX usa
+### modelo A4 embutido, paleta institucional, tabelas legíveis, hyperlinks e
+### gates OpenXML; não depende de arquivo local e acrescenta custo somente
+### quando o produto documental é solicitado.
+###
 ### A v2.9.16 torna a aquisição Sentinel resiliente e limitada em tempo. A
 ### consulta STAC percorre páginas, utiliza a extensão técnica final em todas
 ### as etapas, materializa um único mosaico por aquisição e reutiliza caches
@@ -314,8 +335,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.16"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.16-20260822-r04"
+MONITORA_SCRIPT_VERSAO <- "2.9.17"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.17-20260825-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -392,7 +413,10 @@ MONITORA_OPCAO_GERAR_MANUAL_USUARIO <- "S"
 ### estiverem materializados; eventual falha não interrompe os produtos de dados.
 MONITORA_OPCAO_GERAR_MANUAL_USUARIO_PDF <- "N"
 MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- "S"
-MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
+### Rmd e Markdown são sempre preservados como fontes editáveis. DOCX usa um
+### modelo editorial embutido no próprio .R; nenhum arquivo local auxiliar é
+### exigido. A falha de um formato documental não invalida os produtos de dados.
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "docx", "pdf")
 ### Relatórios analíticos por UC: produto aditivo, solicitado por padrão.
 ### Quando "N", nenhum pacote, arquivo, mapa ou cálculo específico deste módulo
 ### é executado. Quando "S", o script gera versões sintética e detalhada em
@@ -791,13 +815,13 @@ MONITORA_GERAR_MANUAL_USUARIO_PDF <- identical(MONITORA_OPCAO_GERAR_MANUAL_USUAR
 MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO <- identical(MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO, "S")
 MONITORA_FORMATOS_RELATORIO_VALIDACAO <- Sys.getenv(
   "MONITORA_FORMATOS_RELATORIO_VALIDACAO",
-  unset = paste(as.character(get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)), collapse = ",")
+  unset = paste(as.character(get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "docx", "pdf"), inherits = TRUE)), collapse = ",")
 )
 MONITORA_FORMATOS_RELATORIO_VALIDACAO <- unique(tolower(trimws(unlist(strsplit(as.character(MONITORA_FORMATOS_RELATORIO_VALIDACAO)[1], ",", fixed = TRUE)))))
 MONITORA_FORMATOS_RELATORIO_VALIDACAO <- MONITORA_FORMATOS_RELATORIO_VALIDACAO[nzchar(MONITORA_FORMATOS_RELATORIO_VALIDACAO)]
-if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
-MONITORA_FORMATOS_RELATORIO_VALIDACAO <- intersect(MONITORA_FORMATOS_RELATORIO_VALIDACAO, c("rmd", "md", "html", "pdf"))
-if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "pdf")
+if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "docx", "pdf")
+MONITORA_FORMATOS_RELATORIO_VALIDACAO <- intersect(MONITORA_FORMATOS_RELATORIO_VALIDACAO, c("rmd", "md", "html", "docx", "pdf"))
+if (!length(MONITORA_FORMATOS_RELATORIO_VALIDACAO)) MONITORA_FORMATOS_RELATORIO_VALIDACAO <- c("html", "docx", "pdf")
 MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS <- Sys.getenv(
   "MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS",
   unset = as.character(get0("MONITORA_OPCAO_GERAR_RELATORIOS_ANALITICOS", ifnotfound = "N", inherits = TRUE))[1L]
@@ -1292,6 +1316,14 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
   rm(dependencias_relatorios_analiticos)
 }
 
+if (isTRUE(MONITORA_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO) &&
+    "docx" %in% MONITORA_FORMATOS_RELATORIO_VALIDACAO) {
+  monitora_garantir_pacotes_opcionais(
+    c("jsonlite", "digest", "xml2", "zip"),
+    "relatório de validação em DOCX"
+  )
+}
+
 if (identical(
   MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS_IMPORTACAO_SISMONITORA,
   "S"
@@ -1305,7 +1337,7 @@ if (identical(
 ### MONITORA_DOCS_VALIDACAO_V260_INICIO ---------------------------------------
 ### Produtos documentais: manual do usuário e relatório consolidado.
 ### O bloco evita dependência obrigatória de rmarkdown/pandoc: sempre grava Rmd,
-### CSVs de apoio e relatório Markdown; HTML/PDF são tentados quando disponíveis.
+### CSVs de apoio e relatório Markdown; HTML/DOCX/PDF são tentados quando disponíveis.
 monitora_doc_chr <- function(x, vazio = "") {
   if (is.null(x) || !length(x)) return(vazio)
   x <- as.character(x)[1]
@@ -1999,6 +2031,649 @@ monitora_doc_estilo_profissional <- function() {
   )
 }
 
+### Fonte intermediária portátil para os formatos editáveis. Diferentemente
+### do HTML, Word e Markdown não interpretam o grid/CSS da capa nem tabelas
+### HTML de forma confiável. Este setup produz tabelas pipe, que o Pandoc
+### converte nativamente para Markdown e OpenXML.
+monitora_doc_rmd_setup_editavel <- function() {
+  c(
+    "```{r setup-validacao-editavel, echo=FALSE, warning=FALSE, message=FALSE}",
+    "options(width = 120)",
+    ".monitora_doc_print_table <- function(path, n = 30, cols = NULL, largura = 55) {",
+    "  if (!file.exists(path)) { cat('_Arquivo não encontrado._'); return(invisible()) }",
+    "  x <- if (requireNamespace('data.table', quietly=TRUE)) as.data.frame(data.table::fread(path, encoding='UTF-8', sep=',', quote='\"', nrows=n, showProgress=FALSE, fill=TRUE)) else utils::read.csv(path, stringsAsFactors=FALSE, check.names=FALSE, nrows=n)",
+    "  if (any(grepl('^V[0-9]+$', names(x)))) { cat('_Tabela indisponível neste formato; consulte o CSV de apoio._'); return(invisible()) }",
+    "  if (!nrow(x)) { cat('_Sem registros._'); return(invisible()) }",
+    "  if (!is.null(cols)) { cols <- intersect(cols, names(x)); if (length(cols)) x <- x[, cols, drop=FALSE] }",
+    "  x[] <- lapply(x, function(v) { v <- as.character(v); v[is.na(v)] <- ''; v <- gsub('[\\r\\n]+', ' ', v, perl=TRUE); trimws(v) })",
+    "  print(knitr::kable(x, format='pipe', escape=TRUE, row.names=FALSE, align=rep('l', ncol(x))))",
+    "}",
+    "```"
+  )
+}
+
+monitora_doc_validacao_conteudo_editavel <- function(
+  conteudo,
+  versao_script,
+  build_script,
+  exec_id,
+  responsavel,
+  instituicao,
+  formato = c("md", "docx")
+) {
+  formato <- match.arg(formato)
+  linhas <- unlist(lapply(as.character(conteudo), function(x) {
+    if (!nzchar(x)) return("")
+    strsplit(x, "\n", fixed = TRUE)[[1L]]
+  }), use.names = FALSE)
+  linhas <- sub("\r$", "", linhas)
+
+  ### Remove o YAML voltado a HTML/PDF; cada formato editável recebe metadados
+  ### próprios e não herda CSS ou dependências do navegador.
+  separadores <- which(trimws(linhas) == "---")
+  if (length(separadores) >= 2L) {
+    linhas <- linhas[-seq.int(separadores[[1L]], separadores[[2L]])]
+  }
+
+  limpar_html_controlado <- function(x) {
+    x <- gsub("<strong>", "**", x, fixed = TRUE)
+    x <- gsub("</strong>", "**", x, fixed = TRUE)
+    x <- gsub("<br[[:space:]]*/?>", "  ", x, ignore.case = TRUE, perl = TRUE)
+    x <- gsub("</?(?:div|span|p)(?:[[:space:]][^>]*)?>", "", x, perl = TRUE)
+    trimws(x)
+  }
+  tabela_resumo <- function(titulos, valores) {
+    titulos <- gsub("\\|", "\\\\|", as.character(titulos))
+    valores <- gsub("\\|", "\\\\|", as.character(valores))
+    if (identical(formato, "docx")) {
+      return(c(
+        "| Indicador | Valor |",
+        "| --- | --- |",
+        vapply(seq_along(titulos), function(i) {
+          paste0("| ", titulos[[i]], " | ", valores[[i]], " |")
+        }, character(1L))
+      ))
+    }
+    c(
+      paste0("| ", paste(titulos, collapse = " | "), " |"),
+      paste0("| ", paste(rep("---", length(titulos)), collapse = " | "), " |"),
+      paste0("| ", paste(valores, collapse = " | "), " |")
+    )
+  }
+
+  corpo <- character()
+  ii <- 1L
+  while (ii <= length(linhas)) {
+    linha <- linhas[[ii]]
+    linha_trim <- trimws(linha)
+
+    if (grepl("^```\\{r setup-documental", linha_trim, perl = TRUE)) {
+      ii <- ii + 1L
+      while (ii <= length(linhas) && trimws(linhas[[ii]]) != "```") ii <- ii + 1L
+      ii <- ii + 1L
+      next
+    }
+    if (grepl("<style(?:[[:space:]][^>]*)?>", linha_trim, ignore.case = TRUE, perl = TRUE)) {
+      if (!grepl("</style>", linha_trim, ignore.case = TRUE, perl = TRUE)) {
+        ii <- ii + 1L
+        while (ii <= length(linhas) && !grepl("</style>", linhas[[ii]], ignore.case = TRUE, perl = TRUE)) ii <- ii + 1L
+      }
+      ii <- ii + 1L
+      next
+    }
+    if (grepl("class=['\"]monitora-capa['\"]", linha_trim, perl = TRUE)) {
+      ii <- ii + 1L
+      next
+    }
+    if (grepl("^<div class=['\"]monitora-resumo['\"]>", linha_trim, perl = TRUE)) {
+      titulos <- valores <- character()
+      ii <- ii + 1L
+      while (ii <= length(linhas) && trimws(linhas[[ii]]) != "</div>") {
+        card <- trimws(linhas[[ii]])
+        padrao_card <- "^<div class=['\"]monitora-card['\"]><strong>([^<]+)</strong><br[[:space:]]*/?>(.*)</div>$"
+        if (grepl(padrao_card, card, perl = TRUE)) {
+          titulos <- c(titulos, sub(padrao_card, "\\1", card, perl = TRUE))
+          valores <- c(valores, limpar_html_controlado(sub(padrao_card, "\\2", card, perl = TRUE)))
+        }
+        ii <- ii + 1L
+      }
+      if (length(titulos)) corpo <- c(corpo, "", tabela_resumo(titulos, valores), "")
+      ii <- ii + 1L
+      next
+    }
+    if (grepl("^<div class=['\"]monitora-(?:alerta|ok)['\"]>", linha_trim, perl = TRUE)) {
+      alerta <- limpar_html_controlado(linha_trim)
+      corpo <- c(corpo, "", paste0("> ", alerta), "")
+      ii <- ii + 1L
+      next
+    }
+    ### Somente wrappers gerados pelo módulo documental são removidos. Não se
+    ### usa regex genérica para conteúdo entre < e >, preservando p < 0,001.
+    corpo <- c(corpo, limpar_html_controlado(linha))
+    ii <- ii + 1L
+  }
+
+  ### Normaliza excesso de linhas vazias sem alterar quebras semânticas.
+  corpo_final <- character()
+  for (linha in corpo) {
+    if (!nzchar(trimws(linha)) && length(corpo_final) && !nzchar(trimws(tail(corpo_final, 1L)))) next
+    corpo_final <- c(corpo_final, linha)
+  }
+  while (length(corpo_final) && !nzchar(trimws(corpo_final[[1L]]))) corpo_final <- corpo_final[-1L]
+
+  yaml_aspas <- function(x) {
+    x <- gsub("\\", "\\\\", as.character(x), fixed = TRUE)
+    x <- gsub("\"", "\\\"", x, fixed = TRUE)
+    paste0("\"", x, "\"")
+  }
+  titulo <- "Relatório de validação de dados"
+  subtitulo <- paste0(
+    "Plantas Herbáceas e Lenhosas · Componente Campestre Savânico · versão ",
+    versao_script
+  )
+  identificacao <- paste0(
+    "Execução ", exec_id, " · build ", build_script, " · ",
+    responsavel, " · ", instituicao
+  )
+
+  cabecalho <- if (identical(formato, "docx")) {
+    c(
+      "---",
+      paste0("title: ", yaml_aspas(titulo)),
+      paste0("subtitle: ", yaml_aspas(subtitulo)),
+      paste0("author: ", yaml_aspas("Programa Monitora · CBC/ICMBio")),
+      paste0("date: ", yaml_aspas(identificacao)),
+      "lang: pt-BR",
+      "---",
+      "",
+      monitora_doc_rmd_setup_editavel(),
+      "",
+      "```{=openxml}",
+      '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+      "```",
+      ""
+    )
+  } else {
+    c(
+      paste0("# ", titulo),
+      "",
+      paste0("**", subtitulo, "**"),
+      "",
+      paste0("*", identificacao, "*"),
+      "",
+      monitora_doc_rmd_setup_editavel(),
+      ""
+    )
+  }
+  c(cabecalho, corpo_final)
+}
+
+monitora_doc_validacao_publicar <- function(origem, destino) {
+  if (!file.exists(origem) || !is.finite(file.info(origem)$size) || file.info(origem)$size < 1L) {
+    stop("Candidato documental ausente ou vazio: ", origem, call. = FALSE)
+  }
+  dir.create(dirname(destino), recursive = TRUE, showWarnings = FALSE)
+  candidato <- tempfile(
+    pattern = paste0(".", basename(destino), "_"),
+    tmpdir = dirname(destino),
+    fileext = paste0(".", tools::file_ext(destino))
+  )
+  on.exit(if (file.exists(candidato)) unlink(candidato, force = TRUE), add = TRUE)
+  if (!file.copy(origem, candidato, overwrite = TRUE, copy.date = TRUE)) {
+    stop("Não foi possível preparar o candidato documental: ", destino, call. = FALSE)
+  }
+  ok <- file.rename(candidato, destino)
+  if (!isTRUE(ok)) ok <- file.copy(candidato, destino, overwrite = TRUE, copy.date = TRUE)
+  if (!isTRUE(ok) || !file.exists(destino) || !identical(
+    unname(tools::md5sum(origem)), unname(tools::md5sum(destino))
+  )) {
+    stop("Falha ao publicar o produto documental: ", destino, call. = FALSE)
+  }
+  invisible(destino)
+}
+
+monitora_doc_validacao_auditar_md <- function(arquivo_md, arquivo_auditoria) {
+  linhas <- if (file.exists(arquivo_md)) readLines(arquivo_md, warn = FALSE, encoding = "UTF-8") else character()
+  auditoria <- data.table::data.table(
+    item = c(
+      "arquivo_nao_vazio", "titulo_presente", "resumo_executivo_presente",
+      "sem_chunks_r", "sem_css_bruto", "sem_layout_html", "tabela_renderizada"
+    ),
+    conforme = c(
+      file.exists(arquivo_md) && is.finite(file.info(arquivo_md)$size) && file.info(arquivo_md)$size > 100L,
+      any(grepl("^# Relatório de validação de dados$", linhas)),
+      any(grepl("Resumo executivo", linhas, fixed = TRUE)),
+      !any(grepl("^```\\{r", linhas, perl = TRUE)),
+      !any(grepl("<style", linhas, ignore.case = TRUE, fixed = FALSE)),
+      !any(grepl("class=['\"]monitora-", linhas, perl = TRUE)),
+      any(grepl("^\\|.*\\|$", linhas, perl = TRUE))
+    )
+  )
+  data.table::fwrite(auditoria, arquivo_auditoria, bom = TRUE, na = "")
+  if (any(!auditoria$conforme)) {
+    stop(
+      "Gate do Markdown editável falhou: ",
+      paste(auditoria[conforme == FALSE, item], collapse = ", "),
+      call. = FALSE
+    )
+  }
+  invisible(auditoria)
+}
+
+monitora_doc_validacao_auditar_docx <- function(arquivo_docx, arquivo_auditoria) {
+  if (!requireNamespace("xml2", quietly = TRUE)) {
+    stop("O pacote xml2 é necessário para auditar o DOCX de validação.", call. = FALSE)
+  }
+  dir_docx <- tempfile(pattern = ".monitora_validacao_docx_auditoria_")
+  dir.create(dir_docx, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dir_docx, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(arquivo_docx, exdir = dir_docx)
+  documento_xml <- file.path(dir_docx, "word", "document.xml")
+  if (!file.exists(documento_xml)) stop("DOCX inválido: word/document.xml ausente.", call. = FALSE)
+  doc <- xml2::read_xml(documento_xml)
+  texto <- paste(xml2::xml_text(doc), collapse = " ")
+  texto <- gsub("[[:space:]]+", " ", texto, perl = TRUE)
+  n_tabelas <- length(xml2::xml_find_all(doc, ".//*[local-name()='tbl']"))
+  n_imagens <- length(xml2::xml_find_all(doc, ".//*[local-name()='blip']"))
+  n_links <- length(xml2::xml_find_all(doc, ".//*[local-name()='hyperlink']"))
+  n_quebras_pagina <- length(xml2::xml_find_all(
+    doc,
+    ".//*[local-name()='br' and @*[local-name()='type']='page']"
+  ))
+  pg <- xml2::xml_find_first(doc, ".//*[local-name()='sectPr']/*[local-name()='pgSz']")
+  largura <- suppressWarnings(as.numeric(xml2::xml_attr(pg, "w")))
+  altura <- suppressWarnings(as.numeric(xml2::xml_attr(pg, "h")))
+  a4 <- is.finite(largura) && is.finite(altura) &&
+    abs(min(largura, altura) - 11906) <= 120 &&
+    abs(max(largura, altura) - 16838) <= 160
+  auditoria <- data.table::data.table(
+    item = c(
+      "arquivo_nao_vazio", "estrutura_openxml", "titulo_presente",
+      "resumo_executivo_presente", "tabelas_presentes", "quebra_apos_capa",
+      "pagina_a4", "imagens_incorporadas", "hiperlinks_incorporados"
+    ),
+    valor = c(
+      as.character(if (file.exists(arquivo_docx)) file.info(arquivo_docx)$size else 0),
+      as.character(file.exists(documento_xml)),
+      as.character(grepl("Relatório de validação de dados", texto, fixed = TRUE)),
+      as.character(grepl("Resumo executivo", texto, fixed = TRUE)),
+      as.character(n_tabelas), as.character(n_quebras_pagina),
+      paste(largura, altura, sep = "x"), as.character(n_imagens), as.character(n_links)
+    ),
+    conforme = c(
+      file.exists(arquivo_docx) && is.finite(file.info(arquivo_docx)$size) && file.info(arquivo_docx)$size > 10000L,
+      file.exists(documento_xml),
+      grepl("Relatório de validação de dados", texto, fixed = TRUE),
+      grepl("Resumo executivo", texto, fixed = TRUE),
+      n_tabelas >= 1L, n_quebras_pagina >= 1L, a4,
+      TRUE, TRUE
+    )
+  )
+  data.table::fwrite(auditoria, arquivo_auditoria, bom = TRUE, na = "")
+  if (any(!auditoria$conforme)) {
+    stop(
+      "Gate do DOCX de validação falhou: ",
+      paste(auditoria[conforme == FALSE, item], collapse = ", "),
+      call. = FALSE
+    )
+  }
+  invisible(auditoria)
+}
+
+### Ajuste editorial restrito ao DOCX do relatório de validação. Mantém A4,
+### reserva larguras mínimas legíveis às colunas e impede que cabeçalhos curtos
+### sejam quebrados letra a letra. Nenhum conteúdo ou produto de dados é
+### modificado; a operação ocorre no OpenXML já renderizado.
+monitora_doc_validacao_adequar_layout_docx <- function(arquivo_docx) {
+  if (!file.exists(arquivo_docx) || !is.finite(file.info(arquivo_docx)$size) ||
+      file.info(arquivo_docx)$size < 10000L) {
+    stop("DOCX ausente ou vazio antes da adequação editorial.", call. = FALSE)
+  }
+  if (!requireNamespace("xml2", quietly = TRUE) || !requireNamespace("zip", quietly = TRUE)) {
+    stop("A adequação editorial do DOCX exige os pacotes 'xml2' e 'zip'.", call. = FALSE)
+  }
+  dir_docx <- tempfile(pattern = ".monitora_validacao_docx_layout_")
+  dir.create(dir_docx, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dir_docx, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(arquivo_docx, exdir = dir_docx)
+  documento_xml <- file.path(dir_docx, "word", "document.xml")
+  if (!file.exists(documento_xml)) stop("DOCX sem word/document.xml.", call. = FALSE)
+  doc <- xml2::read_xml(documento_xml)
+  ns <- xml2::xml_ns(doc)
+  uri_w <- "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+  ### A capa usa cabeçalho/rodapé distintos e não exibe o cabeçalho corrente.
+  secoes <- xml2::xml_find_all(doc, ".//w:sectPr", ns)
+  for (secao in secoes) {
+    if (!length(xml2::xml_find_all(secao, "./w:titlePg", ns))) {
+      xml2::xml_add_child(
+        secao,
+        xml2::read_xml(paste0('<w:titlePg xmlns:w="', uri_w, '"/>'))
+      )
+    }
+  }
+
+  largura_util <- 9978L
+  tabelas <- xml2::xml_find_all(doc, ".//w:tbl", ns)
+  for (tab in tabelas) {
+    linhas <- xml2::xml_find_all(tab, "./w:tr", ns)
+    if (!length(linhas)) next
+    celulas_linhas <- lapply(linhas, function(linha) xml2::xml_find_all(linha, "./w:tc", ns))
+    n_colunas <- max(lengths(celulas_linhas))
+    if (!is.finite(n_colunas) || n_colunas < 1L) next
+    comprimentos <- vapply(seq_len(n_colunas), function(jj) {
+      textos <- vapply(celulas_linhas, function(cels) {
+        if (length(cels) < jj) "" else trimws(xml2::xml_text(cels[[jj]]))
+      }, character(1L))
+      max(4L, min(48L, max(nchar(textos, type = "chars"), na.rm = TRUE)))
+    }, numeric(1L))
+    pesos <- sqrt(comprimentos)
+    minimo <- if (n_colunas >= 5L) 1100L else if (n_colunas == 4L) 1450L else if (n_colunas == 3L) 1900L else 2500L
+    minimo <- min(minimo, floor(largura_util / n_colunas))
+    sobra <- max(0L, largura_util - minimo * n_colunas)
+    larguras <- rep(minimo, n_colunas)
+    if (sobra > 0L) larguras <- larguras + as.integer(round(sobra * pesos / sum(pesos)))
+    larguras[[n_colunas]] <- larguras[[n_colunas]] + largura_util - sum(larguras)
+
+    tbl_pr <- xml2::xml_find_first(tab, "./w:tblPr", ns)
+    if (inherits(tbl_pr, "xml_missing")) {
+      primeiro <- xml2::xml_child(tab, 1L)
+      tbl_pr <- xml2::xml_add_sibling(
+        primeiro,
+        xml2::read_xml(paste0('<w:tblPr xmlns:w="', uri_w, '"/>')),
+        .where = "before"
+      )
+    }
+    antigos_layout <- xml2::xml_find_all(tbl_pr, "./w:tblLayout", ns)
+    if (length(antigos_layout)) xml2::xml_remove(antigos_layout)
+    xml2::xml_add_child(
+      tbl_pr,
+      xml2::read_xml(paste0('<w:tblLayout xmlns:w="', uri_w, '" w:type="fixed"/>'))
+    )
+    tbl_w <- xml2::xml_find_first(tbl_pr, "./w:tblW", ns)
+    if (inherits(tbl_w, "xml_missing")) {
+      tbl_w <- xml2::xml_add_child(
+        tbl_pr,
+        xml2::read_xml(paste0('<w:tblW xmlns:w="', uri_w, '"/>'))
+      )
+    }
+    xml2::xml_set_attr(tbl_w, "w:type", "dxa")
+    xml2::xml_set_attr(tbl_w, "w:w", as.character(largura_util))
+
+    grade <- xml2::xml_find_first(tab, "./w:tblGrid", ns)
+    if (!inherits(grade, "xml_missing")) {
+      colunas_grade <- xml2::xml_find_all(grade, "./w:gridCol", ns)
+      for (jj in seq_len(min(length(colunas_grade), n_colunas))) {
+        xml2::xml_set_attr(colunas_grade[[jj]], "w:w", as.character(larguras[[jj]]))
+      }
+    }
+    for (cels in celulas_linhas) {
+      for (jj in seq_len(min(length(cels), n_colunas))) {
+        tcpr <- xml2::xml_find_first(cels[[jj]], "./w:tcPr", ns)
+        if (inherits(tcpr, "xml_missing")) {
+          primeiro <- xml2::xml_child(cels[[jj]], 1L)
+          tcpr <- xml2::xml_add_sibling(
+            primeiro,
+            xml2::read_xml(paste0('<w:tcPr xmlns:w="', uri_w, '"/>')),
+            .where = "before"
+          )
+        }
+        tcw <- xml2::xml_find_first(tcpr, "./w:tcW", ns)
+        if (inherits(tcw, "xml_missing")) {
+          tcw <- xml2::xml_add_child(
+            tcpr,
+            xml2::read_xml(paste0('<w:tcW xmlns:w="', uri_w, '"/>'))
+          )
+        }
+        xml2::xml_set_attr(tcw, "w:type", "dxa")
+        xml2::xml_set_attr(tcw, "w:w", as.character(larguras[[jj]]))
+      }
+    }
+    ### Cabeçalho verde institucional e alternância discreta das linhas.
+    for (rr in seq_along(celulas_linhas)) {
+      preenchimento <- if (rr == 1L) "24543C" else if (rr %% 2L == 1L) "F3F7F4" else "FFFFFF"
+      for (cel in celulas_linhas[[rr]]) {
+        tcpr <- xml2::xml_find_first(cel, "./w:tcPr", ns)
+        if (inherits(tcpr, "xml_missing")) next
+        shd <- xml2::xml_find_first(tcpr, "./w:shd", ns)
+        if (inherits(shd, "xml_missing")) {
+          shd <- xml2::xml_add_child(
+            tcpr,
+            xml2::read_xml(paste0('<w:shd xmlns:w="', uri_w, '"/>'))
+          )
+        }
+        xml2::xml_set_attr(shd, "w:val", "clear")
+        xml2::xml_set_attr(shd, "w:color", "auto")
+        xml2::xml_set_attr(shd, "w:fill", preenchimento)
+      }
+    }
+    ### 9 pt dentro das tabelas: legível e suficiente para quadros de cinco
+    ### colunas sem sacrificar as margens institucionais.
+    execucoes <- xml2::xml_find_all(tab, ".//w:r", ns)
+    for (run in execucoes) {
+      rpr <- xml2::xml_find_first(run, "./w:rPr", ns)
+      if (inherits(rpr, "xml_missing")) {
+        primeiro <- xml2::xml_child(run, 1L)
+        rpr <- xml2::xml_add_sibling(
+          primeiro,
+          xml2::read_xml(paste0('<w:rPr xmlns:w="', uri_w, '"/>')),
+          .where = "before"
+        )
+      }
+      for (tag in c("sz", "szCs")) {
+        no <- xml2::xml_find_first(rpr, paste0("./w:", tag), ns)
+        if (inherits(no, "xml_missing")) {
+          no <- xml2::xml_add_child(
+            rpr,
+            xml2::read_xml(paste0('<w:', tag, ' xmlns:w="', uri_w, '"/>'))
+          )
+        }
+        xml2::xml_set_attr(no, "w:val", "18")
+      }
+    }
+    ### O primeiro conjunto de execuções pertence ao cabeçalho da tabela.
+    execucoes_cabecalho <- xml2::xml_find_all(linhas[[1L]], ".//w:r", ns)
+    for (run in execucoes_cabecalho) {
+      rpr <- xml2::xml_find_first(run, "./w:rPr", ns)
+      if (inherits(rpr, "xml_missing")) next
+      cor <- xml2::xml_find_first(rpr, "./w:color", ns)
+      if (inherits(cor, "xml_missing")) {
+        cor <- xml2::xml_add_child(
+          rpr,
+          xml2::read_xml(paste0('<w:color xmlns:w="', uri_w, '"/>'))
+        )
+      }
+      xml2::xml_set_attr(cor, "w:val", "FFFFFF")
+      if (!length(xml2::xml_find_all(rpr, "./w:b", ns))) {
+        xml2::xml_add_child(rpr, xml2::read_xml(paste0('<w:b xmlns:w="', uri_w, '"/>')))
+      }
+    }
+  }
+  xml2::write_xml(doc, documento_xml, options = "format")
+
+  ### Harmoniza títulos com a mesma paleta verde do HTML, sem alterar estilos
+  ### de hyperlinks ou a estrutura navegável do DOCX.
+  estilos_xml <- file.path(dir_docx, "word", "styles.xml")
+  if (file.exists(estilos_xml)) {
+    estilos <- xml2::read_xml(estilos_xml)
+    ns_estilos <- xml2::xml_ns(estilos)
+    for (nivel in seq_len(9L)) {
+      estilo <- xml2::xml_find_first(
+        estilos,
+        paste0(".//w:style[@w:styleId='Heading", nivel, "']"),
+        ns_estilos
+      )
+      if (inherits(estilo, "xml_missing")) next
+      cor <- xml2::xml_find_first(estilo, "./w:rPr/w:color", ns_estilos)
+      if (inherits(cor, "xml_missing")) next
+      xml2::xml_set_attr(cor, "w:val", if (nivel == 1L) "24543C" else "35664D")
+      attrs <- names(xml2::xml_attrs(cor))
+      for (atributo in attrs[grepl("theme", attrs, ignore.case = TRUE)]) {
+        xml2::xml_set_attr(cor, atributo, NULL)
+      }
+    }
+    xml2::write_xml(estilos, estilos_xml, options = "format")
+  }
+  candidato <- tempfile(pattern = ".monitora_validacao_docx_layout_", fileext = ".docx")
+  on.exit(if (file.exists(candidato)) unlink(candidato, force = TRUE), add = TRUE)
+  arquivos <- list.files(dir_docx, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  zip::zipr(candidato, arquivos, root = dir_docx, include_directories = FALSE, mode = "mirror")
+  if (!file.copy(candidato, arquivo_docx, overwrite = TRUE)) {
+    stop("Falha ao publicar a adequação editorial do DOCX.", call. = FALSE)
+  }
+  invisible(arquivo_docx)
+}
+
+monitora_doc_render_editaveis <- function(
+  conteudo,
+  base_dir,
+  base_nome,
+  formatos = c("md", "docx"),
+  versao_script,
+  build_script,
+  exec_id,
+  responsavel,
+  instituicao,
+  log_dir = base_dir
+) {
+  formatos <- intersect(unique(tolower(as.character(formatos))), c("md", "docx"))
+  if (!length(formatos)) return(character())
+  if (!requireNamespace("rmarkdown", quietly = TRUE) ||
+      !requireNamespace("knitr", quietly = TRUE)) {
+    stop("R Markdown/knitr indisponível para gerar os formatos editáveis.", call. = FALSE)
+  }
+  dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  id_curto <- if (requireNamespace("digest", quietly = TRUE)) {
+    substr(digest::digest(
+      paste(normalizePath(base_dir, winslash = "/", mustWork = FALSE), base_nome, Sys.getpid(), sep = "|"),
+      algo = "sha256", serialize = FALSE
+    ), 1L, 10L)
+  } else {
+    paste0(Sys.getpid(), format(Sys.time(), "%H%M%S"))
+  }
+  raiz_temporaria <- normalizePath(tempdir(), winslash = "/", mustWork = TRUE)
+  dir_curto <- file.path(raiz_temporaria, paste0("mrv_", id_curto))
+  dir.create(dir_curto, recursive = TRUE, showWarnings = FALSE)
+  on.exit({
+    dir_norm <- normalizePath(dir_curto, winslash = "/", mustWork = FALSE)
+    if (startsWith(dir_norm, paste0(raiz_temporaria, "/")) && dir.exists(dir_curto)) {
+      unlink(dir_curto, recursive = TRUE, force = TRUE)
+    }
+  }, add = TRUE)
+  log_arq <- file.path(log_dir, paste0("relatorio_validacao_editaveis_", exec_id, ".log"))
+  log_msg <- function(...) cat(
+    paste0(format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"), " ", paste(..., collapse = ""), "\n"),
+    file = log_arq, append = TRUE
+  )
+  saida <- character()
+
+  if ("md" %in% formatos) {
+    destino_md <- file.path(base_dir, paste0(base_nome, ".md"))
+    origem_md <- file.path(dir_curto, "m.Rmd")
+    candidato_md <- file.path(dir_curto, "out.md")
+    writeLines(monitora_doc_validacao_conteudo_editavel(
+      conteudo, versao_script, build_script, exec_id, responsavel, instituicao,
+      formato = "md"
+    ), origem_md, useBytes = TRUE)
+    ok_md <- tryCatch({
+      rmarkdown::render(
+        input = origem_md,
+        output_format = rmarkdown::md_document(variant = "gfm", preserve_yaml = FALSE),
+        output_file = basename(candidato_md),
+        output_dir = dir_curto,
+        knit_root_dir = normalizePath(base_dir, winslash = "/", mustWork = TRUE),
+        quiet = TRUE,
+        clean = TRUE,
+        envir = new.env(parent = globalenv())
+      )
+      monitora_doc_validacao_publicar(candidato_md, destino_md)
+      monitora_doc_validacao_auditar_md(
+        destino_md,
+        file.path(base_dir, "auditoria_integridade_markdown_relatorio_validacao.csv")
+      )
+      TRUE
+    }, error = function(e) {
+      log_msg("Falha ao gerar Markdown editável: ", conditionMessage(e))
+      FALSE
+    })
+    if (isTRUE(ok_md)) {
+      saida <- c(saida, destino_md)
+      log_msg("Markdown editável gerado: ", destino_md)
+    }
+  }
+
+  if ("docx" %in% formatos) {
+    destino_docx <- file.path(base_dir, paste0(base_nome, ".docx"))
+    origem_docx <- file.path(dir_curto, "d.Rmd")
+    referencia_docx <- file.path(dir_curto, "ref.docx")
+    candidato_docx <- file.path(dir_curto, "out.docx")
+    writeLines(monitora_doc_validacao_conteudo_editavel(
+      conteudo, versao_script, build_script, exec_id, responsavel, instituicao,
+      formato = "docx"
+    ), origem_docx, useBytes = TRUE)
+    ok_docx <- tryCatch({
+      dependencias <- c("jsonlite", "digest", "xml2", "zip")
+      ausentes <- dependencias[!vapply(dependencias, requireNamespace, logical(1L), quietly = TRUE)]
+      if (length(ausentes)) stop(
+        "Dependências ausentes para DOCX: ", paste(ausentes, collapse = ", "),
+        call. = FALSE
+      )
+      if (!exists("monitora_relatorios_analiticos_referencia_docx_materializar", mode = "function", inherits = TRUE)) {
+        stop("Modelo editorial DOCX embutido não foi carregado.", call. = FALSE)
+      }
+      get("monitora_relatorios_analiticos_referencia_docx_materializar", inherits = TRUE)(referencia_docx)
+      rmarkdown::render(
+        input = origem_docx,
+        output_format = rmarkdown::word_document(
+          toc = FALSE,
+          number_sections = TRUE,
+          fig_width = 6.8,
+          fig_height = 4.5,
+          reference_docx = normalizePath(referencia_docx, winslash = "/", mustWork = TRUE),
+          pandoc_args = c(
+            "--wrap=none",
+            paste0("--resource-path=", normalizePath(base_dir, winslash = "/", mustWork = TRUE))
+          )
+        ),
+        output_file = basename(candidato_docx),
+        output_dir = dir_curto,
+        knit_root_dir = normalizePath(base_dir, winslash = "/", mustWork = TRUE),
+        quiet = TRUE,
+        clean = TRUE,
+        envir = new.env(parent = globalenv())
+      )
+      if (exists("monitora_relatorios_analiticos_docx_preservar_linhas_tabela", mode = "function", inherits = TRUE)) {
+        get("monitora_relatorios_analiticos_docx_preservar_linhas_tabela", inherits = TRUE)(candidato_docx)
+      }
+      monitora_doc_validacao_adequar_layout_docx(candidato_docx)
+      monitora_doc_validacao_publicar(candidato_docx, destino_docx)
+      monitora_doc_validacao_auditar_docx(
+        destino_docx,
+        file.path(base_dir, "auditoria_integridade_docx_relatorio_validacao.csv")
+      )
+      TRUE
+    }, error = function(e) {
+      log_msg("Falha ao gerar DOCX editável: ", conditionMessage(e))
+      FALSE
+    })
+    if (isTRUE(ok_docx)) {
+      saida <- c(saida, destino_docx)
+      aviso_antigo <- file.path(base_dir, "DOCX_NAO_GERADO_relatorio_validacao.txt")
+      if (file.exists(aviso_antigo)) unlink(aviso_antigo, force = TRUE)
+      log_msg("DOCX editável gerado: ", destino_docx)
+    } else {
+      writeLines(c(
+        "DOCX do relatório de validação não gerado.",
+        paste0("Execução: ", exec_id),
+        paste0("Log: ", basename(log_arq)),
+        "Os produtos de dados e os demais formatos documentais não foram interrompidos."
+      ), file.path(base_dir, "DOCX_NAO_GERADO_relatorio_validacao.txt"), useBytes = TRUE)
+    }
+  }
+  saida
+}
+
 monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_documento = "documento", log_dir = dirname(rmd)) {
   formatos <- unique(tolower(as.character(formatos)))
   formatos <- intersect(formatos, c("html", "pdf"))
@@ -2010,7 +2685,7 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
     cat(paste0(format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"), " ", paste(..., collapse = ""), "\n"), file = log_arq, append = TRUE)
   }
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    log_msg("rmarkdown ausente; Rmd/MD/JSON foram gravados, mas HTML/PDF não foram renderizados.")
+    log_msg("rmarkdown ausente; a fonte Rmd/JSON foi gravada, mas os formatos renderizados não foram gerados.")
     return(character())
   }
   out <- character()
@@ -2524,7 +3199,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
                                                             exec_id = format(Sys.time(), "%Y%m%d_%H%M%S"),
                                                             responsavel = get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE),
                                                             instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
-                                                            formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)) {
+                                                            formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "docx", "pdf"), inherits = TRUE)) {
   base_dir <- monitora_doc_dir(output_dir, "07_relatorio_validacao")
   data_dir <- monitora_doc_dir(base_dir, "dados_apoio")
   exec_id <- monitora_doc_chr(exec_id, format(Sys.time(), "%Y%m%d_%H%M%S"))
@@ -2532,7 +3207,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   base_relatorio_fisica <- base_relatorio_logica
   caminhos_documentais_logicos <- file.path(
     base_dir,
-    paste0(base_relatorio_logica, c(".html", ".pdf"))
+    paste0(base_relatorio_logica, c(".Rmd", ".md", ".html", ".docx", ".pdf", ".json"))
   )
   if (any(nchar(caminhos_documentais_logicos, type = "chars") > 240L)) {
     base_relatorio_fisica <- "validacao_consolidado"
@@ -2540,6 +3215,22 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   responsavel <- monitora_doc_resolver_responsavel(responsavel)
   instituicao <- monitora_doc_chr(instituicao, "ICMBio")
   formatos <- unique(tolower(as.character(formatos)))
+  ### Nos modos incrementais, um checkpoint pode solicitar este relatório antes
+  ### de o modelo DOCX embutido (definido mais adiante no arquivo único) estar
+  ### carregado. HTML/MD/PDF seguem nesse checkpoint; o DOCX é adiado, sem aviso
+  ### de falha, para a chamada terminal que ocorre após o carregamento integral.
+  ### Isso evita dependência externa e preserva a inicialização rápida no RStudio.
+  docx_disponivel_nesta_chamada <- exists(
+    "monitora_relatorios_analiticos_referencia_docx_materializar",
+    mode = "function",
+    inherits = TRUE
+  )
+  formatos_nesta_chamada <- if (
+    "docx" %in% formatos && !isTRUE(docx_disponivel_nesta_chamada)
+  ) setdiff(formatos, "docx") else formatos
+  if ("docx" %in% formatos && !"docx" %in% formatos_nesta_chamada) {
+    message("[RELATORIO_VALIDACAO] DOCX reservado para a finalização terminal após o carregamento do modelo editorial embutido.")
+  }
   versao_script <- monitora_doc_chr(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "indefinida", inherits = TRUE), "indefinida")
   build_script <- monitora_doc_chr(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "sem_identificador", inherits = TRUE), "sem_identificador")
   input_files <- if (dir.exists("input")) list.files("input", recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
@@ -2804,7 +3495,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   rmd <- file.path(base_dir, paste0(base_relatorio_fisica, ".Rmd"))
   md <- file.path(base_dir, paste0(base_relatorio_fisica, ".md"))
   monitora_doc_fwrite(data.table::data.table(
-    nome_logico = paste0(base_relatorio_logica, ".{Rmd,md,html,pdf,json}"),
+    nome_logico = paste0(base_relatorio_logica, ".{Rmd,md,html,docx,pdf,json}"),
     base_fisica = base_relatorio_fisica,
     caminho_fisico_compactado = !identical(base_relatorio_fisica, base_relatorio_logica),
     exec_id = exec_id
@@ -2899,18 +3590,31 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   raiz_relatorio <- normalizePath(base_dir, winslash = "/", mustWork = FALSE)
   conteudo <- gsub(paste0(raiz_relatorio, "/"), "", conteudo, fixed = TRUE)
   writeLines(conteudo, rmd, useBytes = TRUE)
-  writeLines(grep("^---$|^output:|^  html_document:|^  pdf_document:|^    |^header-includes:|^  - \\\\usepackage|^geometry:|^fontsize:", conteudo, invert = TRUE, value = TRUE), md, useBytes = TRUE)
-  renderizados <- monitora_doc_render_rmd(
+  renderizados_leitura <- monitora_doc_render_rmd(
     rmd,
     formatos = formatos,
     tipo_documento = "relatorio_validacao",
     log_dir = log_dir
   )
-  formatos_documentais <- intersect(formatos, c("html", "pdf"))
+  renderizados_editaveis <- monitora_doc_render_editaveis(
+    conteudo = conteudo,
+    base_dir = base_dir,
+    base_nome = base_relatorio_fisica,
+    formatos = unique(c("md", intersect(formatos_nesta_chamada, "docx"))),
+    versao_script = versao_script,
+    build_script = build_script,
+    exec_id = exec_id,
+    responsavel = responsavel,
+    instituicao = instituicao,
+    log_dir = log_dir
+  )
+  renderizados <- unique(c(renderizados_leitura, renderizados_editaveis))
+  formatos_documentais <- intersect(formatos_nesta_chamada, c("html", "docx", "pdf"))
   esperados_documentais <- c(
     rmd,
     md,
     if ("html" %in% formatos_documentais) sub("\\.Rmd$", ".html", rmd) else character(),
+    if ("docx" %in% formatos_documentais) sub("\\.Rmd$", ".docx", rmd) else character(),
     if ("pdf" %in% formatos_documentais) sub("\\.Rmd$", ".pdf", rmd) else character()
   )
   faltantes_documentais <- esperados_documentais[!file.exists(esperados_documentais) | file.info(esperados_documentais)$size < 1L]
@@ -2922,8 +3626,8 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     )
   }
   assign("MONITORA_RELATORIO_VALIDACAO_GERADO", TRUE, envir = .GlobalEnv)
-  assign("MONITORA_RELATORIO_VALIDACAO_CONSOLIDADO_ULTIMO", c(rmd, md, renderizados), envir = .GlobalEnv)
-  invisible(c(rmd, md, renderizados))
+  assign("MONITORA_RELATORIO_VALIDACAO_CONSOLIDADO_ULTIMO", unique(c(rmd, md, renderizados)), envir = .GlobalEnv)
+  invisible(unique(c(rmd, md, renderizados)))
 }
 
 ### Uma falha na geração do relatório consolidado não pode ficar restrita a
@@ -2948,7 +3652,7 @@ monitora_relatorio_validacao_consolidado_registrar_falha <- function(msg, contex
       contexto = as.character(contexto),
       etapa = "monitora_relatorio_validacao_consolidado_gerar",
       mensagem_erro = as.character(msg),
-      observacao = "Relatório consolidado (HTML/PDF/Rmd/MD) não foi materializado nesta execução. Produtos principais (registros_corrig.csv/registros_validados.csv/registros_corrig_stat.csv) e demais auditorias não dependem deste relatório e não são afetados."
+      observacao = "Relatório consolidado (HTML/DOCX/PDF/Rmd/MD) não foi materializado nesta execução. Produtos principais (registros_corrig.csv/registros_validados.csv/registros_corrig_stat.csv) e demais auditorias não dependem deste relatório e não são afetados."
     )
     arq_erro <- file.path(dir_aud_err, paste0("ERRO_relatorio_validacao_consolidado_", exec_id_err, ".csv"))
     if (exists("monitora_fwrite", mode = "function", inherits = TRUE)) {
@@ -2983,7 +3687,7 @@ monitora_relatorio_validacao_consolidado_tentar <- function(registros_corrig, co
       exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE),
       responsavel = get0("MONITORA_RESPONSAVEL_CORRECAO", ifnotfound = "", inherits = TRUE),
       instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
-      formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "pdf"), inherits = TRUE)
+      formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "docx", "pdf"), inherits = TRUE)
     )
     if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
       monitora_perf_registrar_checkpoint(
@@ -13626,9 +14330,184 @@ if (!exists(".MONITORA_FECHAMENTO_HIERARQUICO_CACHE", inherits = FALSE)) {
   .MONITORA_FECHAMENTO_HIERARQUICO_CACHE <- new.env(parent = emptyenv())
 }
 
+### Resolvedor físico único do contrato ---------------------------------
+###
+### Consumidores operacionais não devem reinterpretar labels, paths ou
+### aliases. Este resolvedor projeta as representações EXATAS já existentes no
+### contrato único sobre os nomes físicos do dataset. A normalização serve
+### somente para neutralizar HTML, acentos e pontuação; qualquer representação
+### compartilhada por mais de um atributo ou qualquer duplicidade física falha
+### de modo fechado. O custo depende apenas do número de colunas, nunca do
+### número de registros, e o resultado é memorizado pela assinatura do schema.
+monitora_contrato_unico_resolver_colunas_dataset <- function(
+    dt, caminhos_canonicos, contrato_indices = NULL) {
+  dt <- data.table::as.data.table(dt)
+  caminhos_canonicos <- unique(as.character(caminhos_canonicos))
+  caminhos_canonicos <- caminhos_canonicos[
+    !is.na(caminhos_canonicos) & nzchar(trimws(caminhos_canonicos))
+  ]
+  vazio <- data.table::data.table(
+    caminho_registro = caminhos_canonicos,
+    coluna = NA_character_,
+    status_resolucao = "ausente_no_dataset",
+    representacao = NA_character_,
+    n_candidatos_fisicos = 0L
+  )
+  if (!length(caminhos_canonicos) || !length(names(dt))) return(vazio[])
+  if (is.null(contrato_indices)) {
+    contrato_indices <- tryCatch(
+      monitora_contrato_unico_indices_cache(validar = TRUE),
+      error = function(e) NULL
+    )
+  }
+  if (is.null(contrato_indices) || is.null(contrato_indices$indices)) {
+    vazio[, status_resolucao := "contrato_unico_indisponivel"]
+    return(vazio[])
+  }
+
+  attrs <- data.table::copy(data.table::as.data.table(
+    contrato_indices$indices$por_atributo_canonico
+  ))
+  aliases <- data.table::copy(data.table::as.data.table(
+    contrato_indices$indices$por_alias_normalizado
+  ))
+  obrig_attrs <- c(
+    "caminho_registro", "name_curto", "label_2025_sem_html",
+    "labels_historicos_sem_html"
+  )
+  if (!all(obrig_attrs %in% names(attrs))) {
+    vazio[, status_resolucao := "contrato_unico_incompleto"]
+    return(vazio[])
+  }
+  attrs <- unique(attrs[
+    !is.na(caminho_registro) & nzchar(as.character(caminho_registro)),
+    ..obrig_attrs
+  ], by = "caminho_registro")
+
+  cache_env <- if (exists("monitora_publicacao_ae_cache_env", mode = "function")) {
+    monitora_publicacao_ae_cache_env("contrato_unico_resolucao_colunas")
+  } else {
+    .GlobalEnv
+  }
+  assinatura_schema <- if (exists("monitora_correcao_mapa_colunas_cache_key", mode = "function")) {
+    monitora_correcao_mapa_colunas_cache_key(dt, "contrato_unico_v2917")
+  } else {
+    paste(length(names(dt)), sum(nchar(names(dt))), paste(names(dt), collapse = "\r"), sep = "::")
+  }
+  chave_cache <- paste0(
+    "resolucao::", assinatura_schema, "::",
+    paste(sort(caminhos_canonicos), collapse = "\r")
+  )
+  cache_hit <- tryCatch(get(chave_cache, envir = cache_env, inherits = FALSE), error = function(e) NULL)
+  if (!is.null(cache_hit)) return(data.table::copy(cache_hit))
+
+  linhas_rep <- vector("list", nrow(attrs))
+  for (ii in seq_len(nrow(attrs))) {
+    caminho <- as.character(attrs$caminho_registro[ii])
+    historicos <- as.character(attrs$labels_historicos_sem_html[ii])
+    historicos <- if (!is.na(historicos) && nzchar(historicos)) {
+      trimws(strsplit(historicos, " | ", fixed = TRUE)[[1L]])
+    } else character(0)
+    valores <- c(
+      caminho,
+      as.character(attrs$name_curto[ii]),
+      as.character(attrs$label_2025_sem_html[ii]),
+      historicos
+    )
+    origens <- c(
+      "caminho_registro", "name_curto", "label_2025",
+      rep("label_historico", length(historicos))
+    )
+    if (nrow(aliases) && all(c("caminho_registro", "alias") %in% names(aliases))) {
+      aa <- unique(as.character(aliases[caminho_registro == caminho, alias]))
+      aa <- aa[!is.na(aa) & nzchar(trimws(aa))]
+      valores <- c(valores, aa)
+      origens <- c(origens, rep("alias_contrato", length(aa)))
+    }
+    linhas_rep[[ii]] <- data.table::data.table(
+      caminho_registro = caminho,
+      representacao = valores,
+      origem_representacao = origens
+    )
+  }
+  reps <- data.table::rbindlist(linhas_rep, fill = TRUE, use.names = TRUE)
+  reps <- reps[!is.na(representacao) & nzchar(trimws(as.character(representacao)))]
+  reps[, representacao_norm := monitora_contrato_unico_normalizar_texto_seguro(representacao)]
+  reps <- unique(reps[nzchar(representacao_norm)])
+  reps[, n_atributos_representacao := data.table::uniqueN(caminho_registro), by = representacao_norm]
+
+  fisicas <- data.table::data.table(
+    coluna = names(dt),
+    representacao_norm = monitora_contrato_unico_normalizar_texto_seguro(names(dt))
+  )
+  saida <- lapply(caminhos_canonicos, function(alvo) {
+    if (!(alvo %in% attrs$caminho_registro)) {
+      return(data.table::data.table(
+        caminho_registro = alvo, coluna = NA_character_,
+        status_resolucao = "atributo_ausente_no_contrato_unico",
+        representacao = NA_character_, n_candidatos_fisicos = 0L
+      ))
+    }
+    rep_alvo <- reps[caminho_registro == alvo]
+    hits_unicos <- unique(fisicas[
+      representacao_norm %in% rep_alvo[n_atributos_representacao == 1L, representacao_norm]
+    ], by = "coluna")
+    hits_ambiguos <- unique(fisicas[
+      representacao_norm %in% rep_alvo[n_atributos_representacao > 1L, representacao_norm]
+    ], by = "coluna")
+    if (nrow(hits_unicos) == 1L && !nrow(hits_ambiguos)) {
+      hit_rep <- rep_alvo[
+        representacao_norm == hits_unicos$representacao_norm[1L] &
+          n_atributos_representacao == 1L
+      ][1L]
+      return(data.table::data.table(
+        caminho_registro = alvo,
+        coluna = hits_unicos$coluna[1L],
+        status_resolucao = "resolvido_unico",
+        representacao = as.character(hit_rep$representacao),
+        n_candidatos_fisicos = 1L
+      ))
+    }
+    status <- if (nrow(hits_unicos) > 1L) {
+      "conflito_alias_fisico"
+    } else if (nrow(hits_ambiguos)) {
+      "ambiguo_entre_atributos"
+    } else {
+      "ausente_no_dataset"
+    }
+    data.table::data.table(
+      caminho_registro = alvo, coluna = NA_character_,
+      status_resolucao = status, representacao = NA_character_,
+      n_candidatos_fisicos = as.integer(nrow(hits_unicos) + nrow(hits_ambiguos))
+    )
+  })
+  saida <- data.table::rbindlist(saida, fill = TRUE, use.names = TRUE)
+  try(assign(chave_cache, saida[], envir = cache_env), silent = TRUE)
+  data.table::copy(saida[])
+}
+
+monitora_contrato_unico_resolver_contexto_impactos <- function(
+    dt, contrato_indices = NULL) {
+  alvos <- c(
+    pai = "amostragem/registro/impacto_manejo_uso",
+    tipos = "amostragem/registro/tipos_impacto_manejo_uso",
+    outro = "amostragem/registro/tipos_impacto_manejo_uso_outro",
+    descricao = "amostragem/registro/tipos_impacto_manejo_uso_descricao"
+  )
+  out <- monitora_contrato_unico_resolver_colunas_dataset(
+    dt, unname(alvos), contrato_indices = contrato_indices
+  )
+  out[, papel_contexto := names(alvos)[match(caminho_registro, unname(alvos))]]
+  data.table::setcolorder(out, c(
+    "papel_contexto", "caminho_registro", "coluna", "status_resolucao",
+    "representacao", "n_candidatos_fisicos"
+  ))
+  out[]
+}
+
 monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   dt <- data.table::as.data.table(dt)
-  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_v281_triout")
+  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_v2917_contrato_unico")
   if (exists(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)) {
     return(data.table::copy(get(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)))
   }
@@ -13638,95 +14517,162 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   )
   if (!nrow(mapa)) return(data.table::data.table())
 
- ### Algumas colunas operacionais preservam o label histórico em vez do path
- ### canônico (por exemplo, a árvore D30 nativa). Para campos dependentes,
- ### aliases contratuais EXATOS e unívocos prevalecem somente quando a leitura
- ### lexical ficou ausente ou recaiu na família genérica "outra/outros". Essa
- ### precedência localizada é obrigatória para rótulos "Outra espécie...":
- ### `outra` qualifica a espécie aberta, enquanto o path/relevant do contrato
- ### único informa a forma de vida pai. Labels compartilhados entre categorias
- ### permanecem sem inferência.
-  aliases_contrato <- tryCatch(monitora_validados_aliases(), error = function(e) list())
-  token_norm_inicial <- monitora_correcao_normalizar_nome_coluna(mapa$token_associado)
-  coluna_norm_mapa <- monitora_correcao_normalizar_nome_coluna(mapa$coluna_registros_corrig)
-  eh_especie_aberta_outra <- mapa$papel_coluna == "especie_nome_popular" & (
-    grepl("(^|_)outra_especie($|_)", coluna_norm_mapa) |
-      grepl("(^|_)outra_sp($|_)", coluna_norm_mapa)
+  cu <- tryCatch(monitora_contrato_unico_indices_cache(validar = TRUE), error = function(e) NULL)
+  attrs <- if (!is.null(cu) && !is.null(cu$indices$por_atributo_canonico)) {
+    data.table::copy(data.table::as.data.table(cu$indices$por_atributo_canonico))
+  } else data.table::data.table()
+  deps <- if (!is.null(cu) && !is.null(cu$indices$por_dependencia)) {
+    data.table::copy(data.table::as.data.table(cu$indices$por_dependencia))
+  } else data.table::data.table()
+  categorias <- tryCatch(
+    monitora_contrato_categorias_movimento()[categoria %in% c("nativa", "exotica", "seca_morta")],
+    error = function(e) data.table::data.table()
   )
-  idx_dependentes <- which(
-    mapa$papel_coluna %in% c("atributo_dependente_habito", "especie_nome_popular") &
-      (
-        is.na(mapa$categoria) | !nzchar(mapa$categoria) |
-          is.na(mapa$token_associado) | !nzchar(mapa$token_associado) |
-          token_norm_inicial %in% c("outra", "outro", "outras", "outros") |
-          eh_especie_aberta_outra
-      )
-  )
-  resolvido_por_alias_exato <- rep(FALSE, nrow(mapa))
-  if (length(idx_dependentes) && length(aliases_contrato)) {
-    for (ii in idx_dependentes) {
-      col_alvo <- mapa$coluna_registros_corrig[ii]
-      chaves_hit <- names(aliases_contrato)[
-        names(aliases_contrato) == col_alvo |
-          vapply(aliases_contrato, function(vals) col_alvo %in% as.character(vals), logical(1L))
-      ]
-      if (!length(chaves_hit)) next
-      cats_hit <- unique(monitora_correcao_categoria_coluna_canonica(chaves_hit))
-      toks_hit <- unique(monitora_correcao_token_associado_coluna(chaves_hit))
-      cats_hit <- cats_hit[!is.na(cats_hit) & nzchar(cats_hit)]
-      toks_hit <- toks_hit[!is.na(toks_hit) & nzchar(toks_hit)]
-      if (length(cats_hit) == 1L && length(toks_hit) == 1L) {
-        data.table::set(mapa, i = ii, j = "categoria", value = cats_hit)
-        data.table::set(mapa, i = ii, j = "token_associado", value = toks_hit)
-        resolvido_por_alias_exato[ii] <- TRUE
-      }
-    }
+  papeis_inferiores <- c("atributo_dependente_habito", "especie_nome_popular")
+
+  if (!nrow(attrs) || !nrow(deps) || !nrow(categorias) ||
+      !all(c("dependent_name", "parent_name", "token") %in% names(deps))) {
+    regras_finais <- mapa[papel_coluna %in% papeis_inferiores, .(
+      campo_inferior = coluna_registros_corrig,
+      papel_inferior = papel_coluna,
+      categoria = NA_character_, token = NA_character_,
+      campo_superior = NA_character_, papel_superior = NA_character_,
+      status_regra = "bloqueada_contrato_unico_indisponivel",
+      origem_regra = "contrato_unico"
+    )]
+    assign(chave_cache, regras_finais, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE)
+    return(data.table::copy(regras_finais))
   }
 
- ### Defesa contratual: nenhum campo de espécie aberta "Outra espécie"/
- ### `outra_sp` pode criar forma de vida pai só pela leitura lexical do rótulo.
- ### Exige path ou alias EXATO e unívoco do contrato embutido; sem essa prova a
- ### relação é apenas diagnóstica/ambígua. O path atual
- ### `exotica_outros_outra_sp` é resolvido exatamente para `outros` e permanece
- ### válido.
-  idx_especie_aberta_sem_contrato <- which(
-    eh_especie_aberta_outra & !resolvido_por_alias_exato
-  )
-  if (length(idx_especie_aberta_sem_contrato)) {
-    data.table::set(mapa, i = idx_especie_aberta_sem_contrato, j = "token_associado", value = NA_character_)
+  if ("arquivo_xlsform" %in% names(deps)) {
+    deps_atuais <- deps[grepl("21FEV25|2025", as.character(arquivo_xlsform), ignore.case = TRUE)]
+    if (nrow(deps_atuais)) deps <- deps_atuais
   }
-
-  regras <- mapa[papel_coluna %in% c("atributo_dependente_habito", "especie_nome_popular")]
-  if (!nrow(regras)) return(data.table::data.table())
-
-  regras[, campo_superior := vapply(categoria, function(cat) {
-    if (is.na(cat) || !nzchar(cat) || !(cat %in% c("nativa", "exotica", "seca_morta"))) return(NA_character_)
-    tryCatch(monitora_correcao_coluna_forma_vida(dt, cat), error = function(e) NA_character_)
-  }, character(1L))]
-  regras[, papel_superior := monitora_correcao_papel_coluna_canonico(campo_superior)]
-  regras[, status_regra := data.table::fifelse(
-    is.na(categoria) | !nzchar(categoria) | !(categoria %in% c("nativa", "exotica", "seca_morta")) |
-      is.na(token_associado) | !nzchar(token_associado),
-    "nao_derivavel_relacao_ambigua",
-    data.table::fifelse(
-      is.na(campo_superior) | !nzchar(campo_superior) | !(campo_superior %in% names(dt)),
-      "bloqueada_superior_nao_resolvido",
-      data.table::fifelse(
-        papel_superior != "lista_principal_forma_vida" | campo_superior == coluna_registros_corrig,
-        "bloqueada_papeis_incompativeis",
-        "ok"
-      )
-    )
+  mapa_categorias <- unique(categorias[, .(
+    parent_name = as.character(name_curto),
+    parent_path = as.character(caminho_registro),
+    parent_list_name = as.character(list_name),
+    categoria = as.character(categoria)
+  )], by = "parent_name")
+  rel_raiz <- merge(
+    deps[parent_name %in% mapa_categorias$parent_name, .(
+      dependent_name = as.character(dependent_name),
+      parent_name = as.character(parent_name),
+      token = as.character(token)
+    )],
+    mapa_categorias,
+    by = "parent_name", all = FALSE, sort = FALSE
+  )
+  ### Relevance pode expressar a relação em mais de um nível. O ramo atual
+  ### `outros`, por exemplo, liga forma_vida_exotica -> lista de espécies ->
+  ### campo de espécie aberta, enquanto outras formas repetem o pai principal
+  ### no próprio relevant do campo aberto. A clausura transitiva abaixo deriva
+  ### ambos os casos do MESMO grafo contratual; não há exceção por token.
+  arestas <- unique(deps[
+    !is.na(parent_name) & nzchar(as.character(parent_name)) &
+      !is.na(dependent_name) & nzchar(as.character(dependent_name)),
+    .(no_pai = as.character(parent_name), no_filho = as.character(dependent_name))
+  ])
+  rel <- rel_raiz[, .(
+    dependent_name, parent_name, token, parent_path,
+    parent_list_name, categoria
   )]
-  regras_finais <- unique(regras[, .(
-    campo_inferior = coluna_registros_corrig,
-    papel_inferior = papel_coluna,
-    categoria,
-    token = token_associado,
-    campo_superior,
-    papel_superior,
-    status_regra
-  )], by = c("campo_inferior", "categoria", "token", "campo_superior"))
+  fronteira <- rel_raiz[, .(
+    no_atual = dependent_name, parent_name, token, parent_path,
+    parent_list_name, categoria
+  )]
+  visitados <- unique(fronteira$no_atual)
+  for (profundidade in seq_len(6L)) {
+    prox <- merge(
+      fronteira, arestas,
+      by.x = "no_atual", by.y = "no_pai",
+      all = FALSE, sort = FALSE, allow.cartesian = TRUE
+    )
+    if (!nrow(prox)) break
+    rel <- data.table::rbindlist(list(
+      rel,
+      prox[, .(
+        dependent_name = no_filho, parent_name, token, parent_path,
+        parent_list_name, categoria
+      )]
+    ), fill = TRUE, use.names = TRUE)
+    fronteira <- unique(prox[
+      !(no_filho %in% visitados),
+      .(
+        no_atual = no_filho, parent_name, token, parent_path,
+        parent_list_name, categoria
+      )
+    ])
+    if (!nrow(fronteira)) break
+    visitados <- unique(c(visitados, fronteira$no_atual))
+  }
+  rel <- unique(rel)
+  attrs_dep <- unique(attrs[, .(
+    dependent_name = as.character(name_curto),
+    dependent_path = as.character(caminho_registro)
+  )])
+  rel <- merge(rel, attrs_dep, by = "dependent_name", all = FALSE, sort = FALSE)
+  rel <- rel[
+    !is.na(dependent_path) & nzchar(dependent_path) &
+      !is.na(token) & nzchar(token)
+  ]
+
+  ### A aresta raiz da dependência atual é a própria declaração contratual do
+  ### token. Não a condicionamos a uma segunda cópia em choices: o XLSForm
+  ### 21FEV25 contém a relevance `forma_vida_exotica -> outros`, embora o dump
+  ### histórico de choices embutido não replique esse item. Exigir as duas
+  ### fontes descartaria justamente o ramo válido `outros` e recriaria uma
+  ### inconsistência interna; versões históricas já foram excluídas acima.
+  rel <- unique(rel[, .(
+    dependent_path, categoria, token, parent_path
+  )], by = c("dependent_path", "categoria", "token", "parent_path"))
+
+  resolucao <- monitora_contrato_unico_resolver_colunas_dataset(
+    dt, unique(c(rel$dependent_path, rel$parent_path)), contrato_indices = cu
+  )
+  rel[, `:=`(
+    campo_inferior = resolucao$coluna[match(dependent_path, resolucao$caminho_registro)],
+    status_inferior = resolucao$status_resolucao[match(dependent_path, resolucao$caminho_registro)],
+    campo_superior = resolucao$coluna[match(parent_path, resolucao$caminho_registro)],
+    status_superior = resolucao$status_resolucao[match(parent_path, resolucao$caminho_registro)]
+  )]
+  rel <- rel[status_inferior == "resolvido_unico" & !is.na(campo_inferior)]
+  rel[, `:=`(
+    papel_inferior = mapa$papel_coluna[match(campo_inferior, mapa$coluna_registros_corrig)],
+    papel_superior = mapa$papel_coluna[match(campo_superior, mapa$coluna_registros_corrig)]
+  )]
+  rel[, n_relacoes_campo := .N, by = campo_inferior]
+  rel[, status_regra := data.table::fcase(
+    n_relacoes_campo != 1L, "nao_derivavel_relacao_ambigua",
+    !(papel_inferior %in% papeis_inferiores), "bloqueada_papeis_incompativeis",
+    status_superior != "resolvido_unico" | is.na(campo_superior), "bloqueada_superior_nao_resolvido",
+    papel_superior != "lista_principal_forma_vida" | campo_superior == campo_inferior, "bloqueada_papeis_incompativeis",
+    default = "ok"
+  )]
+  regras_resolvidas <- rel[, .(
+    campo_inferior, papel_inferior, categoria, token,
+    campo_superior, papel_superior, status_regra,
+    origem_regra = "contrato_unico_dependencias_relevant_21FEV25"
+  )]
+
+  ### Campos fisicamente reconhecidos como hábito/espécie, mas sem relação
+  ### única no contrato, continuam visíveis na auditoria e nunca são mutados.
+  campos_resolvidos <- unique(regras_resolvidas$campo_inferior)
+  regras_nao_derivaveis <- mapa[
+    papel_coluna %in% papeis_inferiores &
+      !(coluna_registros_corrig %in% campos_resolvidos),
+    .(
+      campo_inferior = coluna_registros_corrig,
+      papel_inferior = papel_coluna,
+      categoria = NA_character_, token = NA_character_,
+      campo_superior = NA_character_, papel_superior = NA_character_,
+      status_regra = "nao_derivavel_relacao_ambigua",
+      origem_regra = "contrato_unico_sem_correspondencia_fisica_unica"
+    )
+  ]
+  regras_finais <- unique(data.table::rbindlist(
+    list(regras_resolvidas, regras_nao_derivaveis), fill = TRUE, use.names = TRUE
+  ), by = c("campo_inferior", "categoria", "token", "campo_superior", "status_regra"))
   assign(chave_cache, regras_finais, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE)
   data.table::copy(regras_finais)
 }
@@ -20273,36 +21219,21 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
 ### grupo transacional: qualquer precondição inválida bloqueia o conjunto todo.
 monitora_correcao_colunas_impactos_contrato <- function(dt, dicionario = NULL) {
   dt <- data.table::as.data.table(dt)
-  resolver <- function(candidatos) {
-    for (cand in candidatos) {
-      if (cand %in% names(dt)) return(cand)
-      hit <- tryCatch(
-        monitora_correcao_resolver_coluna(
-          dt, cand, dicionario, permitir_heuristica = FALSE
-        ),
-        error = function(e) NA_character_
-      )
-      if (!is.na(hit) && nzchar(hit) && hit %in% names(dt)) return(hit)
-    }
-    NA_character_
+  resolucao <- tryCatch(
+    monitora_contrato_unico_resolver_contexto_impactos(dt),
+    error = function(e) data.table::data.table()
+  )
+  obter <- function(papel) {
+    hit <- resolucao[
+      papel_contexto == papel & status_resolucao == "resolvido_unico",
+      coluna
+    ]
+    hit <- unique(hit[!is.na(hit) & nzchar(hit) & hit %in% names(dt)])
+    if (length(hit) == 1L) hit[[1L]] else NA_character_
   }
   list(
-    pai = resolver(c(
-      "impact_manejo_uso/impacto_manejo_uso",
-      "Ocorreram impactos, ações de manejo ou uso no local onde está situado o transecto? (impact_manejo_uso)"
-    )),
-    tipos = resolver(c(
-      "impact_manejo_uso/tipos_impacto_manejo_uso",
-      "Qual(is)? (impact_manejo_uso)"
-    )),
-    outro = resolver(c(
-      "impact_manejo_uso/tipos_impacto_manejo_uso_outro",
-      "Outros tipos de manejo ou uso: (impact_manejo_uso)"
-    )),
-    descricao = resolver(c(
-      "impact_manejo_uso/tipos_impacto_manejo_uso_descricao",
-      "Descreva os impactos, ações de manejo ou uso ocorridos (data, método, severidade, quando for o caso), caso conhecidos: (impact_manejo_uso)"
-    ))
+    pai = obter("pai"), tipos = obter("tipos"),
+    outro = obter("outro"), descricao = obter("descricao")
   )
 }
 
@@ -20384,11 +21315,11 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.16-20260822-r04",
+      ifnotfound = "v2.9.17-20260825-r01",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.16", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.17", inherits = TRUE
     ))
     op
   }
@@ -27304,7 +28235,8 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     impacto_manejo_uso = character(), tipos_impacto_manejo_uso = character(),
     tipos_impacto_manejo_uso_label_name = character(),
     outros_impactos_manejo_uso = character(),
-    descricao_impactos_manejo_uso = character(), contexto_fogo = character(),
+    descricao_impactos_manejo_uso = character(),
+    status_resolucao_contexto = character(), contexto_fogo = character(),
     trajetoria_herbacea = character(), trajetoria_lenhosa = character(),
     ano_anterior_herbacea = integer(), ano_anterior_lenhosa = integer(),
     percentual_ua_ano = numeric(), percentual_ua_ano_anterior = numeric(),
@@ -27318,7 +28250,8 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     coletas_amostradas = character(), n_coletas_com_seca_morta = integer(),
     coletas_com_ocorrencia = character(), n_pontos_amostrados = integer(),
     n_pontos_seca_morta = integer(), percentual_pontos_seca_morta = numeric(),
-    n_coletas_contexto_fogo_explicito = integer()
+    n_coletas_contexto_fogo_explicito = integer(),
+    n_coletas_contexto_indeterminado = integer()
   )
   vazio_ua <- data.table::data.table(
     etapa = character(), UC = character(), EA = character(), UA = character(),
@@ -27333,6 +28266,7 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     percentual_pontos_lenhosa = numeric(), n_eventos_linha_forma = integer(),
     formas_de_vida = character(), n_coletas_contexto_fogo_explicito = integer(),
     n_coletas_sem_contexto_informado = integer(),
+    n_coletas_contexto_indeterminado = integer(),
     tipos_impacto_manejo_uso = character(),
     tipos_impacto_manejo_uso_label_name = character()
   )
@@ -27498,20 +28432,40 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
   ### Atributos superiores: somente COLETAS com ocorrência entram na leitura.
   coletas_alvo <- unique(resumo$COLETA)
   linhas_alvo <- which(as.character(contexto$COLETA) %chin% coletas_alvo)
+  resolucao_contexto <- tryCatch(
+    monitora_contrato_unico_resolver_contexto_impactos(dt),
+    error = function(e) data.table::data.table()
+  )
+  if (!all(c("papel_contexto", "coluna", "status_resolucao") %in% names(resolucao_contexto))) {
+    resolucao_contexto <- data.table::data.table(
+      papel_contexto = c("pai", "tipos", "outro", "descricao"),
+      coluna = NA_character_, status_resolucao = "contrato_unico_indisponivel"
+    )
+  }
   mapa_campos <- data.table::data.table(
     campo = c("impacto", "tipos", "outros", "descricao"),
-    padrao = c(
-      "(^|_)impacto_manejo_uso$",
-      "(^|_)tipos_impacto_manejo_uso$",
-      "tipos_impacto_manejo_uso_outro$",
-      "tipos_impacto_manejo_uso_descricao$|descricao.*impacto_manejo_uso"
-    )
+    papel_contexto = c("pai", "tipos", "outro", "descricao")
   )
+  mapa_campos <- resolucao_contexto[mapa_campos, on = "papel_contexto"]
   mapa_campos[, colunas := lapply(seq_len(.N), function(ii) {
-    idx <- which(grepl(padrao[[ii]], nomes_norm, perl = TRUE))
-    if (campo[[ii]] == "impacto") idx <- idx[!grepl("tipos_", nomes_norm[idx], fixed = TRUE)]
-    names(dt)[idx]
+    if (
+      identical(status_resolucao[[ii]], "resolvido_unico") &&
+        !is.na(coluna[[ii]]) && coluna[[ii]] %in% names(dt)
+    ) coluna[[ii]] else character(0)
   })]
+  status_principais <- mapa_campos[campo %in% c("impacto", "tipos"), status_resolucao]
+  status_opcionais <- mapa_campos[campo %in% c("outros", "descricao"), status_resolucao]
+  status_contexto_global <- if (
+    length(status_principais) == 2L && all(status_principais == "resolvido_unico")
+  ) {
+    if (length(status_opcionais) == 2L && all(status_opcionais == "resolvido_unico")) {
+      "resolvido_integral"
+    } else {
+      "resolvido_campos_principais_contexto_textual_indisponivel"
+    }
+  } else {
+    "contexto_indeterminado_por_falha_de_resolucao"
+  }
   agregar_atributo <- function(cols, nome_saida, tokenizar = FALSE) {
     cols <- unique(cols[cols %in% names(dt)])
     if (!length(cols) || !length(linhas_alvo)) {
@@ -27551,6 +28505,7 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     "impacto_manejo_uso", "tipos_impacto_manejo_uso",
     "outros_impactos_manejo_uso", "descricao_impactos_manejo_uso"
   )) impactos[is.na(get(cc)), (cc) := ""]
+  impactos[, status_resolucao_contexto := status_contexto_global]
   impactos[, tipos_impacto_manejo_uso_label_name := vapply(
     strsplit(tipos_impacto_manejo_uso, " \\| ", perl = TRUE),
     function(tokens) paste(vapply(tokens[nzchar(tokens)], function(token) {
@@ -27572,6 +28527,8 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     impactos$outros_impactos_manejo_uso, impactos$descricao_impactos_manejo_uso
   )))
   impactos[, contexto_fogo := data.table::fcase(
+    status_resolucao_contexto == "contexto_indeterminado_por_falha_de_resolucao",
+      "contexto_indeterminado_por_falha_de_resolucao",
     fogo_estruturado, "fogo_explicito_em_campo_estruturado",
     fogo_texto, "fogo_mencionado_em_texto_livre",
     tem_contexto, "outro_impacto_ou_manejo_sem_fogo_explicito",
@@ -27831,6 +28788,9 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
     n_coletas_sem_contexto_informado = data.table::uniqueN(COLETA[
       contexto_fogo == "sem_contexto_informado"
     ]),
+    n_coletas_contexto_indeterminado = data.table::uniqueN(COLETA[
+      contexto_fogo == "contexto_indeterminado_por_falha_de_resolucao"
+    ]),
     tipos_impacto_manejo_uso = paste(sort(unique(
       tipos_impacto_manejo_uso[nzchar(tipos_impacto_manejo_uso)]
     )), collapse = " | "),
@@ -27845,7 +28805,8 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
   colunas_contagem_ua <- c(
     "n_coletas_com_seca_morta", "n_pontos_seca_morta",
     "n_pontos_herbacea", "n_pontos_lenhosa", "n_eventos_linha_forma",
-    "n_coletas_contexto_fogo_explicito", "n_coletas_sem_contexto_informado"
+    "n_coletas_contexto_fogo_explicito", "n_coletas_sem_contexto_informado",
+    "n_coletas_contexto_indeterminado"
   )
   for (cc in colunas_contagem_ua) por_ua[is.na(get(cc)), (cc) := 0L]
   for (cc in c(
@@ -27889,9 +28850,18 @@ monitora_diag_seca_morta_gravar_relatorio_operacional <- function(
   fogo_ano <- impactos[contexto_fogo %in% c(
     "fogo_explicito_em_campo_estruturado", "fogo_mencionado_em_texto_livre"
   ), .(n_coletas_contexto_fogo_explicito = data.table::uniqueN(COLETA)), by = .(UC, ANO)]
+  indeterminado_ano <- impactos[
+    contexto_fogo == "contexto_indeterminado_por_falha_de_resolucao",
+    .(n_coletas_contexto_indeterminado = data.table::uniqueN(COLETA)),
+    by = .(UC, ANO)
+  ]
   por_ano <- ocorr_ano[amostrado_ano, on = .(UC, ANO)]
   por_ano <- fogo_ano[por_ano, on = .(UC, ANO)]
-  for (cc in c("n_uas_com_seca_morta", "n_coletas_com_seca_morta", "n_pontos_seca_morta", "n_coletas_contexto_fogo_explicito")) por_ano[is.na(get(cc)), (cc) := 0L]
+  por_ano <- indeterminado_ano[por_ano, on = .(UC, ANO)]
+  for (cc in c(
+    "n_uas_com_seca_morta", "n_coletas_com_seca_morta", "n_pontos_seca_morta",
+    "n_coletas_contexto_fogo_explicito", "n_coletas_contexto_indeterminado"
+  )) por_ano[is.na(get(cc)), (cc) := 0L]
   por_ano[is.na(coletas_com_ocorrencia), coletas_com_ocorrencia := ""]
   por_ano[, `:=`(
     etapa = fase,
@@ -54130,27 +55100,56 @@ monitora_contrato_unico_embutido <- function() {
       caminho_registro = caminho, alias = as.character(alias), origem_alias = origem
     )
   }
-  primeiro_caminho_por_norm <- function(alvo_norm) {
+  primeiro_caminho_por_norm <- function(alvo_norm, alvo_bruto = NA_character_) {
     hit <- campos25[caminho_norm_publicacao_ae == alvo_norm | name_norm_publicacao_ae == alvo_norm]
-    if (nrow(hit)) hit$caminho_registro[1] else NA_character_
+    if (nrow(hit) == 1L) return(hit$caminho_registro[1L])
+    if (nrow(hit) > 1L && data.table::uniqueN(hit$caminho_registro) == 1L) {
+      return(unique(hit$caminho_registro)[1L])
+    }
+    ### Alguns aliases operacionais históricos usam o caminho lógico do
+    ### grupo (por exemplo, impact_manejo_uso/impacto_manejo_uso), enquanto o
+    ### XLSForm 21FEV25 registra o atributo no caminho do repeat. A ligação é
+    ### aceita somente quando o último segmento coincide EXATAMENTE com um
+    ### único name_curto do contrato atual. Assim os aliases já governados
+    ### pelo contrato são preservados sem substring, fuzzy match ou tabela
+    ### paralela por consumidor.
+    if (!is.na(alvo_bruto) && grepl(
+      "^[[:alnum:]_]+(?:/[[:alnum:]_]+)+$", as.character(alvo_bruto), perl = TRUE
+    )) {
+      nome_curto_alias <- monitora_correcao_normalizar_nome_coluna(
+        sub("^.*/", "", as.character(alvo_bruto))
+      )
+      hit_curto <- campos25[name_norm_publicacao_ae == nome_curto_alias]
+      if (data.table::uniqueN(hit_curto$caminho_registro) == 1L) {
+        return(unique(hit_curto$caminho_registro)[1L])
+      }
+    }
+    NA_character_
   }
 
   if (nrow(alias_pipe)) {
     for (i in seq_len(nrow(alias_pipe))) {
-      alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(alias_pipe$nome_canonico[i]))
+      alvo <- primeiro_caminho_por_norm(
+        monitora_correcao_normalizar_nome_coluna(alias_pipe$nome_canonico[i]),
+        alias_pipe$nome_canonico[i]
+      )
       if (!is.na(alvo)) add_alias_row(alvo, alias_pipe$alias_coluna[i], "pipe_aliases_campos_conhecidos")
     }
   }
   if (length(alias_validados)) {
     for (chave in names(alias_validados)) {
-      alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(chave))
+      alvo <- primeiro_caminho_por_norm(
+        monitora_correcao_normalizar_nome_coluna(chave), chave
+      )
       if (!is.na(alvo)) {
         for (al in alias_validados[[chave]]) add_alias_row(alvo, al, "validados_aliases")
       }
     }
   }
   for (chave in names(alias_consolidacao_colunas_ref)) {
-    alvo <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna(chave))
+    alvo <- primeiro_caminho_por_norm(
+      monitora_correcao_normalizar_nome_coluna(chave), chave
+    )
     if (!is.na(alvo)) {
       for (al in alias_consolidacao_colunas_ref[[chave]]) add_alias_row(alvo, al, "dt_consolidar_aliases_colunas_ref")
     }
@@ -54161,12 +55160,16 @@ monitora_contrato_unico_embutido <- function() {
  ### (L15191-15192) -- registrado aqui só como alias explícito, NÃO
  ### conectado a monitora_correcao_colunas_chave nem a nenhum outro
  ### consumidor.
-  alvo_ea <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna("estacao_amostral"))
+  alvo_ea <- primeiro_caminho_por_norm(
+    monitora_correcao_normalizar_nome_coluna("estacao_amostral"), "estacao_amostral"
+  )
   if (!is.na(alvo_ea)) {
     add_alias_row(alvo_ea, "ea", "requisito_035h3")
     add_alias_row(alvo_ea, "EA", "requisito_035h3")
   }
-  alvo_ua <- primeiro_caminho_por_norm(monitora_correcao_normalizar_nome_coluna("unidade_amostral"))
+  alvo_ua <- primeiro_caminho_por_norm(
+    monitora_correcao_normalizar_nome_coluna("unidade_amostral"), "unidade_amostral"
+  )
   if (!is.na(alvo_ua)) {
     add_alias_row(alvo_ua, "ua", "requisito_035h3")
     add_alias_row(alvo_ua, "UA", "requisito_035h3")
@@ -54394,7 +55397,7 @@ monitora_contrato_unico_validar_estrutura_indices <- function(indices, perfis = 
   nomes_indices_esperados <- c(
     "por_atributo_canonico", "por_caminho_registro", "por_name_curto",
     "por_label_normalizado", "por_alias_normalizado", "por_list_name",
-    "por_choice_name", "por_relevance_campo_pai", "por_cardinalidade_operacional",
+    "por_choice_name", "por_dependencia", "por_relevance_campo_pai", "por_cardinalidade_operacional",
     "por_repeat_pai", "por_estagio_aplicavel", "por_severidade", "por_origem_regra",
     "template_sismonitora_129", "atributos_tecnicos_pipeline",
     "atributos_ambiguos_indeterminados", "campos_condicionais_esparsos"
@@ -54518,6 +55521,11 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
     data.table::setkeyv(por_choice_name, c("list_name", "name"))
   }
 
+  por_dependencia <- data.table::copy(dependencias)
+  if (all(c("dependent_name", "parent_name", "token") %in% names(por_dependencia))) {
+    data.table::setkeyv(por_dependencia, c("dependent_name", "parent_name", "token"))
+  }
+
   por_relevance_campo_pai <- data.table::copy(atributos[!is.na(campo_pai) & nzchar(campo_pai)])
   data.table::setkeyv(por_relevance_campo_pai, "campo_pai")
 
@@ -54555,6 +55563,7 @@ monitora_contrato_unico_indices <- function(contrato = NULL, validar = TRUE) {
     por_alias_normalizado = por_alias_normalizado[],
     por_list_name = por_list_name[],
     por_choice_name = por_choice_name[],
+    por_dependencia = por_dependencia[],
     por_relevance_campo_pai = por_relevance_campo_pai[],
     por_cardinalidade_operacional = por_cardinalidade_operacional[],
     por_repeat_pai = por_repeat_pai[],
@@ -57113,7 +58122,7 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "Arquivos em operacoes_sessao/ são evidências da rodada e não substituem o histórico cumulativo.",
     "",
     "RELATÓRIO DE VALIDAÇÃO",
-    "Comece pelo HTML ou PDF em 07_relatorio_validacao/. Em caminhos longos, consulte dados_apoio/metadados_caminho_relatorio.csv para a correspondência entre nome lógico e físico.",
+    "Comece pelo HTML, DOCX ou PDF em 07_relatorio_validacao/. Rmd e Markdown preservam fontes editáveis adicionais. Em caminhos longos, consulte dados_apoio/metadados_caminho_relatorio.csv para a correspondência entre nome lógico e físico.",
     "O detalhamento editável fica em 07_relatorio_validacao/dados_apoio/.",
     "",
     "COMPATIBILIDADE DE CAMINHOS",
@@ -72765,6 +73774,18 @@ monitora_relatorios_analiticos_fmt_p <- function(x) {
   )
 }
 
+monitora_relatorios_analiticos_fmt_p_frase <- function(x) {
+  p <- as.character(monitora_relatorios_analiticos_fmt_p(x))[[1L]]
+  if (is.na(p) || !nzchar(p) || identical(p, "NA")) {
+    return("valor de p ajustado não disponível")
+  }
+  if (grepl("^[<>≤≥]", p, perl = TRUE)) {
+    paste0("valor de p ajustado ", p)
+  } else {
+    paste0("valor de p ajustado = ", p)
+  }
+}
+
 monitora_relatorios_analiticos_slug <- function(x) {
   y <- iconv(as.character(x), from = "UTF-8", to = "ASCII//TRANSLIT")
   y <- tolower(gsub("[^A-Za-z0-9]+", "_", y))
@@ -84256,28 +85277,41 @@ monitora_relatorios_analiticos_contexto_impactos <- function(registros) {
     manter_contexto_outros = logical()
   )
   registros <- data.table::as.data.table(registros)
-  if (!nrow(registros)) return(list(resumo = esquema_resumo, auditoria = esquema_auditoria))
+  resolucao_contexto <- if (nrow(registros)) tryCatch(
+    monitora_contrato_unico_resolver_contexto_impactos(registros),
+    error = function(e) data.table::data.table()
+  ) else data.table::data.table()
+  if (nrow(registros) &&
+      !all(c("papel_contexto", "coluna", "status_resolucao") %in% names(resolucao_contexto))) {
+    resolucao_contexto <- data.table::data.table(
+      papel_contexto = c("pai", "tipos", "outro", "descricao"),
+      coluna = NA_character_, status_resolucao = "contrato_unico_indisponivel"
+    )
+  }
+  if (!nrow(registros)) return(list(
+    resumo = esquema_resumo, auditoria = esquema_auditoria,
+    resolucao_colunas = resolucao_contexto
+  ))
 
   norm_nomes <- tryCatch(
     monitora_correcao_normalizar_nome_coluna(names(registros)),
     error = function(e) monitora_relatorios_analiticos_normalizar_texto_contexto(names(registros))
   )
-  candidatos_tipos <- which(
-    grepl("tipos.*impact|quais.*impact|qual.*impact", norm_nomes, perl = TRUE) &
-      !grepl("descrev|ocorreram|outros", norm_nomes, perl = TRUE)
-  )
-  if (!length(candidatos_tipos)) {
-    candidatos_tipos <- which(
-      grepl("impact_manejo_uso", norm_nomes, fixed = TRUE) &
-        !grepl("descrev|ocorreram|outros", norm_nomes, perl = TRUE)
-    )
+  resolver_papel <- function(papel) {
+    hit <- resolucao_contexto[
+      papel_contexto == papel & status_resolucao == "resolvido_unico",
+      coluna
+    ]
+    hit <- unique(hit[!is.na(hit) & nzchar(hit) & hit %in% names(registros)])
+    if (length(hit) == 1L) hit[[1L]] else NA_character_
   }
-  if (!length(candidatos_tipos)) return(list(resumo = esquema_resumo, auditoria = esquema_auditoria))
-  col_tipos <- names(registros)[candidatos_tipos[[1L]]]
-  candidatos_outros <- which(grepl("outros.*(manejo|impact|uso)|outro.*impact_manejo_uso", norm_nomes, perl = TRUE))
-  candidatos_descricao <- which(grepl("descrev.*impact|impact.*descr", norm_nomes, perl = TRUE))
-  col_outros <- if (length(candidatos_outros)) names(registros)[candidatos_outros[[1L]]] else NA_character_
-  col_descricao <- if (length(candidatos_descricao)) names(registros)[candidatos_descricao[[1L]]] else NA_character_
+  col_tipos <- resolver_papel("tipos")
+  col_outros <- resolver_papel("outro")
+  col_descricao <- resolver_papel("descricao")
+  if (is.na(col_tipos)) return(list(
+    resumo = esquema_resumo, auditoria = esquema_auditoria,
+    resolucao_colunas = resolucao_contexto
+  ))
 
   ch_ctx <- tryCatch(monitora_correcao_colunas_chave(registros), error = function(e) list())
   gv <- function(nm) {
@@ -84410,7 +85444,10 @@ monitora_relatorios_analiticos_contexto_impactos <- function(registros) {
     tokens_analiticos_finais = vapply(tokens_finais_lista, paste, collapse = "|", FUN.VALUE = character(1L)),
     regra_classificacao, confianca_classificacao, manter_contexto_outros
   )]
-  list(resumo = resumo[], auditoria = auditoria[])
+  list(
+    resumo = resumo[], auditoria = auditoria[],
+    resolucao_colunas = resolucao_contexto[]
+  )
 }
 
 monitora_relatorios_analiticos_gerar <- function(
@@ -85305,11 +86342,23 @@ monitora_relatorios_analiticos_gerar <- function(
   }
 
   if (nrow(evid_selecao)) {
+    if (!"ano_inicial_painel" %in% names(evid_selecao)) {
+      evid_selecao[, ano_inicial_painel := NA_integer_]
+    }
+    evid_selecao[, populacao_analitica := data.table::fifelse(
+      is.finite(suppressWarnings(as.numeric(ano_inicial_painel))),
+      paste0(
+        "painel fixo iniciado em ", as.integer(ano_inicial_painel),
+        "; ", as.integer(n_UA_pareadas), " UAs pareadas no intervalo"
+      ),
+      paste0(as.integer(n_UA_pareadas), " UAs pareadas disponíveis no intervalo")
+    )]
     indice_evidencias <- evid_selecao[, .(
       grupo_grafico, grupo_grafico_label,
       tipo_metrica, tipo_metrica_label,
       form_veg, form_veg_label,
       categoria, categoria_label = categoria_label_relatorio,
+      ano_inicial_painel, populacao_analitica,
       ano_1, ano_2, n_UA_pareadas,
       media_ano_1, media_ano_2, diferenca_pp,
       ci95_lower_pp, ci95_upper_pp, p_ajustado_fdr,
@@ -85413,6 +86462,23 @@ monitora_relatorios_analiticos_gerar <- function(
       r$classe_mudanca == "inconclusivo", if (plural) "apresentaram resultado inconclusivo" else "apresentou resultado inconclusivo",
       default = if (plural) "não puderam ser interpretadas" else "não pôde ser interpretado"
     )
+    resultados_paineis_texto <- if (
+      "resultados_paineis_incremento" %in% names(r) &&
+        !is.na(as.character(r$resultados_paineis_incremento)) &&
+        nzchar(as.character(r$resultados_paineis_incremento))
+    ) {
+      paste0(
+        "painel iniciado em ",
+        gsub(
+          "[[:space:]]*\\|[[:space:]]*",
+          "; painel iniciado em ",
+          as.character(r$resultados_paineis_incremento),
+          perl = TRUE
+        )
+      )
+    } else {
+      ""
+    }
     leitura_esforco <- if (
       "sensibilidade_esforco_incremental" %in% names(r) &&
         identical(
@@ -85421,9 +86487,10 @@ monitora_relatorios_analiticos_gerar <- function(
         )
     ) {
       paste0(
-        " A direção não se manteve nos painéis de esforço ampliado (",
-        as.character(r$resultados_paineis_incremento),
-        "); por isso, o achado é sensível ao desenho amostral e não deve ser ",
+        " Nos painéis de esforço ampliado, os resultados foram: ",
+        resultados_paineis_texto,
+        ". A direção não se manteve em todos eles; por isso, o achado é ",
+        "sensível ao desenho amostral e não deve ser ",
         "priorizado como mudança ecológica isolada."
       )
     } else if (
@@ -85432,12 +86499,17 @@ monitora_relatorios_analiticos_gerar <- function(
         suppressWarnings(as.numeric(r$n_paineis_incremento_avaliados)) > 0
     ) {
       paste0(
-        " A classificação foi confrontada com ",
+        " A direção foi confrontada e corroborada em ",
         as.integer(r$n_paineis_incremento_avaliados),
         if (as.integer(r$n_paineis_incremento_avaliados) == 1L) {
           " painel de esforço ampliado"
         } else {
           " painéis de esforço ampliado"
+        },
+        if (nzchar(resultados_paineis_texto)) {
+          paste0(" (", resultados_paineis_texto, ")")
+        } else {
+          ""
         },
         "."
       )
@@ -85454,8 +86526,8 @@ monitora_relatorios_analiticos_gerar <- function(
         " a ",
         monitora_relatorios_analiticos_fmt_num(r$ci95_upper_pp, 1L),
         "; n = ", r$n_UA_pareadas,
-        "; valor de p ajustado = ",
-        monitora_relatorios_analiticos_fmt_p(r$p_ajustado_fdr),
+        "; ",
+        monitora_relatorios_analiticos_fmt_p_frase(r$p_ajustado_fdr),
         "). A evidência foi classificada como ",
         tolower(r$consistencia), ".",
         leitura_esforco
@@ -85480,8 +86552,28 @@ monitora_relatorios_analiticos_gerar <- function(
     grupos <- unique(d$grupo_textual)
     unlist(lapply(grupos, function(g) {
       z <- d[grupo_textual == g]
+      anos_painel <- unique(suppressWarnings(as.integer(z$ano_inicial_painel)))
+      anos_painel <- anos_painel[is.finite(anos_painel)]
+      n_painel <- unique(suppressWarnings(as.integer(z$n_UA_pareadas)))
+      n_painel <- n_painel[is.finite(n_painel)]
+      contexto_painel <- if (length(anos_painel) == 1L) {
+        paste0(
+          ", no painel fixo iniciado em **", anos_painel[[1L]], "**",
+          if (length(n_painel) == 1L) {
+            paste0(" (**", n_painel[[1L]], " UAs** acompanhadas ao longo da série)")
+          } else {
+            ""
+          }
+        )
+      } else {
+        ""
+      }
       c(
-        paste0("Na métrica **", tolower(z$tipo_metrica_label[[1L]]), "**, formação **", tolower(z$form_veg_label[[1L]]), "**:"),
+        paste0(
+          "Na métrica **", tolower(z$tipo_metrica_label[[1L]]),
+          "**, formação **", tolower(z$form_veg_label[[1L]]), "**",
+          contexto_painel, ":"
+        ),
         "",
         paste0("- ", vapply(seq_len(nrow(z)), function(ii) frase_achado_item(z[ii]), character(1L))),
         ""
