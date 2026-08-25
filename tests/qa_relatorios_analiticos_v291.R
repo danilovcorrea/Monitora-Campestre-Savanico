@@ -54,12 +54,24 @@ coletar_funcoes <- function(expr) {
   if (op %in% c("<-", "=") && length(expr) >= 3L && is.symbol(expr[[2L]])) {
     nome <- as.character(expr[[2L]])
     rhs <- expr[[3L]]
+    if (nome %in% c(
+      "MONITORA_STAT_SIMBOLOS_EDITORIAIS",
+      "MONITORA_STAT_POSICOES_SIMBOLOS_EDITORIAIS"
+    )) {
+      eval(expr, envir = funcoes)
+      return(invisible(NULL))
+    }
     definicao_funcional <- is.call(rhs) &&
       identical(as.character(rhs[[1L]]), "function")
     definicao_funcional <- definicao_funcional ||
       identical(nome, "monitora_relatorios_analiticos_resolver_pandoc")
     if (isTRUE(definicao_funcional) && (
         startsWith(nome, "monitora_relatorios_analiticos_") ||
+        startsWith(nome, "monitora_paleta_") ||
+        startsWith(nome, "monitora_plot_") ||
+        startsWith(nome, "monitora_stat_") ||
+        startsWith(nome, "monitora_painel_ano_inicial_") ||
+        startsWith(nome, "monitora_progresso_") ||
         startsWith(nome, "monitora_diag_seca_morta_") ||
         nome %in% c(
           "monitora_arquivo_retentativas",
@@ -74,7 +86,8 @@ coletar_funcoes <- function(expr) {
           "monitora_correcao_normalizar_nome_coluna",
           "monitora_relatorio_exoticas_tem_token",
           "monitora_relatorio_exoticas_normalizar_token",
-          "monitora_diag_rel_write_dt"
+          "monitora_diag_rel_write_dt",
+          "%||%"
         ))) {
       eval(expr, envir = funcoes)
     }
@@ -201,9 +214,79 @@ cob_seca <- ler("05_estatisticas/cob_veg_form_vida_seca_morta.csv", FALSE)
 prop_material <- ler("05_estatisticas/prop_rel_material_botanico.csv", FALSE)
 cob_material <- ler("05_estatisticas/cob_veg_material_botanico.csv", FALSE)
 
+### Reconstrói em memória as mesmas séries UA-ano e os painéis por ano inicial
+### usados pelo fluxo público. Esses objetos não são arquivos contratuais do
+### output, mas são necessários para homologar a transparência do estimando.
+MONITORA_STAT_ALPHA <- 0.05
+MONITORA_STAT_MARGEM_PP <- 5
+MONITORA_STAT_MIN_EFEITO_PP <- 2
+MONITORA_STAT_MIN_PARES <- 5L
+MONITORA_STAT_BOOT <- 1999L
+MONITORA_STAT_PERM <- 4999L
+MONITORA_STAT_COMP_MARGEM_DIST <- 0.05
+MONITORA_STAT_COMP_MIN_DIST <- 0.03
+MONITORA_STAT_PERM_CHUNK <- 1000L
+MONITORA_STAT_RECURSOS_ADAPTATIVO <- TRUE
+MONITORA_STAT_BASELINE_ATIVO <- TRUE
+MONITORA_STAT_BASELINE_MODO <- "acumulada_anterior"
+MONITORA_STAT_BASELINE_MIN_ANOS <- 2L
+MONITORA_STAT_BASELINE_MOSTRAR_APENAS_MUDANCA <- TRUE
+MONITORA_STAT_REPRODUTIBILIDADE_ATIVA <- TRUE
+MONITORA_STAT_SEMENTE_BASE <- 20260625L
+MONITORA_STAT_RNG_KIND <- "Mersenne-Twister"
+MONITORA_STAT_RNG_NORMAL_KIND <- "Inversion"
+MONITORA_STAT_RNG_SAMPLE_KIND <- "Rejection"
+MONITORA_STAT_VERBOSE <- FALSE
+MONITORA_PROGRESSO_HABILITADO <- FALSE
+
+mat_bot_cols <- grep("^mat_bot_", names(stat), value = TRUE)
+nativa_cols <- grep("^nativa_", names(stat), value = TRUE)
+exot_cols <- grep("^exot_", names(stat), value = TRUE)
+seca_morta_cols <- grep("^seca_morta_", names(stat), value = TRUE)
+series_ua <- rbindlist(list(
+  monitora_stat_preparar_long_ua(stat, c("sum_herbacea", "sum_lenhosa"), "herbaceas_lenhosas", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, c("sum_presence_herb", "sum_presence_lenh"), "herbaceas_lenhosas", "cobertura", "101"),
+  monitora_stat_preparar_long_ua(stat, c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "solo_nu"), "categorias_gerais", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, c("sum_presence_nativa", "sum_presence_exotica", "sum_presence_seca_morta", "material_botanico", "solo_nu"), "categorias_gerais", "cobertura", "101"),
+  monitora_stat_preparar_long_ua(stat, mat_bot_cols, "material_botanico", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, mat_bot_cols, "material_botanico", "cobertura", "101"),
+  monitora_stat_preparar_long_ua(stat, nativa_cols, "formas_vida_nativas", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, nativa_cols, "formas_vida_nativas", "cobertura", "101"),
+  monitora_stat_preparar_long_ua(stat, exot_cols, "formas_vida_exoticas", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, exot_cols, "formas_vida_exoticas", "cobertura", "101"),
+  monitora_stat_preparar_long_ua(stat, seca_morta_cols, "formas_vida_secas_mortas", "proporcao_relativa", "relativo"),
+  monitora_stat_preparar_long_ua(stat, seca_morta_cols, "formas_vida_secas_mortas", "cobertura", "101")
+), fill = TRUE, use.names = TRUE)
+MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL <- monitora_painel_ano_inicial_filtrar_series(series_ua)
+partes_paineis <- split(
+  MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL,
+  MONITORA_STAT_SERIES_UA_ANO_PAINEL_ANO_INICIAL$ano_inicial_painel
+)
+MONITORA_STAT_MUDANCA_ANO_A_ANO_PAINEL_ANO_INICIAL <- rbindlist(lapply(partes_paineis, function(d) {
+  z <- monitora_stat_comparar_anos_consecutivos(d)
+  if (nrow(z)) z[, ano_inicial_painel := unique(d$ano_inicial_painel)[[1L]]]
+  z
+}), fill = TRUE, use.names = TRUE)
+MONITORA_STAT_MUDANCA_LINHA_BASE_PAINEL_ANO_INICIAL <- rbindlist(lapply(partes_paineis, function(d) {
+  z <- monitora_stat_comparar_linha_base(d)
+  if (nrow(z)) z[, ano_inicial_painel := unique(d$ano_inicial_painel)[[1L]]]
+  z
+}), fill = TRUE, use.names = TRUE)
+MONITORA_STAT_COMPOSICAO_GERAL_PAINEL_ANO_INICIAL <- rbindlist(lapply(partes_paineis, function(d) {
+  z <- monitora_stat_comparar_composicao_anos_consecutivos(d)
+  if (nrow(z)) z[, ano_inicial_painel := unique(d$ano_inicial_painel)[[1L]]]
+  z
+}), fill = TRUE, use.names = TRUE)
+MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL_ANO_INICIAL <- rbindlist(lapply(partes_paineis, function(d) {
+  z <- monitora_stat_comparar_composicao_linha_base(d)
+  if (nrow(z)) z[, ano_inicial_painel := unique(d$ano_inicial_painel)[[1L]]]
+  z
+}), fill = TRUE, use.names = TRUE)
+
 resultado <- monitora_relatorios_analiticos_gerar(
   registros = registros,
   stat = stat,
+  series_metricas_ua = series_ua,
   mudanca_periodo = periodo,
   mudanca_linha_base = linha_base,
   composicao_periodo = composicao_periodo,
@@ -230,6 +313,23 @@ resultado <- monitora_relatorios_analiticos_gerar(
 
 dir_rel <- resultado$diretorio
 assert(dir.exists(dir_rel), "Diretório final dos relatórios não foi criado.")
+if (identical(toupper(Sys.getenv("MONITORA_QA_FOCO_V2917", unset = "N")), "S")) {
+  texto_sintetico <- readLines(file.path(dir_rel, "analitico_sintetico.md"), warn = FALSE, encoding = "UTF-8")
+  indice_evidencias_foco <- fread(file.path(dir_rel, "indice_evidencias_relatorio.csv"), encoding = "UTF-8")
+  assert(all(c("ano_inicial_painel", "populacao_analitica") %in% names(indice_evidencias_foco)),
+         "Índice de evidências não identifica a população analítica.")
+  assert(any(is.finite(indice_evidencias_foco$ano_inicial_painel)) &&
+           all(nzchar(indice_evidencias_foco$populacao_analitica)),
+         "População analítica não foi materializada em todas as evidências selecionadas.")
+  assert(any(grepl("painel fixo iniciado em", texto_sintetico, fixed = TRUE)) &&
+           any(grepl("painel iniciado em 2024", texto_sintetico, fixed = TRUE)),
+         "Texto não explicita painel fixo e painéis de esforço ampliado.")
+  assert(!any(grepl("valor de p ajustado = <", texto_sintetico, fixed = TRUE)) &&
+           any(grepl("valor de p ajustado < 0,001", texto_sintetico, fixed = TRUE)),
+         "Redação da desigualdade do valor de p permanece incorreta.")
+  cat("QA_V2917_ANALITICO_FNCS_TRANSPARENCIA_OK\n")
+  quit(save = "no", status = 0L, runLast = FALSE)
+}
 indice <- fread(file.path(dir_rel, "indice_relatorios_analiticos.csv"), encoding = "UTF-8")
 assert(nrow(indice) == 10L, "O índice não contém os dez documentos esperados.")
 assert(all(indice$existe), "Há documento ausente no índice.")
@@ -621,8 +721,18 @@ if (isTRUE(ativar_sentinel)) {
 stat_multi <- rbind(stat, copy(stat[1L])[, UC := "Outra UC de QA"])
 erro_multi <- tryCatch({
   monitora_relatorios_analiticos_gerar(
-    registros, stat_multi, periodo, linha_base, composicao_periodo, composicao, config,
-    cob_categ, cob_nat, cob_exot, dir_qa,
+    registros = registros,
+    stat = stat_multi,
+    series_metricas_ua = NULL,
+    mudanca_periodo = periodo,
+    mudanca_linha_base = linha_base,
+    composicao_periodo = composicao_periodo,
+    composicao_linha_base = composicao,
+    config_stat = config,
+    cob_categ = cob_categ,
+    cob_nat = cob_nat,
+    cob_exot = cob_exot,
+    output_dir = dir_qa,
     formatos = c("rmd", "md"), mapa_satelite = FALSE
   )
   NULL

@@ -21,7 +21,10 @@ alvos <- c(
   "monitora_pendencias_justificativas_adicionar_lote_atomico",
   "monitora_pendencias_justificativas_reconstituir_lotes",
   "monitora_pendencias_justificativas_excluir_atomico",
-  "monitora_pendencias_justificativas_publicar_par_atomico"
+  "monitora_pendencias_justificativas_publicar_par_atomico",
+  "monitora_arquivo_hash_transacao",
+  "monitora_arquivo_retentativas",
+  "monitora_arquivo_publicar_candidato"
 )
 coletar <- function(x) {
   if (!is.call(x)) return(invisible(NULL))
@@ -50,6 +53,21 @@ env$monitora_correcao_normalizar_nome_coluna <- function(x) {
 env$monitora_correcao_colunas_chave <- function(dt) list(
   uc = "UC", ea = "EA", ua = "UA", ano = "ANO", coleta = "COLETA"
 )
+env$monitora_contrato_unico_resolver_contexto_impactos <- function(dt, ...) {
+  cols <- c(
+    pai = "impact_manejo_uso", tipos = "tipos_impacto_manejo_uso",
+    outro = "tipos_impacto_manejo_uso_outro",
+    descricao = "tipos_impacto_manejo_uso_descricao"
+  )
+  data.table(
+    papel_contexto = names(cols),
+    caminho_registro = unname(cols),
+    coluna = data.table::fifelse(unname(cols) %in% names(dt), unname(cols), NA_character_),
+    status_resolucao = data.table::fifelse(
+      unname(cols) %in% names(dt), "resolvido_unico", "ausente_no_dataset"
+    )
+  )
+}
 env$monitora_correcao_xlsform_meta_atual <- function(...) list(opcoes = data.table(
   list_name = c(
     "forma_vida_seca_morta", "forma_vida_seca_morta",
@@ -220,7 +238,9 @@ fwrite(data.table(estado = "anterior_snapshot"), arq_snap_atomico)
 contador_rename <- 0L
 env$file.rename <- function(from, to) {
   contador_rename <<- contador_rename + 1L
-  if (contador_rename == 4L) return(FALSE)
+  ### A implementação atual faz retentativas curtas no Windows; falhar toda a
+  ### janela da segunda publicação (e não apenas uma chamada) força o rollback.
+  if (contador_rename >= 4L && contador_rename <= 9L) return(FALSE)
   base::file.rename(from, to)
 }
 falha_publicacao <- tryCatch({
