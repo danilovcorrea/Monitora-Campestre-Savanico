@@ -1,8 +1,13 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão pública do script: 2.9.18
-### Baseline pública de origem: v2.9.17
+### Versão pública do script: 2.9.19
+### Baseline pública de origem: v2.9.18
+### A v2.9.19 unifica a elegibilidade da sanitização de
+### hábitos obrigatórios entre diagnóstico, prévia, aplicação e replay.
+### Valores inválidos não vazios, como "?", permanecem alvos efetivos quando
+### a ocorrência é confirmada pelo contrato XLSForm, com persistência e gate
+### final auditáveis. Nenhum módulo alheio à SANHAB foi alterado.
 ### A v2.9.18 reduz o tamanho físico do arquivo único para permanecer
 ### abaixo do limite do editor do RStudio inclusive após conversão para
 ### finais de linha CRLF no Windows. O contrato XLSForm embutido passa a
@@ -344,8 +349,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.18"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.18-20260826-r01"
+MONITORA_SCRIPT_VERSAO <- "2.9.19"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.19-20260827-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -14134,9 +14139,11 @@ monitora_correcao_reconciliar_sanhab_estado_corrente <- function(dt, corr, chave
     ] else data.table::data.table()
     linhas_det <- unique(as.integer(det_att$linha_indice))
     linhas_det <- linhas_det[!is.na(linhas_det) & linhas_det >= 1L & linhas_det <= nrow(dt)]
-    linhas_ef <- if (!is.na(col) && col %in% names(dt)) {
-      linhas_det[monitora_correcao_vazio_vec(dt[[col]][linhas_det])]
-    } else integer(0)
+    # `det_att` é a fonte contratual única desta decisão: contém apenas linhas
+    # em que a forma está presente e o hábito está vazio OU fora do domínio.
+    # Restringir novamente a valores fisicamente vazios fazia a prévia aceitar
+    # valores como "?", mas a aplicação/replay os descartava silenciosamente.
+    linhas_ef <- if (!is.na(col) && col %in% names(dt)) linhas_det else integer(0)
     linhas_retiradas <- setdiff(linhas, linhas_ef)
     ids_ef <- if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas_ef]) else character(0)
     ids_ret <- if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linhas_retiradas]) else character(0)
@@ -14160,7 +14167,7 @@ monitora_correcao_reconciliar_sanhab_estado_corrente <- function(dt, corr, chave
         id_correcao = as.character(op$id_correcao[1L]),
         ordem_operacao = as.character(op$ordem_operacao[1L]),
         status = "ok_sanhab_alvo_fora_diagnostico_atual_preservado",
-        mensagem = "Alvo SANHAB retirado no estado corrente: hábito já preenchido, inválido não vazio, excluído ou fora da ocorrência diagnóstica atual",
+        mensagem = "Alvo SANHAB retirado no estado corrente: hábito já preenchido com valor válido, excluído ou fora da ocorrência diagnóstica contratual atual",
         atributo = as.character(col)[1L], linha_indice = linhas_retiradas,
         valor_antes = if (!is.na(col) && col %in% names(dt)) as.character(dt[[col]][linhas_retiradas]) else NA_character_,
         valor_depois = if (!is.na(col) && col %in% names(dt)) as.character(dt[[col]][linhas_retiradas]) else NA_character_,
@@ -18113,11 +18120,11 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.18-20260826-r01",
+      ifnotfound = "v2.9.19-20260827-r01",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.18", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.19", inherits = TRUE
     ))
     op
   }
