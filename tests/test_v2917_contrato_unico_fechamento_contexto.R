@@ -130,7 +130,9 @@ assert(
   "Contexto analítico: consumidor não reutilizou a resolução contratual central"
 )
 
-### Matriz de todas as 15 formas exóticas abertas atuais. O teste deriva os
+### Matriz das 14 formas exóticas abertas válidas atuais. O ramo dependente
+### `outros` permanece no XLSForm, mas o token não pertence às choices do pai
+### e, por isso, deve ser fail-closed. O teste deriva os
 ### campos e as relações do próprio contrato e verifica path, name, label e
 ### alias, impedindo que uma nova forma fique fora da cobertura por esquecimento
 ### de uma lista hard-coded no teste ou no consumidor.
@@ -145,7 +147,7 @@ tokens_abertos_esperados <- c(
   "graminoide", "erva_nao_graminoide", "arbusto_abaixo", "arbusto_acima",
   "arvore_abaixo", "arvore_acima", "bambu", "lianas",
   "ervas_de_passarinho", "palmeira", "bromelioide", "cactacea",
-  "orquidea", "samambaia", "outros"
+  "orquidea", "samambaia"
 )
 nomes_abertos_esperados <- c(
   graminoide = "exotica_graminoide_outra_sp",
@@ -161,8 +163,7 @@ nomes_abertos_esperados <- c(
   bromelioide = "exotica_bromelioide_outra_sp",
   cactacea = "exotica_cactacea_outra_sp",
   orquidea = "exotica_orquidea_outra_sp",
-  samambaia = "exotica_samambaia_outra_sp",
-  outros = "exotica_outros_outra_sp"
+  samambaia = "exotica_samambaia_outra_sp"
 )
 rel_abertas <- data.table(
   token = names(nomes_abertos_esperados),
@@ -177,8 +178,8 @@ rel_abertas <- merge(
   by = "dependent_name", all = FALSE
 )
 assert(
-  nrow(rel_abertas) == 15L && setequal(rel_abertas$token, tokens_abertos_esperados),
-  paste0("Matriz: contrato não expôs exatamente as 15 formas abertas: ", paste(rel_abertas$token, collapse = " | "))
+  nrow(rel_abertas) == 14L && setequal(rel_abertas$token, tokens_abertos_esperados),
+  paste0("Matriz: contrato não expôs exatamente as 14 formas abertas válidas: ", paste(rel_abertas$token, collapse = " | "))
 )
 aliases_cu <- data.table::copy(cu$indices$por_alias_normalizado)
 
@@ -223,6 +224,30 @@ for (ii in seq_len(nrow(rel_abertas))) {
     )
   }
 }
+
+### O dependent legado `exotica_outros_outra_sp` não autoriza criar `outros`
+### em forma_vida_exotica, pois essa choice inexiste no pai vigente.
+dt_orfao <- data.table(
+  pai = "graminoide", filho = "Urochloa sp.", encostam = "exotica"
+)
+setnames(dt_orfao, names(dt_orfao), c(
+  col_pai_exotica, "amostragem/registro/exotica_outros_outra_sp",
+  "amostragem/registro/tipo_forma_vida"
+))
+regra_orfa <- env$monitora_correcao_contrato_fechamento_hierarquico(dt_orfao)[
+  campo_inferior == "amostragem/registro/exotica_outros_outra_sp"
+]
+assert(
+  nrow(regra_orfa) == 1L &&
+    regra_orfa$status_regra[[1L]] == "bloqueada_token_fora_dominio_choices_pai" &&
+    !isTRUE(regra_orfa$token_valido_no_pai[[1L]]),
+  "Matriz: ramo órfão `outros` não falhou fechado contra as choices do pai."
+)
+antes_orfao <- copy(dt_orfao)
+env$monitora_correcao_recalcular_superiores_vinculados(
+  dt_orfao, 1L, modo_encostam = "acrescentar"
+)
+assert(identical(dt_orfao, antes_orfao), "Matriz: ramo órfão alterou o registro sem migração inequívoca.")
 
 ### Duplicar duas representações físicas do mesmo atributo deve bloquear a
 ### relação, em vez de escolher a primeira coluna pela ordem do arquivo.
