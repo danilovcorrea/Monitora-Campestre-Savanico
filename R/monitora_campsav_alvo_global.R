@@ -1,8 +1,13 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão pública do script: 2.9.19
-### Baseline pública de origem: v2.9.18
+### Versão pública do script: 2.9.20
+### Baseline pública de origem: v2.9.19
+### A v2.9.20 preserva as revisões da v2.9.19 e corrige a leitura
+### espacial de COGs Sentinel-2: overviews só são usados quando o GDAL preserva
+### bandas, CRS e extensão do COG oficial; caso contrário, usa o raster principal.
+### A exclusão de correções pendentes também passa a recuperar atomicamente a
+### fila, sem ser impedida por conflitos pertencentes a outras operações.
 ### A v2.9.19 unifica a elegibilidade da sanitização de
 ### hábitos obrigatórios entre diagnóstico, prévia, aplicação e replay.
 ### Valores inválidos não vazios, como "?", permanecem alvos efetivos quando
@@ -349,8 +354,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.19"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.19-20260827-r01"
+MONITORA_SCRIPT_VERSAO <- "2.9.20"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.20-20260827-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -18120,11 +18125,11 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
     )
     data.table::set(op, j = "created_build", value = get0(
       "MONITORA_SCRIPT_BUILD_ID",
-      ifnotfound = "v2.9.19-20260827-r01",
+      ifnotfound = "v2.9.20-20260827-r01",
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.19", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.20", inherits = TRUE
     ))
     op
   }
@@ -34329,8 +34334,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       solicitadas <- data.table::as.data.table(rv$correcoes_solicitadas)
       ids_sol <- monitora_painel_id_operacao_semantica(solicitadas)
       solicitadas <- solicitadas[!(ids_sol %in% ids_remover)]
-      rec_pos_exclusao <- monitora_painel_reconciliar_fila_semantica(solicitadas, gravar = TRUE, bloquear = TRUE)
-      if (rec_pos_exclusao$n_conflitos > 0L) return(NULL)
+      # Excluir uma intenção é uma ação de recuperação da fila. Conflitos em
+      # outras intenções remanescentes continuam auditados e bloqueiam a
+      # aplicação, mas não podem impedir que o usuário remova o item escolhido.
+      rec_pos_exclusao <- monitora_painel_reconciliar_fila_semantica(solicitadas, gravar = TRUE, bloquear = FALSE)
       rv$correcoes_solicitadas <- data.table::copy(solicitadas)
       hist_exc <- data.table::as.data.table(rv$correcoes_historico_intencoes)
       if (nrow(hist_exc)) {
@@ -34343,7 +34350,14 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rv$preview_dirty <- TRUE
       rv$ocorrencias_idx <- data.table::copy(ocorrencias_idx_base_painel)
       rv$ocorrencias_resumo <- data.table::copy(ocorrencias_resumo_base_painel)
-      monitora_painel_notificar(paste0(length(ids_remover), " operação(ões) semântica(s) pendente(s) excluída(s)."), type = "message", duration = 6)
+      msg_exclusao <- paste0(length(ids_remover), " operação(ões) semântica(s) pendente(s) excluída(s).")
+      if (rec_pos_exclusao$n_conflitos > 0L) {
+        msg_exclusao <- paste0(
+          msg_exclusao, " Permanecem ", rec_pos_exclusao$n_conflitos,
+          " conflito(s) em outras operações; revise ou exclua esses itens antes de atualizar a prévia integral ou salvar."
+        )
+      }
+      monitora_painel_notificar(msg_exclusao, type = if (rec_pos_exclusao$n_conflitos > 0L) "warning" else "message", duration = 10)
     })
 
     shiny::observeEvent(input$usar_exotica_selecionada, {
@@ -68433,6 +68447,8 @@ monitora_relatorios_analiticos_status_mapa_satelite <- function(
     datas_composicao = NA_character_,
     n_datas_composicao = NA_integer_,
     cache_persistente_reutilizado = FALSE,
+    versao_pipeline_cog = NA_character_,
+    cache_contrato_fonte_validado = FALSE,
     nivel_contingencia = NA_character_,
     resolucao_visual_aproximada_m = NA_real_,
     resolucao_fonte_m = NA_real_,
@@ -68994,6 +69010,26 @@ monitora_relatorios_analiticos_cache_sentinel_persistente <- function() {
   if (isTRUE(ok)) destino else ""
 }
 
+monitora_relatorios_analiticos_cache_sentinel_compativel <- function(meta) {
+  if (!is.list(meta)) return(FALSE)
+  versao <- as.character(meta$versao_cache)[1L]
+  modo <- as.character(meta$modo_composicao)[1L]
+  resolucao <- suppressWarnings(as.numeric(meta$resolucao_m)[1L])
+  if (is.na(modo) || !nzchar(modo) ||
+      grepl("preview", modo, ignore.case = TRUE) ||
+      !is.finite(resolucao) || resolucao <= 0) {
+    return(FALSE)
+  }
+  if (versao %in% c(
+    "sentinel2-hires-v3-cog-principal",
+    "sentinel2-hires-v4-overview-gdal-validado"
+  )) return(TRUE)
+  # Compatibilidade estrita com caches anteriores: bandas espectrais diretas
+  # sempre partem dos assets B04/B03/B02; rasters de até 12,5 m não acionavam
+  # as visões internas defeituosas introduzidas na v2.9.16.
+  grepl("bandas", modo, ignore.case = TRUE) || resolucao <= 12.5
+}
+
 monitora_relatorios_analiticos_baixar_asset_atomico <- function(
   href,
   destino,
@@ -69166,52 +69202,87 @@ monitora_relatorios_analiticos_ler_cog_recortado <- function(
     stop("Asset COG público inválido.", call. = FALSE)
   }
   caminho_cog <- paste0("/vsicurl/", href)
-  raster_nativo <- terra::rast(caminho_cog)
-  resolucao_nativa <- mean(abs(terra::res(raster_nativo)))
+  raster_principal <- terra::rast(caminho_cog)
+  raster_remoto <- raster_principal
+  resolucao_fonte <- mean(abs(terra::res(raster_principal)))
   resolucao_destino <- mean(abs(terra::res(template)))
-  nivel_overview <- if (is.finite(resolucao_nativa) &&
-      is.finite(resolucao_destino) && resolucao_destino > resolucao_nativa) {
-    min(5L, 1L + max(0L, floor(log2(resolucao_destino / resolucao_nativa))))
+  nivel_overview <- if (
+    is.finite(resolucao_fonte) && resolucao_fonte > 0 &&
+      is.finite(resolucao_destino) && resolucao_destino >= 2 * resolucao_fonte
+  ) {
+    max(0L, min(3L, floor(log2(resolucao_destino / resolucao_fonte)) - 1L))
   } else {
-    1L
+    NA_integer_
   }
-  raster_remoto <- raster_nativo
-  if (nivel_overview > 1L) {
+  if (is.finite(nivel_overview)) {
     overview <- tryCatch(
-      suppressWarnings(terra::rast(paste0(
-        "GTIFF_DIR:", nivel_overview, ":", caminho_cog
-      ))),
+      suppressWarnings(terra::rast(
+        caminho_cog,
+        opts = paste0("OVERVIEW_LEVEL=", nivel_overview)
+      )),
       error = function(e) NULL
     )
-    if (!is.null(overview) && terra::nlyr(overview) == terra::nlyr(raster_nativo)) {
-      terra::ext(overview) <- terra::ext(raster_nativo)
-      terra::crs(overview) <- terra::crs(raster_nativo)
-      raster_remoto <- overview
-    }
+    contrato_overview_valido <- !is.null(overview) &&
+      terra::nlyr(overview) == terra::nlyr(raster_principal) &&
+      nzchar(terra::crs(overview)) &&
+      isTRUE(terra::same.crs(overview, raster_principal)) &&
+      isTRUE(all.equal(
+        as.vector(terra::ext(overview)),
+        as.vector(terra::ext(raster_principal)),
+        tolerance = 1e-7,
+        check.attributes = FALSE
+      )) &&
+      all(terra::res(overview) > terra::res(raster_principal)) &&
+      mean(abs(terra::res(overview))) <= 1.25 * resolucao_destino
+    if (isTRUE(contrato_overview_valido)) raster_remoto <- overview
   }
-  terra::project(raster_remoto, template, method = metodo)
+  aoi_nativo <- terra::project(aoi, terra::crs(raster_remoto))
+  intersecao <- terra::intersect(terra::ext(raster_remoto), terra::ext(aoi_nativo))
+  if (is.null(intersecao)) {
+    stop("Asset COG não cobre a extensão solicitada.", call. = FALSE)
+  }
+  # A opção GDAL OVERVIEW_LEVEL preserva a georreferência oficial do COG.
+  # O overview só é aceito depois da validação de CRS, extensão, bandas e
+  # resolução. Nunca se reatribui a ele a extensão/CRS do raster principal.
+  # Se o driver não mantiver esse contrato, usa-se o COG principal.
+  raster_recortado <- terra::crop(raster_remoto, aoi_nativo, snap = "out")
+  terra::project(
+    raster_recortado,
+    template,
+    method = metodo,
+    threads = TRUE
+  )
 }
 
 monitora_relatorios_analiticos_mosaico_cogs <- function(
   hrefs,
   aoi,
   template,
-  metodo
+  metodo,
+  progresso = NULL
 ) {
   hrefs <- unique(as.character(hrefs))
   hrefs <- hrefs[!is.na(hrefs) & nzchar(hrefs)]
+  if (!length(hrefs)) {
+    return(list(raster = NULL, n_tiles_sucesso = 0L, falhas = character()))
+  }
   mosaico <- NULL
   falhas <- character()
   sucessos <- 0L
   for (ii in seq_along(hrefs)) {
+    if (is.function(progresso)) {
+      progresso(
+        "composicao_sentinel",
+        paste0("processando tile ", ii, " de ", length(hrefs)),
+        valor = (ii - 1) / length(hrefs),
+        concluir = FALSE
+      )
+    }
     camada <- NULL
     for (tentativa_tile in seq_len(2L)) {
       camada <- tryCatch(
         monitora_relatorios_analiticos_ler_cog_recortado(
-          hrefs[[ii]],
-          aoi,
-          template,
-          metodo
+          hrefs[[ii]], aoi, template, metodo
         ),
         error = function(e) {
           falhas <<- c(
@@ -69229,6 +69300,14 @@ monitora_relatorios_analiticos_mosaico_cogs <- function(
     if (is.null(camada)) next
     sucessos <- sucessos + 1L
     mosaico <- if (is.null(mosaico)) camada else terra::cover(mosaico, camada)
+  }
+  if (is.function(progresso)) {
+    progresso(
+      "composicao_sentinel",
+      paste0(sucessos, " de ", length(hrefs), " tile(s) concluído(s)"),
+      valor = 1,
+      concluir = TRUE
+    )
   }
   list(
     raster = mosaico,
@@ -71749,7 +71828,9 @@ monitora_relatorios_analiticos_renderizar_sentinel2 <- function(
   )
   uas_sobre_pixels_validos <- length(valores_uas) == 3L * nrow(uas) &&
     all(is.finite(suppressWarnings(as.numeric(valores_uas))))
-  cobertura_minima_render <- if (isTRUE(permitir_cobertura_parcial)) 85 else 99.5
+  # A tolerância técnica cobre somente bordas residuais de reprojeção/mosaico;
+  # todas as UAs continuam obrigatoriamente sobre pixels válidos.
+  cobertura_minima_render <- if (isTRUE(permitir_cobertura_parcial)) 97 else 99.5
   if (!is.finite(cobertura_visual_pct) ||
       cobertura_visual_pct < cobertura_minima_render ||
       !isTRUE(uas_sobre_pixels_validos)) {
@@ -73401,6 +73482,12 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         if (terra::nlyr(rgb_cache) < 3L || !is.list(meta_cache)) {
           stop("cache persistente inválido", call. = FALSE)
         }
+        if (!monitora_relatorios_analiticos_cache_sentinel_compativel(meta_cache)) {
+          stop(
+            "cache persistente anterior sem garantia de origem espacial",
+            call. = FALSE
+          )
+        }
         modo_cache <- as.character(meta_cache$modo_composicao)[1L]
         resolucao_cache <- suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L])
         if (is.na(modo_cache) || !nzchar(modo_cache) ||
@@ -73444,7 +73531,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
           estados = limite_cache$estados,
           biomas = limite_cache$biomas,
           status_limite_uc = limite_cache$status,
-          permitir_cobertura_parcial = FALSE,
+          permitir_cobertura_parcial = TRUE,
           modo_composicao = "cache_persistente_alta_resolucao",
           datas_composicao = datas_cache
         )
@@ -73509,6 +73596,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         responsabilidade = "CBC/ICMBio",
         cache_reutilizado = TRUE,
         cache_persistente_reutilizado = isTRUE(fallback_cache$persistente),
+        versao_pipeline_cog = "cog_overview_gdal_validado_v4",
+        cache_contrato_fonte_validado = TRUE,
         atribuicao = as.character(meta_cache$atribuicao)[1L],
         paginas_catalogo = paginas_catalogo_total,
         catalogo_truncado = catalogo_truncado_algum,
@@ -73825,7 +73914,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     aoi_rgb <- monitora_relatorios_analiticos_aoi_satelite(bbox_rgb)
     chave_cache <- digest::digest(
       paste(
-        "sentinel2-v2916-hires-cog-v6",
+        "sentinel2-v2920-overview-gdal-validado-v9",
         crs_visual_relatorio,
         as.character(modo)[1L],
         max_celulas_mapa_relatorio,
@@ -73851,7 +73940,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         itens_rgb$visual_href,
         aoi_rgb,
         template_visual,
-        metodo = "bilinear"
+        metodo = "bilinear",
+        progresso = progresso
       )
       raster_rgb <- visual_obj$raster
       falhas <- visual_obj$falhas
@@ -73899,7 +73989,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     aoi_rgb <- monitora_relatorios_analiticos_aoi_satelite(bbox_rgb)
     chave_cache <- digest::digest(
       paste(
-        "sentinel2-v2916-hires-bandas-v6",
+        "sentinel2-v2920-bandas-diretas-template-v9",
         crs_visual_relatorio,
         max_celulas_mapa_relatorio,
         paste(sort(itens_data_primaria$id), collapse = "|"),
@@ -74358,7 +74448,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
         estados = limite_uc_resultado$estados,
         biomas = limite_uc_resultado$biomas,
         status_limite_uc = limite_uc_resultado$status,
-        permitir_cobertura_parcial = FALSE,
+        permitir_cobertura_parcial = TRUE,
         modo_composicao = modo_composicao_usado,
         datas_composicao = datas_composicao_usadas
       ),
@@ -74408,6 +74498,12 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
       recuperado <- tryCatch({
         meta_cache <- readRDS(arquivo_meta_cache)
         rgb_cache <- terra::rast(arquivo_rgb_cache)
+        if (!monitora_relatorios_analiticos_cache_sentinel_compativel(meta_cache)) {
+          stop(
+            "cache anterior sem garantia de origem espacial",
+            call. = FALSE
+          )
+        }
         modo_cache <- as.character(meta_cache$modo_composicao)[1L]
         resolucao_cache <- suppressWarnings(as.numeric(meta_cache$resolucao_m)[1L])
         if (!is.list(meta_cache) || terra::nlyr(rgb_cache) < 3L ||
@@ -74447,7 +74543,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
           estados = limite_uc_resultado$estados,
           biomas = limite_uc_resultado$biomas,
           status_limite_uc = limite_uc_resultado$status,
-          permitir_cobertura_parcial = FALSE,
+          permitir_cobertura_parcial = TRUE,
           modo_composicao = "cache_persistente_alta_resolucao",
           datas_composicao = datas_cache
         )
@@ -74597,7 +74693,7 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
   auditoria_uas_pixels_validos <- isTRUE(uas_sobre_pixels_validos)
   nuvens_catalogo <- selecionada$nuvens_catalogo_max_pct[[1L]]
   meta_ultimo_cache <- list(
-    versao_cache = "sentinel2-hires-v2",
+    versao_cache = "sentinel2-hires-v4-overview-gdal-validado",
     data_aquisicao = data_selecionada,
     datas_composicao = datas_composicao_usadas,
     cenas = paste(itens_renderizados$id, collapse = " | "),
@@ -74667,6 +74763,8 @@ monitora_relatorios_analiticos_baixar_mapa_satelite_sentinel2 <- function(
     responsabilidade = "CBC/ICMBio",
     cache_reutilizado = auditoria_cache_rgb_reutilizado,
     cache_persistente_reutilizado = cache_persistente_reutilizado,
+    versao_pipeline_cog = "cog_overview_gdal_validado_v4",
+    cache_contrato_fonte_validado = TRUE,
     atribuicao = texto_atribuicao,
     inicio_catalogo_consultado = inicio_catalogo_real,
     fim_catalogo_consultado = fim_catalogo_real,
