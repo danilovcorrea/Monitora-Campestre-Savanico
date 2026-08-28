@@ -109,11 +109,17 @@ stopifnot(
   all(as.character(res$dt[[habito]][idx]) == valor_novo)
 )
 
-# O predicado contratual também deve reter vazio e outro legado inválido não vazio.
-dt_variantes <- copy(dt)
-set(dt_variantes, i = idx[1L], j = habito, value = "")
-set(dt_variantes, i = idx[2L], j = habito, value = "invalido_legado")
-det_variantes <- env$monitora_correcao_ocorrencias_habito_detalhadas(dt_variantes)
-stopifnot(all(idx[1:2] %in% as.integer(det_variantes$linha_indice)))
+# O predicado contratual também deve reter vazio e outro legado inválido não
+# vazio. Os dois estados são testados isoladamente para não pressupor que a
+# fixture real tenha ao menos duas linhas efetivas na última operação SANHAB.
+dt_vazio <- copy(dt)
+set(dt_vazio, i = idx[1L], j = habito, value = "")
+det_vazio <- env$monitora_correcao_ocorrencias_habito_detalhadas(dt_vazio)
+stopifnot(idx[1L] %in% as.integer(det_vazio$linha_indice))
+
+dt_invalido <- copy(dt)
+set(dt_invalido, i = idx[1L], j = habito, value = "invalido_legado")
+det_invalido <- env$monitora_correcao_ocorrencias_habito_detalhadas(dt_invalido)
+stopifnot(idx[1L] %in% as.integer(det_invalido$linha_indice))
 
 cat("TEST_V2919_SANHAB_INVALIDO_ATOMICO_OK: alvo contratual inválido corrigido; replay idempotente; vazio e inválido não vazio reconhecidos\n")

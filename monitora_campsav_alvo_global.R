@@ -1,8 +1,14 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão pública do script: 2.9.20
-### Baseline pública de origem: v2.9.19
+### Versão pública do script: 2.9.21
+### Baseline pública de origem: v2.9.20
+### A v2.9.21 impede que dependências órfãs de `relevance` criem tokens fora
+### das choices do pai. O preenchimento explícito de outra espécie exótica
+### fecha somente os ancestrais semânticos válidos do contrato 2025, preserva
+### o módulo histórico e bloqueia conflitos sem mutação parcial. Checkpoints
+### legados com `outros` órfão são reconciliados de modo atômico, idempotente
+### e auditável quando há uma única forma exótica válida já informada.
 ### A v2.9.20 preserva as revisões da v2.9.19 e corrige a leitura
 ### espacial de COGs Sentinel-2: overviews só são usados quando o GDAL preserva
 ### bandas, CRS e extensão do COG oficial; caso contrário, usa o raster principal.
@@ -354,8 +360,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.20"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.20-20260827-r01"
+MONITORA_SCRIPT_VERSAO <- "2.9.21"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.21-20260828-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -11624,9 +11630,10 @@ monitora_contrato_unico_resolver_colunas_dataset <- function(
     vazio[, status_resolucao := "contrato_unico_incompleto"]
     return(vazio[])
   }
+  attrs_cols <- c(obrig_attrs, intersect("atributo_schema129", names(attrs)))
   attrs <- unique(attrs[
     !is.na(caminho_registro) & nzchar(as.character(caminho_registro)),
-    ..obrig_attrs
+    ..attrs_cols
   ], by = "caminho_registro")
 
   cache_env <- if (exists("monitora_publicacao_ae_cache_env", mode = "function")) {
@@ -11635,7 +11642,7 @@ monitora_contrato_unico_resolver_colunas_dataset <- function(
     .GlobalEnv
   }
   assinatura_schema <- if (exists("monitora_correcao_mapa_colunas_cache_key", mode = "function")) {
-    monitora_correcao_mapa_colunas_cache_key(dt, "contrato_unico_v2917")
+    monitora_correcao_mapa_colunas_cache_key(dt, "contrato_unico_v2921_schema129")
   } else {
     paste(length(names(dt)), sum(nchar(names(dt))), paste(names(dt), collapse = "\r"), sep = "::")
   }
@@ -11657,10 +11664,12 @@ monitora_contrato_unico_resolver_colunas_dataset <- function(
       caminho,
       as.character(attrs$name_curto[ii]),
       as.character(attrs$label_2025_sem_html[ii]),
+      if ("atributo_schema129" %in% names(attrs)) as.character(attrs$atributo_schema129[ii]) else character(0),
       historicos
     )
     origens <- c(
       "caminho_registro", "name_curto", "label_2025",
+      if ("atributo_schema129" %in% names(attrs)) "atributo_schema129" else character(0),
       rep("label_historico", length(historicos))
     )
     if (nrow(aliases) && all(c("caminho_registro", "alias") %in% names(aliases))) {
@@ -11750,9 +11759,352 @@ monitora_contrato_unico_resolver_contexto_impactos <- function(
   out[]
 }
 
+monitora_correcao_contrato_choices_atuais <- function(contrato_indices = NULL) {
+  cu <- contrato_indices
+  if (is.null(cu)) cu <- monitora_contrato_unico_indices_cache(validar = TRUE)
+  choices <- if (!is.null(cu$indices$por_choice_name)) {
+    data.table::copy(data.table::as.data.table(cu$indices$por_choice_name))
+  } else data.table::data.table()
+  if (!nrow(choices) || !all(c("list_name", "name") %in% names(choices))) {
+    stop("Contrato único sem índice de choices para o XLSForm vigente.", call. = FALSE)
+  }
+  if ("arquivo_21fev25_publicacao_ae" %in% names(choices)) {
+    atuais <- choices[arquivo_21fev25_publicacao_ae %in% TRUE]
+  } else if ("arquivo_xlsform" %in% names(choices)) {
+    atuais <- choices[grepl("21FEV25|2025", as.character(arquivo_xlsform), ignore.case = TRUE)]
+  } else atuais <- data.table::data.table()
+  if (!nrow(atuais)) stop("Contrato único não resolveu as choices do XLSForm 21FEV25.", call. = FALSE)
+  atuais[, `:=`(list_name = as.character(list_name), name = as.character(name))]
+  atuais <- unique(atuais[
+    !is.na(list_name) & nzchar(list_name) & !is.na(name) & nzchar(name)
+  ], by = c("list_name", "name"))
+  atuais[]
+}
+
+monitora_correcao_contrato_mapa_outras_especies_exoticas <- function(contrato_indices = NULL) {
+  cu <- contrato_indices
+  if (is.null(cu)) cu <- monitora_contrato_unico_indices_cache(validar = TRUE)
+  attrs <- data.table::copy(data.table::as.data.table(cu$indices$por_atributo_canonico))
+  deps <- data.table::copy(data.table::as.data.table(cu$indices$por_dependencia))
+  choices <- monitora_correcao_contrato_choices_atuais(cu)
+  if (!nrow(attrs) || !nrow(deps)) {
+    stop("Contrato único indisponível para fechar outras espécies exóticas.", call. = FALSE)
+  }
+  if ("arquivo_xlsform" %in% names(deps)) {
+    atuais <- deps[grepl("21FEV25|2025", as.character(arquivo_xlsform), ignore.case = TRUE)]
+    if (nrow(atuais)) deps <- atuais
+  }
+  raiz <- unique(attrs[
+    name_curto == "forma_vida_exotica",
+    .(raiz_name = as.character(name_curto), raiz_path = as.character(caminho_registro),
+      raiz_list_name = as.character(list_name))
+  ])
+  especie <- unique(attrs[
+    name_curto == "especie",
+    .(especie_name = as.character(name_curto), especie_path = as.character(caminho_registro))
+  ])
+  tipo <- unique(attrs[
+    name_curto == "tipo_forma_vida",
+    .(tipo_name = as.character(name_curto), tipo_path = as.character(caminho_registro),
+      tipo_list_name = as.character(list_name))
+  ])
+  if (nrow(raiz) != 1L || nrow(especie) != 1L || nrow(tipo) != 1L) {
+    stop("Contrato único não resolveu univocamente os ancestrais das espécies exóticas.", call. = FALSE)
+  }
+
+  raiz_tokens <- unique(choices[list_name == raiz$raiz_list_name, name])
+  tipo_tokens <- unique(choices[list_name == tipo$tipo_list_name, name])
+  if (!("exotica" %in% tipo_tokens) || !length(raiz_tokens)) {
+    stop("Domínios superiores das espécies exóticas incompletos no contrato único.", call. = FALSE)
+  }
+  arestas_raiz <- unique(deps[
+    parent_name == raiz$raiz_name & !is.na(dependent_name) & nzchar(as.character(dependent_name)),
+    .(lista_name = as.character(dependent_name), token_forma = as.character(token))
+  ])
+  attrs_lista <- unique(attrs[
+    name_curto %in% arestas_raiz$lista_name & tipo_base == "select_multiple",
+    .(lista_name = as.character(name_curto), lista_path = as.character(caminho_registro),
+      lista_list_name = as.character(list_name))
+  ])
+  arestas_folha <- unique(deps[
+    parent_name %in% attrs_lista$lista_name & dependent_type == "text",
+    .(lista_name = as.character(parent_name), token_outra_especie = as.character(token),
+      folha_name = as.character(dependent_name))
+  ])
+  attrs_folha <- unique(attrs[
+    name_curto %in% arestas_folha$folha_name & tipo_base == "text",
+    .(folha_name = as.character(name_curto), folha_path = as.character(caminho_registro),
+      folha_required = as.character(required))
+  ])
+  mapa <- merge(arestas_raiz, attrs_lista, by = "lista_name", all = FALSE, sort = FALSE)
+  mapa <- merge(mapa, arestas_folha, by = "lista_name", all = FALSE, sort = FALSE)
+  mapa <- merge(mapa, attrs_folha, by = "folha_name", all = FALSE, sort = FALSE)
+  mapa[, `:=`(
+    token_forma_valido = token_forma %in% raiz_tokens,
+    token_outra_valido = paste(lista_list_name, token_outra_especie, sep = "\034") %in%
+      paste(choices$list_name, choices$name, sep = "\034")
+  )]
+  validos <- unique(mapa[
+    token_forma_valido & token_outra_valido,
+    .(token_forma, lista_name, lista_path, lista_list_name,
+      token_outra_especie, folha_name, folha_path, folha_required)
+  ])
+  if (!nrow(validos) || anyDuplicated(validos$token_forma) ||
+      anyDuplicated(validos$lista_name) || anyDuplicated(validos$folha_name)) {
+    stop("Mapeamento contratual das outras espécies exóticas não é unívoco.", call. = FALSE)
+  }
+  orfao <- unique(mapa[
+    token_forma == "outros" & !token_forma_valido & token_outra_valido,
+    .(token_orfao = token_forma, lista_orfa_name = lista_name,
+      lista_orfa_path = lista_path, lista_orfa_list_name = lista_list_name,
+      token_outra_orfa = token_outra_especie, folha_orfa_name = folha_name,
+      folha_orfa_path = folha_path)
+  ])
+  if (nrow(orfao) != 1L) {
+    stop("Ramo órfão `outros` não foi comprovado univocamente pelo contrato único.", call. = FALSE)
+  }
+  list(
+    mapeamento = validos[], orfao = orfao[],
+    raiz = raiz[], especie = especie[], tipo = tipo[],
+    raiz_tokens = raiz_tokens, tipo_tokens = tipo_tokens
+  )
+}
+
+monitora_correcao_resolver_colunas_mapa_outras_especies <- function(dt, mapa, contrato_indices = NULL) {
+  paths <- unique(c(
+    mapa$raiz$raiz_path, mapa$especie$especie_path, mapa$tipo$tipo_path,
+    mapa$orfao$lista_orfa_path, mapa$orfao$folha_orfa_path,
+    mapa$mapeamento$lista_path, mapa$mapeamento$folha_path
+  ))
+  resolucao <- monitora_contrato_unico_resolver_colunas_dataset(
+    dt, paths, contrato_indices = contrato_indices
+  )
+  data.table::setnames(resolucao, "caminho_registro", "path", skip_absent = TRUE)
+  resolucao[]
+}
+
+monitora_correcao_auditar_celulas_contrato <- function(id, linhas, atributo,
+                                                        antes, depois, mensagem,
+                                                        dependent_name = NA_character_,
+                                                        parent_name = NA_character_,
+                                                        token = NA_character_,
+                                                        tipo_sanitizacao = NA_character_) {
+  linhas <- as.integer(linhas)
+  if (!length(linhas)) return(data.table::data.table())
+  data.table::data.table(
+    id_correcao = as.character(id), ordem_operacao = NA_character_, status = "aplicada",
+    mensagem = as.character(mensagem), atributo = as.character(atributo),
+    linha_indice = linhas, valor_antes = as.character(antes), valor_depois = as.character(depois),
+    arquivo_correcao = "fechamento_semantico_contrato_v2921",
+    dependent_name = as.character(dependent_name), parent_name = as.character(parent_name),
+    token = as.character(token), tipo_sanitizacao = as.character(tipo_sanitizacao)
+  )
+}
+
+monitora_correcao_fechar_outras_especies_exoticas <- function(dt, linhas = NULL,
+                                                               contrato_indices = NULL) {
+  dt <- monitora_dt_referenciar(dt)
+  if (is.null(linhas)) linhas <- seq_len(nrow(dt))
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  vazio <- list(dt = dt[], audit = data.table::data.table(), bloqueios = data.table::data.table())
+  if (!length(linhas)) return(vazio)
+  cu <- contrato_indices
+  if (is.null(cu)) cu <- monitora_contrato_unico_indices_cache(validar = TRUE)
+  mapa <- monitora_correcao_contrato_mapa_outras_especies_exoticas(cu)
+  res <- monitora_correcao_resolver_colunas_mapa_outras_especies(dt, mapa, cu)
+  col_por_path <- function(path_alvo) {
+    path_alvo <- as.character(path_alvo)[1L]
+    hit <- res[path == path_alvo & status_resolucao == "resolvido_unico", coluna]
+    if (length(hit) == 1L) as.character(hit) else NA_character_
+  }
+  col_raiz <- col_por_path(mapa$raiz$raiz_path)
+  col_especie <- col_por_path(mapa$especie$especie_path)
+  col_tipo <- col_por_path(mapa$tipo$tipo_path)
+  audit <- data.table::data.table()
+  bloqueios <- data.table::data.table()
+  for (rr in seq_len(nrow(mapa$mapeamento))) {
+    regra <- mapa$mapeamento[rr]
+    col_lista <- col_por_path(regra$lista_path)
+    col_folha <- col_por_path(regra$folha_path)
+    if (is.na(col_folha) || !(col_folha %in% names(dt))) next
+    idx <- linhas[!monitora_correcao_vazio_vec(dt[[col_folha]][linhas])]
+    if (!length(idx)) next
+    faltam <- c(
+      if (is.na(col_raiz)) "forma_vida_exotica" else character(),
+      if (is.na(col_especie)) "especie" else character(),
+      if (is.na(col_tipo)) "tipo_forma_vida" else character(),
+      if (is.na(col_lista)) regra$lista_name else character()
+    )
+    if (length(faltam)) {
+      bloqueios <- data.table::rbindlist(list(bloqueios, data.table::data.table(
+        linha_indice = idx, folha = col_folha, status = "bloqueada_superior_nao_resolvido",
+        motivo = paste0("Campos superiores não resolvidos: ", paste(faltam, collapse = ", "))
+      )), fill = TRUE)
+      next
+    }
+    especie_atual <- monitora_correcao_na_para_vazio(dt[[col_especie]][idx])
+    tipo_atual <- monitora_correcao_na_para_vazio(dt[[col_tipo]][idx])
+    conflito <- (nzchar(especie_atual) & especie_atual != "sim") |
+      (monitora_correcao_token_presente_vec(tipo_atual, "solo_nu") &
+         !monitora_correcao_token_presente_vec(tipo_atual, "exotica"))
+    if (any(conflito)) {
+      bloqueios <- data.table::rbindlist(list(bloqueios, data.table::data.table(
+        linha_indice = idx[conflito], folha = col_folha,
+        status = "bloqueada_conflito_ancestral_select_one_ou_exclusividade",
+        motivo = "Folha preenchida conflita com especie!=sim ou solo_nu exclusivo"
+      )), fill = TRUE)
+    }
+    idx <- idx[!conflito]
+    if (!length(idx)) next
+    alteracoes <- list(
+      list(col = col_especie, valor = rep("sim", length(idx)), token = "sim", pai = "especie"),
+      list(col = col_tipo, valor = monitora_correcao_append_token_vetor_memo(dt[[col_tipo]][idx], "exotica"), token = "exotica", pai = "tipo_forma_vida"),
+      list(col = col_raiz, valor = monitora_correcao_append_token_vetor_memo(dt[[col_raiz]][idx], regra$token_forma), token = regra$token_forma, pai = "forma_vida_exotica"),
+      list(col = col_lista, valor = monitora_correcao_append_token_vetor_memo(dt[[col_lista]][idx], regra$token_outra_especie), token = regra$token_outra_especie, pai = regra$lista_name)
+    )
+    for (aa in alteracoes) {
+      antes <- as.character(dt[[aa$col]][idx])
+      depois <- as.character(aa$valor)
+      mudou <- monitora_correcao_na_para_vazio(antes) != monitora_correcao_na_para_vazio(depois)
+      if (!any(mudou)) next
+      data.table::set(dt, i = idx[mudou], j = aa$col, value = depois[mudou])
+      audit <- data.table::rbindlist(list(audit, monitora_correcao_auditar_celulas_contrato(
+        "FECHAMENTO_RELEVANCE_SEMANTICA_CONTRATO", idx[mudou], aa$col,
+        antes[mudou], depois[mudou],
+        paste0("Ancestral semântico materializado a partir da folha preenchida ", col_folha),
+        dependent_name = col_folha, parent_name = aa$col, token = aa$token
+      )), fill = TRUE)
+    }
+  }
+  list(dt = dt[], audit = audit[], bloqueios = bloqueios[])
+}
+
+monitora_correcao_reconciliar_outros_orfao_exotica <- function(dt, linhas = NULL,
+                                                                contrato_indices = NULL) {
+  dt <- monitora_dt_referenciar(dt)
+  if (is.null(linhas)) linhas <- seq_len(nrow(dt))
+  linhas <- unique(as.integer(linhas))
+  linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+  vazio <- list(dt = dt[], audit = data.table::data.table(), bloqueios = data.table::data.table())
+  if (!length(linhas)) return(vazio)
+  cu <- contrato_indices
+  if (is.null(cu)) cu <- monitora_contrato_unico_indices_cache(validar = TRUE)
+  mapa <- monitora_correcao_contrato_mapa_outras_especies_exoticas(cu)
+  res <- monitora_correcao_resolver_colunas_mapa_outras_especies(dt, mapa, cu)
+  col_por_path <- function(path) {
+    path_alvo <- as.character(path)[1L]
+    hit <- res[path == path_alvo & status_resolucao == "resolvido_unico", coluna]
+    if (length(hit) == 1L) as.character(hit) else NA_character_
+  }
+  col_raiz <- col_por_path(mapa$raiz$raiz_path)
+  col_especie <- col_por_path(mapa$especie$especie_path)
+  col_tipo <- col_por_path(mapa$tipo$tipo_path)
+  col_lista_orfa <- col_por_path(mapa$orfao$lista_orfa_path)
+  col_folha_orfa <- col_por_path(mapa$orfao$folha_orfa_path)
+  comuns <- c(col_raiz, col_especie, col_tipo, col_lista_orfa, col_folha_orfa)
+  if (any(is.na(comuns)) || any(!(comuns %in% names(dt)))) return(vazio)
+  candidatos <- linhas[monitora_correcao_token_presente_vec(
+    dt[[col_raiz]][linhas], mapa$orfao$token_orfao
+  )]
+  if (!length(candidatos)) return(vazio)
+  audit <- data.table::data.table()
+  bloqueios <- data.table::data.table()
+  for (ii in candidatos) {
+    tokens_raiz <- monitora_correcao_tokenizar(dt[[col_raiz]][ii])
+    formas_validas <- intersect(tokens_raiz, mapa$mapeamento$token_forma)
+    invalidos_extras <- setdiff(tokens_raiz, c(mapa$raiz_tokens, mapa$orfao$token_orfao))
+    regra <- mapa$mapeamento[token_forma %in% formas_validas]
+    origem_texto <- as.character(dt[[col_folha_orfa]][ii])
+    origem_lista <- as.character(dt[[col_lista_orfa]][ii])
+    especie_atual <- monitora_correcao_na_para_vazio(dt[[col_especie]][ii])
+    tipo_atual <- monitora_correcao_na_para_vazio(dt[[col_tipo]][ii])
+    motivo <- character(0)
+    if (length(formas_validas) != 1L || nrow(regra) != 1L) motivo <- c(motivo, "forma_exotica_valida_nao_unica")
+    if (length(invalidos_extras)) motivo <- c(motivo, "tokens_invalidos_adicionais_no_pai")
+    if (monitora_correcao_vazio_vec(origem_texto)) motivo <- c(motivo, "texto_orfao_vazio")
+    if (!monitora_correcao_vazio_vec(origem_lista)) motivo <- c(motivo, "lista_orfa_possui_escolha_conflitante")
+    if (nzchar(especie_atual) && especie_atual != "sim") motivo <- c(motivo, "especie_select_one_conflitante")
+    if (monitora_correcao_token_presente_vec(tipo_atual, "solo_nu") &&
+        !monitora_correcao_token_presente_vec(tipo_atual, "exotica")) motivo <- c(motivo, "solo_nu_exclusivo")
+    col_lista_dest <- if (nrow(regra) == 1L) col_por_path(regra$lista_path) else NA_character_
+    col_folha_dest <- if (nrow(regra) == 1L) col_por_path(regra$folha_path) else NA_character_
+    if (is.na(col_lista_dest) || is.na(col_folha_dest)) motivo <- c(motivo, "destino_contratual_nao_resolvido")
+    if (!length(motivo)) {
+      destino_lista <- as.character(dt[[col_lista_dest]][ii])
+      destino_texto <- as.character(dt[[col_folha_dest]][ii])
+      toks_destino <- if (monitora_correcao_vazio_vec(destino_lista)) {
+        character(0)
+      } else monitora_correcao_tokenizar(destino_lista)
+      if (length(setdiff(toks_destino, regra$token_outra_especie))) motivo <- c(motivo, "lista_destino_possui_especie_nomeada")
+      if (!monitora_correcao_vazio_vec(destino_texto) &&
+          !identical(as.character(destino_texto), as.character(origem_texto))) motivo <- c(motivo, "texto_destino_divergente")
+    }
+    if (length(motivo)) {
+      bloqueios <- data.table::rbindlist(list(bloqueios, data.table::data.table(
+        linha_indice = ii, status = "bloqueada_migracao_outros_orfao",
+        motivo = paste(unique(motivo), collapse = "; "), token_orfao = mapa$orfao$token_orfao,
+        formas_validas_encontradas = paste(formas_validas, collapse = " ")
+      )), fill = TRUE)
+      next
+    }
+    mudancas <- list(
+      list(col = col_raiz, depois = monitora_correcao_remove_token_valor(dt[[col_raiz]][ii], mapa$orfao$token_orfao), token = mapa$orfao$token_orfao),
+      list(col = col_especie, depois = "sim", token = "sim"),
+      list(col = col_tipo, depois = monitora_correcao_append_token_valor(dt[[col_tipo]][ii], "exotica"), token = "exotica"),
+      list(col = col_lista_dest, depois = monitora_correcao_append_token_valor(dt[[col_lista_dest]][ii], regra$token_outra_especie), token = regra$token_outra_especie),
+      list(col = col_folha_dest, depois = origem_texto, token = regra$token_outra_especie),
+      list(col = col_folha_orfa, depois = NA_character_, token = mapa$orfao$token_orfao)
+    )
+    for (mm in mudancas) {
+      antes <- as.character(dt[[mm$col]][ii])
+      depois <- as.character(mm$depois)
+      if (identical(monitora_correcao_na_para_vazio(antes), monitora_correcao_na_para_vazio(depois))) next
+      data.table::set(dt, i = ii, j = mm$col, value = depois)
+      audit <- data.table::rbindlist(list(audit, monitora_correcao_auditar_celulas_contrato(
+        "MIGRACAO_TOKEN_ORFAO_OUTROS_EXOTICA", ii, mm$col, antes, depois,
+        paste0("Estado órfão `outros` reconciliado para o ramo contratual ", regra$token_forma,
+          " sem alterar o texto informado"),
+        dependent_name = col_folha_orfa, parent_name = mm$col, token = mm$token,
+        tipo_sanitizacao = "migracao_token_orfao_outros_exotica"
+      )), fill = TRUE)
+    }
+  }
+  if (nrow(audit)) {
+    chaves <- monitora_correcao_colunas_chave(dt)
+    audit <- tryCatch(
+      monitora_correcao_anexar_contexto_auditoria(audit, dt, chaves),
+      error = function(e) audit
+    )
+  }
+  list(dt = dt[], audit = audit[], bloqueios = bloqueios[])
+}
+
+monitora_correcao_registrar_migracao_outros_orfao <- function(audit) {
+  audit <- data.table::as.data.table(audit)
+  if (!nrow(audit) || isTRUE(get0(
+    "MONITORA_PUBLICACAO_G_MODO_SIMULACAO_CONTRATO",
+    ifnotfound = FALSE, inherits = TRUE
+  ))) return(invisible(audit))
+  anterior <- data.table::as.data.table(get0(
+    "MONITORA_AUDITORIA_MIGRACAO_OUTROS_ORFAO_SESSAO",
+    ifnotfound = data.table::data.table(), inherits = TRUE
+  ))
+  consolidada <- data.table::rbindlist(list(anterior, audit), fill = TRUE, use.names = TRUE)
+  for (cc in c("id_correcao", "linha_indice", "atributo", "valor_antes", "valor_depois")) {
+    if (!(cc %in% names(consolidada))) data.table::set(consolidada, j = cc, value = NA_character_)
+  }
+  chave_mig <- do.call(paste, c(consolidada[, .(
+    id_correcao, linha_indice, atributo, valor_antes, valor_depois
+  )], sep = "\034"))
+  consolidada <- consolidada[!duplicated(chave_mig)]
+  assign("MONITORA_AUDITORIA_MIGRACAO_OUTROS_ORFAO_SESSAO", consolidada, envir = .GlobalEnv)
+  invisible(consolidada)
+}
+
 monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   dt <- data.table::as.data.table(dt)
-  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_v2917_contrato_unico")
+  chave_cache <- monitora_correcao_mapa_colunas_cache_key(dt, "fechamento_hierarquico_v2921_choices_relevance")
   if (exists(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)) {
     return(data.table::copy(get(chave_cache, envir = .MONITORA_FECHAMENTO_HIERARQUICO_CACHE, inherits = FALSE)))
   }
@@ -11769,6 +12121,7 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   deps <- if (!is.null(cu) && !is.null(cu$indices$por_dependencia)) {
     data.table::copy(data.table::as.data.table(cu$indices$por_dependencia))
   } else data.table::data.table()
+  choices <- tryCatch(monitora_correcao_contrato_choices_atuais(cu), error = function(e) data.table::data.table())
   categorias <- tryCatch(
     monitora_contrato_categorias_movimento()[categoria %in% c("nativa", "exotica", "seca_morta")],
     error = function(e) data.table::data.table()
@@ -11858,8 +12211,8 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
   ]
 
   rel <- unique(rel[, .(
-    dependent_path, categoria, token, parent_path
-  )], by = c("dependent_path", "categoria", "token", "parent_path"))
+    dependent_path, categoria, token, parent_path, parent_list_name
+  )], by = c("dependent_path", "categoria", "token", "parent_path", "parent_list_name"))
 
   resolucao <- monitora_contrato_unico_resolver_colunas_dataset(
     dt, unique(c(rel$dependent_path, rel$parent_path)), contrato_indices = cu
@@ -11875,16 +12228,19 @@ monitora_correcao_contrato_fechamento_hierarquico <- function(dt) {
     papel_inferior = mapa$papel_coluna[match(campo_inferior, mapa$coluna_registros_corrig)],
     papel_superior = mapa$papel_coluna[match(campo_superior, mapa$coluna_registros_corrig)]
   )]
+  choice_keys <- if (nrow(choices)) paste(choices$list_name, choices$name, sep = "\034") else character(0)
+  rel[, token_valido_no_pai := paste(parent_list_name, token, sep = "\034") %in% choice_keys]
   rel[, n_relacoes_campo := .N, by = campo_inferior]
   rel[, status_regra := data.table::fcase(
     n_relacoes_campo != 1L, "nao_derivavel_relacao_ambigua",
+    !token_valido_no_pai, "bloqueada_token_fora_dominio_choices_pai",
     !(papel_inferior %in% papeis_inferiores), "bloqueada_papeis_incompativeis",
     status_superior != "resolvido_unico" | is.na(campo_superior), "bloqueada_superior_nao_resolvido",
     papel_superior != "lista_principal_forma_vida" | campo_superior == campo_inferior, "bloqueada_papeis_incompativeis",
     default = "ok"
   )]
   regras_resolvidas <- rel[, .(
-    campo_inferior, papel_inferior, categoria, token,
+    campo_inferior, papel_inferior, categoria, token, parent_list_name, token_valido_no_pai,
     campo_superior, papel_superior, status_regra,
     origem_regra = "contrato_unico_dependencias_relevant_21FEV25"
   )]
@@ -11918,6 +12274,30 @@ monitora_correcao_recalcular_superiores_vinculados <- function(dt, linhas, deps 
   if (!length(linhas)) return(data.table::data.table())
 
   audit <- data.table::data.table()
+  migracao_orfao <- monitora_correcao_reconciliar_outros_orfao_exotica(dt, linhas = linhas)
+  dt <- monitora_dt_referenciar(migracao_orfao$dt)
+  if (nrow(migracao_orfao$audit)) {
+    audit <- data.table::rbindlist(list(audit, migracao_orfao$audit), fill = TRUE, use.names = TRUE)
+    monitora_correcao_registrar_migracao_outros_orfao(migracao_orfao$audit)
+  }
+  fechamento_folhas <- monitora_correcao_fechar_outras_especies_exoticas(dt, linhas = linhas)
+  dt <- monitora_dt_referenciar(fechamento_folhas$dt)
+  if (nrow(fechamento_folhas$audit)) {
+    audit <- data.table::rbindlist(list(audit, fechamento_folhas$audit), fill = TRUE, use.names = TRUE)
+  }
+  linhas_bloqueadas <- unique(c(
+    suppressWarnings(as.integer(migracao_orfao$bloqueios$linha_indice)),
+    suppressWarnings(as.integer(fechamento_folhas$bloqueios$linha_indice))
+  ))
+  linhas_bloqueadas <- linhas_bloqueadas[!is.na(linhas_bloqueadas)]
+  linhas_fechamento <- setdiff(linhas, linhas_bloqueadas)
+  if (length(linhas_bloqueadas) && exists("monitora_log_registrar_evento", mode = "function")) {
+    monitora_log_registrar_evento(
+      "fechamento_relevance_semantica", "AVISO", NA_character_,
+      paste0(length(linhas_bloqueadas), " linha(s) mantida(s) sem mutação automática por conflito nos ancestrais semânticos"),
+      "revisar o valor conflitante; nenhuma choice ou relevance foi flexibilizada"
+    )
+  }
   regras <- monitora_correcao_contrato_fechamento_hierarquico(dt)
   bloqueadas <- regras[status_regra != "ok"]
   if (nrow(bloqueadas)) {
@@ -11940,12 +12320,12 @@ monitora_correcao_recalcular_superiores_vinculados <- function(dt, linhas, deps 
       token <- regras$token[rr]
       if (!(inferior %in% names(dt)) || !(superior %in% names(dt))) next
 
-      valores_inf <- as.character(dt[[inferior]][linhas])
+      valores_inf <- as.character(dt[[inferior]][linhas_fechamento])
       preenchido <- !monitora_correcao_vazio_vec(valores_inf)
       if (identical(papel, "atributo_dependente_habito")) {
         preenchido <- preenchido & monitora_correcao_normalizar_nome_coluna(valores_inf) %in% habitos_validos
       }
-      idx <- linhas[preenchido %in% TRUE]
+      idx <- linhas_fechamento[preenchido %in% TRUE]
       if (!length(idx)) next
 
       antes <- as.character(dt[[superior]][idx])
@@ -11976,32 +12356,32 @@ monitora_correcao_recalcular_superiores_vinculados <- function(dt, linhas, deps 
 
   chaves <- monitora_correcao_colunas_chave(dt)
   tipo_col <- chaves$tipo_forma_vida
-  if (!is.na(tipo_col) && tipo_col %in% names(dt)) {
-    antes_tipo <- as.character(dt[[tipo_col]][linhas])
+  if (length(linhas_fechamento) && !is.na(tipo_col) && tipo_col %in% names(dt)) {
+    antes_tipo <- as.character(dt[[tipo_col]][linhas_fechamento])
     if (identical(modo_encostam, "acrescentar")) {
       depois_append <- antes_tipo
       for (cat in c("nativa", "exotica", "seca_morta")) {
         col_lista <- tryCatch(monitora_correcao_coluna_forma_vida(dt, cat), error = function(e) NA_character_)
         if (is.na(col_lista) || !(col_lista %in% names(dt))) next
-        tem_lista <- !monitora_correcao_vazio_vec(dt[[col_lista]][linhas])
+        tem_lista <- !monitora_correcao_vazio_vec(dt[[col_lista]][linhas_fechamento])
         idx_local <- which(tem_lista %in% TRUE)
         if (length(idx_local)) {
           depois_append[idx_local] <- monitora_correcao_append_token_vetor_memo(depois_append[idx_local], cat)
         }
       }
       mudou_append <- monitora_correcao_na_para_vazio(antes_tipo) != monitora_correcao_na_para_vazio(depois_append)
-      if (any(mudou_append, na.rm = TRUE)) data.table::set(dt, i = linhas[mudou_append], j = tipo_col, value = depois_append[mudou_append])
+      if (any(mudou_append, na.rm = TRUE)) data.table::set(dt, i = linhas_fechamento[mudou_append], j = tipo_col, value = depois_append[mudou_append])
     } else {
-      monitora_correcao_recalcular_tipo_forma_vida(dt, linhas)
+      monitora_correcao_recalcular_tipo_forma_vida(dt, linhas_fechamento)
     }
-    depois_tipo <- as.character(dt[[tipo_col]][linhas])
+    depois_tipo <- as.character(dt[[tipo_col]][linhas_fechamento])
     mudou_tipo <- monitora_correcao_na_para_vazio(antes_tipo) != monitora_correcao_na_para_vazio(depois_tipo)
     if (any(mudou_tipo, na.rm = TRUE)) {
       audit <- data.table::rbindlist(list(audit, data.table::data.table(
         id_correcao = "FECHAMENTO_HIERARQUICO_CONTRATO",
         ordem_operacao = NA_character_, status = "aplicada",
         mensagem = if (identical(modo_encostam, "acrescentar")) "Tokens superiores ausentes acrescentados em Encostam a partir das listas principais, sem remover tokens existentes" else "Encostam/tipo_forma_vida recalculado a partir das listas principais finais",
-        atributo = tipo_col, linha_indice = linhas[mudou_tipo],
+        atributo = tipo_col, linha_indice = linhas_fechamento[mudou_tipo],
         valor_antes = antes_tipo[mudou_tipo], valor_depois = depois_tipo[mudou_tipo],
         arquivo_correcao = "fechamento_hierarquico_contrato_r24"
       )), fill = TRUE, use.names = TRUE)
@@ -18129,7 +18509,7 @@ monitora_correcao_expandir_dependencias_impactos_legadas <- function(
       inherits = TRUE
     ))
     data.table::set(op, j = "script_versao_replay", value = get0(
-      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.20", inherits = TRUE
+      "MONITORA_SCRIPT_VERSAO", ifnotfound = "2.9.21", inherits = TRUE
     ))
     op
   }
@@ -19677,6 +20057,7 @@ monitora_linhagem_sanitizacoes_automaticas_consolidar <- function(dir_lin) {
   herdada <- data.table::as.data.table(get0("MONITORA_AUDITORIA_SANITIZACOES_HERDADA", ifnotfound = data.table::data.table(), inherits = TRUE))
   cpf <- data.table::as.data.table(get0("MONITORA_AUDITORIA_CPF_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
   uuid <- data.table::as.data.table(get0("MONITORA_AUDITORIA_UUID_REGISTRO_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
+  outros_orfao <- data.table::as.data.table(get0("MONITORA_AUDITORIA_MIGRACAO_OUTROS_ORFAO_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
   preparar <- function(x, tipo) {
     x <- data.table::copy(data.table::as.data.table(x))
     if (!nrow(x)) return(x)
@@ -19688,8 +20069,9 @@ monitora_linhagem_sanitizacoes_automaticas_consolidar <- function(dir_lin) {
   }
   cpf <- preparar(cpf, "cpf")
   uuid <- preparar(uuid, "uuid_registro")
+  outros_orfao <- preparar(outros_orfao, "migracao_token_orfao_outros_exotica")
   if (nrow(herdada)) herdada[, origem_auditoria := "herdada_incremental"]
-  consolidada <- data.table::rbindlist(list(herdada, cpf, uuid), fill = TRUE, use.names = TRUE)
+  consolidada <- data.table::rbindlist(list(herdada, cpf, uuid, outros_orfao), fill = TRUE, use.names = TRUE)
   if (!ncol(consolidada)) {
     consolidada <- data.table::data.table(
       tipo_sanitizacao = character(), monitora_row_id = character(), COLETA = character(),
@@ -43391,6 +43773,50 @@ monitora_validados_validar_condicionais_xlsform21 <- function(out) {
       )
     }
   }
+  mapa_outras_exoticas <- tryCatch(
+    monitora_correcao_contrato_mapa_outras_especies_exoticas(),
+    error = function(e) NULL
+  )
+  if (!is.null(mapa_outras_exoticas)) {
+    especie_col <- mapa_outras_exoticas$especie$especie_path
+    raiz_col <- mapa_outras_exoticas$raiz$raiz_path
+    if (especie_col %in% names(out) && raiz_col %in% names(out)) {
+      especie_val <- monitora_validados_limpar_ausencia_saida(out[[especie_col]])
+      raiz_val <- monitora_validados_limpar_ausencia_saida(out[[raiz_col]])
+      for (rr in seq_len(nrow(mapa_outras_exoticas$mapeamento))) {
+        regra <- mapa_outras_exoticas$mapeamento[rr]
+        lista_col <- regra$lista_path
+        folha_col <- regra$folha_path
+        if (!(lista_col %in% names(out)) || !(folha_col %in% names(out))) next
+        lista_val <- monitora_validados_limpar_ausencia_saida(out[[lista_col]])
+        folha_val <- monitora_validados_limpar_ausencia_saida(out[[folha_col]])
+        folha_preenchida <- nzchar(folha_val)
+        especie_sim <- especie_val == "sim"
+        forma_presente <- monitora_validados_tem_token(raiz_val, regra$token_forma)
+        outra_presente <- monitora_validados_tem_token(lista_val, regra$token_outra_especie)
+        add(
+          "folha_especie_exotica_sem_especie_sim", folha_col,
+          folha_preenchida & !especie_sim,
+          paste0("selected(${especie}, 'sim') para ", regra$folha_name)
+        )
+        add(
+          "folha_especie_exotica_sem_forma_pai", folha_col,
+          folha_preenchida & !forma_presente,
+          paste0("selected(${forma_vida_exotica}, '", regra$token_forma, "')")
+        )
+        add(
+          "folha_especie_exotica_sem_token_outra_especie", folha_col,
+          folha_preenchida & !outra_presente,
+          paste0("selected(${", regra$lista_name, "}, '", regra$token_outra_especie, "')")
+        )
+        add(
+          "folha_obrigatoria_outra_especie_exotica_vazia", folha_col,
+          especie_sim & forma_presente & outra_presente & !folha_preenchida,
+          paste0(regra$folha_name, " required=yes")
+        )
+      }
+    }
+  }
   impact_col <- "impact_manejo_uso/impacto_manejo_uso"
   tipos_col <- "impact_manejo_uso/tipos_impacto_manejo_uso"
   if (impact_col %in% names(out) && tipos_col %in% names(out)) {
@@ -46562,7 +46988,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   if (isTRUE(somente_auditar_contrato_corrig)) {
     if (n_bloq > 0L) {
       msg <- paste0(
-        "registros_corrig.csv bloqueado: ", n_bloq,
+        "registros_validados.csv bloqueado: ", n_bloq,
         " problema(s) bloqueante(s) nos atributos que alimentam registros_validados.csv após sanitização pós-painel e regras XLSForm 21FEV25. ",
         if (nrow(problemas_sanitizacao_outras) > 0L) "Há resíduos de outra forma de vida de versões antigas sem sanitização prévia. " else "",
         if (nrow(problemas_sanitizacao_desconhecida) > 0L) "Há foto/descritor de forma de vida desconhecida preenchido sem token desconhecida na categoria correspondente. " else "",
@@ -47879,6 +48305,36 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
       contexto = paste0(contexto, "_aliases_desconhecida")
     )
     dt <- data.table::as.data.table(canon_desc$dt)
+  }
+
+  ### Roll-forward estreito de checkpoints legados: somente o token `outros`
+  ### comprovadamente órfão no pai exótico vigente é migrado, e apenas quando
+  ### existe um único ramo válido já marcado e o texto pode ser preservado.
+  ### Casos ambíguos seguem intactos para o gate de domínio.
+  migracao_outros_orfao <- monitora_correcao_reconciliar_outros_orfao_exotica(
+    dt, linhas = seq_len(nrow(dt))
+  )
+  dt <- data.table::as.data.table(migracao_outros_orfao$dt)
+  monitora_correcao_registrar_migracao_outros_orfao(migracao_outros_orfao$audit)
+  monitora_registros_validados_gravar_auditoria_pre_sanitizacao(
+    migracao_outros_orfao$audit,
+    "auditoria_registros_corrig_migracao_outros_orfao_exotica",
+    output_dir, log_dir, exec_id
+  )
+  monitora_registros_validados_gravar_auditoria_pre_sanitizacao(
+    migracao_outros_orfao$bloqueios,
+    "auditoria_registros_corrig_migracao_outros_orfao_exotica_bloqueios",
+    output_dir, log_dir, exec_id
+  )
+  if (exists("monitora_publicacao_ac_perf_checkpoint", mode = "function")) {
+    monitora_publicacao_ac_perf_checkpoint(
+      "migracao_outros_orfao_exotica",
+      paste0(
+        "celulas_migradas=", nrow(migracao_outros_orfao$audit),
+        "; linhas_bloqueadas=", data.table::uniqueN(migracao_outros_orfao$bloqueios$linha_indice)
+      ),
+      dt
+    )
   }
 
   monitora_publicacao_c_reconciliar_formas_vida_contrato(
@@ -57462,7 +57918,7 @@ monitora_relatorios_suporte_painel_gravar <- function(registros, fase = "pre_pai
     monitora_relatorio_formas_vida_token_gravar(
       registros,
       fase_dir,
-      tokens = c("outra_forma_vida", "outras_formas_vida", "forma_vida_outros", "outra", "outro", "outras", "outros"),
+      tokens = monitora_correcao_tokens_residuo_historico_outras_formas(),
       nome_base = "outras_formas_vida",
       titulo = "RELATÓRIO DE OCORRÊNCIA DE OUTRAS FORMAS DE VIDA"
     )

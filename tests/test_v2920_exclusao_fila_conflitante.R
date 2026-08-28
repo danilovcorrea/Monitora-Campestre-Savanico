@@ -7,7 +7,10 @@ raiz <- if (length(arquivo_arg)) {
 } else {
   normalizePath(".", mustWork = TRUE)
 }
-script <- file.path(raiz, "monitora_campsav_alvo_global_v2.9.20.R")
+args_trailing <- commandArgs(trailingOnly = TRUE)
+script <- if (length(args_trailing)) {
+  normalizePath(args_trailing[[1L]], mustWork = TRUE)
+} else file.path(raiz, "monitora_campsav_alvo_global_v2.9.20.R")
 stopifnot(file.exists(script))
 linhas <- readLines(script, warn = FALSE, encoding = "UTF-8")
 
