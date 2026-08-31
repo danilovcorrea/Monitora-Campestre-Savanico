@@ -1,8 +1,16 @@
 ### Script de tratamento, validação e análise de dados do Alvo Global
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
-### Versão pública do script: 2.9.21
-### Baseline pública de origem: v2.9.20
+### Versão pública do script: 2.9.22
+### Baseline pública de origem: v2.9.21
+### A v2.9.22 valida, antes da abertura do painel, os domínios select_one e
+### select_multiple diretamente pelas choices vigentes do contrato único.
+### Correções de hábito também passam a respeitar de modo fechado a relevância
+### contratual categoria × forma × campo físico antes de qualquer mutação.
+### A fila aceita replace_token seguido de append_token na mesma célula somente
+### quando origem, destino e token acrescentado são distintos; sobreposições
+### permanecem bloqueadas. Isso permite decompor atomicamente tokens concatenados
+### sem criar alias, mapa local ou flexibilização do XLSForm 2025.
 ### A v2.9.21 impede que dependências órfãs de `relevance` criem tokens fora
 ### das choices do pai. O preenchimento explícito de outra espécie exótica
 ### fecha somente os ancestrais semânticos válidos do contrato 2025, preserva
@@ -360,8 +368,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.21"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.21-20260828-r01"
+MONITORA_SCRIPT_VERSAO <- "2.9.22"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.22-20260831-r02"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -6033,6 +6041,139 @@ monitora_correcao_resolver_coluna_operacao <- function(dt, linha_corr, dicionari
   monitora_correcao_resolver_coluna(dt, req, dicionario, permitir_heuristica = FALSE)
 }
 
+monitora_correcao_validar_relevancia_habitos_operacoes <- function(
+    dt, corr, chaves = NULL, dicionario = NULL, meta_xls = NULL) {
+  dt <- data.table::as.data.table(dt)
+  corr <- data.table::as.data.table(corr)
+  vazio <- data.table::data.table(
+    id_correcao = character(), ordem_operacao = character(),
+    linha_indice = integer(), monitora_row_id = character(), COLETA = character(),
+    atributo_solicitado = character(), atributo_resolvido = character(),
+    categoria_solicitada = character(), forma_solicitada = character(),
+    categoria_relevante_sugerida = character(),
+    atributo_canonico_sugerido = character(), atributo_fisico_sugerido = character(),
+    status = character(), mensagem = character()
+  )
+  if (!nrow(dt) || !nrow(corr)) return(list(ok = TRUE, problemas = vazio))
+  if (is.null(chaves)) chaves <- monitora_correcao_colunas_chave(dt)
+  tipos_validar <- c(
+    "", "simples_ou_lote", "lote_multicoletas_campo_superior",
+    "lote_multicoletas_atributo_superior", "pendencia_habito_lote",
+    "sanitizacao_habito_obrigatorio_ausente"
+  )
+  indice <- tryCatch(monitora_correcao_criar_indice_linhas(dt, chaves), error = function(e) NULL)
+  problemas <- list()
+  kk <- 0L
+  atributos_corr <- if ("atributo_coluna_registros_corrig" %in% names(corr)) {
+    unique(as.character(corr$atributo_coluna_registros_corrig))
+  } else character(0)
+  atributos_corr <- atributos_corr[
+    !is.na(atributos_corr) & nzchar(atributos_corr) &
+      !grepl("^__.*__$", atributos_corr)
+  ]
+  papeis_atributos <- if (length(atributos_corr)) stats::setNames(vapply(
+    atributos_corr,
+    function(atributo) tryCatch(
+      as.character(monitora_correcao_papel_coluna_canonico(atributo))[1L],
+      error = function(e) "outro"
+    ),
+    character(1L)
+  ), atributos_corr) else character(0)
+  pegar1 <- function(op, nome, padrao = NA_character_) {
+    if (!(nome %in% names(op))) return(padrao)
+    z <- as.character(op[[nome]][1L])
+    if (!length(z)) padrao else z
+  }
+  for (ii in seq_len(nrow(corr))) {
+    op <- corr[ii]
+    tipo <- tolower(trimws(pegar1(op, "tipo_correcao", "")))
+    if (!(tipo %in% tipos_validar)) next
+    atributo <- pegar1(op, "atributo_coluna_registros_corrig", "")
+    if (!nzchar(atributo) || grepl("^__.*__$", atributo)) next
+    papel <- unname(papeis_atributos[atributo])
+    if (!length(papel) || is.na(papel)) papel <- "outro"
+    if (!identical(as.character(papel)[1L], "atributo_dependente_habito")) next
+    regra <- tryCatch(monitora_correcao_regra_habito_operacao(op, meta_xls), error = function(e) data.table::data.table())
+    if (nrow(regra) != 1L) next
+    acao <- tryCatch(monitora_correcao_acao_normalizar(pegar1(op, "acao", "")), error = function(e) tolower(trimws(pegar1(op, "acao", ""))))
+    valor_novo <- pegar1(op, "valor_novo", "")
+    if (acao %in% c("clear", "limpar", "remove_token", "remover_token") ||
+        is.na(valor_novo) || !nzchar(trimws(valor_novo))) next
+    linhas <- tryCatch(
+      monitora_correcao_linhas_alvo_operacao(dt, op, chaves = chaves, indice = indice),
+      error = function(e) integer(0)
+    )
+    linhas <- tryCatch(monitora_correcao_aplicar_escopo_conciliado(dt, linhas, op), error = function(e) linhas)
+    linhas <- unique(as.integer(linhas))
+    linhas <- linhas[!is.na(linhas) & linhas >= 1L & linhas <= nrow(dt)]
+    if (!length(linhas)) next
+    categoria <- as.character(regra$categoria[1L])
+    forma <- monitora_correcao_normalizar_forma_habito(regra$forma[1L])
+    col_tipo <- as.character(chaves$tipo_forma_vida)[1L]
+    col_pai <- tryCatch(monitora_correcao_coluna_forma_vida(dt, categoria), error = function(e) NA_character_)
+    tipo_relevante <- if (!is.na(col_tipo) && col_tipo %in% names(dt)) {
+      monitora_correcao_token_presente_vec(dt[[col_tipo]][linhas], categoria)
+    } else rep(FALSE, length(linhas))
+    forma_relevante <- if (!is.na(col_pai) && col_pai %in% names(dt)) {
+      monitora_correcao_token_presente_vec(dt[[col_pai]][linhas], forma)
+    } else rep(FALSE, length(linhas))
+    relevante <- as.logical(tipo_relevante) & as.logical(forma_relevante)
+    relevante[is.na(relevante)] <- FALSE
+    ruins <- linhas[!relevante]
+    if (!length(ruins)) next
+    attr_resolvido <- tryCatch(
+      monitora_correcao_resolver_coluna_operacao(dt, op, dicionario, meta_xls),
+      error = function(e) NA_character_
+    )
+    for (linha in ruins) {
+      categorias_relevantes <- character(0)
+      for (cat in c("nativa", "exotica", "seca_morta")) {
+        cat_tipo <- !is.na(col_tipo) && col_tipo %in% names(dt) &&
+          isTRUE(monitora_correcao_token_presente_vec(dt[[col_tipo]][linha], cat))
+        col_cat <- tryCatch(monitora_correcao_coluna_forma_vida(dt, cat), error = function(e) NA_character_)
+        cat_forma <- !is.na(col_cat) && col_cat %in% names(dt) &&
+          isTRUE(monitora_correcao_token_presente_vec(dt[[col_cat]][linha], forma))
+        if (isTRUE(cat_tipo && cat_forma)) categorias_relevantes <- c(categorias_relevantes, cat)
+      }
+      cat_sug <- if (length(categorias_relevantes) == 1L) categorias_relevantes[1L] else NA_character_
+      regra_sug <- if (!is.na(cat_sug)) tryCatch(
+        monitora_correcao_regra_habito_contrato_atual(cat_sug, forma, meta_xls),
+        error = function(e) data.table::data.table()
+      ) else data.table::data.table()
+      attr_can_sug <- if (nrow(regra_sug) == 1L) as.character(regra_sug$atributo_canonico[1L]) else NA_character_
+      attr_fis_sug <- if (!is.na(cat_sug)) tryCatch(
+        monitora_correcao_resolver_coluna_habito(
+          dt, cat_sug, forma, dicionario = dicionario,
+          linha = linha, meta_xls = meta_xls
+        ), error = function(e) NA_character_
+      ) else NA_character_
+      kk <- kk + 1L
+      problemas[[kk]] <- data.table::data.table(
+        id_correcao = pegar1(op, "id_correcao"),
+        ordem_operacao = pegar1(op, "ordem_operacao"),
+        linha_indice = as.integer(linha),
+        monitora_row_id = if (MONITORA_COL_ROW_ID %in% names(dt)) as.character(dt[[MONITORA_COL_ROW_ID]][linha]) else NA_character_,
+        COLETA = if (!is.na(chaves$coleta) && chaves$coleta %in% names(dt)) as.character(dt[[chaves$coleta]][linha]) else NA_character_,
+        atributo_solicitado = atributo,
+        atributo_resolvido = as.character(attr_resolvido),
+        categoria_solicitada = categoria, forma_solicitada = forma,
+        categoria_relevante_sugerida = cat_sug,
+        atributo_canonico_sugerido = attr_can_sug,
+        atributo_fisico_sugerido = attr_fis_sug,
+        status = "bloqueada_relevancia_condicional_incompativel",
+        mensagem = paste0(
+          "Hábito ", categoria, "×", forma,
+          " não é relevante na linha-alvo pelo contrato XLSForm 2025",
+          if (!is.na(cat_sug)) paste0("; destino contextual aplicável: ", cat_sug, "×", forma) else
+            "; nenhum destino contextual único foi comprovado"
+        )
+      )
+    }
+  }
+  out <- if (kk) data.table::rbindlist(problemas[seq_len(kk)], fill = TRUE, use.names = TRUE) else vazio
+  list(ok = nrow(out) == 0L, problemas = out[])
+}
+
 monitora_correcao_tokens_formas_exigem_habito <- function() {
   formas <- tryCatch(unique(monitora_correcao_regras_habito_contrato_atual()$forma), error = function(e) c("bromelioide", "cactacea", "orquidea", "samambaia"))
   unique(c(formas, if ("bromelioide" %in% formas) "erva_bromelioide" else character()))
@@ -7438,12 +7579,14 @@ monitora_correcao_serializar_ids_estaveis <- function(x) {
 
 monitora_correcao_parse_ids_estaveis <- function(x) {
   x <- as.character(x)
-  x <- x[!is.na(x) & nzchar(x)]
+  x <- trimws(x)
+  x <- x[!is.na(x) & nzchar(x) & !(toupper(x) %in% c("NA", "NULL"))]
   if (!length(x)) return(character(0))
   out <- unlist(strsplit(x, "\n", fixed = TRUE), use.names = FALSE)
+  out <- trimws(out)
   out <- gsub("%7C", "|", out, fixed = TRUE)
   out <- gsub("%25", "%", out, fixed = TRUE)
-  unique(out[!is.na(out) & nzchar(out)])
+  unique(out[!is.na(out) & nzchar(out) & !(toupper(out) %in% c("NA", "NULL"))])
 }
 
 monitora_correcao_operacao_toca_desconhecida <- function(op) {
@@ -11881,6 +12024,130 @@ monitora_correcao_resolver_colunas_mapa_outras_especies <- function(dt, mapa, co
   )
   data.table::setnames(resolucao, "caminho_registro", "path", skip_absent = TRUE)
   resolucao[]
+}
+
+monitora_contrato_tokens_invalidos_valor <- function(x, tipo_base, choices) {
+  x <- as.character(x)
+  x[monitora_correcao_vazio_semantico_vec(x)] <- ""
+  x <- trimws(x)
+  tipo_base <- as.character(tipo_base)[1L]
+  choices <- unique(trimws(as.character(choices)))
+  choices <- choices[!is.na(choices) & nzchar(choices)]
+  vazio <- data.table::data.table(
+    linha_local = integer(), valor_observado = character(),
+    token_invalido = character()
+  )
+  if (!length(x) || !length(choices) ||
+      !(tipo_base %in% c("select_one", "select_multiple"))) return(vazio)
+  linhas <- which(nzchar(x))
+  if (!length(linhas)) return(vazio)
+  if (identical(tipo_base, "select_one")) {
+    invalidas <- linhas[!(x[linhas] %in% choices)]
+    if (!length(invalidas)) return(vazio)
+    return(data.table::data.table(
+      linha_local = as.integer(invalidas),
+      valor_observado = x[invalidas], token_invalido = x[invalidas]
+    ))
+  }
+  partes <- strsplit(x[linhas], "\\s+", perl = TRUE)
+  out <- lapply(seq_along(partes), function(ii) {
+    tokens <- unique(trimws(as.character(partes[[ii]])))
+    tokens <- tokens[!is.na(tokens) & nzchar(tokens)]
+    invalidos <- setdiff(tokens, choices)
+    if (!length(invalidos)) return(NULL)
+    data.table::data.table(
+      linha_local = rep(as.integer(linhas[ii]), length(invalidos)),
+      valor_observado = rep(x[linhas[ii]], length(invalidos)),
+      token_invalido = invalidos
+    )
+  })
+  out <- out[!vapply(out, is.null, logical(1L))]
+  if (!length(out)) return(vazio)
+  unique(data.table::rbindlist(out, fill = TRUE, use.names = TRUE))[]
+}
+
+monitora_contrato_validar_dominios_dataset_pre_painel <- function(
+    dt, contrato_indices = NULL) {
+  dt <- data.table::as.data.table(dt)
+  vazio <- data.table::data.table(
+    linha_indice = integer(), monitora_row_id = character(), COLETA = character(),
+    coluna_fisica = character(), caminho_registro = character(),
+    name = character(), list_name = character(), tipo_base = character(),
+    valor_observado = character(), token_invalido = character(),
+    choices_validas = character(), bloqueante = logical(),
+    motivo_bloqueio = character()
+  )
+  if (!nrow(dt) || !ncol(dt)) return(vazio)
+  cu <- contrato_indices
+  if (is.null(cu)) cu <- monitora_contrato_unico_indices_cache(validar = TRUE)
+  attrs <- data.table::copy(data.table::as.data.table(cu$indices$por_atributo_canonico))
+  obrig <- c("caminho_registro", "name_curto", "tipo_base", "list_name")
+  if (!nrow(attrs) || !all(obrig %in% names(attrs))) {
+    stop("Contrato único incompleto para validar domínios antes do painel.", call. = FALSE)
+  }
+  if ("arquivo_21fev25_publicacao_ae" %in% names(attrs)) {
+    atual <- attrs[arquivo_21fev25_publicacao_ae %in% TRUE]
+  } else if ("arquivo_xlsform" %in% names(attrs)) {
+    atual <- attrs[grepl("21FEV25|2025", as.character(arquivo_xlsform), ignore.case = TRUE)]
+  } else atual <- attrs
+  if (!nrow(atual)) stop("Contrato único não resolveu os atributos do XLSForm 21FEV25.", call. = FALSE)
+  atual <- unique(atual[
+    tipo_base %in% c("select_one", "select_multiple") &
+      !is.na(list_name) & nzchar(as.character(list_name)) &
+      !is.na(caminho_registro) & nzchar(as.character(caminho_registro)),
+    .(
+      caminho_registro = as.character(caminho_registro),
+      name = as.character(name_curto), tipo_base = as.character(tipo_base),
+      list_name = as.character(list_name)
+    )
+  ], by = "caminho_registro")
+  if (!nrow(atual)) return(vazio)
+  resolucao <- monitora_contrato_unico_resolver_colunas_dataset(
+    dt, atual$caminho_registro, contrato_indices = cu
+  )
+  resolucao <- resolucao[status_resolucao == "resolvido_unico" &
+    !is.na(coluna) & nzchar(as.character(coluna)) & coluna %in% names(dt)]
+  if (!nrow(resolucao)) return(vazio)
+  atual <- resolucao[atual, on = "caminho_registro", nomatch = 0L]
+  choices <- monitora_correcao_contrato_choices_atuais(cu)
+  chaves <- tryCatch(monitora_correcao_colunas_chave(dt), error = function(e) list(coleta = NA_character_))
+  coleta_col <- as.character(chaves$coleta)[1L]
+  row_id_col <- get0("MONITORA_COL_ROW_ID", ifnotfound = "MONITORA_ROW_ID", inherits = TRUE)
+  saida <- vector("list", nrow(atual))
+  kk <- 0L
+  for (ii in seq_len(nrow(atual))) {
+    lista <- as.character(atual$list_name[ii])
+    dominio <- unique(as.character(choices[list_name == lista, name]))
+    dominio <- dominio[!is.na(dominio) & nzchar(dominio)]
+    placeholder <- length(dominio) <= 2L && length(dominio) > 0L &&
+      all(dominio %in% c("num_key", "label"))
+    if (!length(dominio) || isTRUE(placeholder)) next
+    col <- as.character(atual$coluna[ii])
+    invalidos <- monitora_contrato_tokens_invalidos_valor(
+      dt[[col]], atual$tipo_base[ii], dominio
+    )
+    if (!nrow(invalidos)) next
+    kk <- kk + 1L
+    lin <- as.integer(invalidos$linha_local)
+    saida[[kk]] <- data.table::data.table(
+      linha_indice = lin,
+      monitora_row_id = if (row_id_col %in% names(dt)) as.character(dt[[row_id_col]][lin]) else NA_character_,
+      COLETA = if (!is.na(coleta_col) && coleta_col %in% names(dt)) as.character(dt[[coleta_col]][lin]) else NA_character_,
+      coluna_fisica = col,
+      caminho_registro = as.character(atual$caminho_registro[ii]),
+      name = as.character(atual$name[ii]), list_name = lista,
+      tipo_base = as.character(atual$tipo_base[ii]),
+      valor_observado = as.character(invalidos$valor_observado),
+      token_invalido = as.character(invalidos$token_invalido),
+      choices_validas = paste(utils::head(sort(dominio), 100L), collapse = " | "),
+      bloqueante = TRUE,
+      motivo_bloqueio = "token_fora_dominio_contrato_xlsform_2025"
+    )
+  }
+  if (!kk) return(vazio)
+  out <- unique(data.table::rbindlist(saida[seq_len(kk)], fill = TRUE, use.names = TRUE))
+  data.table::setorder(out, linha_indice, caminho_registro, token_invalido)
+  out[]
 }
 
 monitora_correcao_auditar_celulas_contrato <- function(id, linhas, atributo,
@@ -18048,6 +18315,21 @@ monitora_correcao_aplicar_plano_atomico_sessao <- function(dt,
   if (!nrow(corr)) return(list(dt = dt[], corr = corr[], audit = audit, linhas = integer(), afetacoes = afetacoes, falha = FALSE))
   template <- tryCatch(monitora_correcao_template(), error = function(e) data.table::data.table())
   for (cc in setdiff(names(template), names(corr))) data.table::set(corr, j = cc, value = template[[cc]][1L])
+  gate_relevancia_habito <- monitora_correcao_validar_relevancia_habitos_operacoes(
+    dt, corr, chaves = chaves, dicionario = dicionario
+  )
+  if (!isTRUE(gate_relevancia_habito$ok)) {
+    aud_rel <- data.table::copy(gate_relevancia_habito$problemas)
+    aud_rel[, `:=`(
+      atributo = as.character(atributo_solicitado),
+      valor_antes = NA_character_, valor_depois = NA_character_,
+      arquivo_correcao = arquivo_correcao
+    )]
+    return(list(
+      dt = dt[], corr = corr[], audit = aud_rel[], linhas = integer(),
+      afetacoes = afetacoes, falha = TRUE
+    ))
+  }
   corr <- monitora_correcao_agrupar_operacoes_semanticas(corr)
   rec_sem <- monitora_correcao_reconciliar_plano_semantico(
     dt, corr,
@@ -24938,12 +25220,12 @@ monitora_diag_formacao_vegetacional_temporal <- function(dt) {
 monitora_diag_rel_catalogo_ocorrencias_base <- function() {
   data.table::data.table(
     tipo_ocorrencia = c(
-      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "solo_nu_com_outra_categoria", "habito_obrigatorio_ausente", "formacao_vegetacional_inconsistente_ua", "seca_morta_em_revisao"
+      "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "token_fora_dominio_contrato", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "solo_nu_com_outra_categoria", "habito_obrigatorio_ausente", "formacao_vegetacional_inconsistente_ua", "seca_morta_em_revisao"
     ),
     rotulo_ocorrencia = c(
-      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie", "Solo nu com outra categoria (exclusividade violada)", "Hábito obrigatório ausente", "Revisão: formação vegetacional inconsistente na mesma UA", "Revisão: vegetação seca ou morta registrada"
+      "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Token fora do domínio do XLSForm 2025", "Forma de vida desconhecida", "Revisão: forma de vida exótica sem espécie", "Revisão: forma de vida exótica com espécie", "Solo nu com outra categoria (exclusividade violada)", "Hábito obrigatório ausente", "Revisão: formação vegetacional inconsistente na mesma UA", "Revisão: vegetação seca ou morta registrada"
     ),
-    severidade = c(rep("impeditiva", 7L), rep("revisao", 3L), rep("impeditiva", 2L), rep("revisao", 2L))
+    severidade = c(rep("impeditiva", 8L), rep("revisao", 3L), rep("impeditiva", 2L), rep("revisao", 2L))
   )
 }
 
@@ -26858,6 +27140,7 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
                                                 triagem_painel_unificada = NULL,
                                                 indices_precomputados = NULL,
                                                 habito_detalhes_precomputados = NULL,
+                                                dominios_precomputados = NULL,
                                                 validar_contagens = TRUE) {
   fase <- as.character(fase)[1L]
   if (!requireNamespace("data.table", quietly = TRUE)) stop("Pacote data.table é obrigatório para relatórios diagnósticos.", call. = FALSE)
@@ -26899,6 +27182,7 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_vida_",
     outra_forma_vida = "registros_outra_forma_vida_",
     forma_vida_desconhecida_invalida = "registros_forma_vida_desconhecida_invalida_",
+    token_fora_dominio_contrato = "registros_token_fora_dominio_contrato_",
     forma_vida_desconhecida = "registros_forma_vida_desconhecida_",
     forma_vida_exotica_sem_especie = "registros_forma_vida_exotica_sem_especie_",
     forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
@@ -27033,6 +27317,35 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
   }
 
   rels <- list()
+
+  det_dominios_rel <- if (is.null(dominios_precomputados)) {
+    monitora_contrato_validar_dominios_dataset_pre_painel(dt)
+  } else data.table::as.data.table(dominios_precomputados)
+  if (nrow(det_dominios_rel)) {
+    rels[["token_fora_dominio_contrato"]] <- data.table::rbindlist(lapply(
+      seq_len(nrow(det_dominios_rel)),
+      function(ii) {
+        d <- det_dominios_rel[ii]
+        z <- add_rows(
+          "token_fora_dominio_contrato", idx = d$linha_indice,
+          token = d$token_invalido, campo_forma = d$caminho_registro,
+          valor_forma = d$valor_observado,
+          dependentes = paste0("list_name=", d$list_name, "; choices=", d$choices_validas),
+          acao = "Substituir por choice válida, selecionar outra espécie e preencher o texto correspondente, limpar o valor ou excluir a COLETA, conforme decisão auditável."
+        )
+        z[, `:=`(
+          forma_de_vida_detectada = as.character(d$token_invalido),
+          atributo_habito_obrigatorio = as.character(d$caminho_registro),
+          coluna_fisica = as.character(d$coluna_fisica),
+          list_name = as.character(d$list_name),
+          choices_validas = as.character(d$choices_validas),
+          status_contrato = "token_fora_dominio_contrato_xlsform_2025",
+          bloqueia_registros_validados = TRUE
+        )]
+        z
+      }
+    ), fill = TRUE, use.names = TRUE)
+  }
 
   if (n && all(vapply(list(vec_ch("uc"), vec_ch("ua"), vec_ch("ano"), coleta), function(x) any(!is.na(x) & nzchar(x)), logical(1)))) {
     aux <- data.table::data.table(linha_indice = seq_len(n), UC = vec_ch("uc"), UA = vec_ch("ua"), ANO = vec_ch("ano"), COLETA = coleta)
@@ -27362,6 +27675,7 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
                                                       coletas_triagem_por_tipo,
                                                       indices_precomputados = NULL,
                                                       habito_detalhes_precomputados = NULL,
+                                                      dominios_precomputados = NULL,
                                                       materializar = TRUE) {
   dt <- data.table::as.data.table(dt)
   if (isTRUE(materializar)) dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
@@ -27374,6 +27688,7 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
     seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_vida_",
     outra_forma_vida = "registros_outra_forma_vida_",
     forma_vida_desconhecida_invalida = "registros_forma_vida_desconhecida_invalida_",
+    token_fora_dominio_contrato = "registros_token_fora_dominio_contrato_",
     forma_vida_desconhecida = "registros_forma_vida_desconhecida_",
     forma_vida_exotica_sem_especie = "registros_forma_vida_exotica_sem_especie_",
     forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
@@ -27397,6 +27712,9 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
   partes <- list()
   det_exoticas <- monitora_diag_exoticas_ocorrencias_detalhadas(dt)
   det_desconhecida <- tryCatch(monitora_correcao_classificar_desconhecida(dt, chaves = chaves, dicionario = NULL), error = function(e) data.table::data.table())
+  det_dominios <- if (is.null(dominios_precomputados)) {
+    monitora_contrato_validar_dominios_dataset_pre_painel(dt)
+  } else data.table::as.data.table(dominios_precomputados)
   det_formveg <- monitora_diag_formacao_vegetacional_temporal(dt)
   det_seca_revisao <- monitora_diag_seca_morta_ocorrencias_revisao(dt)
   for (tp in catalogo$tipo_ocorrencia) {
@@ -27404,6 +27722,8 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
       det_exoticas[tipo_ocorrencia == tp]
     } else if (tp %in% c("forma_vida_desconhecida_invalida", "forma_vida_desconhecida") && nrow(det_desconhecida)) {
       det_desconhecida[tipo_ocorrencia == tp]
+    } else if (identical(tp, "token_fora_dominio_contrato") && nrow(det_dominios)) {
+      det_dominios
     } else if (identical(tp, "formacao_vegetacional_inconsistente_ua") && nrow(det_formveg)) {
       det_formveg
     } else if (identical(tp, "seca_morta_em_revisao") && nrow(det_seca_revisao)) {
@@ -28857,7 +29177,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     as.character(x[[col]][i])
   }
 
-  monitora_painel_tabela_exoticas <- function(x) {
+  monitora_painel_tabela_exoticas <- function(x, dominios_precomputados = NULL) {
     if (nrow(x) == 0L) return(data.table::data.table())
 
     n <- nrow(x)
@@ -28896,6 +29216,34 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       rep(FALSE, n)
     }
     det_exoticas_painel <- monitora_diag_exoticas_ocorrencias_detalhadas(x)
+    det_dominios_painel <- if (is.null(dominios_precomputados)) {
+      monitora_contrato_validar_dominios_dataset_pre_painel(x)
+    } else data.table::as.data.table(dominios_precomputados)
+    if (nrow(det_dominios_painel)) {
+      fora_dominio <- det_dominios_painel[, .(
+        linha_filtro = as.integer(linha_indice),
+        tipo_triagem = "token_fora_dominio_contrato",
+        tipo_ocorrencia_painel = "token_fora_dominio_contrato",
+        categoria_forma_vida = monitora_correcao_categoria_coluna_canonica(coluna_fisica),
+        token_detectado = as.character(token_invalido),
+        status_vinculo = "token_fora_dominio_contrato_xlsform_2025",
+        motivo_triagem = paste0(
+          "Token fora do domínio do contrato vigente; list_name=", list_name,
+          "; choices válidas=", choices_validas
+        ),
+        campo_forma_vida = as.character(coluna_fisica),
+        valor_forma_vida_original = as.character(valor_observado),
+        forma_vida_exotica = NA_character_, forma_vida_exotica_original = NA_character_,
+        campo_habito_exotica = NA_character_, habito_exotica = NA_character_,
+        campo_especies_exoticas = NA_character_, especies_exoticas = NA_character_,
+        campos_forma_vida_com_token = as.character(caminho_registro),
+        valores_forma_vida_com_token = paste0(coluna_fisica, " = ", valor_observado),
+        list_name_contrato = as.character(list_name),
+        choices_validas_contrato = as.character(choices_validas),
+        acao_assistida_sugerida = "corrigir_token_fora_dominio_contrato"
+      )]
+      out[[length(out) + 1L]] <- fora_dominio
+    }
     if (any(tem_token_ex, na.rm = TRUE)) {
       cols_ex_x <- cols_forma_exotica[cols_forma_exotica %in% names(x)]
       forma_chr <- if (length(cols_ex_x)) monitora_relatorio_exoticas_colapsar_valores(x, cols_ex_x, incluir_nomes = FALSE) else rep(NA_character_, n)
@@ -29085,7 +29433,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     triagem[]
   }
 
-  triagem_painel_unificada <- monitora_painel_tabela_exoticas(dt)
+  dominios_pre_painel_base <- monitora_contrato_validar_dominios_dataset_pre_painel(dt)
+  triagem_painel_unificada <- monitora_painel_tabela_exoticas(
+    dt, dominios_precomputados = dominios_pre_painel_base
+  )
   reconciliacao_exoticas_pre <- monitora_diag_reconciliar_exoticas_painel(
     dt,
     triagem_painel_unificada,
@@ -29215,6 +29566,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     habito_cache <- tryCatch(monitora_correcao_mask_habito_obrigatorio_ausente(dt), error = function(e) list(mask = rep(FALSE, nrow(dt)), detalhes = data.table::data.table()))
     mask_habito <- as.logical(habito_cache$mask); mask_habito[is.na(mask_habito)] <- FALSE
     desc_cache <- tryCatch(monitora_correcao_classificar_desconhecida(dt, chaves = chaves, dicionario = NULL), error = function(e) data.table::data.table())
+    dominios_cache <- data.table::as.data.table(dominios_pre_painel_base)
     idx_desc_tipo <- function(tipo) {
       if (!nrow(desc_cache)) return(integer(0))
       unique(as.integer(desc_cache[tipo_ocorrencia == tipo, linha_indice]))
@@ -29236,6 +29588,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       seca_morta_em_revisao = which(mask_seca_revisao),
       outra_forma_vida = idx_tri_tipo("outras_formas_vida"),
       forma_vida_desconhecida_invalida = idx_desc_tipo("forma_vida_desconhecida_invalida"),
+      token_fora_dominio_contrato = unique(as.integer(dominios_cache$linha_indice)),
       forma_vida_desconhecida = idx_desc_tipo("forma_vida_desconhecida"),
       forma_vida_exotica_sem_especie = idx_exotica_sem_sp,
       forma_vida_exotica_com_especie = idx_exotica_com_sp,
@@ -29258,6 +29611,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       seca_morta_em_revisao = coleta_vals_mask(mask_seca_revisao),
       outra_forma_vida = coleta_vals(tri[tipo_triagem == "outras_formas_vida"]),
       forma_vida_desconhecida_invalida = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_desc_tipo("forma_vida_desconhecida_invalida")),
+      token_fora_dominio_contrato = coleta_vals_mask(seq_len(nrow(dt)) %in% unique(as.integer(dominios_cache$linha_indice))),
       forma_vida_desconhecida = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_desc_tipo("forma_vida_desconhecida")),
       forma_vida_exotica_sem_especie = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_exotica_sem_sp),
       forma_vida_exotica_com_especie = coleta_vals_mask(seq_len(nrow(dt)) %in% idx_exotica_com_sp),
@@ -29307,6 +29661,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$seca_morta_em_revisao), " em revisão não impeditiva de seca ou morta; ",
     length(coletas_triagem_por_tipo$outra_forma_vida), " com outra forma de vida; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida_invalida), " com forma de vida desconhecida inválida; ",
+    length(coletas_triagem_por_tipo$token_fora_dominio_contrato), " com token fora do domínio do XLSForm 2025; ",
     length(coletas_triagem_por_tipo$forma_vida_desconhecida), " em revisão não impeditiva de forma de vida desconhecida; ",
     length(coletas_triagem_por_tipo$forma_vida_exotica_sem_especie), " em lista de revisão de exótica sem espécie; ",
     length(coletas_triagem_por_tipo$forma_vida_exotica_com_especie), " em lista de revisão de exótica com espécie; ",
@@ -29323,7 +29678,8 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         dt, fase = "pre_painel", base_dir = base_diag_pre,
         coletas_triagem_por_tipo = coletas_triagem_por_tipo,
         indices_precomputados = indices_diagnosticos_precomputados,
-        habito_detalhes_precomputados = habito_detalhes_precomputados
+        habito_detalhes_precomputados = habito_detalhes_precomputados,
+        dominios_precomputados = dominios_pre_painel_base
       )
     } else {
       monitora_diag_rel_gerar_ocorrencias(
@@ -29332,6 +29688,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         triagem_painel_unificada = triagem_painel_unificada,
         indices_precomputados = indices_diagnosticos_precomputados,
         habito_detalhes_precomputados = habito_detalhes_precomputados,
+        dominios_precomputados = dominios_pre_painel_base,
         validar_contagens = TRUE
       )
     }
@@ -29380,6 +29737,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           "seca_morta_sem_forma_vida",
           "outra_forma_vida",
           "forma_vida_desconhecida_invalida",
+          "token_fora_dominio_contrato",
           "solo_nu_com_outra_categoria",
           "habito_obrigatorio_ausente"
         ),
@@ -29391,6 +29749,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
           paste0("Seca ou morta sem forma de vida (", n_tipo("seca_morta_sem_forma_vida"), " coletas com ocorrência)"),
           paste0("Outra forma de vida (", n_tipo("outra_forma_vida"), " coletas com ocorrência)"),
           paste0("Forma de vida desconhecida inválida (", n_tipo("forma_vida_desconhecida_invalida"), " coletas com ocorrência)"),
+          paste0("Token fora do domínio do XLSForm 2025 (", n_tipo("token_fora_dominio_contrato"), " coletas com ocorrência)"),
           paste0("Solo nu com outra categoria (", n_tipo("solo_nu_com_outra_categoria"), " coletas com ocorrência)"),
           paste0("Hábito obrigatório ausente (", n_tipo("habito_obrigatorio_ausente"), " coletas com ocorrência)")
         )
@@ -29439,9 +29798,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         if (!(cc %in% names(tri))) tri[, (cc) := NA_character_]
       }
       map_tipo <- data.table::data.table(
-        tipo_ocorrencia = c("outra_forma_vida", "forma_vida_desconhecida_invalida", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "exotica_sem_forma_vida"),
-        pred_col = c("tipo_triagem", "tipo_ocorrencia_painel", "tipo_ocorrencia_painel", "status_vinculo", "status_vinculo", "status_vinculo"),
-        pred_val = c("outras_formas_vida", "forma_vida_desconhecida_invalida", "forma_vida_desconhecida", "exotica_com_forma_sem_sp_vinculada", "exotica_com_forma_e_sp_vinculada", "erro_exotica_sem_forma_vida_detalhada")
+        tipo_ocorrencia = c("outra_forma_vida", "forma_vida_desconhecida_invalida", "token_fora_dominio_contrato", "forma_vida_desconhecida", "forma_vida_exotica_sem_especie", "forma_vida_exotica_com_especie", "exotica_sem_forma_vida"),
+        pred_col = c("tipo_triagem", "tipo_ocorrencia_painel", "tipo_ocorrencia_painel", "tipo_ocorrencia_painel", "status_vinculo", "status_vinculo", "status_vinculo"),
+        pred_val = c("outras_formas_vida", "forma_vida_desconhecida_invalida", "token_fora_dominio_contrato", "forma_vida_desconhecida", "exotica_com_forma_sem_sp_vinculada", "exotica_com_forma_e_sp_vinculada", "erro_exotica_sem_forma_vida_detalhada")
       )
       for (ii in seq_len(nrow(map_tipo))) {
         cc <- map_tipo$pred_col[ii]
@@ -29587,13 +29946,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       "uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao",
       "nativa_sem_forma_vida", "exotica_sem_forma_vida",
       "seca_morta_sem_forma_vida", "outra_forma_vida",
-      "forma_vida_desconhecida_invalida", "habito_obrigatorio_ausente"
+      "forma_vida_desconhecida_invalida", "token_fora_dominio_contrato",
+      "habito_obrigatorio_ausente"
     )
     rotulos <- c(
       "UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação",
       "Nativa sem forma de vida", "Exótica sem forma de vida",
       "Seca ou morta sem forma de vida", "Outra forma de vida",
-      "Forma de vida desconhecida inválida", "Hábito obrigatório ausente"
+      "Forma de vida desconhecida inválida", "Token fora do domínio do XLSForm 2025",
+      "Hábito obrigatório ausente"
     )
     out <- data.table::data.table(tipo = tipos, ocorrencia = rotulos, n_linhas = 0L, n_coletas = 0L)
     resumo_idx <- data.table::as.data.table(resumo_idx)
@@ -31781,6 +32142,33 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         if (identical(sort(dn), sort(dp))) return("duplicada_mesma_substituicao")
         return("conflito_mesma_origem_destinos_distintos")
       }
+      if (setequal(c(an, ap), c("replace_token", "append_token"))) {
+        op_replace <- if (identical(an, "replace_token")) novo else existente
+        op_append <- if (identical(an, "append_token")) novo else existente
+        tokens_lista <- function(op, origem = FALSE) {
+          op <- data.table::as.data.table(op)
+          cols <- if (isTRUE(origem)) {
+            c("token_removido", "valor_original_esperado")
+          } else {
+            c("tokens_adicionados", "valor_novo", "forma_valida_escolhida")
+          }
+          vals <- character(0)
+          for (cc in intersect(cols, names(op))) {
+            vals <- c(vals, unlist(lapply(
+              as.character(op[[cc]]), monitora_correcao_parse_lista_serializada
+            ), use.names = FALSE))
+          }
+          unique(vals[!is.na(vals) & nzchar(vals)])
+        }
+        origem_replace <- tokens_lista(op_replace, TRUE)
+        destino_replace <- tokens_lista(op_replace, FALSE)
+        tokens_append <- tokens_lista(op_append, FALSE)
+        if (length(tokens_append) &&
+            !length(intersect(tokens_append, c(origem_replace, destino_replace)))) {
+          return("compativel_replace_append_tokens_distintos")
+        }
+        return("conflito_replace_append_token_sobreposto")
+      }
       celula <- c("update", "clear")
       if (an %in% celula && ap %in% celula) {
         final <- function(x, a) if (a == "clear") "" else paste(monitora_painel_tokens_efeito_operacao(x), collapse = " ")
@@ -31887,6 +32275,26 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       ops <- tryCatch(monitora_correcao_agrupar_operacoes_semanticas(ops), error = function(e) ops)
       ops <- monitora_painel_normalizar_mvlote_antes_adicao(ops, origem = origem)
       if (!nrow(ops)) return(0L)
+      gate_relevancia_habito <- monitora_correcao_validar_relevancia_habitos_operacoes(
+        dt, ops, chaves = chaves, dicionario = dict, meta_xls = meta_xls
+      )
+      if (!isTRUE(gate_relevancia_habito$ok)) {
+        p <- gate_relevancia_habito$problemas[1L]
+        detalhe <- paste0(
+          "linha=", p$linha_indice, "; categoria_solicitada=", p$categoria_solicitada,
+          "; forma=", p$forma_solicitada,
+          if (!is.na(p$atributo_canonico_sugerido) && nzchar(p$atributo_canonico_sugerido))
+            paste0("; destino_aplicavel=", p$atributo_canonico_sugerido) else ""
+        )
+        monitora_painel_bloquear_operacao(
+          paste0("Operação não adicionada: ", p$mensagem, "."),
+          etapa = "relevancia_condicional_antes_fila",
+          atributo = p$atributo_solicitado,
+          acao = if ("acao" %in% names(ops)) as.character(ops$acao[1L]) else "",
+          detalhe = detalhe, duration = 16
+        )
+        return(0L)
+      }
       for (ii_cls in seq_len(nrow(ops))) {
         classe_i <- monitora_correcao_classe_abrangencia(ops[ii_cls])
         dominio_i <- paste(unique(monitora_correcao_dominios_operacao(ops[ii_cls], dt = dt)), collapse = " | ")
@@ -35642,7 +36050,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
       list(ok = TRUE, mensagem = paste0("Correção contextual de hábito criada para ", length(linhas), " linha(s) pendente(s)."), ops = ops_dt, linhas = linhas)
     }
 
-    monitora_painel_coletas_triagem_dados <- function(x) {
+    monitora_painel_coletas_triagem_dados <- function(x, dominios_precomputados = NULL) {
       x <- data.table::as.data.table(x)
       out <- lapply(names(coletas_triagem_por_tipo), function(nm) character(0))
       names(out) <- names(coletas_triagem_por_tipo)
@@ -35699,6 +36107,11 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         out$forma_vida_desconhecida_invalida <- if (nrow(det_desc_estado)) coletas_idx(det_desc_estado[tipo_ocorrencia == "forma_vida_desconhecida_invalida", linha_indice]) else character(0)
         out$forma_vida_desconhecida <- if (nrow(det_desc_estado)) coletas_idx(det_desc_estado[tipo_ocorrencia == "forma_vida_desconhecida", linha_indice]) else character(0)
       }
+      det_dominios_estado <- if (is.null(dominios_precomputados)) {
+        monitora_contrato_validar_dominios_dataset_pre_painel(x)
+      } else data.table::as.data.table(dominios_precomputados)
+      indices_atual$token_fora_dominio_contrato <- unique(as.integer(det_dominios_estado$linha_indice))
+      out$token_fora_dominio_contrato <- coletas_idx(indices_atual$token_fora_dominio_contrato)
  # As ocorrências exóticas com/sem espécie continuam usando a triagem original quando não houver simulador específico.
  # (a regra): habito_obrigatorio_ausente agora é recalculado
  # diretamente sobre `x` (a mesma prévia pós-operações usada por todas as
@@ -36575,12 +36988,12 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
 
 
-    monitora_painel_resumo_impeditivas_dados <- function(x) {
+    monitora_painel_resumo_impeditivas_dados <- function(x, dominios_precomputados = NULL) {
       x <- data.table::as.data.table(x)
       n <- nrow(x)
       res <- data.table::data.table(
-        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "habito_obrigatorio_ausente"),
-        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Hábito obrigatório ausente"),
+        tipo = c("uas_duplicadas_mesmo_ano", "ponto_sem_interceptacao", "nativa_sem_forma_vida", "exotica_sem_forma_vida", "seca_morta_sem_forma_vida", "outra_forma_vida", "forma_vida_desconhecida_invalida", "token_fora_dominio_contrato", "habito_obrigatorio_ausente"),
+        ocorrencia = c("UAs duplicadas no mesmo ano", "Ponto amostral sem interceptação", "Nativa sem forma de vida", "Exótica sem forma de vida", "Seca ou morta sem forma de vida", "Outra forma de vida", "Forma de vida desconhecida inválida", "Token fora do domínio do XLSForm 2025", "Hábito obrigatório ausente"),
         n_linhas = 0L,
         n_coletas = 0L
       )
@@ -36628,6 +37041,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         det_desc_imp <- tryCatch(monitora_correcao_classificar_desconhecida(x, chaves = monitora_correcao_colunas_chave(x), dicionario = NULL), error = function(e) data.table::data.table())
         set_res("forma_vida_desconhecida_invalida", if (nrow(det_desc_imp)) det_desc_imp[tipo_ocorrencia == "forma_vida_desconhecida_invalida", linha_indice] else integer(0))
       }
+      det_dominios_imp <- if (is.null(dominios_precomputados)) {
+        monitora_contrato_validar_dominios_dataset_pre_painel(x)
+      } else data.table::as.data.table(dominios_precomputados)
+      set_res("token_fora_dominio_contrato", unique(as.integer(det_dominios_imp$linha_indice)))
       {
         habito_res_disp <- tryCatch(monitora_correcao_mask_habito_obrigatorio_ausente(x), error = function(e) list(mask = rep(FALSE, n)))
         set_res("habito_obrigatorio_ausente", which(habito_res_disp$mask))
@@ -37048,7 +37465,10 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         stop(mensagem_cache, call. = FALSE)
       }
       estado <- monitora_painel_preview_dados_pos_operacoes()
-      tri_atual <- monitora_painel_tabela_exoticas(estado)
+      dominios_atual <- monitora_contrato_validar_dominios_dataset_pre_painel(estado)
+      tri_atual <- monitora_painel_tabela_exoticas(
+        estado, dominios_precomputados = dominios_atual
+      )
       monitora_diag_reconciliar_exoticas_painel(
         estado,
         tri_atual,
@@ -37057,7 +37477,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         falhar = TRUE,
         esperado_precomputado = attr(tri_atual, "monitora_exoticas_canonicas", exact = TRUE)
       )
-      coletas_atual <- monitora_painel_coletas_triagem_dados(estado)
+      coletas_atual <- monitora_painel_coletas_triagem_dados(
+        estado, dominios_precomputados = dominios_atual
+      )
       rel_atual <- monitora_diag_rel_gerar_ocorrencias_leve(
         estado,
         fase = "preview_painel",
@@ -37065,6 +37487,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         coletas_triagem_por_tipo = coletas_atual,
         indices_precomputados = attr(coletas_atual, "indices_precomputados"),
         habito_detalhes_precomputados = attr(coletas_atual, "habito_detalhes_precomputados"),
+        dominios_precomputados = dominios_atual,
         materializar = FALSE
       )
       validacao_esp_atual <- data.table::data.table()
@@ -37086,7 +37509,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         registros_diagnosticos = rel_atual$registros
       )
       resumo_idx_atual <- monitora_painel_ocorrencias_resumo_leve(idx_atual)
-      resumo_imp_atual <- monitora_painel_resumo_impeditivas_dados(estado)
+      resumo_imp_atual <- monitora_painel_resumo_impeditivas_dados(
+        estado, dominios_precomputados = dominios_atual
+      )
       estado_lateral <- tryCatch(
         monitora_validar_encostam_rowlevel_minimo(
           data.table::copy(estado),
@@ -37330,6 +37755,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
         return(invisible(NULL))
       }
       if (!isTRUE(confirmado_pendencias)) painel_estado$modal_impeditivas_salvar_ativo <- FALSE
+      gate_relevancia_salvar <- monitora_correcao_validar_relevancia_habitos_operacoes(
+        dt, rv$correcoes, chaves = chaves, dicionario = dict, meta_xls = meta_xls
+      )
+      if (!isTRUE(gate_relevancia_salvar$ok)) {
+        p <- gate_relevancia_salvar$problemas[1L]
+        monitora_painel_bloquear_operacao(
+          paste0("Salvamento bloqueado: ", p$mensagem, ". Remova a operação incompatível da fila e selecione o atributo contextual aplicável."),
+          etapa = "relevancia_condicional_antes_salvamento",
+          atributo = p$atributo_solicitado,
+          acao = "salvar",
+          detalhe = paste0(
+            "linha=", p$linha_indice,
+            if (!is.na(p$atributo_canonico_sugerido) && nzchar(p$atributo_canonico_sugerido))
+              paste0("; destino_aplicavel=", p$atributo_canonico_sugerido) else ""
+          ),
+          duration = 18
+        )
+        return(invisible(NULL))
+      }
       rec_final <- monitora_painel_reconciliar_fila_semantica(rv$correcoes, gravar = TRUE, bloquear = TRUE)
       if (rec_final$n_conflitos > 0L) return(invisible(NULL))
       rv$correcoes <- data.table::copy(rec_final$corr)
@@ -43693,21 +44137,11 @@ monitora_validados_validar_dominios_xlsform21 <- function(out, schema, meta = NU
     x <- monitora_validados_limpar_ausencia_saida(out[[att]])
     vals <- unique(x[nzchar(x)])
     if (!length(vals)) next
-    if (identical(campo$tipo_base, "select_one")) {
-      invalid <- setdiff(vals, choices)
-      exemplos_invalidos <- invalid
-    } else {
-      toks <- unique(unlist(strsplit(vals, "\\s+", perl = TRUE), use.names = FALSE))
-      toks <- toks[nzchar(toks)]
-      invalid <- setdiff(toks, choices)
-      exemplos_invalidos <- if (length(invalid)) {
-        vals[vapply(
-          strsplit(vals, "\\s+", perl = TRUE),
-          function(tokens_valor) any(tokens_valor %in% invalid),
-          logical(1L)
-        )]
-      } else character(0)
-    }
+    invalid_dt <- monitora_contrato_tokens_invalidos_valor(
+      vals, campo$tipo_base, choices
+    )
+    invalid <- unique(as.character(invalid_dt$token_invalido))
+    exemplos_invalidos <- unique(as.character(invalid_dt$valor_observado))
     if (length(invalid)) {
       k <- k + 1L
       motivo <- if (identical(att, "amostragem/registro/forma_vida_outros")) {
@@ -51055,7 +51489,14 @@ monitora_ponte_pre_painel_regras_contrato_unico <- function(contrato = NULL, bas
   )
   regras_ocorrencias <- unique(regras_pre_painel$regra[fonte_ocorrencias])
 
-  tipos_sem_regra_contrato <- sort(setdiff(catalogo_base$tipo_ocorrencia, regras_ocorrencias))
+  tipos_derivados_dominio_contrato <- if (
+      exists("monitora_contrato_validar_dominios_dataset_pre_painel", mode = "function")) {
+    intersect("token_fora_dominio_contrato", as.character(catalogo_base$tipo_ocorrencia))
+  } else character(0)
+  tipos_sem_regra_contrato <- sort(setdiff(
+    catalogo_base$tipo_ocorrencia,
+    c(regras_ocorrencias, tipos_derivados_dominio_contrato)
+  ))
   tipos_complementares_revisao <- sort(unique(catalogo_base[
     tipo_ocorrencia %in% tipos_sem_regra_contrato & severidade == "revisao",
     tipo_ocorrencia
@@ -51080,8 +51521,15 @@ monitora_ponte_pre_painel_regras_contrato_unico <- function(contrato = NULL, bas
     ),
     identificador = tipos_complementares_revisao
   )
+  derivados_contrato <- data.table::data.table(
+    tipo_divergencia = rep(
+      "validacao_dominio_derivada_diretamente_choices_contrato_unico",
+      length(tipos_derivados_dominio_contrato)
+    ),
+    identificador = tipos_derivados_dominio_contrato
+  )
   auditoria_ponte <- data.table::rbindlist(
-    list(divergencias, complementares),
+    list(divergencias, complementares, derivados_contrato),
     fill = TRUE,
     use.names = TRUE
   )
