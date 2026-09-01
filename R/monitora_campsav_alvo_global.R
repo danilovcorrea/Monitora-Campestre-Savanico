@@ -368,8 +368,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "2.9.22"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.22-20260831-r02"
+MONITORA_SCRIPT_VERSAO <- "2.9.23"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.23-20260901-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -12117,16 +12117,43 @@ monitora_contrato_validar_dominios_dataset_pre_painel <- function(
   kk <- 0L
   for (ii in seq_len(nrow(atual))) {
     lista <- as.character(atual$list_name[ii])
-    dominio <- unique(as.character(choices[list_name == lista, name]))
+    choices_lista <- data.table::copy(choices[list_name == lista])
+    dominio <- unique(as.character(choices_lista$name))
     dominio <- dominio[!is.na(dominio) & nzchar(dominio)]
     placeholder <- length(dominio) <= 2L && length(dominio) > 0L &&
       all(dominio %in% c("num_key", "label"))
     if (!length(dominio) || isTRUE(placeholder)) next
     col <- as.character(atual$coluna[ii])
+    valores_validacao <- as.character(dt[[col]])
+    if (identical(as.character(atual$tipo_base[ii]), "select_one") &&
+        "label" %in% names(choices_lista)) {
+      mapa_labels <- choices_lista[
+        !is.na(label) & nzchar(trimws(as.character(label))) &
+          !is.na(name) & nzchar(trimws(as.character(name))),
+        .(nomes = list(unique(trimws(as.character(name))))),
+        by = .(label = trimws(as.character(label)))
+      ]
+      mapa_labels <- mapa_labels[lengths(nomes) == 1L]
+      if (nrow(mapa_labels)) {
+        mapa_labels[, name := vapply(nomes, `[`, character(1L), 1L)]
+        mapa_labels[, nomes := NULL]
+        observados <- trimws(valores_validacao)
+        idx_label <- which(
+          !is.na(observados) & nzchar(observados) &
+            !(observados %in% dominio) & observados %in% mapa_labels$label
+        )
+        if (length(idx_label)) {
+          valores_validacao[idx_label] <- mapa_labels$name[
+            match(observados[idx_label], mapa_labels$label)
+          ]
+        }
+      }
+    }
     invalidos <- monitora_contrato_tokens_invalidos_valor(
-      dt[[col]], atual$tipo_base[ii], dominio
+      valores_validacao, atual$tipo_base[ii], dominio
     )
     if (!nrow(invalidos)) next
+    invalidos[, valor_observado := as.character(dt[[col]][linha_local])]
     kk <- kk + 1L
     lin <- as.integer(invalidos$linha_local)
     saida[[kk]] <- data.table::data.table(
@@ -26179,9 +26206,18 @@ monitora_diag_chave_ocorrencia <- function(x) {
   id[!nzchar(id)] <- paste0("LINHA::", campo("linha_indice")[!nzchar(id)])
   atributo_habito <- campo("atributo_habito_obrigatorio")
   atributo_habito[!nzchar(atributo_habito)] <- campo("atributo_canonico_habito")[!nzchar(atributo_habito)]
+  tipo <- campo("tipo_ocorrencia")
+  contexto_dominio <- rep("", n)
+  idx_dominio <- tipo == "token_fora_dominio_contrato"
+  contexto_dominio[idx_dominio] <- paste(
+    campo("caminho_registro")[idx_dominio],
+    campo("list_name")[idx_dominio],
+    campo("token_invalido")[idx_dominio],
+    sep = "\035"
+  )
   paste(
-    campo("tipo_ocorrencia"), id, campo("categoria_superior"),
-    campo("forma_de_vida_detectada"), atributo_habito,
+    tipo, id, campo("categoria_superior"),
+    campo("forma_de_vida_detectada"), atributo_habito, contexto_dominio,
     sep = "\034"
   )
 }
@@ -26199,8 +26235,10 @@ monitora_pendencias_ocorrencia_id <- function(x) {
   categoria[!nzchar(categoria)] <- campo("categoria_superior")[!nzchar(categoria)]
   token <- campo("ocorrencia_token")
   token[!nzchar(token)] <- campo("forma_de_vida_detectada")[!nzchar(token)]
+  token[!nzchar(token)] <- campo("token_invalido")[!nzchar(token)]
   atributo <- campo("ocorrencia_atributo")
   atributo[!nzchar(atributo)] <- campo("atributo_problema")[!nzchar(atributo)]
+  atributo[!nzchar(atributo)] <- campo("caminho_registro")[!nzchar(atributo)]
   assinatura <- paste(campo("tipo_ocorrencia"), campo("COLETA"), alvo, categoria, token, atributo, sep = "\034")
   paste0("occ_", vapply(assinatura, function(z) substr(monitora_correcao_hash_texto(z), 1L, 24L), character(1L)))
 }
