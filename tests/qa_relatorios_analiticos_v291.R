@@ -573,6 +573,49 @@ textos <- unlist(lapply(
   warn = FALSE,
   encoding = "UTF-8"
 ))
+estado_atual_arquivos <- list.files(
+  dir_rel,
+  pattern = "^estado_atual_.*[.]csv$",
+  full.names = TRUE
+)
+assert(length(estado_atual_arquivos) >= 6L, "Tabelas de estado atual ausentes.")
+assert(all(vapply(estado_atual_arquivos, function(arq) {
+  nms <- names(fread(arq, nrows = 0L, encoding = "UTF-8"))
+  "Nº de registros" %in% nms && !("n contatos registrados" %in% nms)
+}, logical(1L))), "Rótulo público Nº de registros não foi aplicado a todas as tabelas de estado.")
+assert(
+  any(grepl("Como ler as contagens", textos, fixed = TRUE)) &&
+    any(grepl("essa coluna não representa o número de UAs com presença", textos, fixed = TRUE)) &&
+    any(grepl("Nº de UAs — cobertura", textos, fixed = TRUE)) &&
+    any(grepl("Nº de UAs — composição", textos, fixed = TRUE)) &&
+    any(grepl("o número de registros pode ser superior ao número de pontos com presença", textos, fixed = TRUE)) &&
+    !any(grepl("n contatos registrados", textos, fixed = TRUE)),
+  "Relatórios não explicam corretamente UAs, registros e pontos com presença."
+)
+assert(
+  !any(grepl("O diagnóstico não impeditivo materializou", textos, fixed = TRUE)) &&
+    any(grepl("Na série analisada, foram observados", textos, fixed = TRUE)) &&
+    any(grepl("Secas/mortas — detalhe", textos, fixed = TRUE)),
+  "Texto de seca/morta não foi direcionado ao leitor ou perdeu a rastreabilidade técnica."
+)
+assert(
+  !any(grepl("Nenhum contexto de fogo foi localizado", textos, fixed = TRUE)),
+  "Ausência de fogo continua introduzindo uma explicação técnica desnecessária."
+)
+if (data.table::uniqueN(stat$ANO) == 1L) {
+  assert(
+    !any(grepl("esforço anual de [0-9]+ a [0-9]+ UAs", textos, perl = TRUE)) &&
+      !any(grepl("mudança de classificação da formação entre anos", textos, fixed = TRUE)) &&
+      !any(grepl("entre os anos observados", textos, fixed = TRUE)) &&
+      any(grepl("variação temporal do esforço ainda não é avaliável", textos, fixed = TRUE)),
+    "Campanha única ainda recebeu comparação ou faixa temporal artificial."
+  )
+  assert(
+    !any(grepl("os pares de símbolos e C", textos, fixed = TRUE)) &&
+      any(grepl("na campanha de", textos, fixed = TRUE)),
+    "Legenda de campanha única ainda declara símbolos temporais inexistentes."
+  )
+}
 linhas_visiveis <- textos[!grepl("`", textos, fixed = TRUE)]
 for (codigo in c(
   "savanica", "reducao", "mudanca_composicao", "proporcao_relativa",
@@ -592,7 +635,8 @@ assert(!any(grepl("| Transecções |", textos, fixed = TRUE)),
 assert(
   any(grepl("# Resumo executivo", textos, fixed = TRUE)) &&
     any(grepl("## Achados prioritários", textos, fixed = TRUE)) &&
-    any(grepl("# Esforço amostral por UC, formação e ano", textos, fixed = TRUE)) &&
+    any(grepl("# Esforço amostral por formação e ano", textos, fixed = TRUE)) &&
+    !any(grepl("# Esforço amostral por UC, formação e ano", textos, fixed = TRUE)) &&
     !any(grepl("# Síntese executiva", textos, fixed = TRUE)) &&
     !any(grepl("## Mensagens principais", textos, fixed = TRUE)),
   "Títulos do relatório sintético não foram harmonizados com o detalhado."
