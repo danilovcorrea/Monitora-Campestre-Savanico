@@ -208,7 +208,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.25"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r02"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r03"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -54470,7 +54470,22 @@ monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
   fonte_texto <- esc('<text-style fontFamily="Open Sans" fontSize="9" fontSizeUnit="Point" textColor="255,255,255,255"><text-buffer bufferDraw="1" bufferSize="0.6" bufferColor="20,20,20,255"/></text-style>')
   decor <- paste0('<TitleLabel><Enabled type="bool">true</Enabled><Label type="QString">', esc(titulo), '</Label><Font type="QString">', fonte_texto, '</Font><Placement type="int">4</Placement><MarginV type="int">2</MarginV><MarginUnit type="QString">MM</MarginUnit></TitleLabel><CopyrightLabel><Enabled type="bool">true</Enabled><Label type="QString">CBC / ICMBio · Programa Monitora | fontes no LEIA_ME</Label><Font type="QString">', fonte_texto, '</Font><Placement type="int">5</Placement><MarginV type="int">2</MarginV></CopyrightLabel>')
   if (file.exists(file.path(dirname(destino), "assets", "logos.svg"))) decor <- paste0(decor, '<Image><Enabled type="bool">true</Enabled><ImagePath type="QString">./assets/logos.svg</ImagePath><Size type="double">35</Size><Placement type="int">1</Placement><MarginH type="int">2</MarginH><MarginV type="int">12</MarginV><MarginUnit type="QString">MM</MarginUnit></Image>')
-  linhas <- c('<?xml version="1.0" encoding="UTF-8"?>', '<qgis version="3.44.9" projectname="Monitora QField">', paste0('<title>', esc(titulo), '</title><homePath path=""/><projectCrs>', srs(3857), '</projectCrs>'), paste0('<mapcanvas><units>meters</units>', ext, '<rotation>0</rotation><destinationsrs>', srs(3857), '</destinationsrs></mapcanvas>'), paste0('<layer-tree-group name="" checked="Qt::Checked" expanded="1">', paste(arvore, collapse = ""), '</layer-tree-group><projectlayers>', paste(xml, collapse = ""), '</projectlayers>'), '<properties><Paths><Absolute type="bool">false</Absolute></Paths><Gui><CanvasColorRedPart type="int">235</CanvasColorRedPart><CanvasColorGreenPart type="int">240</CanvasColorGreenPart><CanvasColorBluePart type="int">235</CanvasColorBluePart></Gui>', decor, '</properties><ProjectViewSettings rotation="0" UseProjectScales="0">', vista, '</ProjectViewSettings></qgis>')
+  formato_coordenadas <- paste0(
+    '<ProjectDisplaySettings CoordinateAxisOrder="Default" CoordinateType="MapGeographic">',
+    '<BearingFormat id="bearing"><Option type="Map">',
+    '<Option name="decimals" type="int" value="6"/><Option name="direction_format" type="int" value="0"/>',
+    '<Option name="rounding_type" type="int" value="0"/><Option name="show_plus" type="bool" value="false"/>',
+    '<Option name="show_thousand_separator" type="bool" value="true"/><Option name="show_trailing_zeros" type="bool" value="false"/>',
+    '</Option></BearingFormat>',
+    '<GeographicCoordinateFormat id="geographiccoordinate"><Option type="Map">',
+    '<Option name="angle_format" type="QString" value="DecimalDegrees"/><Option name="decimals" type="int" value="6"/>',
+    '<Option name="rounding_type" type="int" value="0"/><Option name="show_leading_degree_zeros" type="bool" value="false"/>',
+    '<Option name="show_leading_zeros" type="bool" value="false"/><Option name="show_plus" type="bool" value="false"/>',
+    '<Option name="show_suffix" type="bool" value="false"/><Option name="show_thousand_separator" type="bool" value="true"/>',
+    '<Option name="show_trailing_zeros" type="bool" value="false"/>',
+    '</Option></GeographicCoordinateFormat><CoordinateCustomCrs>', srs(4326), '</CoordinateCustomCrs></ProjectDisplaySettings>'
+  )
+  linhas <- c('<?xml version="1.0" encoding="UTF-8"?>', '<qgis version="3.44.9" projectname="Monitora QField">', paste0('<title>', esc(titulo), '</title><homePath path=""/><projectCrs>', srs(3857), '</projectCrs>'), paste0('<mapcanvas><units>meters</units>', ext, '<rotation>0</rotation><destinationsrs>', srs(3857), '</destinationsrs></mapcanvas>'), paste0('<layer-tree-group name="" checked="Qt::Checked" expanded="1">', paste(arvore, collapse = ""), '</layer-tree-group><projectlayers>', paste(xml, collapse = ""), '</projectlayers>'), '<properties><Paths><Absolute type="bool">false</Absolute></Paths><Gui><CanvasColorRedPart type="int">235</CanvasColorRedPart><CanvasColorGreenPart type="int">240</CanvasColorGreenPart><CanvasColorBluePart type="int">235</CanvasColorBluePart></Gui><PositionPrecision><Automatic type="bool">true</Automatic><DecimalPlaces type="int">2</DecimalPlaces></PositionPrecision>', decor, '</properties><ProjectViewSettings rotation="0" UseProjectScales="0">', vista, '</ProjectViewSettings>', formato_coordenadas, '</qgis>')
   linhas <- sub('<properties><Paths>', '<properties><SpatialRefSys><ProjectionsEnabled type="int">1</ProjectionsEnabled><ProjectCrs type="QString">EPSG:3857</ProjectCrs></SpatialRefSys><Paths>', linhas, fixed = TRUE)
   xml2::read_xml(paste(linhas, collapse = "\n"), options = "NONET")
   writeLines(enc2utf8(linhas), destino, useBytes = TRUE)

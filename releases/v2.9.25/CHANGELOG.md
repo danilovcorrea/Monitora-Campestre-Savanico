@@ -2,6 +2,13 @@
 
 ## v2.9.25 - 2026-09-15
 
+### Revisão substitutiva r03 - 2026-09-16
+
+- Mantém o mapa QField em EPSG:3857 para os MBTiles e passa a exibir as
+  coordenadas de navegação em WGS 84/EPSG:4326, graus decimais e seis casas.
+- Configuração homologada no QGIS 3.44.9 e no aplicativo QField em dispositivo
+  móvel, sem mudanças nas camadas, imagens, dados biológicos ou demais módulos.
+
 ### Revisão substitutiva r02 - 2026-09-16
 
 - Recorte físico opcional do MBTiles detalhado nos círculos auditados de 500 m
