@@ -30,6 +30,17 @@ projeto, perfil ou arquivo auxiliar.
   manifestos aceitos são descritos no manual produzido pelo próprio script.
   O projeto fica em `output/09_qfield/`. Antes do campo, teste o ZIP offline no
   QField e confirme a permissão de uso da imagem fornecida.
+- Para reduzir fisicamente o fundo detalhado, coloque na mesma pasta da UC um
+  `recorte_imagens_500m.gpkg`. Ele deve conter `uas_buffer_500m`, em EPSG:4326,
+  com `UC`, `UA`, `raio_m=500`, `lon_medio`, `lat_medio` e uma geometria válida
+  por UA. O conjunto de UAs deve coincidir exatamente com a execução; o script
+  bloqueia o projeto se houver qualquer divergência. O MBTiles original não é
+  alterado e o recorte é auditado no ZIP.
+- Para identificar linhas de acesso fornecidas pela UC, declare no arquivo
+  `camadas_qfield.csv` as colunas `arquivo`, `camada` e `papel`, usando
+  `papel=acesso`. A camada precisa ser linear e será exibida como `UC_acessos`,
+  em verde e somente leitura. Não use esse papel para os transectos biológicos
+  nem para o arquivo editável de trajetos levantados em campo.
 - O relatório de validação separa modificações atuais, herdadas e efeitos
   históricos não quantificáveis; inclui histórico de exclusões, cadastros e
   validação espacial com limites de evidência explícitos.

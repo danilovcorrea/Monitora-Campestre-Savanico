@@ -208,7 +208,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.25"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260915-r01"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r02"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -54508,7 +54508,7 @@ monitora_qfield_buffers_imagens <- function(entrada_uc, uc, uas) {
 
 monitora_qfield_recortar_mbtiles <- function(fonte, destino, buffers, scratch) {
   deps <- c("DBI", "RSQLite")
-  faltam <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
+  faltam <- deps[!vapply(deps, function(p) suppressWarnings(requireNamespace(p, quietly = TRUE)), logical(1))]
   if (length(faltam)) stop("QField: recorte circular exige os pacotes opcionais ", paste(faltam, collapse = ", "), ".", call. = FALSE)
   if (file.exists(destino) || !nrow(buffers) || sf::st_crs(buffers)$epsg != 3857) stop("QField: destino existente ou buffers inadequados; nada sobrescrito.", call. = FALSE)
   parcial <- tempfile("recorte_", tmpdir = dirname(destino), fileext = ".mbtiles.parcial")
@@ -54548,7 +54548,7 @@ monitora_qfield_recortar_mbtiles <- function(fonte, destino, buffers, scratch) {
     arquivo_jpeg <- tempfile("tile_", tmpdir = temporarios, fileext = ".jpg")
     arquivo_webp <- tempfile("tile_", tmpdir = temporarios, fileext = ".webp")
     writeBin(tile$tile_data[[1L]], arquivo_jpeg)
-    r <- terra::rast(arquivo_jpeg)
+    r <- suppressWarnings(terra::rast(arquivo_jpeg))
     if (terra::nlyr(r) != 3L || terra::nrow(r) != 256L || terra::ncol(r) != 256L) stop("QField: tile JPEG não é RGB 256 × 256.", call. = FALSE)
     terra::ext(r) <- terra::ext(x0, x0 + passo, y0 - passo, y0)
     terra::crs(r) <- "EPSG:3857"

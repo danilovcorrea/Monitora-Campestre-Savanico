@@ -2,6 +2,18 @@
 
 ## v2.9.25 - 2026-09-15
 
+### Revisão substitutiva r02 - 2026-09-16
+
+- Recorte físico opcional do MBTiles detalhado nos círculos auditados de 500 m
+  por UA, com WebP transparente, preservação da fonte, hashes e gate de
+  cobertura de todos os extremos anuais.
+- Novo papel vetorial `acesso` para linhas fornecidas pela UC, padronizadas
+  como `UC_acessos`, somente leitura e distintas de transectos e apoio editável.
+- PNM homologado no R do Windows e no QGIS: três zooms alinhados à fonte,
+  524 extremos cobertos, 18 acessos e redução de 28,3% no detalhe.
+- Inicialização do RStudio, contrato XLSForm, dados biológicos, relatórios e
+  módulos não QField permaneceram inalterados.
+
 ### Relatórios
 
 - Relatório de validação: sessões atuais e herdadas, efeitos comprovados e não

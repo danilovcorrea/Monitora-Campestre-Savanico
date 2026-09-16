@@ -2,6 +2,10 @@
 
 Publicada em 15 de setembro de 2026 sobre a v2.9.24.
 
+Publicação substitutiva `r02`, de 16 de setembro de 2026, autorizada antes do
+uso da publicação `r01`. O serial permanece `2.9.25`; o build interno distingue
+inequivocamente as duas materializações.
+
 ## Relatório de validação
 
 - Substitui referências editoriais a “bolsistas” por “usuários” e padroniza a
@@ -48,13 +52,27 @@ Publicada em 15 de setembro de 2026 sobre a v2.9.24.
   Fonte, licença, data e resolução desconhecidas não são inferidas. O usuário
   deve confirmar licença, qualidade de imagem e funcionamento offline no QField
   antes da navegação de campo. Imagens de execução não integram a release pública.
+- Quando a entrada espacial contém `recorte_imagens_500m.gpkg`, com uma camada
+  `uas_buffer_500m` auditável e exatamente uma geometria circular de 500 m por
+  UA, o MBTiles detalhado JPEG é fisicamente recortado e convertido para WebP
+  com transparência. O original permanece intocado, hashes e redução ficam em
+  `auditoria_recorte_circular.csv`, e divergências de UCs, UAs, centros, raio,
+  CRS ou geometrias bloqueiam somente o projeto QField.
+- O papel explícito `acesso` em `camadas_qfield.csv` incorpora somente camadas
+  lineares fornecidas pela UC, padronizadas como `UC_acessos`, em verde e
+  somente leitura. Elas não se confundem com transectos amostrais nem com as
+  camadas editáveis de apoio de campo.
 
 ## Homologação e preservação
 
 - Gates Linux e R 4.6.0 do Windows comprovaram escopo, contrato XLSForm
   idêntico à v2.9.24, inicialização congelada do RStudio, tamanho inferior a
-  5 MB em CRLF e integração do projeto opcional. A promoção pública é idêntica
-  à candidata homologada exceto pelos identificadores de versão.
+  5 MB em CRLF e integração do projeto opcional. A revisão substitutiva alterou
+  somente seis funções do módulo QField: quatro revisadas e duas novas.
+- No PNM, o recorte preservou os três níveis de zoom, cobriu os 524 extremos
+  anuais e reduziu o MBTiles detalhado em 28,3%. A comparação integral dos
+  pixels apresentou diferença média de 2,8–2,9 níveis em 255. O QGIS abriu as
+  23 camadas, inclusive 18 linhas de acesso, sem erro de renderização.
 - A rodada real de PNM concluiu no R do Windows em modo
   `painel_incremental_completo`: 262 vergalhões iniciais e 262 finais anuais,
   mapa regional e detalhe, relatórios e ZIP QField. O produto biológico
@@ -65,4 +83,4 @@ Publicada em 15 de setembro de 2026 sobre a v2.9.24.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.25.R`. O build exibido no console é
-`v2.9.25-20260915-r01`.
+`v2.9.25-20260916-r02`.
