@@ -32,6 +32,10 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
   usuário em `qfield_entrada/<uc_normalizada>/`. A opção fica desligada por
   padrão; posições divergentes só entram quando a validação espacial central as
   aceita. O projeto não modifica os dados biológicos.
+- Um `recorte_imagens_500m.gpkg` devidamente auditável permite recortar
+  fisicamente o MBTiles detalhado aos círculos de 500 m por UA, preservando a
+  fonte e registrando hashes, tiles e redução. Camadas lineares declaradas com
+  papel `acesso` são incorporadas como `UC_acessos`, somente leitura.
 - O início do RStudio, o contrato único/XLSForm 2025 e os módulos anteriores
   permanecem preservados. O script segue abaixo de 5 MB também em CRLF.
 

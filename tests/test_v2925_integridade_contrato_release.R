@@ -71,7 +71,7 @@ assert(
 texto <- paste(linhas_c, collapse = "\n")
 for (trecho in c(
   'MONITORA_SCRIPT_VERSAO <- "2.9.25"',
-  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260915-r01"',
+  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r02"',
   'MONITORA_OPCAO_GERAR_PROJETO_QFIELD',
   'MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD',
   'monitora_qfield_referencia_navegacao',
