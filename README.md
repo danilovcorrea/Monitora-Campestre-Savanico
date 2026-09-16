@@ -36,6 +36,9 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
   fisicamente o MBTiles detalhado aos círculos de 500 m por UA, preservando a
   fonte e registrando hashes, tiles e redução. Camadas lineares declaradas com
   papel `acesso` são incorporadas como `UC_acessos`, somente leitura.
+- No projeto QField, o mapa permanece em EPSG:3857 para compatibilidade com os
+  MBTiles; a interface de navegação exibe longitude e latitude em WGS 84,
+  graus decimais e seis casas.
 - O início do RStudio, o contrato único/XLSForm 2025 e os módulos anteriores
   permanecem preservados. O script segue abaixo de 5 MB também em CRLF.
 

@@ -41,6 +41,9 @@ projeto, perfil ou arquivo auxiliar.
   `papel=acesso`. A camada precisa ser linear e será exibida como `UC_acessos`,
   em verde e somente leitura. Não use esse papel para os transectos biológicos
   nem para o arquivo editável de trajetos levantados em campo.
+- As coordenadas mostradas pela interface do QField são longitude e latitude
+  WGS 84/EPSG:4326 em graus decimais, com seis casas. O CRS cartográfico do
+  projeto continua EPSG:3857 para manter os MBTiles alinhados.
 - O relatório de validação separa modificações atuais, herdadas e efeitos
   históricos não quantificáveis; inclui histórico de exclusões, cadastros e
   validação espacial com limites de evidência explícitos.

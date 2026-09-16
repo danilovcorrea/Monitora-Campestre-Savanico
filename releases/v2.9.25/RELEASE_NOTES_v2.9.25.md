@@ -4,7 +4,9 @@ Publicada em 15 de setembro de 2026 sobre a v2.9.24.
 
 Publicação substitutiva `r02`, de 16 de setembro de 2026, autorizada antes do
 uso da publicação `r01`. O serial permanece `2.9.25`; o build interno distingue
-inequivocamente as duas materializações.
+inequivocamente as materializações. A `r03`, homologada no QField e também
+substituída antes de qualquer download da `r02`, corrige a exibição das
+coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles.
 
 ## Relatório de validação
 
@@ -62,6 +64,9 @@ inequivocamente as duas materializações.
   lineares fornecidas pela UC, padronizadas como `UC_acessos`, em verde e
   somente leitura. Elas não se confundem com transectos amostrais nem com as
   camadas editáveis de apoio de campo.
+- O mapa permanece em EPSG:3857 para compatibilidade com os MBTiles, mas a
+  coordenada apresentada ao usuário usa WGS 84/EPSG:4326, graus decimais e seis
+  casas. O comportamento foi conferido no QGIS e no aplicativo QField.
 
 ## Homologação e preservação
 
@@ -72,7 +77,8 @@ inequivocamente as duas materializações.
 - No PNM, o recorte preservou os três níveis de zoom, cobriu os 524 extremos
   anuais e reduziu o MBTiles detalhado em 28,3%. A comparação integral dos
   pixels apresentou diferença média de 2,8–2,9 níveis em 255. O QGIS abriu as
-  23 camadas, inclusive 18 linhas de acesso, sem erro de renderização.
+  23 camadas, inclusive 18 linhas de acesso, sem erro de renderização. A
+  exibição em graus decimais foi aprovada no QField em dispositivo móvel.
 - A rodada real de PNM concluiu no R do Windows em modo
   `painel_incremental_completo`: 262 vergalhões iniciais e 262 finais anuais,
   mapa regional e detalhe, relatórios e ZIP QField. O produto biológico
@@ -83,4 +89,4 @@ inequivocamente as duas materializações.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.25.R`. O build exibido no console é
-`v2.9.25-20260916-r02`.
+`v2.9.25-20260916-r03`.
