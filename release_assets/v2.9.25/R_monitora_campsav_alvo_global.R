@@ -208,7 +208,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.25"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r03"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.25-20260916-r04"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -54446,6 +54446,9 @@ monitora_qfield_kml <- function(camadas, destino) {
 monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
   esc <- monitora_qfield_xml
   srs <- function(epsg) paste0('<spatialrefsys nativeFormat="Wkt"><wkt>', esc(sf::st_crs(epsg)$wkt), '</wkt><proj4>', esc(sf::st_crs(epsg)$proj4string), '</proj4><srsid>0</srsid><srid>', epsg, '</srid><authid>EPSG:', epsg, '</authid><description>EPSG:', epsg, '</description><projectionacronym>', if (epsg == 4326) 'longlat' else 'merc', '</projectionacronym><ellipsoidacronym>WGS84</ellipsoidacronym><geographicflag>', if (epsg == 4326) 'true' else 'false', '</geographicflag></spatialrefsys>')
+  google_id <- "monitora_google_satellite_online"
+  google_nome <- "Google Satellite"
+  google_fonte <- "crs=EPSG:3857&format&type=xyz&url=https://mt1.google.com/vt/lyrs%3Ds%26x%3D%7Bx%7D%26y%3D%7By%7D%26z%3D%7Bz%7D&zmax=20&zmin=0"
   arvore <- character(); xml <- character()
   for (i in seq_along(camadas)) {
     l <- camadas[[i]]; id <- paste0("monitora_v_", i); nome <- l$nome
@@ -54464,6 +54467,24 @@ monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
     arvore <- c(arvore, paste0('<layer-tree-layer id="', id, '" name="', esc(l$nome), '" source="', esc(fonte), '" providerKey="gdal" checked="', if (isTRUE(l$ativo)) 'Qt::Checked' else 'Qt::Unchecked', '" expanded="0"/>'))
     xml <- c(xml, paste0('<maplayer type="raster"><id>', id, '</id><datasource>', esc(fonte), '</datasource><layername>', esc(l$nome), '</layername><srs>', srs(3857), '</srs><provider>gdal</provider><pipe><rasterrenderer type="multibandcolor" redBand="1" greenBand="2" blueBand="3" alphaBand="', if (l$bandas >= 4L) '4' else '-1', '" opacity="1"/><rasterresampler maxOversampling="2"><rasterresampler type="bilinear"/></rasterresampler></pipe></maplayer>'))
   }
+  # Alternativa exclusivamente online, preservada nos projetos QField de
+  # referência. Ela não é baixada, convertida, incluída nos MBTiles nem usada
+  # pelos gates de cobertura offline. Inicia desativada para evitar consumo
+  # involuntário de dados e para que os fundos locais continuem prioritários.
+  arvore <- c(arvore, paste0('<layer-tree-layer id="', google_id, '" name="', esc(google_nome), '" source="', esc(google_fonte), '" providerKey="wms" checked="Qt::Unchecked" expanded="0"/>'))
+  mundo_3857 <- '<extent><xmin>-20037508.342789244</xmin><ymin>-20037508.342789248</ymin><xmax>20037508.342789244</xmax><ymax>20037508.342789248</ymax></extent><wgs84extent><xmin>-180</xmin><ymin>-85.0511287798066</ymin><xmax>180</xmax><ymax>85.0511287798066</ymax></wgs84extent>'
+  xml <- c(xml, paste0(
+    '<maplayer type="raster" hasScaleBasedVisibilityFlag="0" minScale="100000000" maxScale="0">',
+    mundo_3857, '<id>', google_id, '</id><datasource>', esc(google_fonte),
+    '</datasource><layername>', esc(google_nome), '</layername><srs>', srs(3857),
+    '</srs><attribution href="https://www.google.com/permissions/geoguidelines/">Google</attribution>',
+    '<provider>wms</provider><customproperties><Option type="Map">',
+    '<Option name="QFieldSync/action" type="QString" value="no_action"/>',
+    '<Option name="QFieldSync/cloud_action" type="QString" value="no_action"/>',
+    '<Option name="QFieldSync/remoteLayerId" type="QString" value="', google_id, '"/>',
+    '</Option></customproperties><pipe><provider><resampling enabled="false" zoomedInResamplingMethod="nearestNeighbour" maxOversampling="2" zoomedOutResamplingMethod="nearestNeighbour"/></provider>',
+    '<rasterrenderer band="1" opacity="1" type="singlebandcolordata" alphaBand="-1"/></pipe></maplayer>'
+  ))
   ext <- paste0('<extent><xmin>', bbox[[1]], '</xmin><ymin>', bbox[[2]], '</ymin><xmax>', bbox[[3]], '</xmax><ymax>', bbox[[4]], '</ymax></extent>')
   vista <- paste0('<DefaultViewExtent xmin="', bbox[[1]], '" ymin="', bbox[[2]], '" xmax="', bbox[[3]], '" ymax="', bbox[[4]], '">', srs(3857), '</DefaultViewExtent>')
   titulo <- paste0("Monitora — ", uc, " | navegação")
@@ -54759,12 +54780,18 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
       audit_img <- data.table::rbindlist(aud_imagens, fill = TRUE)
       audit_img[, ativo := vapply(arquivo, function(a) if (isTRUE(rasters[[a]]$ativo)) "S" else "N", character(1))]
       data.table::fwrite(audit_img, file.path(pacote, "auditoria_imagens.csv"))
+      data.table::fwrite(data.table::data.table(
+        camada = "Google Satellite", papel = "mapa_base_online_alternativo",
+        provedor_qgis = "wms/xyz", host = "mt1.google.com", zoom_min = 0L,
+        zoom_max = 20L, ativo_inicial = "N", requer_internet = "S",
+        empacota_tiles = "N",
+        observacao = "Visualização online sob demanda; não participa dos MBTiles nem substitui os fundos offline."
+      ), file.path(pacote, "auditoria_camadas_online.csv"))
       bb <- sf::st_bbox(sf::st_transform(pontos, 3857)); margem <- max(500, max(bb[[3]] - bb[[1]], bb[[4]] - bb[[2]]) * 0.08)
       bb <- as.numeric(bb) + c(-margem, -margem, margem, margem)
       qgs <- file.path(pacote, paste0("monitora_", slug, ".qgs"))
       monitora_qfield_escrever_qgs(qgs, uc, camadas, rasters, bb)
-      texto <- c(paste0("PROJETO QFIELD — ", uc), "Produto de navegação; não valida nem corrige registros biológicos.", if (!is.null(origem_ensaio)) paste0("REFERÊNCIA PARA AVALIAÇÃO: ", origem_ensaio), "Importe o ZIP em uma pasta nova no QField. Todas as camadas são locais e vetores somente leitura.", "Início: círculo azul/contorno branco. Fim: branco/contorno azul. Linha vermelha: ligação derivada, não trilha levantada.", "A navegação usa as coordenadas fornecidas e a precisão do GNSS. Nenhum vergalhão intermediário foi inventado.", "Consulte atributos de cada ponto, inclusive acurácia quando informada. Posições divergentes bloqueiam a UC.", "Camadas adicionais mantêm sua identidade de origem: pontos planejados não substituem extremos observados.", "Áreas elegíveis e limite oficial só existem se fornecidos; a extensão do fundo não define elegibilidade.", "Imagens: audite origem, data, licença e resolução em auditoria_imagens.csv; não redistribua fontes legadas sem autorização aplicável.", "Sentinel possui informação nativa de 10 m e não resolve vergalhões/obstáculos. Zoom maior não aumenta a resolução nativa.", "A cobertura verificada é pixel válido nos extremos; não comprova ausência de nuvens nem cobertura de todos os acessos/transectos.", "Confirme no QField em modo avião: símbolos, nomes, seleção/navegação, transições de zoom, orientação e escala nativas.", "Logos institucionais em assets/. A composição móvel não equivale à prancha analítica; use orientação/escala do aplicativo.", "O pacote não foi enviado ao QFieldCloud. Não editar nem substituir a rodada original.")
-      texto <- sub("Todas as camadas são locais e vetores somente leitura.", "Todas as camadas são locais. Referências somente leitura; apenas pontos_interesse e trajeto em apoio_campo.gpkg são editáveis.", texto, fixed = TRUE)
+      texto <- c(paste0("PROJETO QFIELD — ", uc), "Produto de navegação; não valida nem corrige registros biológicos.", if (!is.null(origem_ensaio)) paste0("REFERÊNCIA PARA AVALIAÇÃO: ", origem_ensaio), "Importe o ZIP em uma pasta nova no QField. Referências vetoriais e imagens empacotadas são locais; apenas pontos_interesse e trajeto em apoio_campo.gpkg são editáveis. Google Satellite é alternativa exclusivamente online.", "Início: círculo azul/contorno branco. Fim: branco/contorno azul. Linha vermelha: ligação derivada, não trilha levantada.", "A navegação usa as coordenadas fornecidas e a precisão do GNSS. Nenhum vergalhão intermediário foi inventado.", "Consulte atributos de cada ponto, inclusive acurácia quando informada. Posições divergentes bloqueiam a UC.", "Camadas adicionais mantêm sua identidade de origem: pontos planejados não substituem extremos observados.", "Áreas elegíveis e limite oficial só existem se fornecidos; a extensão do fundo não define elegibilidade.", "Imagens: audite origem, data, licença e resolução em auditoria_imagens.csv; não redistribua fontes legadas sem autorização aplicável.", "Google Satellite inicia desativado, requer internet e apenas visualiza tiles sob demanda; não é baixado, empacotado ou usado para comprovar cobertura offline.", "Sentinel possui informação nativa de 10 m e não resolve vergalhões/obstáculos. Zoom maior não aumenta a resolução nativa.", "A cobertura verificada é pixel válido nos extremos; não comprova ausência de nuvens nem cobertura de todos os acessos/transectos.", "Confirme no QField em modo avião: símbolos, nomes, seleção/navegação, transições de zoom, orientação e escala nativas.", "Logos institucionais em assets/. A composição móvel não equivale à prancha analítica; use orientação/escala do aplicativo.", "O pacote não foi enviado ao QFieldCloud. Não editar nem substituir a rodada original.")
       texto <- sub("Posições divergentes bloqueiam a UC.", "Variações anuais aceitas pela validação espacial pós-painel são preservadas; pendências reais bloqueiam o projeto.", texto, fixed = TRUE)
       texto <- c(texto, "Cada camada UC_verg_ini_YYYY e UC_verg_fin_YYYY contém um ponto por UA observada naquele ano, com as coordenadas literais da campanha. O KML de intercâmbio usa o último par observado como referência de navegação, não como correção da série histórica. A cobertura do fundo é verificada sobre todos os extremos anuais. Consulte auditoria_referencia_navegacao.csv para ANO/COLETA escolhidos, alertas e eventuais UAs observadas somente uma vez, sem consenso temporal.")
       texto <- c(texto, "Os nomes anuais usam ANO dos dados de origem, não o ano de geração do projeto. Sigla é declarada em projeto_qfield.csv (UC,sigla); se ausente, usa-se o nome completo normalizado, sem inventar abreviação.", "PAs prioritários: vermelho; alternativos: laranja-claro. Ambos são vergalhões iniciais previstos, não coordenadas observadas de UAs. Não há camadas PA finais.", "Camadas antigas podem ser identificadas em camadas_qfield.csv (arquivo,camada,papel; sigla opcional para camada compartilhada). Papéis: pa_priorit_ini e pa_altern_ini. Nomes já padronizados UC_PA_priorit_verg_ini e UC_PA_altern_verg_ini dispensam esse manifesto.", "Nenhum PA foi excluído por proximidade ou nome parecido com uma UA. Importar o conjunto de PAs ainda previsto ou fornecer vínculo auditável em revisão futura.", "Apoio de campo: pontos_interesse (POINT) e trajeto (MULTILINESTRING), campos identificador/nome, obs e data_hora, cor roxa. Cópia separada e editável; não modifica referências ou dados biológicos. Se fornecido, apoio_campo.gpkg deve ter a estrutura documentada; senão, o projeto recebe camadas vazias.", "Antes de substituir ou atualizar o projeto, salvar o apoio_campo.gpkg preenchido pelos monitores. O manifesto registra hashes do momento da entrega; a edição em campo altera legitimamente o hash desse arquivo.")

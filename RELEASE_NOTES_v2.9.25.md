@@ -6,7 +6,9 @@ Publicação substitutiva `r02`, de 16 de setembro de 2026, autorizada antes do
 uso da publicação `r01`. O serial permanece `2.9.25`; o build interno distingue
 inequivocamente as materializações. A `r03`, homologada no QField e também
 substituída antes de qualquer download da `r02`, corrige a exibição das
-coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles.
+coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles. A `r04`,
+autorizada após homologação no PNM, restitui a camada alternativa online
+`Google Satellite` encontrada nos projetos de referência.
 
 ## Relatório de validação
 
@@ -67,6 +69,10 @@ coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles.
 - O mapa permanece em EPSG:3857 para compatibilidade com os MBTiles, mas a
   coordenada apresentada ao usuário usa WGS 84/EPSG:4326, graus decimais e seis
   casas. O comportamento foi conferido no QGIS e no aplicativo QField.
+- `Google Satellite` consta como alternativa XYZ exclusivamente online e
+  inicialmente desativada. Nenhum tile remoto é baixado ou empacotado; a camada
+  não substitui Sentinel regional, detalhe local ou gates de cobertura offline.
+  Sua configuração sem credenciais fica em `auditoria_camadas_online.csv`.
 
 ## Homologação e preservação
 
@@ -77,7 +83,8 @@ coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles.
 - No PNM, o recorte preservou os três níveis de zoom, cobriu os 524 extremos
   anuais e reduziu o MBTiles detalhado em 28,3%. A comparação integral dos
   pixels apresentou diferença média de 2,8–2,9 níveis em 255. O QGIS abriu as
-  23 camadas, inclusive 18 linhas de acesso, sem erro de renderização. A
+  24 camadas, inclusive 18 linhas de acesso e Google Satellite online, sem erro
+  de renderização. A
   exibição em graus decimais foi aprovada no QField em dispositivo móvel.
 - A rodada real de PNM concluiu no R do Windows em modo
   `painel_incremental_completo`: 262 vergalhões iniciais e 262 finais anuais,
@@ -89,4 +96,4 @@ coordenadas de navegação sem alterar o CRS cartográfico dos MBTiles.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.25.R`. O build exibido no console é
-`v2.9.25-20260916-r03`.
+`v2.9.25-20260916-r04`.

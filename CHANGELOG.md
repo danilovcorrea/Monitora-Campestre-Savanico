@@ -2,6 +2,20 @@
 
 ## v2.9.25 - 2026-09-15
 
+### Revisão substitutiva r04 - 2026-09-16
+
+- Reincorpora ao projeto QField a camada alternativa `Google Satellite`,
+  presente nos projetos de referência, como visualização XYZ exclusivamente
+  online e inicialmente desativada.
+- A camada remota não é baixada, convertida, incluída nos MBTiles nem usada
+  pelos gates de cobertura offline. Sentinel regional e detalhe local continuam
+  sendo os fundos auditados e disponíveis sem internet.
+- O ZIP passa a registrar `auditoria_camadas_online.csv`; nenhum endereço
+  contém chave, token ou sessão. PNM homologado com 24 camadas, 18 acessos,
+  524 extremos cobertos, recorte circular e coordenadas decimais preservados.
+- Contrato XLSForm, inicialização no RStudio, dados biológicos, relatórios e
+  módulos não QField permanecem inalterados.
+
 ### Revisão substitutiva r03 - 2026-09-16
 
 - Mantém o mapa QField em EPSG:3857 para os MBTiles e passa a exibir as
