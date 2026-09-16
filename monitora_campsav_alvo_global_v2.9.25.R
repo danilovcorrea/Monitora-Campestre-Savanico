@@ -54080,7 +54080,7 @@ monitora_qfield_classificar_adicionais <- function(camadas, entrada, sigla) {
   if (file.exists(f)) {
     m <- data.table::fread(monitora_qfield_caminho_local(basename(f), entrada), colClasses = "character", encoding = "UTF-8")
     req <- c("arquivo", "camada", "papel")
-    if (!all(req %in% names(m)) || anyNA(m[, ..req]) || anyDuplicated(m[, c("arquivo", "camada"), with = FALSE]) || any(!m$papel %in% c("pa_priorit_ini", "pa_altern_ini"))) stop("QField: manifesto de camadas inválido; papéis PA precisam ser explícitos.", call. = FALSE)
+    if (!all(req %in% names(m)) || anyNA(m[, ..req]) || anyDuplicated(m[, c("arquivo", "camada"), with = FALSE]) || any(!m$papel %in% c("pa_priorit_ini", "pa_altern_ini", "acesso"))) stop("QField: manifesto de camadas inválido; papéis PA/acesso precisam ser explícitos.", call. = FALSE)
   }
   out <- list()
   for (n in names(camadas)) {
@@ -54101,7 +54101,11 @@ monitora_qfield_classificar_adicionais <- function(camadas, entrada, sigla) {
         acerto <- candidatos[grepl(padrao, candidatos)]
         if (length(acerto) == 1L) papel <- if (grepl("_PA_priorit_", acerto)) "pa_priorit_ini" else "pa_altern_ini"
       }
-      if (papel != "adicional") {
+      if (papel == "acesso") {
+        if (!grepl("^[A-Za-z][A-Za-z0-9_]{1,59}$", sigla_camada) ||
+            !all(as.character(sf::st_geometry_type(x)) %in% c("LINESTRING", "MULTILINESTRING"))) stop("QField: acesso exige identificador válido e geometria linear.", call. = FALSE)
+        nome <- paste0(sigla_camada, "_acessos")
+      } else if (papel != "adicional") {
         if (!grepl("^[A-Za-z][A-Za-z0-9_]{1,59}$", sigla_camada) || any(as.character(sf::st_geometry_type(x)) != "POINT")) stop("QField: PA exige identificador válido e geometria POINT.", call. = FALSE)
         nome <- paste0(sigla_camada, if (papel == "pa_priorit_ini") "_PA_priorit_verg_ini" else "_PA_altern_verg_ini")
       }
@@ -54283,7 +54287,7 @@ monitora_qfield_descompactar <- function(arquivo, destino) {
 
 monitora_qfield_ler_adicionais <- function(entrada, scratch) {
   if (!dir.exists(entrada)) return(list())
-  fontes <- list.files(entrada, pattern = "\\.(kml|kmz|gpkg|zip)$", ignore.case = TRUE, full.names = FALSE)
+  fontes <- setdiff(list.files(entrada, pattern = "\\.(kml|kmz|gpkg|zip)$", ignore.case = TRUE, full.names = FALSE), "recorte_imagens_500m.gpkg")
   if (length(fontes) > 100L) stop("QField: mais de 100 fontes adicionais.", call. = FALSE)
   saida <- list()
   for (nome in fontes) {
@@ -54410,7 +54414,7 @@ monitora_qfield_estilo <- function(tipo, fim = FALSE, papel = "referencia") {
     cor <- switch(papel, pa_priorit_ini = "255,0,0,255", pa_altern_ini = "253,191,111,255", apoio_pontos_interesse = "141,90,255,255", if (fim) "255,255,255,255" else "31,120,180,255")
     props <- c(opt("name", "circle"), opt("color", cor), opt("outline_color", if (fim) "31,120,180,255" else "255,255,255,255"), opt("outline_width", if (papel %in% c("pa_priorit_ini", "pa_altern_ini", "apoio_pontos_interesse")) "0" else "0.3"), opt("size", "2"))
   } else if (tipo == "line") {
-    classe <- "SimpleLine"; sym <- "line"; props <- c(opt("line_color", if (papel == "apoio_trajeto") "141,90,255,255" else "227,26,28,255"), opt("line_width", if (papel == "apoio_trajeto") "0.26" else "0.4"))
+    classe <- "SimpleLine"; sym <- "line"; props <- c(opt("line_color", if (papel == "apoio_trajeto") "141,90,255,255" else if (papel == "acesso") "0,135,104,255" else "227,26,28,255"), opt("line_width", if (papel == "apoio_trajeto") "0.26" else "0.4"))
   } else {
     classe <- "SimpleFill"; sym <- "fill"; props <- c(opt("style", "no"), opt("outline_color", "255,255,0,255"), opt("outline_width", "0.5"))
   }
@@ -54473,6 +54477,127 @@ monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
   invisible(destino)
 }
 
+monitora_qfield_buffers_imagens <- function(entrada_uc, uc, uas) {
+  arquivo <- file.path(entrada_uc, "recorte_imagens_500m.gpkg")
+  if (!file.exists(arquivo)) return(NULL)
+  arquivo <- monitora_qfield_caminho_local(basename(arquivo), entrada_uc)
+  cabecalho <- readBin(arquivo, what = "raw", n = 100L)
+  if (length(cabecalho) != 100L || !identical(cabecalho[1:16], c(charToRaw("SQLite format 3"), as.raw(0))) ||
+      !rawToChar(cabecalho[69:72]) %in% c("GPKG", "GP10", "GP11")) stop("QField: recorte de imagens não é GeoPackage válido.", call. = FALSE)
+  camadas <- sf::st_layers(arquivo, do_count = FALSE)$name
+  if (!"uas_buffer_500m" %in% camadas) stop("QField: recorte de imagens precisa da camada uas_buffer_500m.", call. = FALSE)
+  x <- sf::st_read(arquivo, layer = "uas_buffer_500m", quiet = TRUE)
+  campos <- c("UC", "UA", "raio_m", "lon_medio", "lat_medio")
+  if (!all(campos %in% names(x)) || is.na(sf::st_crs(x)) || sf::st_crs(x)$epsg != 4326) stop("QField: buffer precisa de UC, UA, centro, raio_m e EPSG:4326.", call. = FALSE)
+  x <- x[as.character(x$UC) == uc, ]
+  if (!nrow(x) || anyNA(x$UA) || anyDuplicated(as.character(x$UA)) || !setequal(as.character(x$UA), as.character(uas)) ||
+      any(!is.finite(as.numeric(x$raio_m))) || any(abs(as.numeric(x$raio_m) - 500) > 1e-6) ||
+      any(!is.finite(as.numeric(x$lon_medio))) || any(!is.finite(as.numeric(x$lat_medio)))) {
+    stop("QField: recorte de 500 m não corresponde exatamente às UAs/centros da UC; não cortar imagem.", call. = FALSE)
+  }
+  if (any(!as.character(sf::st_geometry_type(x)) %in% c("POLYGON", "MULTIPOLYGON")) ||
+      any(!sf::st_is_valid(x)) || any(sf::st_is_empty(x))) stop("QField: polígonos do recorte inválidos.", call. = FALSE)
+  centros <- sf::st_as_sf(as.data.frame(sf::st_drop_geometry(x)), coords = c("lon_medio", "lat_medio"), crs = 4326)
+  if (any(!diag(sf::st_intersects(centros, x, sparse = FALSE)))) stop("QField: centro declarado não pertence ao buffer da UA.", call. = FALSE)
+  areas <- as.numeric(sf::st_area(x))
+  if (any(!is.finite(areas)) || any(abs(areas - pi * 500^2) / (pi * 500^2) > 0.02)) stop("QField: área do buffer incompatível com raio de 500 m.", call. = FALSE)
+  y <- sf::st_transform(x, 3857)
+  attr(y, "qfield_arquivo_recorte") <- arquivo
+  y
+}
+
+monitora_qfield_recortar_mbtiles <- function(fonte, destino, buffers, scratch) {
+  deps <- c("DBI", "RSQLite")
+  faltam <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(faltam)) stop("QField: recorte circular exige os pacotes opcionais ", paste(faltam, collapse = ", "), ".", call. = FALSE)
+  if (file.exists(destino) || !nrow(buffers) || sf::st_crs(buffers)$epsg != 3857) stop("QField: destino existente ou buffers inadequados; nada sobrescrito.", call. = FALSE)
+  parcial <- tempfile("recorte_", tmpdir = dirname(destino), fileext = ".mbtiles.parcial")
+  temporarios <- file.path(scratch, "recorte_tiles")
+  dir.create(temporarios, showWarnings = FALSE)
+  src <- DBI::dbConnect(RSQLite::SQLite(), fonte, flags = RSQLite::SQLITE_RO)
+  on.exit(if (DBI::dbIsValid(src)) DBI::dbDisconnect(src), add = TRUE)
+  meta <- DBI::dbGetQuery(src, "SELECT name,value FROM metadata")
+  formato <- tolower(meta$value[match("format", meta$name)])
+  if (length(formato) != 1L || is.na(formato) || !formato %in% c("jpg", "jpeg")) stop("QField: recorte circular aceita MBTiles JPEG 256 px produzido pelo baixador; outra fonte deve ser avaliada separadamente.", call. = FALSE)
+  n_fonte <- DBI::dbGetQuery(src, "SELECT count(*) AS n FROM tiles")$n[[1L]]
+  if (!is.finite(n_fonte) || n_fonte < 1L || n_fonte > 100000L) stop("QField: quantidade de tiles inválida para recorte.", call. = FALSE)
+  meta$value[match("format", meta$name)] <- "webp"
+  meta <- rbind(meta, data.frame(name = c("recorte_circular_m", "recorte_fonte_sha256"),
+                                value = c("500", digest::digest(fonte, algo = "sha256", file = TRUE))))
+  dst <- DBI::dbConnect(RSQLite::SQLite(), parcial)
+  on.exit(if (DBI::dbIsValid(dst)) DBI::dbDisconnect(dst), add = TRUE)
+  DBI::dbExecute(dst, "CREATE TABLE metadata(name TEXT PRIMARY KEY,value TEXT)")
+  DBI::dbExecute(dst, "CREATE TABLE tiles(zoom_level INTEGER,tile_column INTEGER,tile_row INTEGER,tile_data BLOB,PRIMARY KEY(zoom_level,tile_column,tile_row))")
+  DBI::dbWriteTable(dst, "metadata", meta, append = TRUE)
+  rs <- DBI::dbSendQuery(src, "SELECT zoom_level,tile_column,tile_row,tile_data FROM tiles ORDER BY zoom_level,tile_column,tile_row")
+  on.exit(try(DBI::dbClearResult(rs), silent = TRUE), add = TRUE)
+  bboxes <- t(vapply(seq_len(nrow(buffers)), function(i) as.numeric(sf::st_bbox(buffers[i, ])), numeric(4L)))
+  h <- 20037508.342789244
+  inicio <- proc.time()[["elapsed"]]
+  n_destino <- 0L; n_parciais <- 0L; n_descartados <- 0L
+  DBI::dbBegin(dst)
+  repeat {
+    tile <- DBI::dbFetch(rs, n = 1L)
+    if (!nrow(tile)) break
+    z <- as.integer(tile$zoom_level[[1L]]); col <- as.integer(tile$tile_column[[1L]]); linha <- as.integer(tile$tile_row[[1L]])
+    if (!is.finite(z) || z < 0L || z > 20L || col < 0L || linha < 0L || col >= 2^z || linha >= 2^z) stop("QField: índice de tile fora do domínio Web Mercator.", call. = FALSE)
+    y <- 2^z - 1 - linha; passo <- 2 * h / 2^z
+    x0 <- -h + col * passo; y0 <- h - y * passo
+    cand <- bboxes[, 3L] >= x0 & bboxes[, 1L] <= x0 + passo & bboxes[, 4L] >= y0 - passo & bboxes[, 2L] <= y0
+    if (!any(cand)) { n_descartados <- n_descartados + 1L; next }
+    arquivo_jpeg <- tempfile("tile_", tmpdir = temporarios, fileext = ".jpg")
+    arquivo_webp <- tempfile("tile_", tmpdir = temporarios, fileext = ".webp")
+    writeBin(tile$tile_data[[1L]], arquivo_jpeg)
+    r <- terra::rast(arquivo_jpeg)
+    if (terra::nlyr(r) != 3L || terra::nrow(r) != 256L || terra::ncol(r) != 256L) stop("QField: tile JPEG não é RGB 256 × 256.", call. = FALSE)
+    terra::ext(r) <- terra::ext(x0, x0 + passo, y0 - passo, y0)
+    terra::crs(r) <- "EPSG:3857"
+    # O driver JPEG de terra lê a matriz de células de baixo para cima neste
+    # caminho; XYZ/MBTiles exige o norte na primeira linha. A máscara, derivada
+    # de EPSG:3857, já está orientada corretamente e não deve ser invertida.
+    r <- terra::flip(r, direction = "vertical")
+    alpha <- terra::rasterize(terra::vect(buffers[cand, ]), r[[1L]], field = 255, background = 0)
+    a <- terra::values(alpha)
+    if (anyNA(a) || any(!is.finite(a))) stop("QField: máscara do tile contém valor inválido.", call. = FALSE)
+    if (!any(a > 0)) {
+      n_descartados <- n_descartados + 1L
+    } else {
+      rgb <- terra::ifel(alpha > 0, r, 0)
+      rgba <- c(rgb, alpha)
+      names(rgba) <- c("R", "G", "B", "A")
+      terra::writeRaster(rgba, arquivo_webp, filetype = "WEBP", datatype = "INT1U", gdal = "QUALITY=80")
+      rec <- terra::rast(arquivo_webp)
+      if (terra::nlyr(rec) != 4L && !(terra::nlyr(rec) == 3L && all(a == 255))) stop("QField: WebP perdeu transparência na borda circular.", call. = FALSE)
+      blob <- readBin(arquivo_webp, what = "raw", n = file.info(arquivo_webp)$size)
+      DBI::dbExecute(dst, "INSERT INTO tiles VALUES(?,?,?,?)", params = list(z, col, linha, list(blob)))
+      n_destino <- n_destino + 1L
+      if (any(a == 0)) n_parciais <- n_parciais + 1L
+    }
+    rm(r, alpha, a)
+    if (exists("rgb", inherits = FALSE)) rm(rgb)
+    if (exists("rgba", inherits = FALSE)) rm(rgba)
+    if (exists("rec", inherits = FALSE)) rm(rec)
+    unlink(c(arquivo_jpeg, paste0(arquivo_jpeg, ".aux.xml"), arquivo_webp, paste0(arquivo_webp, ".aux.xml")), force = FALSE)
+  }
+  DBI::dbCommit(dst)
+  DBI::dbClearResult(rs)
+  if (n_destino < 1L || n_destino + n_descartados != n_fonte ||
+      DBI::dbGetQuery(dst, "PRAGMA integrity_check")[[1L]][[1L]] != "ok" ||
+      DBI::dbGetQuery(dst, "SELECT count(*) AS n FROM tiles")$n[[1L]] != n_destino) stop("QField: recorte circular falhou na integridade dos tiles.", call. = FALSE)
+  DBI::dbDisconnect(dst)
+  DBI::dbDisconnect(src)
+  if (!file.rename(parcial, destino)) stop("QField: MBTiles recortado não pôde ser finalizado; parcial preservado.", call. = FALSE)
+  data.table::data.table(fonte = basename(fonte), arquivo_recorte = basename(attr(buffers, "qfield_arquivo_recorte")),
+    bytes_fonte = file.info(fonte)$size, bytes_recortado = file.info(destino)$size,
+    reducao_pct = 100 * (1 - file.info(destino)$size / file.info(fonte)$size),
+    tiles_fonte = n_fonte, tiles_recortados = n_destino, tiles_descartados = n_descartados,
+    tiles_borda = n_parciais, raio_m = 500, formato = "WebP RGBA, qualidade 80",
+    sha256_fonte = digest::digest(fonte, algo = "sha256", file = TRUE),
+    sha256_recorte = digest::digest(destino, algo = "sha256", file = TRUE),
+    sha256_buffers = digest::digest(attr(buffers, "qfield_arquivo_recorte"), algo = "sha256", file = TRUE),
+    segundos = proc.time()[["elapsed"]] - inicio)
+}
+
 monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FALSE, importar = FALSE,
                                  entrada_dir = file.path(base_dir, "qfield_entrada"),
                                  biologicos = file.path(base_dir, "input"), adquirir_sentinel = TRUE,
@@ -54501,6 +54626,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
       data.table::fwrite(referencia$auditoria, file.path(pacote, "auditoria_referencia_navegacao.csv"))
       entrada_uc <- file.path(entrada_dir, monitora_qfield_slug(uc))
       sigla <- monitora_qfield_identificar(uc, entrada_uc)
+      buffers_imagens <- if (isTRUE(importar) && dir.exists(entrada_uc)) monitora_qfield_buffers_imagens(entrada_uc, uc, unique(as.character(d$UA))) else NULL
       anuais <- monitora_qfield_camadas_anuais(d, sigla)
       if (!is.null(origem_ensaio)) for (n in names(anuais)) anuais[[n]]$origem <- origem_ensaio
       adicionais <- if (isTRUE(importar)) monitora_qfield_classificar_adicionais(monitora_qfield_ler_adicionais(entrada_uc, scratch), entrada_uc, sigla) else monitora_qfield_classificar_adicionais(list(), tempfile("sem_manifesto_"), sigla)
@@ -54540,7 +54666,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
         svg <- monitora_qfield_logos_svg(logos)
         writeLines(svg, file.path(pacote, "assets", "logos.svg"), useBytes = TRUE)
       }
-      rasters <- list(); aud_imagens <- list()
+      rasters <- list(); aud_imagens <- list(); aud_recortes <- list()
       manifest <- file.path(entrada_uc, "imagens", "fontes_imagens.csv")
       mbtiles_diretos <- if (isTRUE(importar) && dir.exists(entrada_uc)) list.files(entrada_uc, pattern = "\\.mbtiles$", ignore.case = TRUE, full.names = FALSE) else character()
       if (length(mbtiles_diretos) > 1L) stop("QField: mais de um MBTiles direto na entrada da UC; mover as imagens para imagens/ e declarar os papéis em imagens/fontes_imagens.csv.", call. = FALSE)
@@ -54561,21 +54687,28 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
         if (!all(req %in% names(m)) || anyNA(m[, ..req]) || any(!nzchar(trimws(unlist(m[, ..req])))) || nrow(m) > 12L) stop("QField: manifesto de imagens incompleto/maior que 12 arquivos.", call. = FALSE)
         if (any(!m$papel %in% c("regional", "operacional", "detalhe")) || anyDuplicated(tolower(m$arquivo))) stop("QField: papéis/arquivos de imagens inválidos.", call. = FALSE)
         if ("ativo" %in% names(m) && (anyNA(m$ativo) || any(!m$ativo %in% c("S", "N")))) stop("QField: campo ativo do manifesto deve conter S ou N.", call. = FALSE)
+        if (!is.null(buffers_imagens) && !any(m$papel == "detalhe")) stop("QField: recorte de imagens fornecido sem MBTiles de detalhe.", call. = FALSE)
         for (i in seq_len(nrow(m))) {
           src <- monitora_qfield_caminho_local(m$arquivo[i], if (isTRUE(m$monitora_auto[i])) entrada_uc else dirname(manifest))
           if (tolower(tools::file_ext(src)) != "mbtiles") stop("QField: manifesto aceita somente MBTiles raster.", call. = FALSE)
           if (file.info(src)$size > 1024^3) stop("QField: MBTiles excede 1 GiB.", call. = FALSE)
           nome <- paste0(sprintf("%02d", i), "_", m$papel[i], ".mbtiles")
           dst <- file.path(pacote, "mapas", nome)
-          if (!file.copy(src, dst, overwrite = FALSE)) stop("QField: falha na cópia do MBTiles.", call. = FALSE)
-          if (!identical(unname(tools::md5sum(src)), unname(tools::md5sum(dst)))) stop("QField: hash da imagem copiada divergiu.", call. = FALSE)
+          recortado <- !is.null(buffers_imagens) && identical(m$papel[i], "detalhe")
+          if (recortado) {
+            aud_recortes[[nome]] <- monitora_qfield_recortar_mbtiles(src, dst, buffers_imagens, scratch)
+          } else {
+            if (!file.copy(src, dst, overwrite = FALSE)) stop("QField: falha na cópia do MBTiles.", call. = FALSE)
+            if (!identical(unname(tools::md5sum(src)), unname(tools::md5sum(dst)))) stop("QField: hash da imagem copiada divergiu.", call. = FALSE)
+          }
           inf <- monitora_qfield_info_raster(dst)
           if (length(inf$bands) < 3L || !grepl('3857|Pseudo-Mercator', inf$coordinateSystem$wkt)) stop("QField: MBTiles não é RGB EPSG:3857.", call. = FALSE)
           ativo <- if ("ativo" %in% names(m)) identical(m$ativo[i], "S") else TRUE
           rasters[[nome]] <- list(arquivo = nome, nome = paste(m$papel[i], "—", m$fonte[i]), bandas = length(inf$bands), papel = m$papel[i], ativo = ativo, inclusao_automatica = isTRUE(m$monitora_auto[i]))
-          aud_imagens[[nome]] <- data.table::data.table(arquivo = nome, papel = m$papel[i], fonte = m$fonte[i], licenca = m$licenca[i], resolucao_nativa_m = m$resolucao_nativa_m[i], data_imagem = m$data_imagem[i], bytes = file.info(dst)$size, md5 = unname(tools::md5sum(dst)), observacao = if (isTRUE(m$monitora_auto[i])) "MBTiles detectado na entrada da UC; cópia literal; origem, licença, data e resolução nativa não inferidas" else "copia literal fornecida; metadados declarados, sem inferir sensor/data/licenca")
+          aud_imagens[[nome]] <- data.table::data.table(arquivo = nome, papel = m$papel[i], fonte = m$fonte[i], licenca = m$licenca[i], resolucao_nativa_m = m$resolucao_nativa_m[i], data_imagem = m$data_imagem[i], bytes = file.info(dst)$size, md5 = unname(tools::md5sum(dst)), observacao = if (recortado) "MBTiles JPEG original preservado na entrada; recorte circular de 500 m em WebP no projeto; fonte, licença, data e resolução nativa não inferidas; ver auditoria_recorte_circular.csv" else if (isTRUE(m$monitora_auto[i])) "MBTiles detectado na entrada da UC; cópia literal; origem, licença, data e resolução nativa não inferidas" else "copia literal fornecida; metadados declarados, sem inferir sensor/data/licenca")
         }
       }
+      if (length(aud_recortes)) data.table::fwrite(data.table::rbindlist(aud_recortes), file.path(pacote, "auditoria_recorte_circular.csv"))
       sem_regional <- !any(vapply(rasters, function(l) identical(l$papel, "regional") && isTRUE(l$ativo), logical(1)))
       if (isTRUE(adquirir_sentinel) && (!length(rasters) || (length(mbtiles_diretos) == 1L && sem_regional))) {
         s <- monitora_qfield_sentinel(centrais$vergalhoes_iniciais, scratch)
@@ -54620,6 +54753,8 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
       texto <- sub("Posições divergentes bloqueiam a UC.", "Variações anuais aceitas pela validação espacial pós-painel são preservadas; pendências reais bloqueiam o projeto.", texto, fixed = TRUE)
       texto <- c(texto, "Cada camada UC_verg_ini_YYYY e UC_verg_fin_YYYY contém um ponto por UA observada naquele ano, com as coordenadas literais da campanha. O KML de intercâmbio usa o último par observado como referência de navegação, não como correção da série histórica. A cobertura do fundo é verificada sobre todos os extremos anuais. Consulte auditoria_referencia_navegacao.csv para ANO/COLETA escolhidos, alertas e eventuais UAs observadas somente uma vez, sem consenso temporal.")
       texto <- c(texto, "Os nomes anuais usam ANO dos dados de origem, não o ano de geração do projeto. Sigla é declarada em projeto_qfield.csv (UC,sigla); se ausente, usa-se o nome completo normalizado, sem inventar abreviação.", "PAs prioritários: vermelho; alternativos: laranja-claro. Ambos são vergalhões iniciais previstos, não coordenadas observadas de UAs. Não há camadas PA finais.", "Camadas antigas podem ser identificadas em camadas_qfield.csv (arquivo,camada,papel; sigla opcional para camada compartilhada). Papéis: pa_priorit_ini e pa_altern_ini. Nomes já padronizados UC_PA_priorit_verg_ini e UC_PA_altern_verg_ini dispensam esse manifesto.", "Nenhum PA foi excluído por proximidade ou nome parecido com uma UA. Importar o conjunto de PAs ainda previsto ou fornecer vínculo auditável em revisão futura.", "Apoio de campo: pontos_interesse (POINT) e trajeto (MULTILINESTRING), campos identificador/nome, obs e data_hora, cor roxa. Cópia separada e editável; não modifica referências ou dados biológicos. Se fornecido, apoio_campo.gpkg deve ter a estrutura documentada; senão, o projeto recebe camadas vazias.", "Antes de substituir ou atualizar o projeto, salvar o apoio_campo.gpkg preenchido pelos monitores. O manifesto registra hashes do momento da entrega; a edição em campo altera legitimamente o hash desse arquivo.")
+      if (length(aud_recortes)) texto <- c(texto, "O fundo detalhado foi recortado fisicamente aos buffers circulares de 500 m declarados em recorte_imagens_500m.gpkg. O MBTiles original na entrada não foi alterado; o projeto usa WebP com transparência fora dos círculos. Fonte e licença da imagem não foram inferidas. Compare auditoria_recorte_circular.csv e verifique o projeto no QField offline antes do campo.")
+      if (any(vapply(camadas, function(l) identical(l$papel, "acesso"), logical(1)))) texto <- c(texto, "Camada UC_acessos: linhas fornecidas pela UC, em verde, somente leitura. Não são transectos amostrais medidos nem substituem o apoio_campo.gpkg editável. O manifesto camadas_qfield.csv declara o papel acesso e a fonte conserva os atributos originais.")
       writeLines(enc2utf8(texto), file.path(pacote, "LEIA_ME.txt"), useBytes = TRUE)
       fs <- list.files(pacote, recursive = TRUE, full.names = FALSE)
       man <- data.table::data.table(arquivo = fs, bytes = file.info(file.path(pacote, fs))$size, sha256 = vapply(file.path(pacote, fs), digest::digest, character(1), algo = "sha256", file = TRUE))
