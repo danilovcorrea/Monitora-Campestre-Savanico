@@ -44,6 +44,10 @@ projeto, perfil ou arquivo auxiliar.
 - As coordenadas mostradas pela interface do QField são longitude e latitude
   WGS 84/EPSG:4326 em graus decimais, com seis casas. O CRS cartográfico do
   projeto continua EPSG:3857 para manter os MBTiles alinhados.
+- A camada `Google Satellite` é uma alternativa online e inicia desativada.
+  Ative-a no painel de camadas somente quando houver internet. Seus tiles não
+  integram o ZIP nem substituem o Sentinel e o MBTiles detalhado disponíveis
+  para navegação offline.
 - O relatório de validação separa modificações atuais, herdadas e efeitos
   históricos não quantificáveis; inclui histórico de exclusões, cadastros e
   validação espacial com limites de evidência explícitos.

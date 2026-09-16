@@ -39,6 +39,9 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 - No projeto QField, o mapa permanece em EPSG:3857 para compatibilidade com os
   MBTiles; a interface de navegação exibe longitude e latitude em WGS 84,
   graus decimais e seis casas.
+- `Google Satellite` volta a constar como mapa-base alternativo exclusivamente
+  online e inicialmente desativado. A camada requer internet e não é baixada,
+  empacotada nem usada para comprovar a cobertura dos fundos offline.
 - O início do RStudio, o contrato único/XLSForm 2025 e os módulos anteriores
   permanecem preservados. O script segue abaixo de 5 MB também em CRLF.
 
