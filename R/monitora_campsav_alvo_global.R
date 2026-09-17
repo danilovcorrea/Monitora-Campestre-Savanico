@@ -2,7 +2,8 @@
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
 ### Versão pública do script: 2.9.26
-### Baseline pública de origem: v2.9.24
+### Revisão substitutiva r02, homologada no RStudio Windows em 17/09/2026
+### Baseline pública de origem: v2.9.26 — build v2.9.26-20260916-r01
 ### Esta versão atualiza relatórios e incorpora um projeto QField opcional.
 ### A inicialização do RStudio, o contrato XLSForm e o fluxo anterior são preservados.
 ### Finalidade
@@ -208,7 +209,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.26"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260916-r01"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260917-r02"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -960,9 +961,29 @@ monitora_sanitizar_ausencias_produto <- function(x) {
     v <- out[[cc]]
     if (is.character(v) || is.factor(v)) {
       v <- as.character(v)
+      presentes <- which(!is.na(v))
+      if (length(presentes)) {
+        invalidos <- presentes[!validUTF8(v[presentes])]
+        if (length(invalidos)) {
+          stop(
+            "Escrita tabular: coluna `", cc, "` contém bytes inválidos em UTF-8 nas linhas ",
+            paste(utils::head(invalidos, 10L), collapse = ", "),
+            if (length(invalidos) > 10L) " ..." else "",
+            ".",
+            call. = FALSE
+          )
+        }
+        Encoding(v[presentes]) <- "UTF-8"
+      }
       z <- trimws(v)
+      codigos_traco <- c(0x002DL, 0x2013L, 0x2014L, 0x2212L)
+      traco_ausencia <- vapply(z, function(valor) {
+        if (is.na(valor) || !nzchar(valor)) return(FALSE)
+        pontos <- utf8ToInt(enc2utf8(valor))
+        length(pontos) > 0L && all(pontos %in% codigos_traco)
+      }, logical(1L), USE.NAMES = FALSE)
       ausente <- is.na(v) | !nzchar(z) | tolower(z) == "na" |
-        grepl("^[[:space:]]*[-–—−]+[[:space:]]*$", z, perl = TRUE)
+        traco_ausencia
       if (any(ausente, na.rm = TRUE)) v[ausente] <- NA_character_
       data.table::set(out, j = cc, value = v)
     }
@@ -11364,11 +11385,40 @@ monitora_publicacao_ae_cache_set <- function(nome, valor) {
   invisible(valor)
 }
 
-monitora_publicacao_ae_ausencia_fisica_na <- function(x) {
+monitora_publicacao_ae_texto_utf8 <- function(x, contexto = "publicacao_csv") {
   v <- as.character(x)
+  presentes <- which(!is.na(v))
+  if (length(presentes)) {
+    invalidos <- presentes[!validUTF8(v[presentes])]
+    if (length(invalidos)) {
+      stop(
+        contexto, ": texto com bytes inválidos em UTF-8 nas posições ",
+        paste(utils::head(invalidos, 10L), collapse = ", "),
+        if (length(invalidos) > 10L) " ..." else "",
+        ".",
+        call. = FALSE
+      )
+    }
+    Encoding(v[presentes]) <- "UTF-8"
+  }
+  v
+}
+
+monitora_publicacao_ae_eh_traco_ausencia <- function(x) {
+  z <- trimws(monitora_publicacao_ae_texto_utf8(x, "publicacao_csv_tracos"))
+  codigos_traco <- c(0x002DL, 0x2013L, 0x2014L, 0x2212L)
+  vapply(z, function(valor) {
+    if (is.na(valor) || !nzchar(valor)) return(FALSE)
+    pontos <- utf8ToInt(enc2utf8(valor))
+    length(pontos) > 0L && all(pontos %in% codigos_traco)
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+monitora_publicacao_ae_ausencia_fisica_na <- function(x) {
+  v <- monitora_publicacao_ae_texto_utf8(x, "publicacao_csv_ausencia")
   z <- trimws(v)
   aus <- is.na(v) | !nzchar(z) | tolower(z) == "na" |
-    grepl("^[[:space:]]*[-–—−]+[[:space:]]*$", z, perl = TRUE)
+    monitora_publicacao_ae_eh_traco_ausencia(z)
   v[aus] <- "NA"
   v
 }
@@ -11392,7 +11442,7 @@ monitora_publicacao_ae_preparar_registros_corrig_para_csv <- function(dt,
     depois <- monitora_publicacao_ae_ausencia_fisica_na(antes)
     n_vazios <- sum(is.na(antes) | !nzchar(trimws(antes)), na.rm = TRUE)
     n_na_literal <- sum(!is.na(antes) & tolower(trimws(antes)) == "na", na.rm = TRUE)
-    n_tracos <- sum(!is.na(antes) & grepl("^[[:space:]]*[-–—−]+[[:space:]]*$", trimws(antes), perl = TRUE), na.rm = TRUE)
+    n_tracos <- sum(monitora_publicacao_ae_eh_traco_ausencia(antes), na.rm = TRUE)
     n_alterados <- sum(!identical(antes, depois) & (is.na(antes) | antes != depois), na.rm = TRUE)
     if (n_vazios || n_na_literal || n_tracos || n_alterados) {
       k <- k + 1L
@@ -42577,8 +42627,12 @@ monitora_io_detectar_tipo_cabecalho <- function(header, base = "") {
 
 monitora_io_converter_utf8_sem_perda <- function(x, origem = "WINDOWS-1252", contexto = "texto") {
   x <- as.character(x)
-  idx <- which(!is.na(x) & !validUTF8(x))
-  if (!length(idx)) return(list(valor = x, n_convertidos = 0L, origem = "UTF-8"))
+  presentes <- which(!is.na(x))
+  idx <- presentes[!validUTF8(x[presentes])]
+  if (!length(idx)) {
+    if (length(presentes)) Encoding(x[presentes]) <- "UTF-8"
+    return(list(valor = x, n_convertidos = 0L, origem = "UTF-8"))
+  }
   convertido <- iconv(x[idx], from = origem, to = "UTF-8", sub = NA_character_)
   retorno <- iconv(convertido, from = "UTF-8", to = origem, sub = NA_character_)
   ida_ok <- !is.na(convertido) & !is.na(retorno)
@@ -42594,7 +42648,41 @@ monitora_io_converter_utf8_sem_perda <- function(x, origem = "WINDOWS-1252", con
     )
   }
   x[idx] <- convertido
+  Encoding(x[presentes]) <- "UTF-8"
   list(valor = x, n_convertidos = as.integer(length(idx)), origem = origem)
+}
+
+monitora_locale_utf8_ativar <- function(contexto = "módulo") {
+  anterior <- Sys.getlocale("LC_CTYPE")
+  eh_utf8 <- function(x) length(x) == 1L && !is.na(x) && grepl("utf-?8", x, ignore.case = TRUE, perl = TRUE)
+  if (eh_utf8(anterior)) return(list(alterado = FALSE, anterior = anterior, atual = anterior, contexto = contexto))
+  candidatos <- unique(c(
+    if (.Platform$OS.type == "windows") ".UTF-8" else "C.UTF-8",
+    "C.UTF-8", "en_US.UTF-8", "English_United States.utf8"
+  ))
+  atual <- ""
+  for (candidato in candidatos) {
+    tentativa <- suppressWarnings(tryCatch(Sys.setlocale("LC_CTYPE", candidato), error = function(e) ""))
+    if (eh_utf8(tentativa)) {
+      atual <- tentativa
+      break
+    }
+  }
+  if (!eh_utf8(atual)) {
+    stop(
+      contexto, ": não foi possível ativar um locale UTF-8 temporário a partir de `", anterior,
+      "`. Reinicie o RStudio com a configuração regional padrão UTF-8 e tente novamente.",
+      call. = FALSE
+    )
+  }
+  list(alterado = TRUE, anterior = anterior, atual = atual, contexto = contexto)
+}
+
+monitora_locale_utf8_restaurar <- function(estado) {
+  if (is.list(estado) && isTRUE(estado$alterado) && length(estado$anterior) == 1L && nzchar(estado$anterior)) {
+    suppressWarnings(try(Sys.setlocale("LC_CTYPE", estado$anterior), silent = TRUE))
+  }
+  invisible(TRUE)
 }
 
 monitora_io_ler_csv_texto <- function(path, nrows = Inf, ...) {
@@ -42611,14 +42699,14 @@ monitora_io_ler_csv_texto <- function(path, nrows = Inf, ...) {
     status = "sem_conversao"
   )
   conv_nomes <- monitora_io_converter_utf8_sem_perda(names(x), contexto = paste0("cabeçalho de ", basename(path)))
-  if (conv_nomes$n_convertidos > 0L) data.table::setnames(x, conv_nomes$valor)
+  data.table::setnames(x, conv_nomes$valor)
   aud[, n_nomes_colunas_convertidos := conv_nomes$n_convertidos]
   if (nrow(x)) {
     n_conv <- 0L
     for (cc in names(x)) {
       if (!is.character(x[[cc]])) next
       conv <- monitora_io_converter_utf8_sem_perda(x[[cc]], contexto = paste0("coluna ", cc, " de ", basename(path)))
-      if (conv$n_convertidos > 0L) data.table::set(x, j = cc, value = conv$valor)
+      data.table::set(x, j = cc, value = conv$valor)
       n_conv <- n_conv + conv$n_convertidos
     }
     aud[, n_celulas_convertidas := as.integer(n_conv)]
@@ -54289,14 +54377,50 @@ monitora_qfield_dependencias <- function() {
   invisible(TRUE)
 }
 
-monitora_qfield_xml <- function(x) {
-  x <- as.character(x); x[is.na(x)] <- ""
-  for (par in list(c("&", "&amp;"), c("<", "&lt;"), c(">", "&gt;"), c('"', "&quot;"), c("'", "&apos;"))) x <- gsub(par[1], par[2], x, fixed = TRUE)
+monitora_qfield_utf8 <- function(x, contexto = "QField") {
+  x <- as.character(x)
+  presentes <- which(!is.na(x))
+  if (length(presentes)) {
+    invalidos <- presentes[!validUTF8(x[presentes])]
+    if (length(invalidos)) {
+      stop(
+        contexto, ": texto com bytes inválidos em UTF-8 nas posições ",
+        paste(utils::head(invalidos, 10L), collapse = ", "),
+        if (length(invalidos) > 10L) " ..." else "",
+        ".",
+        call. = FALSE
+      )
+    }
+    Encoding(x[presentes]) <- "UTF-8"
+  }
   x
 }
 
+monitora_qfield_dt_utf8 <- function(x, contexto = "QField dados") {
+  if (is.null(x)) return(NULL)
+  if (!inherits(x, c("data.frame", "data.table"))) return(x)
+  dt <- data.table::as.data.table(data.table::copy(x))
+  for (cc in names(dt)) {
+    valor <- dt[[cc]]
+    if (!(is.character(valor) || is.factor(valor))) next
+    data.table::set(
+      dt,
+      j = cc,
+      value = monitora_qfield_utf8(valor, paste0(contexto, " coluna ", cc))
+    )
+  }
+  dt
+}
+
+monitora_qfield_xml <- function(x) {
+  x <- monitora_qfield_utf8(x, "QField XML"); x[is.na(x)] <- ""
+  for (par in list(c("&", "&amp;"), c("<", "&lt;"), c(">", "&gt;"), c('"', "&quot;"), c("'", "&apos;"))) x <- gsub(par[1], par[2], x, fixed = TRUE)
+  monitora_qfield_utf8(x, "QField XML escapado")
+}
+
 monitora_qfield_slug <- function(x) {
-  y <- iconv(as.character(x), to = "ASCII//TRANSLIT", sub = "")
+  x <- monitora_qfield_utf8(x, "QField identificador")
+  y <- iconv(x, from = "UTF-8", to = "ASCII//TRANSLIT", sub = "")
   y <- tolower(gsub("[^A-Za-z0-9]+", "_", y))
   y <- gsub("^_+|_+$", "", y)
   if (!length(y) || anyNA(y) || any(!nzchar(y))) stop("QField: identificador vazio.", call. = FALSE)
@@ -54606,7 +54730,11 @@ monitora_qfield_ler_adicionais <- function(entrada, scratch) {
 
 monitora_qfield_info_raster <- function(path) {
   if (!identical(readBin(path, what = "raw", n = 16L), c(charToRaw("SQLite format 3"), as.raw(0)))) stop("QField: assinatura MBTiles/SQLite inválida; nenhum raster foi aberto.", call. = FALSE)
-  jsonlite::fromJSON(sf::gdal_utils("info", path, options = c("-json", "-if", "MBTiles"), quiet = TRUE), simplifyVector = FALSE)
+  # Os metadados contratuais são lidos diretamente da tabela SQLite abaixo.
+  # Omiti-los do gdalinfo impede que uma descrição UTF-8 válida, mas exposta
+  # pelo GDAL na codificação nativa de um locale Windows restritivo, invalide o
+  # JSON antes da inspeção objetiva de bandas e CRS.
+  jsonlite::fromJSON(sf::gdal_utils("info", path, options = c("-json", "-nomd", "-if", "MBTiles"), quiet = TRUE), simplifyVector = FALSE)
 }
 
 monitora_qfield_inspecionar_mbtiles <- function(path) {
@@ -54746,6 +54874,23 @@ monitora_qfield_kml <- function(camadas, destino) {
 }
 
 monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
+  uc <- monitora_qfield_utf8(uc, "QField nome da UC")
+  normalizar_metadados <- function(itens, contexto) {
+    lapply(seq_along(itens), function(i) {
+      item <- itens[[i]]
+      for (campo in names(item)) {
+        if (is.character(item[[campo]]) || is.factor(item[[campo]])) {
+          item[[campo]] <- monitora_qfield_utf8(
+            item[[campo]],
+            paste0(contexto, " ", i, " campo ", campo)
+          )
+        }
+      }
+      item
+    })
+  }
+  camadas <- normalizar_metadados(camadas, "QField camada")
+  rasters <- normalizar_metadados(rasters, "QField raster")
   esc <- monitora_qfield_xml
   srs <- function(epsg) paste0('<spatialrefsys nativeFormat="Wkt"><wkt>', esc(sf::st_crs(epsg)$wkt), '</wkt><proj4>', esc(sf::st_crs(epsg)$proj4string), '</proj4><srsid>0</srsid><srid>', epsg, '</srid><authid>EPSG:', epsg, '</authid><description>EPSG:', epsg, '</description><projectionacronym>', if (epsg == 4326) 'longlat' else 'merc', '</projectionacronym><ellipsoidacronym>WGS84</ellipsoidacronym><geographicflag>', if (epsg == 4326) 'true' else 'false', '</geographicflag></spatialrefsys>')
   google_id <- "monitora_google_satellite_online"
@@ -54810,8 +54955,10 @@ monitora_qfield_escrever_qgs <- function(destino, uc, camadas, rasters, bbox) {
   )
   linhas <- c('<?xml version="1.0" encoding="UTF-8"?>', '<qgis version="3.44.9" projectname="Monitora QField">', paste0('<title>', esc(titulo), '</title><homePath path=""/><projectCrs>', srs(3857), '</projectCrs>'), paste0('<mapcanvas><units>meters</units>', ext, '<rotation>0</rotation><destinationsrs>', srs(3857), '</destinationsrs></mapcanvas>'), paste0('<layer-tree-group name="" checked="Qt::Checked" expanded="1">', paste(arvore, collapse = ""), '</layer-tree-group><projectlayers>', paste(xml, collapse = ""), '</projectlayers>'), '<properties><Paths><Absolute type="bool">false</Absolute></Paths><Gui><CanvasColorRedPart type="int">235</CanvasColorRedPart><CanvasColorGreenPart type="int">240</CanvasColorGreenPart><CanvasColorBluePart type="int">235</CanvasColorBluePart></Gui><PositionPrecision><Automatic type="bool">true</Automatic><DecimalPlaces type="int">2</DecimalPlaces></PositionPrecision>', decor, '</properties><ProjectViewSettings rotation="0" UseProjectScales="0">', vista, '</ProjectViewSettings>', formato_coordenadas, '</qgis>')
   linhas <- sub('<properties><Paths>', '<properties><SpatialRefSys><ProjectionsEnabled type="int">1</ProjectionsEnabled><ProjectCrs type="QString">EPSG:3857</ProjectCrs></SpatialRefSys><Paths>', linhas, fixed = TRUE)
-  xml2::read_xml(paste(linhas, collapse = "\n"), options = "NONET")
-  writeLines(enc2utf8(linhas), destino, useBytes = TRUE)
+  linhas <- monitora_qfield_utf8(linhas, "QField projeto QGS")
+  documento <- monitora_qfield_utf8(paste(linhas, collapse = "\n"), "QField documento QGS")
+  xml2::read_xml(charToRaw(enc2utf8(documento)), options = "NONET")
+  writeLines(documento, destino, useBytes = TRUE)
   invisible(destino)
 }
 
@@ -55045,7 +55192,13 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
                                  biologicos = file.path(base_dir, "input"), adquirir_sentinel = TRUE,
                                  origem_ensaio = NULL, validacao_espacial = NULL, consensos_espaciais = NULL) {
   if (!isTRUE(ativado)) return(invisible(list(status = "desativado")))
+  locale_qfield <- monitora_locale_utf8_ativar("QField")
+  on.exit(monitora_locale_utf8_restaurar(locale_qfield), add = TRUE)
   monitora_qfield_dependencias()
+  registros <- monitora_qfield_dt_utf8(registros, "QField registros")
+  validacao_espacial <- monitora_qfield_dt_utf8(validacao_espacial, "QField validação espacial")
+  consensos_espaciais <- monitora_qfield_dt_utf8(consensos_espaciais, "QField consensos espaciais")
+  if (!is.null(origem_ensaio)) origem_ensaio <- monitora_qfield_utf8(origem_ensaio, "QField origem do ensaio")
   entrada_nova <- file.path(base_dir, "qfield_input")
   entrada_legada <- file.path(base_dir, "qfield_entrada")
   usando_padrao_novo <- identical(normalizePath(entrada_dir, winslash = "/", mustWork = FALSE), normalizePath(entrada_nova, winslash = "/", mustWork = FALSE))
@@ -70399,7 +70552,29 @@ if (!exists("MONITORA_RELATORIO_TEXTUAL_GERADO") && exists("MONITORA_OUTPUT_DIR"
 
 monitora_relatorios_analiticos_dt <- function(x = NULL) {
   if (is.null(x) || !is.data.frame(x)) return(data.table::data.table())
-  data.table::as.data.table(data.table::copy(x))
+  dt <- data.table::as.data.table(data.table::copy(x))
+  for (cc in names(dt)) {
+    valor <- dt[[cc]]
+    if (!(is.character(valor) || is.factor(valor))) next
+    texto <- as.character(valor)
+    presentes <- which(!is.na(texto))
+    if (length(presentes)) {
+      invalidos <- presentes[!validUTF8(texto[presentes])]
+      if (length(invalidos)) {
+        stop(
+          "Relatórios analíticos: coluna `", cc,
+          "` contém bytes inválidos em UTF-8 nas linhas ",
+          paste(utils::head(invalidos, 10L), collapse = ", "),
+          if (length(invalidos) > 10L) " ..." else "",
+          ".",
+          call. = FALSE
+        )
+      }
+      Encoding(texto[presentes]) <- "UTF-8"
+    }
+    data.table::set(dt, j = cc, value = texto)
+  }
+  dt
 }
 
 monitora_relatorios_analiticos_harmonizar_uc_registros <- function(registros, uc) {
@@ -82339,8 +82514,9 @@ monitora_relatorios_analiticos_epoca <- function(base, stat, dir_relatorio) {
   coletas[, criterio := if (escolha_unica) paste0("Exploratório: meses ", paste(meses, collapse = ", "), "; não é janela oficial") else
     "Referência exploratória não unívoca ou datas insuficientes"]
   calendario <- coletas[, .(Coletas = .N, UAs = data.table::uniqueN(UA),
-    `Datas ausentes ou conflitantes` = sum(!data_confiavel)), by = .(Ano = ANO, Mês = mes)]
-  data.table::setorder(calendario, Ano, Mês)
+    `Datas ausentes ou conflitantes` = sum(!data_confiavel)), by = .(Ano = ANO, Mes = mes)]
+  data.table::setorder(calendario, Ano, Mes)
+  data.table::setnames(calendario, "Mes", enc2utf8("Mês"))
   s <- data.table::copy(data.table::as.data.table(stat))
   colunas <- list(categorias_gerais = list(cobertura = c("sum_presence_nativa", "sum_presence_exotica", "sum_presence_seca_morta", "material_botanico", "solo_nu"),
       proporcao_relativa = c("sum_nativa", "sum_exotica", "sum_seca_morta", "material_botanico", "solo_nu")),
@@ -82794,6 +82970,8 @@ monitora_relatorios_analiticos_gerar <- function(
   prop_material = NULL,
   cob_material = NULL
 ) {
+  locale_relatorios <- monitora_locale_utf8_ativar("Relatórios analíticos")
+  on.exit(monitora_locale_utf8_restaurar(locale_relatorios), add = TRUE)
   inicio <- proc.time()[["elapsed"]]
   monitor_relatorios <- new.env(parent = emptyenv())
   monitor_relatorios$inicio <- Sys.time()

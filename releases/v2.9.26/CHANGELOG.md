@@ -2,6 +2,17 @@
 
 ## v2.9.26 - 2026-09-16
 
+### Revisão substitutiva r02 - 2026-09-17
+
+- Torna leitura CSV, relatórios analíticos e QField explicitamente seguros em
+  UTF-8, sem depender do locale ativo no Windows.
+- Valida o XML do QGS antes da promoção e impede que metadados GDAL incompatíveis
+  sejam transportados ao projeto.
+- Substitui a detecção locale-sensível de travessões de ausência por comparação
+  auditável de pontos de código Unicode.
+- Reproduz e aprova no RStudio Windows a rodada APA Ibirapuitã que havia falhado,
+  sem alterar inputs, contrato XLSForm ou inicialização congelada.
+
 ### Relatório analítico
 
 - Evidências temporais principais passam a usar todas as UAs comuns a cada par
