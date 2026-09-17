@@ -5,6 +5,7 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 ## Versão pública atual
 
 - Versão: `v2.9.26`
+- Build público atual: `v2.9.26-20260917-r02`
 - Script principal: [`monitora_campsav_alvo_global_v2.9.26.R`](monitora_campsav_alvo_global_v2.9.26.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
 - Cópia congelada: [`releases/v2.9.26/`](releases/v2.9.26/)
@@ -19,6 +20,10 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 
 ## Destaques da v2.9.26
 
+- A revisão substitutiva `r02` reforça UTF-8 no Windows nos fluxos de CSV,
+  relatórios, QField e finalização, sem mudar o contrato XLSForm ou as decisões
+  semânticas. A rodada APA Ibirapuitã anteriormente falha foi concluída no
+  RStudio 2026.04 com R 4.6.0.
 - O relatório de validação apresenta histórico documentado de decisões,
   modificações efetivas, exclusões e ações espaciais por sessão e por ano. Efeito
   não comprovado é informado como não quantificável, nunca como zero presumido.

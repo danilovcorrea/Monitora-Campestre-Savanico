@@ -1,8 +1,11 @@
 #!/usr/bin/env Rscript
 
 args <- commandArgs(trailingOnly = TRUE)
-candidata <- normalizePath(if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.27.R", mustWork = TRUE)
-baseline <- normalizePath(if (length(args) >= 2L) args[[2L]] else "monitora_campsav_alvo_global_v2.9.26.R", mustWork = TRUE)
+if (length(args) != 2L) {
+  stop("Uso: Rscript test_v2926_r02_escopo_restrito.R <release_r02.R> <baseline_r01.R>", call. = FALSE)
+}
+candidata <- normalizePath(args[[1L]], mustWork = TRUE)
+baseline <- normalizePath(args[[2L]], mustWork = TRUE)
 
 funcoes <- function(path) {
   arvore <- parse(path, keep.source = FALSE, encoding = "UTF-8")[[1L]]
@@ -54,6 +57,6 @@ if (!identical(alteradas, permitidas_alteradas)) stop("Funções alteradas fora 
 if (!identical(novas, permitidas_novas)) stop("Funções novas fora do escopo: ", paste(setdiff(novas, permitidas_novas), collapse = " | "), call. = FALSE)
 if (length(removidas)) stop("Funções removidas: ", paste(removidas, collapse = " | "), call. = FALSE)
 cat(sprintf(
-  "TEST_V2927_ESCOPO_RESTRITO_OK; alteradas=%d; novas=%d; removidas=0\n",
+  "TEST_V2926_R02_ESCOPO_RESTRITO_OK; alteradas=%d; novas=%d; removidas=0\n",
   length(alteradas), length(novas)
 ))

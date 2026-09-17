@@ -58,7 +58,7 @@ if (!identical(suppressWarnings(Sys.setlocale("LC_CTYPE", "C")), "C")) stop("Nã
 resultado <- env$monitora_qfield_gerar(
   registros = registros, output_dir = file.path(destino, "output"), base_dir = destino,
   ativado = TRUE, importar = TRUE, adquirir_sentinel = FALSE,
-  origem_ensaio = "APAI: simulação da leitura produtiva UTF-8; candidata v2.9.27",
+  origem_ensaio = "APAI: simulação da leitura produtiva UTF-8; candidata v2.9.26 r02",
   validacao_espacial = validacao, consensos_espaciais = consensos
 )
 if (!identical(Sys.getlocale("LC_CTYPE"), "C")) stop("O módulo QField não restaurou o locale anterior.")
@@ -133,7 +133,7 @@ if (dir.exists(file.path(destino, "qfield_entrada")) ||
 }
 
 cat(sprintf(
-  paste0("APAI_QFIELD_UTF8_V2927_OK; locale=C; zoom=%d; UAs=%d; tiles=%d/%d; ",
+  paste0("APAI_QFIELD_UTF8_V2926_R02_OK; locale=C; zoom=%d; UAs=%d; tiles=%d/%d; ",
     "redução=%.1f%%; KML=2 feições; cobertura=%d extremos; ZIP=%d bytes; fontes intactas; projeto=%s\n"),
   inspecao_fonte$zoom_max[[1L]], nrow(buffers), recorte$tiles_recortados[[1L]], recorte$tiles_fonte[[1L]],
   recorte$reducao_pct[[1L]], nrow(cobertura[arquivo == arquivo_detalhe]), resultado$bytes_zip[[1L]],

@@ -1,6 +1,23 @@
 # Monitora Campestre-Savânico v2.9.26
 
-Publicada em 16 de setembro de 2026 sobre a v2.9.25 `r04`.
+Publicada em 16 de setembro de 2026 sobre a v2.9.25 `r04`. A revisão
+substitutiva `r02`, de 17 de setembro de 2026, mantém o mesmo serial e corrige
+falhas dependentes do locale do Windows observadas na rodada APA Ibirapuitã.
+
+## Revisão substitutiva r02 — robustez no Windows
+
+- Leitura de CSV, relatórios analíticos e projeto QField passam a preservar e
+  validar UTF-8 explicitamente, inclusive sob locale restritivo.
+- A escrita do QGS valida o XML antes da promoção e evita metadados GDAL que
+  produziam conteúdo incompatível no fluxo MBTiles.
+- Ausências representadas por travessões Unicode deixam de depender de classes
+  de expressão regular sensíveis ao locale.
+- A tentativa que havia falhado foi repetida integralmente no RStudio 2026.04
+  com R 4.6.0 no Windows: 7.878 registros, relatórios nos formatos solicitados,
+  mapa, projeto QField e finalização foram aprovados; inputs permaneceram
+  byte a byte intactos.
+- Inicialização do RStudio, contrato XLSForm, regras semânticas e módulos fora
+  do escopo permanecem preservados.
 
 ## Evidências temporais e relatório analítico
 
@@ -61,4 +78,4 @@ Publicada em 16 de setembro de 2026 sobre a v2.9.25 `r04`.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.26.R`. O build exibido no console é
-`v2.9.26-20260916-r01`.
+`v2.9.26-20260917-r02`.

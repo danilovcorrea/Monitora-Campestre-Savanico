@@ -21,6 +21,13 @@ RStudio, quando necessário. No teste real no RStudio para Windows, a execução
 iniciou imediatamente após o clique em **Source**. Não é necessário launcher,
 projeto, perfil ou arquivo auxiliar.
 
+O arquivo deve ser aberto como UTF-8. Se os acentos aparecerem corrompidos ou o
+console informar que tentou decodificar o script como ASCII, interrompa antes de
+processar dados, use **File > Reopen with Encoding... > UTF-8** e reinicie a
+sessão R. Se a sessão tiver sido colocada manualmente no locale `C`, restaure no
+console `Sys.setlocale("LC_CTYPE", "Portuguese_Brazil.utf8")` antes de usar
+**Source**. Não salve uma cópia exibida com caracteres corrompidos.
+
 ## Novidades operacionais da v2.9.26
 
 - Para gerar o projeto QField, use `MONITORA_OPCAO_GERAR_PROJETO_QFIELD = "S"`

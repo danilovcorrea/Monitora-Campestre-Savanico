@@ -3,7 +3,7 @@
 suppressPackageStartupMessages(library(data.table))
 args <- commandArgs(trailingOnly = TRUE)
 candidata <- normalizePath(
-  if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.27.R",
+  if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.26.R",
   mustWork = TRUE
 )
 base_dir <- dirname(candidata)
@@ -84,6 +84,6 @@ erro <- tryCatch({ e$monitora_qfield_utf8(invalido); "" }, error = conditionMess
 assert(nzchar(erro) && grepl("bytes inv", erro, fixed = TRUE), "Bytes realmente inválidos não foram bloqueados.")
 
 cat(sprintf(
-  "TEST_V2927_UTF8_WINDOWS_OK; locale=%s; qgs_bytes=%d; titulo=%s\n",
+  "TEST_V2926_R02_UTF8_WINDOWS_OK; locale=%s; qgs_bytes=%d; titulo=%s\n",
   locale_c, file.info(destino)$size, enc2utf8(titulo)
 ))

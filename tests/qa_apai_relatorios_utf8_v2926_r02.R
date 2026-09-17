@@ -16,7 +16,7 @@ dir_qa_fixo <- if (length(args) >= 4L) {
 } else {
   trimws(Sys.getenv("MONITORA_QA_DIR_FIXO", unset = ""))
 }
-gate_utf8_v2927 <- TRUE
+gate_utf8_v2926_r02 <- TRUE
 
 if (!file.exists(script)) stop("Script candidato ausente: ", script, call. = FALSE)
 if (!dir.exists(fonte)) stop("Output-fonte ausente: ", fonte, call. = FALSE)
@@ -271,9 +271,9 @@ MONITORA_STAT_COMPOSICAO_LINHA_BASE_PAINEL_ANO_INICIAL <- rbindlist(lapply(parte
   z
 }), fill = TRUE, use.names = TRUE)
 
-locale_anterior_v2927 <- Sys.getlocale("LC_CTYPE")
-if (isTRUE(gate_utf8_v2927)) {
-  on.exit(try(Sys.setlocale("LC_CTYPE", locale_anterior_v2927), silent = TRUE), add = TRUE)
+locale_anterior_v2926_r02 <- Sys.getlocale("LC_CTYPE")
+if (isTRUE(gate_utf8_v2926_r02)) {
+  on.exit(try(Sys.setlocale("LC_CTYPE", locale_anterior_v2926_r02), silent = TRUE), add = TRUE)
   if (!identical(suppressWarnings(Sys.setlocale("LC_CTYPE", "C")), "C")) {
     stop("Não foi possível ativar LC_CTYPE=C no gate UTF-8.", call. = FALSE)
   }
@@ -292,7 +292,7 @@ resultado <- monitora_relatorios_analiticos_gerar(
   cob_nat = cob_nat,
   cob_exot = cob_exot,
   output_dir = dir_qa,
-  formatos = if (isTRUE(gate_utf8_v2927)) c("rmd", "md", "html") else c("rmd", "md", "html", "docx", "pdf"),
+  formatos = if (isTRUE(gate_utf8_v2926_r02)) c("rmd", "md", "html") else c("rmd", "md", "html", "docx", "pdf"),
   mapa_satelite = ativar_sentinel,
   fonte_mapa_satelite = "SENTINEL2_PUBLICO",
   status_validacao = "QA",
@@ -306,12 +306,12 @@ resultado <- monitora_relatorios_analiticos_gerar(
   prop_material = prop_material,
   cob_material = cob_material
 )
-if (isTRUE(gate_utf8_v2927)) assert(identical(Sys.getlocale("LC_CTYPE"), "C"),
+if (isTRUE(gate_utf8_v2926_r02)) assert(identical(Sys.getlocale("LC_CTYPE"), "C"),
   "O módulo de relatórios não restaurou o locale anterior.")
 
 dir_rel <- resultado$diretorio
 assert(dir.exists(dir_rel), "Diretório final dos relatórios não foi criado.")
-if (isTRUE(gate_utf8_v2927)) {
+if (isTRUE(gate_utf8_v2926_r02)) {
   esperados_utf8 <- c(
     unlist(lapply(c("sintetico", "detalhado"), function(tipo) {
       unlist(lapply(c("Rmd", "md", "html"), function(ext) {
@@ -332,7 +332,7 @@ if (isTRUE(gate_utf8_v2927)) {
   detalhado_md <- list.files(dir_rel, pattern = "relatorio_analitico_detalhado.*[.]md$", full.names = TRUE)
   assert(length(detalhado_md) == 1L && grepl("Área de Proteção Ambiental Ibirapuitã", paste(readLines(detalhado_md, warn = FALSE, encoding = "UTF-8"), collapse = "\n"), fixed = TRUE),
     "Nome acentuado da UC não foi preservado no relatório detalhado.")
-  cat("QA_APAI_RELATORIOS_UTF8_V2927_OK\nDIR_RELATORIO=", normalizePath(dir_rel, winslash = "/", mustWork = TRUE),
+  cat("QA_APAI_RELATORIOS_UTF8_V2926_R02_OK\nDIR_RELATORIO=", normalizePath(dir_rel, winslash = "/", mustWork = TRUE),
       "\nDURACAO_RELATORIOS_S=", round(resultado$duracao_segundos, 3L), "\n", sep = "")
   quit(save = "no", status = 0L, runLast = FALSE)
 }

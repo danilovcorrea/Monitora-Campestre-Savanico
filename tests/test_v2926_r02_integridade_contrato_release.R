@@ -1,14 +1,11 @@
 #!/usr/bin/env Rscript
 
 args <- commandArgs(trailingOnly = TRUE)
-candidata <- normalizePath(
-  if (length(args)) args[[1L]] else "monitora_campsav_alvo_global_v2.9.27.R",
-  mustWork = TRUE
-)
-baseline <- normalizePath(
-  if (length(args) >= 2L) args[[2L]] else "monitora_campsav_alvo_global_v2.9.26.R",
-  mustWork = TRUE
-)
+if (length(args) != 2L) {
+  stop("Uso: Rscript test_v2926_r02_integridade_contrato_release.R <release_r02.R> <baseline_r01.R>", call. = FALSE)
+}
+candidata <- normalizePath(args[[1L]], mustWork = TRUE)
+baseline <- normalizePath(args[[2L]], mustWork = TRUE)
 assert <- function(ok, msg) if (!isTRUE(ok)) stop(msg, call. = FALSE)
 
 linhas_c <- readLines(candidata, warn = FALSE, encoding = "UTF-8")
@@ -70,8 +67,8 @@ assert(
 
 texto <- paste(linhas_c, collapse = "\n")
 for (trecho in c(
-  'MONITORA_SCRIPT_VERSAO <- "2.9.27-candidata"',
-  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.27-candidata-20260917-r01"',
+  'MONITORA_SCRIPT_VERSAO <- "2.9.26"',
+  'MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260917-r02"',
   'MONITORA_OPCAO_GERAR_PROJETO_QFIELD',
   'MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD',
   'monitora_qfield_referencia_navegacao',
@@ -84,7 +81,7 @@ bytes_crlf <- bytes_lf + length(linhas_c)
 assert(bytes_crlf < limite, "A candidata excederia 5 MiB no RStudio em CRLF.")
 
 cat(sprintf(
-    paste0("TEST_V2927_INTEGRIDADE_CONTRATO_RELEASE_OK; contrato_identico=TRUE; ",
+    paste0("TEST_V2926_R02_INTEGRIDADE_CONTRATO_RELEASE_OK; contrato_identico=TRUE; ",
     "inicio_RStudio_identico=TRUE; LF=%d; CRLF=%d; margem_RStudio=%d\n"),
   bytes_lf, bytes_crlf, limite - bytes_crlf
 ))

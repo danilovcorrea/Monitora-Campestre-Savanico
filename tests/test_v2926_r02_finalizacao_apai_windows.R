@@ -25,10 +25,10 @@ if (!identical(dim(sanitizada_geral), dim(dt)) || !identical(names(sanitizada_ge
 }
 resultado <- e$monitora_publicacao_ae_preparar_registros_corrig_para_csv(
   dt,
-  contexto = "gate_finalizacao_apai_v2927",
+  contexto = "gate_finalizacao_apai_v2926_r02",
   output_dir = file.path(destino, "output"),
   log_dir = file.path(destino, "log"),
-  exec_id = "gate_v2927"
+  exec_id = "gate_v2926_r02"
 )
 hash_depois <- digest::digest(dt, algo = "sha256", serialize = TRUE)
 if (!identical(hash_antes, hash_depois)) stop("A preparação para CSV alterou a fonte em memória.", call. = FALSE)
@@ -41,6 +41,6 @@ auditoria <- file.path(destino, "output", "auditoria_registros_corrig_ausencias_
 if (!file.exists(auditoria) || file.info(auditoria)$size <= 0L) stop("Auditoria da sanitização final não foi materializada.", call. = FALSE)
 if (!identical(Sys.getlocale("LC_CTYPE"), "C")) stop("A sanitização alterou o locale da sessão.", call. = FALSE)
 cat(sprintf(
-  "TEST_V2927_FINALIZACAO_APAI_WINDOWS_OK; linhas=%d; colunas=%d; hash_fonte_intacto=TRUE; auditoria=%s\n",
+  "TEST_V2926_R02_FINALIZACAO_APAI_WINDOWS_OK; linhas=%d; colunas=%d; hash_fonte_intacto=TRUE; auditoria=%s\n",
   nrow(resultado), ncol(resultado), normalizePath(auditoria, winslash = "/", mustWork = TRUE)
 ))

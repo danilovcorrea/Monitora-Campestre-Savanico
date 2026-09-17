@@ -28,6 +28,6 @@ if (length(detalhado) != 1L || !grepl("Área de Proteção Ambiental Ibirapuitã
   stop("O nome acentuado da UC não foi preservado no relatório detalhado.", call. = FALSE)
 }
 cat(sprintf(
-  "VALIDAR_APAI_RELATORIOS_UTF8_V2927_OK; arquivos_textuais=%d; documentos=%d; diretorio=%s\n",
+  "VALIDAR_APAI_RELATORIOS_UTF8_V2926_R02_OK; arquivos_textuais=%d; documentos=%d; diretorio=%s\n",
   length(textos), length(esperados) - 2L, normalizePath(dir_rel, winslash = "/", mustWork = TRUE)
 ))
