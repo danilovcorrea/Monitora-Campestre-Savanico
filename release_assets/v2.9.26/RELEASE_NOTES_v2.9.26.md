@@ -1,8 +1,27 @@
 # Monitora Campestre-Savânico v2.9.26
 
 Publicada em 16 de setembro de 2026 sobre a v2.9.25 `r04`. A revisão
-substitutiva `r03`, de 17 de setembro de 2026, mantém o mesmo serial e corrige
-a geração antecipada do relatório de validação nos modos de checkpoint parcial.
+substitutiva `r04`, de 18 de setembro de 2026, mantém o mesmo serial, corrige a
+persistência semântica da lista repetida de coletores e torna o relatório de
+validação autônomo nos modos de checkpoint parcial.
+
+## Revisão substitutiva r04 — persistência de coletores e relatório autônomo
+
+- A compactação determinística de coletores deixa de gerar falso erro quando a
+  sequência ordenada nome–CPF da coleta permanece exatamente igual. A
+  comparação usa hash SHA-256 e não publica nomes ou CPFs na auditoria.
+- A exceção é restrita à lista repetida de coletores. Mudança de quantidade,
+  conteúdo ou ordem continua sendo divergência impeditiva; uma mutação real foi
+  usada como contraprova na homologação.
+- O relatório de validação passa a carregar antes do checkpoint os próprios
+  formatadores e recursos DOCX necessários. Assim, sua geração não depende do
+  módulo analítico posterior e funciona também em
+  `painel_incremental_registros_corrig`.
+- Os casos reais FNB e RVOB foram reproduzidos no R 4.6.0 do Windows: 33
+  operações atômicas em 10 coletas, com 6 reclassificações semânticas legítimas
+  e nenhuma falha de persistência remanescente.
+- A inicialização congelada do RStudio, o contrato XLSForm e as famílias de
+  operação fora desse escopo permanecem inalterados.
 
 ## Revisão substitutiva r03 — relatório do checkpoint parcial
 
@@ -95,4 +114,4 @@ a geração antecipada do relatório de validação nos modos de checkpoint parc
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.26.R`. O build exibido no console é
-`v2.9.26-20260917-r03`.
+`v2.9.26-20260918-r04`.
