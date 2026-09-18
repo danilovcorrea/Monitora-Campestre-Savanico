@@ -2,7 +2,7 @@
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
 ### Versão pública do script: 2.9.26
-### Candidata substitutiva r04, em homologação no RStudio Windows em 18/09/2026
+### Revisão substitutiva r04, publicada após homologação no RStudio Windows em 18/09/2026
 ### Baseline pública de origem: v2.9.26 — build v2.9.26-20260917-r03
 ### Esta versão atualiza relatórios e incorpora um projeto QField opcional.
 ### A inicialização do RStudio, o contrato XLSForm e o fluxo anterior são preservados.

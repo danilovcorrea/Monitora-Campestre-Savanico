@@ -5,7 +5,7 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 ## Versão pública atual
 
 - Versão: `v2.9.26`
-- Build público atual: `v2.9.26-20260917-r03`
+- Build público atual: `v2.9.26-20260918-r04`
 - Script principal: [`monitora_campsav_alvo_global_v2.9.26.R`](monitora_campsav_alvo_global_v2.9.26.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
 - Cópia congelada: [`releases/v2.9.26/`](releases/v2.9.26/)
@@ -20,6 +20,12 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 
 ## Destaques da v2.9.26
 
+- A revisão substitutiva `r04` elimina falsos negativos de persistência ao
+  compactar a lista repetida de coletores: o gate passa a conferir a sequência
+  semântica ordenada nome–CPF por coleta, sem expor dados pessoais, e continua
+  bloqueando qualquer alteração material real. O relatório de validação também
+  passa a ser autônomo nos checkpoints parciais, inclusive em
+  `painel_incremental_registros_corrig`.
 - A revisão substitutiva `r03` corrige a ordem de carregamento do relatório de
   validação nos checkpoints parciais. A homologação real da FNB no R 4.6.0 do
   Windows gerou o relatório para 21.311 registros sem alterar contrato,

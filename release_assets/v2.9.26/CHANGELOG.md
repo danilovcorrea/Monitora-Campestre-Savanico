@@ -2,6 +2,22 @@
 
 ## v2.9.26 - 2026-09-16
 
+### Revisão substitutiva r04 - 2026-09-18
+
+- Corrige falsos negativos da verificação de persistência quando a compactação
+  determinística da lista de coletores muda apenas a posição física dos membros.
+- Confere a sequência semântica ordenada nome–CPF por coleta, com hash SHA-256 e
+  sem registrar nomes ou CPFs na auditoria; divergências reais permanecem
+  impeditivas.
+- Torna o relatório de validação autônomo em checkpoints parciais, removendo sua
+  dependência de formatadores e funções DOCX definidos apenas no módulo analítico
+  posterior.
+- Homologa no R 4.6.0 do Windows os casos reais FNB e RVOB: 33 operações
+  atômicas, 10 coletas e 6 reclassificações semânticas legítimas, sem aceitar a
+  mutação negativa usada como contraprova.
+- Preserva a inicialização congelada do RStudio, o contrato XLSForm, as regras
+  semânticas das demais operações e os módulos fora do escopo.
+
 ### Revisão substitutiva r03 - 2026-09-17
 
 - Corrige a ordem de carregamento de `monitora_stat_uc_chave_equivalencia`,
