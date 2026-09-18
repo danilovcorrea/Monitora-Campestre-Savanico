@@ -5,7 +5,7 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 ## Versão pública atual
 
 - Versão: `v2.9.26`
-- Build público atual: `v2.9.26-20260917-r02`
+- Build público atual: `v2.9.26-20260917-r03`
 - Script principal: [`monitora_campsav_alvo_global_v2.9.26.R`](monitora_campsav_alvo_global_v2.9.26.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
 - Cópia congelada: [`releases/v2.9.26/`](releases/v2.9.26/)
@@ -20,6 +20,10 @@ A validação operacional de `registros_corrig.csv` usa o contrato consolidado d
 
 ## Destaques da v2.9.26
 
+- A revisão substitutiva `r03` corrige a ordem de carregamento do relatório de
+  validação nos checkpoints parciais. A homologação real da FNB no R 4.6.0 do
+  Windows gerou o relatório para 21.311 registros sem alterar contrato,
+  inicialização ou semântica das funções.
 - A revisão substitutiva `r02` reforça UTF-8 no Windows nos fluxos de CSV,
   relatórios, QField e finalização, sem mudar o contrato XLSForm ou as decisões
   semânticas. A rodada APA Ibirapuitã anteriormente falha foi concluída no

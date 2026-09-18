@@ -2,8 +2,8 @@
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
 ### Versão pública do script: 2.9.26
-### Revisão substitutiva r02, homologada no RStudio Windows em 17/09/2026
-### Baseline pública de origem: v2.9.26 — build v2.9.26-20260916-r01
+### Revisão substitutiva r03, homologada no RStudio Windows em 17/09/2026
+### Baseline pública de origem: v2.9.26 — build v2.9.26-20260917-r02
 ### Esta versão atualiza relatórios e incorpora um projeto QField opcional.
 ### A inicialização do RStudio, o contrato XLSForm e o fluxo anterior são preservados.
 ### Finalidade
@@ -209,7 +209,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.26"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260917-r02"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260917-r03"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1539,6 +1539,21 @@ monitora_doc_resumo_transformacoes <- function(x, auditorias_execucao = NULL, co
 
 monitora_doc_resumo_executivo_tratamentos <- function(ops, auditorias_execucao = NULL) {
   monitora_doc_resumo_transformacoes(monitora_doc_transformacoes_dt(ops), auditorias_execucao)
+}
+
+## Utilitário compartilhado pelos relatórios de validação e pelo módulo
+## estatístico. Deve permanecer definido antes do encerramento parcial, pois os
+## modos painel_incremental_registros_corrig e painel_e_parar geram o relatório
+## sem carregar o bloco estatístico posterior.
+monitora_stat_uc_chave_equivalencia <- function(x) {
+  y <- tolower(enc2utf8(trimws(as.character(x))))
+  y <- gsub("[[:punct:]]+", " ", y)
+  y <- trimws(gsub("[[:space:]]+", " ", y))
+  partes <- strsplit(y, " ", fixed = TRUE)
+  vapply(partes, function(z) {
+    z <- z[nzchar(z) & !(z %in% c("da", "de", "do", "das", "dos"))]
+    paste(z, collapse = " ")
+  }, character(1L), USE.NAMES = FALSE)
 }
 
 monitora_doc_universos_ocorrencias <- function(registros, comparacao = NULL) {
@@ -61889,17 +61904,6 @@ rm(list = intersect(c(
 ), ls()))
 
 monitora_dt_mover_colunas_antes(registros_corrig_stat, "COLETA", "UC")
-
-monitora_stat_uc_chave_equivalencia <- function(x) {
-  y <- tolower(enc2utf8(trimws(as.character(x))))
-  y <- gsub("[[:punct:]]+", " ", y)
-  y <- trimws(gsub("[[:space:]]+", " ", y))
-  partes <- strsplit(y, " ", fixed = TRUE)
-  vapply(partes, function(z) {
-    z <- z[nzchar(z) & !(z %in% c("da", "de", "do", "das", "dos"))]
-    paste(z, collapse = " ")
-  }, character(1L), USE.NAMES = FALSE)
-}
 
 monitora_stat_reconciliar_grafias_uc <- function(dt, output_dir = get0(
   "MONITORA_OUTPUT_DIR",

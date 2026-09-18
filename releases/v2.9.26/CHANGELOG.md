@@ -2,6 +2,19 @@
 
 ## v2.9.26 - 2026-09-16
 
+### Revisão substitutiva r03 - 2026-09-17
+
+- Corrige a ordem de carregamento de `monitora_stat_uc_chave_equivalencia`,
+  disponibilizando-a antes da geração do relatório de validação nos checkpoints
+  parciais.
+- Preserva byte semanticamente todas as funções da `r02`: a alteração funcional
+  limita-se ao reposicionamento da definição e ao identificador inequívoco do
+  build `v2.9.26-20260917-r03`.
+- Homologa o relatório sobre a run17 da FNB, com 21.311 registros e 211 coletas,
+  no R 4.6.0 do Windows e com o Pandoc do RStudio.
+- Mantém a inconsistência nome/CPF da coleta 10898 como aviso específico dos
+  dados, sem inferência automática e sem bloquear os CSVs principais.
+
 ### Revisão substitutiva r02 - 2026-09-17
 
 - Torna leitura CSV, relatórios analíticos e QField explicitamente seguros em
