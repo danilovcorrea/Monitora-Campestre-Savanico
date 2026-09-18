@@ -2,8 +2,8 @@
 ### Plantas Herbáceas e Lenhosas do Componente Campestre Savânico
 ### Programa Monitora - CBC/ICMBio
 ### Versão pública do script: 2.9.26
-### Revisão substitutiva r03, homologada no RStudio Windows em 17/09/2026
-### Baseline pública de origem: v2.9.26 — build v2.9.26-20260917-r02
+### Candidata substitutiva r04, em homologação no RStudio Windows em 18/09/2026
+### Baseline pública de origem: v2.9.26 — build v2.9.26-20260917-r03
 ### Esta versão atualiza relatórios e incorpora um projeto QField opcional.
 ### A inicialização do RStudio, o contrato XLSForm e o fluxo anterior são preservados.
 ### Finalidade
@@ -209,7 +209,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "2.9.26"
-MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260917-r03"
+MONITORA_SCRIPT_BUILD_ID <- "v2.9.26-20260918-r04"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1190,8 +1190,26 @@ monitora_doc_chr <- function(x, vazio = "") {
   if (is.na(x) || !nzchar(trimws(x))) vazio else x
 }
 
+monitora_doc_fmt_num <- function(x, casas = 1L) {
+  x <- suppressWarnings(as.numeric(x))
+  ifelse(
+    is.na(x) | !is.finite(x),
+    "NA",
+    formatC(x, format = "f", digits = as.integer(casas), decimal.mark = ",", big.mark = ".")
+  )
+}
+
+monitora_doc_fmt_percentual <- function(x) {
+  z <- suppressWarnings(as.numeric(x))
+  out <- monitora_doc_fmt_num(z, 1L)
+  out[is.finite(z) & z > 0 & z < 0.1] <- "<0,1"
+  out[!is.finite(z)] <- "—"
+  out
+}
+
 monitora_doc_title_case_utf8 <- function(x) {
   z <- as.character(x)
+  if (!length(z)) return(z)
   presentes <- !is.na(z)
   if (any(presentes) && !all(validUTF8(z[presentes]))) {
     stop(
@@ -1721,7 +1739,7 @@ monitora_doc_historico_relatorio <- function(operacoes, registros, output_dir, d
   )]
   objetos$ocorrencias_anuais_para_leitura <- data.table::copy(ocorrencias_anuais)
   if (nrow(ocorrencias_anuais)) objetos$ocorrencias_anuais_para_leitura[, `Coletas com ocorrência (%)` :=
-    monitora_relatorios_analiticos_fmt_percentual(`Coletas com ocorrência (%)`)]
+    monitora_doc_fmt_percentual(`Coletas com ocorrência (%)`)]
   arquivos <- vapply(names(objetos), function(nm) {
     p <- file.path(data_dir, paste0(nm, ".csv"))
     monitora_doc_fwrite(objetos[[nm]], p)
@@ -2840,6 +2858,394 @@ monitora_doc_validacao_adequar_layout_docx <- function(arquivo_docx) {
   invisible(arquivo_docx)
 }
 
+### Dependências editoriais autônomas do relatório de validação. Estas
+### definições antecedem qualquer checkpoint parcial e não dependem do módulo
+### de relatórios analíticos, carregado posteriormente.
+monitora_doc_referencia_docx_sha256 <- function() {
+  "68fa8b38724086946590eaa7b3ee36d4ad58169feb78d9c90df4edea57e2e54c"
+}
+
+monitora_doc_referencia_docx_base64 <- function() {
+  paste0(
+    "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"
+  )
+}
+
+monitora_doc_referencia_docx_materializar <- function(destino) {
+  bruto <- jsonlite::base64_dec(
+    monitora_doc_referencia_docx_base64()
+  )
+  conexao <- file(destino, open = "wb")
+  on.exit(try(close(conexao), silent = TRUE), add = TRUE)
+  writeBin(bruto, conexao)
+  close(conexao)
+  on.exit(NULL, add = FALSE)
+  hash <- digest::digest(file = destino, algo = "sha256")
+  if (!identical(
+    hash,
+    monitora_doc_referencia_docx_sha256()
+  )) {
+    stop(
+      "Integridade do modelo editorial DOCX embutido não comprovada.",
+      call. = FALSE
+    )
+  }
+  if (!requireNamespace("xml2", quietly = TRUE) || !requireNamespace("zip", quietly = TRUE)) {
+    stop("A adequação A4 do DOCX exige os pacotes 'xml2' e 'zip'.", call. = FALSE)
+  }
+  dir_docx <- tempfile(pattern = ".monitora_docx_a4_")
+  dir.create(dir_docx, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dir_docx, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(destino, exdir = dir_docx)
+  documento_xml <- file.path(dir_docx, "word", "document.xml")
+  if (!file.exists(documento_xml)) stop("Modelo DOCX sem word/document.xml.", call. = FALSE)
+  doc <- xml2::read_xml(documento_xml)
+  ns <- xml2::xml_ns(doc)
+  pg_sz <- xml2::xml_find_all(doc, ".//w:sectPr/w:pgSz", ns)
+  pg_mar <- xml2::xml_find_all(doc, ".//w:sectPr/w:pgMar", ns)
+  if (!length(pg_sz) || !length(pg_mar)) stop("Modelo DOCX sem propriedades de seção editáveis.", call. = FALSE)
+  xml2::xml_set_attr(pg_sz, "w:w", "11906")
+  xml2::xml_set_attr(pg_sz, "w:h", "16838")
+  xml2::xml_set_attr(pg_sz, "w:orient", NULL)
+  xml2::xml_set_attr(pg_mar, "w:top", "1020")
+  xml2::xml_set_attr(pg_mar, "w:right", "964")
+  xml2::xml_set_attr(pg_mar, "w:bottom", "1077")
+  xml2::xml_set_attr(pg_mar, "w:left", "964")
+  xml2::write_xml(doc, documento_xml, options = "format")
+  arquivo_a4 <- tempfile(pattern = ".monitora_referencia_a4_", fileext = ".docx")
+  on.exit(if (file.exists(arquivo_a4)) unlink(arquivo_a4, force = TRUE), add = TRUE)
+  arquivos_docx <- list.files(dir_docx, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  zip::zipr(arquivo_a4, arquivos_docx, root = dir_docx, include_directories = FALSE, mode = "mirror")
+  if (!file.copy(arquivo_a4, destino, overwrite = TRUE)) stop("Falha ao materializar modelo DOCX A4.", call. = FALSE)
+  invisible(destino)
+}
+
+monitora_doc_coluna_contextual_mesclavel <- function(x) {
+  y <- iconv(trimws(as.character(x)), from = "UTF-8", to = "ASCII//TRANSLIT")
+  y <- gsub("[^a-z0-9]+", " ", tolower(y))
+  y <- trimws(gsub("[[:space:]]+", " ", y))
+  y %in% c(
+    "uc", "ano", "metrica", "grupo", "referencia", "prioridade",
+    "natureza", "natureza da informacao", "componente", "contexto",
+    "classe de continuidade"
+  )
+}
+
+monitora_doc_validacao_preservar_linhas_tabela <- function(arquivo_docx) {
+  if (!file.exists(arquivo_docx) || is.na(file.info(arquivo_docx)$size) || file.info(arquivo_docx)$size <= 0) {
+    stop("DOCX ausente ou vazio antes da adequação de paginação.", call. = FALSE)
+  }
+  if (!requireNamespace("xml2", quietly = TRUE) || !requireNamespace("zip", quietly = TRUE)) {
+    stop("A adequação de paginação do DOCX exige os pacotes 'xml2' e 'zip'.", call. = FALSE)
+  }
+
+  dir_docx <- tempfile(pattern = ".monitora_docx_tabelas_")
+  dir.create(dir_docx, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dir_docx, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(arquivo_docx, exdir = dir_docx)
+  documento_xml <- file.path(dir_docx, "word", "document.xml")
+  if (!file.exists(documento_xml)) stop("DOCX sem word/document.xml.", call. = FALSE)
+
+  doc <- xml2::read_xml(documento_xml)
+  ns <- xml2::xml_ns(doc)
+  uri_w <- "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  linhas <- xml2::xml_find_all(doc, ".//w:tr", ns)
+  if (length(linhas)) {
+    for (linha in linhas) {
+      propriedades <- xml2::xml_find_first(linha, "./w:trPr", ns)
+      if (inherits(propriedades, "xml_missing")) {
+        primeiro_filho <- xml2::xml_child(linha, 1L)
+        propriedades <- xml2::xml_add_sibling(
+          primeiro_filho,
+          xml2::read_xml(paste0('<w:trPr xmlns:w="', uri_w, '"/>')),
+          .where = "before"
+        )
+      }
+      if (!length(xml2::xml_find_all(propriedades, "./w:cantSplit", ns))) {
+        xml2::xml_add_child(
+          propriedades,
+          xml2::read_xml(paste0('<w:cantSplit xmlns:w="', uri_w, '"/>'))
+        )
+      }
+    }
+  }
+
+  tabelas <- xml2::xml_find_all(doc, ".//w:tbl", ns)
+  for (tab in tabelas) {
+    linhas_tab <- xml2::xml_find_all(tab, "./w:tr", ns)
+    if (length(linhas_tab) < 3L) next
+    cab_trpr <- xml2::xml_find_first(linhas_tab[[1L]], "./w:trPr", ns)
+    if (inherits(cab_trpr, "xml_missing")) {
+      primeiro <- xml2::xml_child(linhas_tab[[1L]], 1L)
+      cab_trpr <- xml2::xml_add_sibling(
+        primeiro,
+        xml2::read_xml(paste0('<w:trPr xmlns:w="', uri_w, '"/>')),
+        .where = "before"
+      )
+    }
+    if (!length(xml2::xml_find_all(cab_trpr, "./w:tblHeader", ns))) {
+      xml2::xml_add_child(cab_trpr, xml2::read_xml(paste0('<w:tblHeader xmlns:w="', uri_w, '"/>')))
+    }
+    cab_cells <- xml2::xml_find_all(linhas_tab[[1L]], "./w:tc", ns)
+    cab <- trimws(vapply(cab_cells, xml2::xml_text, character(1L)))
+    colunas <- which(monitora_doc_coluna_contextual_mesclavel(cab))
+    if (!length(colunas)) next
+    dados_linhas <- linhas_tab[-1L]
+    for (jj in rev(colunas)) {
+      celulas <- lapply(dados_linhas, function(linha) xml2::xml_find_all(linha, "./w:tc", ns))
+      valores <- vapply(celulas, function(cels) {
+        if (length(cels) < jj) "" else trimws(xml2::xml_text(cels[[jj]]))
+      }, character(1L))
+      ini <- 1L
+      while (ini <= length(valores)) {
+        fim <- ini
+        while (fim < length(valores) && nzchar(valores[[ini]]) && identical(valores[[fim + 1L]], valores[[ini]])) fim <- fim + 1L
+        if (fim > ini && nzchar(valores[[ini]])) {
+          for (rr in seq.int(ini, fim)) {
+            cel <- celulas[[rr]][[jj]]
+            tcpr <- xml2::xml_find_first(cel, "./w:tcPr", ns)
+            if (inherits(tcpr, "xml_missing")) {
+              primeiro <- xml2::xml_child(cel, 1L)
+              tcpr <- xml2::xml_add_sibling(
+                primeiro,
+                xml2::read_xml(paste0('<w:tcPr xmlns:w="', uri_w, '"/>')),
+                .where = "before"
+              )
+            }
+            antigos <- xml2::xml_find_all(tcpr, "./w:vMerge", ns)
+            if (length(antigos)) xml2::xml_remove(antigos)
+            vm <- if (rr == ini) {
+              paste0('<w:vMerge xmlns:w="', uri_w, '" w:val="restart"/>')
+            } else {
+              paste0('<w:vMerge xmlns:w="', uri_w, '"/>')
+            }
+            xml2::xml_add_child(tcpr, xml2::read_xml(vm))
+            if (rr > ini) {
+              textos <- xml2::xml_find_all(cel, ".//w:t", ns)
+              if (length(textos)) xml2::xml_set_text(textos, "")
+            }
+          }
+        }
+        ini <- fim + 1L
+      }
+    }
+  }
+
+  paragrafos <- xml2::xml_find_all(doc, ".//w:body//w:p[not(ancestor::w:tbl)]", ns)
+  for (par in paragrafos) {
+    texto <- trimws(xml2::xml_text(par))
+    if (!nzchar(texto) || length(xml2::xml_find_all(par, ".//w:drawing|.//w:pict", ns))) next
+    estilo_no <- xml2::xml_find_first(par, "./w:pPr/w:pStyle", ns)
+    estilo <- if (inherits(estilo_no, "xml_missing")) "" else as.character(xml2::xml_attr(estilo_no, "val"))
+    if (is.na(estilo) || !nzchar(estilo)) {
+      attrs_estilo <- if (inherits(estilo_no, "xml_missing")) character(0) else xml2::xml_attrs(estilo_no)
+      pos_val <- grep("val$", names(attrs_estilo), ignore.case = TRUE, perl = TRUE)[1L]
+      estilo <- if (!is.na(pos_val)) as.character(attrs_estilo[[pos_val]]) else ""
+    }
+    ppr <- xml2::xml_find_first(par, "./w:pPr", ns)
+    if (inherits(ppr, "xml_missing")) {
+      primeiro <- xml2::xml_child(par, 1L)
+      ppr <- xml2::xml_add_sibling(
+        primeiro,
+        xml2::read_xml(paste0('<w:pPr xmlns:w="', uri_w, '"/>')),
+        .where = "before"
+      )
+    }
+    if (grepl("heading", estilo, ignore.case = TRUE, perl = TRUE)) {
+      if (!length(xml2::xml_find_all(ppr, "./w:keepNext", ns))) {
+        xml2::xml_add_child(ppr, xml2::read_xml(paste0('<w:keepNext xmlns:w="', uri_w, '"/>')))
+      }
+      next
+    }
+    if (grepl("title|subtitle|author|date|caption|toc|image", estilo, ignore.case = TRUE, perl = TRUE)) next
+    jc <- xml2::xml_find_first(ppr, "./w:jc", ns)
+    if (inherits(jc, "xml_missing")) {
+      jc <- xml2::xml_add_child(ppr, xml2::read_xml(paste0('<w:jc xmlns:w="', uri_w, '" w:val="both"/>')))
+    } else {
+      xml2::xml_set_attr(jc, "w:val", "both")
+    }
+  }
+  xml2::write_xml(doc, documento_xml, options = "format")
+
+  arquivo_ajustado <- tempfile(pattern = ".monitora_docx_paginado_", fileext = ".docx")
+  on.exit(if (file.exists(arquivo_ajustado)) unlink(arquivo_ajustado, force = TRUE), add = TRUE)
+  arquivos_docx <- list.files(dir_docx, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  zip::zipr(
+    arquivo_ajustado,
+    arquivos_docx,
+    root = dir_docx,
+    include_directories = FALSE,
+    mode = "mirror"
+  )
+  if (!file.copy(arquivo_ajustado, arquivo_docx, overwrite = TRUE)) {
+    stop("Falha ao aplicar a paginação íntegra das tabelas no DOCX.", call. = FALSE)
+  }
+  invisible(arquivo_docx)
+}
+
+
 monitora_doc_render_editaveis <- function(
   conteudo,
   base_dir,
@@ -2935,10 +3341,7 @@ monitora_doc_render_editaveis <- function(
         "Dependências ausentes para DOCX: ", paste(ausentes, collapse = ", "),
         call. = FALSE
       )
-      if (!exists("monitora_relatorios_analiticos_referencia_docx_materializar", mode = "function", inherits = TRUE)) {
-        stop("Modelo editorial DOCX embutido não foi carregado.", call. = FALSE)
-      }
-      get("monitora_relatorios_analiticos_referencia_docx_materializar", inherits = TRUE)(referencia_docx)
+      monitora_doc_referencia_docx_materializar(referencia_docx)
       rmarkdown::render(
         input = origem_docx,
         output_format = rmarkdown::word_document(
@@ -2959,9 +3362,7 @@ monitora_doc_render_editaveis <- function(
         clean = TRUE,
         envir = new.env(parent = globalenv())
       )
-      if (exists("monitora_relatorios_analiticos_docx_preservar_linhas_tabela", mode = "function", inherits = TRUE)) {
-        get("monitora_relatorios_analiticos_docx_preservar_linhas_tabela", inherits = TRUE)(candidato_docx)
-      }
+      monitora_doc_validacao_preservar_linhas_tabela(candidato_docx)
       monitora_doc_validacao_adequar_layout_docx(candidato_docx)
       monitora_doc_validacao_publicar(candidato_docx, destino_docx)
       monitora_doc_validacao_auditar_docx(
@@ -3687,17 +4088,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
   responsavel <- monitora_doc_resolver_responsavel(responsavel)
   instituicao <- monitora_doc_chr(instituicao, "ICMBio")
   formatos <- unique(tolower(as.character(formatos)))
-  docx_disponivel_nesta_chamada <- exists(
-    "monitora_relatorios_analiticos_referencia_docx_materializar",
-    mode = "function",
-    inherits = TRUE
-  )
-  formatos_nesta_chamada <- if (
-    "docx" %in% formatos && !isTRUE(docx_disponivel_nesta_chamada)
-  ) setdiff(formatos, "docx") else formatos
-  if ("docx" %in% formatos && !"docx" %in% formatos_nesta_chamada) {
-    message("[RELATORIO_VALIDACAO] DOCX reservado para a finalização terminal após o carregamento do modelo editorial embutido.")
-  }
+  formatos_nesta_chamada <- formatos
   versao_script <- monitora_doc_chr(get0("MONITORA_SCRIPT_VERSAO", ifnotfound = "indefinida", inherits = TRUE), "indefinida")
   build_script <- monitora_doc_chr(get0("MONITORA_SCRIPT_BUILD_ID", ifnotfound = "sem_identificador", inherits = TRUE), "sem_identificador")
   input_dir_relatorio <- normalizePath(
@@ -8820,6 +9211,121 @@ monitora_correcao_gravar_resumo_operacoes_atomicas <- function(audit, persistenc
   resumo[]
 }
 
+monitora_persist_repeat_coletor_estado <- function(dt, coletas, chaves = monitora_correcao_colunas_chave(dt)) {
+  dt <- data.table::as.data.table(dt)
+  coletas <- unique(as.character(coletas))
+  coletas <- coletas[!is.na(coletas) & nzchar(trimws(coletas))]
+  if (!nrow(dt) || !length(coletas) || is.na(chaves$coleta) || !(chaves$coleta %in% names(dt))) {
+    return(data.table::data.table(COLETA = character(), assinatura = character(), n_membros = integer()))
+  }
+  limpar <- function(x) {
+    z <- as.character(x)
+    z[is.na(z)] <- ""
+    z <- trimws(gsub("[[:space:]]+", " ", z, perl = TRUE))
+    z[tolower(z) %in% c("na", "n/a", "null", "nan") | z == "---"] <- ""
+    z
+  }
+  escolher <- function(candidatos, linhas) {
+    candidatos <- intersect(candidatos, names(dt))
+    if (!length(candidatos)) return(NA_character_)
+    preenchidos <- vapply(candidatos, function(cc) sum(nzchar(limpar(dt[[cc]][linhas]))), integer(1L))
+    candidatos[which.max(preenchidos)]
+  }
+  coleta_dt <- as.character(dt[[chaves$coleta]])
+  estados <- lapply(coletas, function(co) {
+    linhas <- which(!is.na(coleta_dt) & coleta_dt == co)
+    if (!length(linhas)) return(data.table::data.table(COLETA = co, assinatura = NA_character_, n_membros = NA_integer_))
+    col_nome <- escolher(c("coletor/nome", "COLETORES", "Coletores"), linhas)
+    col_cpf <- escolher(c("coletor/cpf", "CPF (coletor)", "cpf (coletor)"), linhas)
+    nomes <- if (!is.na(col_nome)) limpar(dt[[col_nome]][linhas]) else rep("", length(linhas))
+    cpfs <- if (!is.na(col_cpf)) limpar(dt[[col_cpf]][linhas]) else rep("", length(linhas))
+    nomes_preenchidos <- nomes[nzchar(nomes)]
+    broadcast <- length(nomes_preenchidos) > 1L && length(unique(nomes_preenchidos)) == 1L
+    if (isTRUE(broadcast)) {
+      nomes <- trimws(strsplit(nomes_preenchidos[1L], ";", fixed = TRUE)[[1L]])
+      nomes <- nomes[nzchar(nomes)]
+      cpfs <- cpfs[nzchar(cpfs)]
+      n_pares <- max(length(nomes), length(cpfs), 0L)
+      length(nomes) <- n_pares
+      length(cpfs) <- n_pares
+      nomes[is.na(nomes)] <- ""
+      cpfs[is.na(cpfs)] <- ""
+    }
+    usados <- nzchar(nomes) | nzchar(cpfs)
+    pares <- paste(nomes[usados], cpfs[usados], sep = "\r")
+    serial <- paste(pares, collapse = "\n")
+    assinatura <- if (requireNamespace("digest", quietly = TRUE)) {
+      digest::digest(serial, algo = "sha256", serialize = FALSE)
+    } else {
+      stop("Auditoria semântica do repeat de coletores exige o pacote 'digest'.", call. = FALSE)
+    }
+    data.table::data.table(COLETA = co, assinatura = assinatura, n_membros = as.integer(length(pares)))
+  })
+  data.table::rbindlist(estados, fill = TRUE, use.names = TRUE)
+}
+
+monitora_persist_repeat_coletor_capturar_esperado <- function(res, dt, chaves) {
+  res <- data.table::as.data.table(res)
+  if (!nrow(res) || !("id_correcao" %in% names(res)) || !("COLETA" %in% names(res))) return(invisible(NULL))
+  colrep <- res[grepl("^COLREP_", as.character(id_correcao))]
+  if (!nrow(colrep)) return(invisible(NULL))
+  aptas <- colrep[, .(sem_falha = !any(grepl("^falha", as.character(status_persistencia)))), by = COLETA][sem_falha == TRUE, COLETA]
+  estado <- monitora_persist_repeat_coletor_estado(dt, aptas, chaves)
+  estado <- estado[!is.na(assinatura)]
+  if (!nrow(estado)) return(invisible(NULL))
+  anterior <- get0(
+    "MONITORA_PERSISTENCIA_REPEAT_COLETOR_ESTADO_ESPERADO",
+    ifnotfound = data.table::data.table(COLETA = character(), assinatura = character(), n_membros = integer()),
+    inherits = TRUE
+  )
+  anterior <- data.table::as.data.table(anterior)
+  anterior <- anterior[!(COLETA %chin% estado$COLETA)]
+  assign(
+    "MONITORA_PERSISTENCIA_REPEAT_COLETOR_ESTADO_ESPERADO",
+    data.table::rbindlist(list(anterior, estado), fill = TRUE, use.names = TRUE),
+    envir = .GlobalEnv
+  )
+  invisible(estado)
+}
+
+monitora_persist_repeat_coletor_reclassificar <- function(res, dt, chaves) {
+  res <- data.table::as.data.table(res)
+  esperado <- get0("MONITORA_PERSISTENCIA_REPEAT_COLETOR_ESTADO_ESPERADO", ifnotfound = NULL, inherits = TRUE)
+  if (!nrow(res) || !inherits(esperado, c("data.frame", "data.table"))) return(res)
+  esperado <- data.table::as.data.table(esperado)
+  idx <- which(
+    grepl("^COLREP_", as.character(res$id_correcao)) &
+      grepl("^falha", as.character(res$status_persistencia))
+  )
+  if (!length(idx)) return(res)
+  coletas <- unique(as.character(res$COLETA[idx]))
+  atual <- monitora_persist_repeat_coletor_estado(dt, coletas, chaves)
+  comparacao <- merge(
+    esperado[, .(COLETA, assinatura_esperada = assinatura, n_membros_esperado = n_membros)],
+    atual[, .(COLETA, assinatura_final = assinatura, n_membros_final = n_membros)],
+    by = "COLETA", all = FALSE
+  )
+  ok <- comparacao[
+    !is.na(assinatura_esperada) & assinatura_esperada == assinatura_final &
+      !is.na(n_membros_esperado) & n_membros_esperado == n_membros_final,
+    COLETA
+  ]
+  idx_ok <- idx[as.character(res$COLETA[idx]) %chin% ok]
+  if (length(idx_ok)) {
+    data.table::set(res, i = idx_ok, j = "status_persistencia", value = "ok_repeat_coletor_estado_grupo_persistiu")
+    data.table::set(res, i = idx_ok, j = "categoria_persistencia_chave_estavel", value = "persistiu")
+    data.table::set(res, i = idx_ok, j = "mensagem", value = "A linha física mudou pela compactação determinística do repeat, mas a sequência final nome–CPF da COLETA é idêntica ao estado confirmado após a aplicação")
+    data.table::set(res, i = idx_ok, j = "modo_comparacao", value = "estado_semantico_repeat_coletor_por_coleta")
+    for (ii in idx_ok) {
+      co <- as.character(res$COLETA[ii])
+      cmp <- comparacao[COLETA == co][1L]
+      data.table::set(res, i = ii, j = "valor_esperado", value = paste0("sha256=", cmp$assinatura_esperada, ";membros=", cmp$n_membros_esperado))
+      data.table::set(res, i = ii, j = "valor_final", value = paste0("sha256=", cmp$assinatura_final, ";membros=", cmp$n_membros_final))
+    }
+  }
+  res
+}
+
 monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves = monitora_correcao_colunas_chave(dt), coletas_excluidas = character(), contexto = "pos_correcoes", abortar = TRUE) {
   audit <- data.table::as.data.table(audit)
   dt <- monitora_dt_referenciar(dt)
@@ -9306,7 +9812,9 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
       res
     }
 
+    monitora_persist_repeat_coletor_capturar_esperado(res, dt, chaves)
     res <- monitora_persist_reclassificar_estado_contratual(res, dt, chaves, contexto_estado = contexto)
+    res <- monitora_persist_repeat_coletor_reclassificar(res, dt, chaves)
 
  ### Reclassificação contratual de persistência --------------------------
     monitora_persist_reclassificar_triout_por_efeito_proprio <- function(res, audit, dt, contexto_estado = "pos_aplicacao_objeto") {
