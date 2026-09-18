@@ -1,8 +1,25 @@
 # Monitora Campestre-Savânico v2.9.26
 
 Publicada em 16 de setembro de 2026 sobre a v2.9.25 `r04`. A revisão
-substitutiva `r02`, de 17 de setembro de 2026, mantém o mesmo serial e corrige
-falhas dependentes do locale do Windows observadas na rodada APA Ibirapuitã.
+substitutiva `r03`, de 17 de setembro de 2026, mantém o mesmo serial e corrige
+a geração antecipada do relatório de validação nos modos de checkpoint parcial.
+
+## Revisão substitutiva r03 — relatório do checkpoint parcial
+
+- A função de equivalência dos nomes de UC passa a ser carregada antes do
+  primeiro consumidor documental. Isso elimina o erro
+  `could not find function "monitora_stat_uc_chave_equivalencia"` ao finalizar
+  `painel_incremental_registros_corrig`, `painel_e_parar` e caminhos parciais
+  equivalentes.
+- A função foi apenas reposicionada: sua expressão, a inicialização congelada do
+  RStudio, o contrato XLSForm e todas as demais funções permanecem idênticos à
+  revisão pública `r02`.
+- A homologação reproduziu o defeito na `r02` e aprovou a correção sobre os
+  21.311 registros e 211 coletas da FNB. O relatório `.Rmd`/`.md` foi gerado no
+  R 4.6.0 do Windows com o Pandoc instalado pelo RStudio.
+- A inconsistência nome/CPF da coleta 10898 continua corretamente fora de
+  automação: ela bloqueia somente a planilha XLSX opcional e exige confirmação
+  dos dados da equipe, sem afetar os CSVs principais.
 
 ## Revisão substitutiva r02 — robustez no Windows
 
@@ -78,4 +95,4 @@ falhas dependentes do locale do Windows observadas na rodada APA Ibirapuitã.
 ## Arquivo principal
 
 Use `monitora_campsav_alvo_global_v2.9.26.R`. O build exibido no console é
-`v2.9.26-20260917-r02`.
+`v2.9.26-20260917-r03`.
