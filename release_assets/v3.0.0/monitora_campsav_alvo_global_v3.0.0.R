@@ -203,7 +203,7 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
 MONITORA_SCRIPT_VERSAO <- "3.0.0"
-MONITORA_SCRIPT_BUILD_ID <- "v3.0.0-20260919-r08"
+MONITORA_SCRIPT_BUILD_ID <- "v3.0.0-20260919-r09"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -3470,7 +3470,7 @@ monitora_manual_usuario_cobertura_validar <- function(conteudo) {
     "uma única aba biológica", "Mapa dos diretórios de saída",
     "Tratamentos herdados e atuais", "Época das campanhas e linha de base",
     "material botânico antes de 2025", "pares insuficientes",
-    "qfield_input/", "zoom_max_real", "um círculo de 500 m por UA",
+    "qfield_input/", "zoom_max_real", "um círculo de 500 m por posição de referência",
     "auditoria_recorte_circular.csv", "Teste obrigatório do projeto QField",
     "Fogo e cobertura vegetal: ativar, ler e verificar",
     "Clima e variáveis bioclimáticas: ativar, ler e verificar",
@@ -3779,8 +3779,8 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "## O que pode e o que não pode ser editado", "", "O usuário deve editar somente as variáveis documentadas no bloco operacional inicial e os dados por meio dos controles do painel. Preserve o arquivo baixado, o `registros_corrig.csv`, a pasta `linhagem/`, os manifestos, as auditorias e os produtos canônicos. Não edite o corpo do script, a inicialização do RStudio, o contrato único, o XLSForm 2025, domínios de choices, regras de relevance, arquivos de linhagem ou CSVs do output para fazer uma ocorrência desaparecer. O contrato valida os registros; ele nunca deve ser alterado ou flexibilizado para acomodar erro do conjunto de dados. Quando a decisão biológica não for inequívoca, a ocorrência deve permanecer para curadoria ou justificativa, nunca ser inferida pelo código.", "",
     "Trabalhe preferencialmente em uma cópia local curta, fora da sincronização ativa do OneDrive. Depois de concluir e conferir, copie a pasta final para o diretório institucional. Não execute duas instâncias sobre a mesma pasta, não mova arquivos enquanto o R estiver escrevendo e não use **Stop** durante salvamento, promoção de produtos ou criação de ZIP.", "",
     "## Projeto QField de navegação", "", "Ative `MONITORA_OPCAO_GERAR_PROJETO_QFIELD = 'S'` para criar `output/09_qfield/` após a preparação espacial, sem alterar dados. O padrão N não carrega o módulo. Com `MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD = 'S'`, uma execução contendo uma UC aceita diretamente em `qfield_input/` arquivos MBTiles e vetores KML, KMZ, GPKG ou ZIP de shapefile. Não crie subpasta com o nome da UC, não imponha nome ao MBTiles e não coloque esses arquivos no `input/` biológico.", "",
-    "Cada MBTiles direto é inspecionado como banco SQLite/MBTiles; metadados e tiles materializados precisam concordar. A classificação usa `zoom_max_real`: 18 ou mais é **detalhe**, 15–17 é **operacional** e 14 ou menos é **regional**. Nome, pasta e extensão textual não substituem essa inspeção. Quando há detalhe, o script usa os consensos aceitos pela validação espacial para obter o ponto médio e produzir um círculo de 500 m por UA; grava `recorte_imagens_500m.gpkg`, descarta tiles sem interseção e mascara a borda em WebP transparente. O MBTiles em `qfield_input/` permanece intocado. Um recorte anterior somente é reutilizado quando UC, UAs, raio, formato e impressão digital dos buffers coincidem.", "",
-    "Nomes das camadas observadas: `UC_verg_ini_YYYY` e `UC_verg_fin_YYYY`, um ponto inicial e final por UA e ano nas coordenadas literais aceitas daquele ano. A variação normal do GPS é harmonizada somente pela validação espacial central; o módulo QField não cria tolerância concorrente. Pendências reais bloqueiam o projeto. Uma UA observada uma única vez pode constar provisoriamente, identificada na `auditoria_referencia_navegacao.csv`, sem alegação de consenso temporal. O KML de intercâmbio usa o último ano apenas como referência de navegação e não corrige a série histórica.", "",
+    "Cada MBTiles direto é inspecionado como banco SQLite/MBTiles; metadados e tiles materializados precisam concordar. A classificação usa `zoom_max_real`: 18 ou mais é **detalhe**, 15–17 é **operacional** e 14 ou menos é **regional**. Nome, pasta e extensão textual não substituem essa inspeção. Quando há detalhe, o script usa os consensos aceitos pela validação espacial para obter o ponto médio e produzir um círculo de 500 m por posição de referência (ou por alternativa temporal observada); grava `recorte_imagens_500m.gpkg`, descarta tiles sem interseção e mascara a borda em WebP transparente. O MBTiles em `qfield_input/` permanece intocado. Um recorte anterior somente é reutilizado quando UC, UAs, raio, formato e impressão digital dos buffers coincidem.", "",
+    "Nomes das camadas observadas: `UC_verg_ini_YYYY` e `UC_verg_fin_YYYY`. As posições mantêm UA, ano e COLETA nas coordenadas literais. Referência temporal ambígua ou insuficiente é alerta não impeditivo quando as coordenadas são utilizáveis; preserve as posições e confira os vergalhões em campo, sem correção artificial nem justificativa obrigatória. Divergências dos extremos, possível troca de UA, inversão e coordenadas inválidas ou conflitantes continuam bloqueando o projeto da UC. Nas UAs com alerta temporal, as alternativas aparecem nas camadas e no KML, com status e situação nos atributos; o recorte reúne círculos de 500 m em torno de cada posição observada. O centro de cada círculo é apenas o ponto médio do respectivo transecto, sem escolher uma posição como verdadeira. A auditoria preserva a rastreabilidade e as análises científicas mantêm seus critérios de elegibilidade. Nas demais UAs, o KML continua usando o último ano como referência operacional.", "",
     "Vetores comuns são importados como camadas adicionais somente leitura e conservam arquivo, camada e atributos; o script não presume que toda linha é estrada nem que todo ponto é PA. Para papel especial, use `camadas_qfield.csv` com `arquivo`, `camada` e `papel`: `pa_priorit_ini`, `pa_altern_ini` ou `acesso`; `sigla` é opcional. Os nomes padronizados dos PAs são `UC_PA_priorit_verg_ini` e `UC_PA_altern_verg_ini`, ambos referentes ao vergalhão inicial previsto. `apoio_campo.gpkg` contém `pontos_interesse` e `trajeto` editáveis; preserve uma cópia preenchida antes de substituir o projeto. `projeto_qfield.csv` pode declarar `UC,sigla`. Não importar projetos QGIS antigos, macros, ações ou links externos como se fossem dados.", "",
     "### Passo a passo do QField", "", "1. Execute uma UC por vez e mantenha a validação espacial habilitada. 2. Se houver imagem detalhada, copie o MBTiles original diretamente para `qfield_input/`; copie também estradas, trilhas, acessos, PAs ou pontos de interesse nos formatos aceitos. 3. Ative as duas opções QField quando houver arquivos externos; para projeto apenas com Sentinel gerado pelo script, a importação pode ficar em N. 4. Execute normalmente e aguarde a promoção do pacote: falha QField preserva os demais produtos e grava o motivo. 5. Abra `auditoria_imagens.csv`, `auditoria_recorte_circular.csv`, `auditoria_camadas.csv` e `auditoria_cobertura.csv`. Todos os extremos anuais precisam ter pixel válido. 6. Importe o ZIP numa pasta nova no aplicativo e confira nomes, símbolos, coordenadas em graus decimais, imagens, acessos e camadas editáveis.", "",
     "### Teste obrigatório do projeto QField", "", "Faça dois testes antes do campo. **Online:** habilite `Google Satellite`, confirme que é apenas visualização sob demanda e que não substitui os fundos locais. **Modo avião:** confirme que MBTiles detalhado/regional, extremos, escala, orientação e vetores essenciais continuam disponíveis. A camada Google inicia desativada, exige internet e nunca é baixada nem empacotada. Sentinel-2 possui informação nativa de 10 m e serve para contexto regional; zoom adicional não o transforma em imagem detalhada. Fonte, licença, data e resolução de uma imagem fornecida permanecem não declaradas quando o usuário não as informa.", "",
@@ -22836,6 +22836,39 @@ monitora_esp_diagnosticar_consensos_uas_coincidentes <- function(consensos, raio
   data.table::setorder(cand, UC, EA_a, UA_a, EA_b, UA_b)
   cand[]
 }
+monitora_esp_classificar_alertas_temporais <- function(validacao) {
+  v <- data.table::as.data.table(data.table::copy(validacao))
+  if (!nrow(v)) return(v)
+  if (!"status_espacial" %in% names(v)) v[, status_espacial := NA_character_]
+  temporais <- c("referencia_temporal_ambigua", "referencia_insuficiente")
+  aceitos <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada")
+  temporal <- v$status_espacial %in% temporais
+  utilizavel <- rep(TRUE, nrow(v))
+  for (cc in c("inicio_lon", "fim_lon", "inicio_lat", "fim_lat")) {
+    if (!cc %in% names(v)) { utilizavel[] <- FALSE; next }
+    z <- suppressWarnings(as.numeric(v[[cc]]))
+    utilizavel <- utilizavel & is.finite(z) & abs(z) <= if (grepl("lon$", cc)) 180 else 85
+  }
+  for (cc in intersect(c("inicio_valida", "fim_valida", "coordenadas_validas"), names(v)))
+    utilizavel <- utilizavel & !is.na(v[[cc]]) & as.logical(v[[cc]])
+  for (cc in intersect(c("n_coord_inicio_distintas", "n_coord_fim_distintas"), names(v)))
+    utilizavel <- utilizavel & !is.na(v[[cc]]) & v[[cc]] == 1L
+  if ("status_espacial_base" %in% names(v))
+    utilizavel <- utilizavel & v$status_espacial_base %in% c(temporais, aceitos)
+  utilizavel[is.na(utilizavel)] <- FALSE
+  if (!"pendencia_espacial" %in% names(v)) v[, pendencia_espacial := !(status_espacial %in% aceitos)]
+  v[is.na(pendencia_espacial) | !(status_espacial %in% c(aceitos, temporais)), pendencia_espacial := TRUE]
+  v[temporal, pendencia_espacial := !utilizavel[temporal]]
+  v[, `:=`(alerta_referencia_temporal_ambigua = status_espacial %in% "referencia_temporal_ambigua" & utilizavel,
+           alerta_referencia_insuficiente = status_espacial %in% "referencia_insuficiente" & utilizavel)]
+  if (!"alerta_espacial" %in% names(v)) v[, alerta_espacial := FALSE]
+  v[is.na(alerta_espacial), alerta_espacial := FALSE]
+  v[, alerta_espacial := alerta_espacial | alerta_referencia_temporal_ambigua | alerta_referencia_insuficiente]
+  v[, pendencia_ou_alerta_espacial := pendencia_espacial | alerta_espacial]
+  if ("sugestao_operacional" %in% names(v)) v[temporal & utilizavel,
+    sugestao_operacional := "alerta não impeditivo: preservar posições por campanha; confirmar vergalhões em campo, sem correção artificial"]
+  v[]
+}
 monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDACAO_ESPACIAL_M, alerta_m = MONITORA_RAIO_ALERTA_ESPACIAL_M, min_n = MONITORA_MIN_COLETAS_CONSENSO_ESPACIAL) {
   cdt <- data.table::as.data.table(data.table::copy(coletas))
   if (!nrow(cdt)) return(list(validacao = data.table::data.table(), consensos = data.table::data.table(), clusters = data.table::data.table(), consensos_uas_coincidentes = data.table::data.table()))
@@ -22942,6 +22975,7 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
   val[is.na(alerta_espacial), alerta_espacial := FALSE]
   val[, pendencia_ou_alerta_espacial := pendencia_espacial == TRUE | alerta_espacial == TRUE]
   val[is.na(pendencia_ou_alerta_espacial), pendencia_ou_alerta_espacial := TRUE]
+  val <- monitora_esp_classificar_alertas_temporais(val)
   sugestoes <- c(
     validada_espacialmente = "sem ação",
     validada_com_alerta_raio_rigoroso = "validada no raio operacional; revisar apenas se houver outro indício",
@@ -22951,16 +22985,17 @@ monitora_esp_validar_coletas <- function(coletas, raio_m = MONITORA_RAIO_VALIDAC
     pendencia_inicio_divergente = "revisar ou copiar coordenada do vergalhão inicial",
     pendencia_fim_divergente = "revisar ou copiar coordenada do vergalhão final",
     coordenadas_conflitantes_na_coleta = "reconciliar coordenadas divergentes registradas dentro da mesma COLETA",
-    referencia_temporal_ambigua = "revisar manualmente: há séries temporais concorrentes sem maioria inequívoca",
-    referencia_insuficiente = "não validar automaticamente; referência temporal insuficiente"
+    referencia_temporal_ambigua = "alerta não impeditivo: preservar posições por campanha e confirmar vergalhões em campo",
+    referencia_insuficiente = "alerta não impeditivo: preservar observações; ampliar referência em futuras campanhas"
   )
   val[, sugestao_operacional := unname(sugestoes[status_espacial])]
   val[is.na(sugestao_operacional) | !nzchar(sugestao_operacional), sugestao_operacional := "sugerir não validação ou revisão de campo"]
+  val[status_espacial %in% c("referencia_temporal_ambigua", "referencia_insuficiente") & pendencia_espacial, sugestao_operacional := "pendência concomitante: revisar integridade e coordenadas antes do projeto"]
   data.table::setorderv(val, c("pendencia_espacial", "UC", "EA", "UA", "ANO", "COLETA"), order = c(-1L, 1L, 1L, 1L, 1L, 1L), na.last = TRUE)
   list(validacao = val, consensos = cons$consensos, clusters = cons$clusters, consensos_uas_coincidentes = coincidentes)
 }
 monitora_esp_plano_correcoes <- function(res) {
-  v <- data.table::as.data.table(data.table::copy(res$validacao))
+  v <- monitora_esp_classificar_alertas_temporais(res$validacao)
   if (!nrow(v)) return(data.table::data.table())
   cols_logicos <- c(
     "pendencia_espacial", "alerta_espacial", "consenso_robusto_ua", "consenso_ambiguo_ua",
@@ -22978,7 +23013,7 @@ monitora_esp_plano_correcoes <- function(res) {
     status_espacial == "pendencia_fim_divergente", "copiar_coordenada_fim_de_referencia_validada",
     status_espacial == "possivel_ua_trocada", "revisar_identidade_da_ua_com_evidencias_de_campo",
     status_espacial == "coordenadas_conflitantes_na_coleta", "reconciliar_coordenadas_internas_da_coleta",
-    status_espacial == "referencia_temporal_ambigua", "revisar_series_temporais_concorrentes",
+    status_espacial %in% c("referencia_temporal_ambigua", "referencia_insuficiente") & !pendencia_espacial, "preservar_posicoes_e_confirmar_em_campo",
     default = "revisao_humana_sem_correcao_automatica"
   )]
   v[, elegivel_sanitizacao_automatica :=
@@ -22989,7 +23024,7 @@ monitora_esp_plano_correcoes <- function(res) {
     alerta_acuracia_gps == FALSE & alerta_proximidade_outra_ua == FALSE &
     alerta_serie_temporal_secundaria == FALSE & alerta_ua_consenso_coincidente == FALSE]
   v[, nivel_confianca := data.table::fcase(
-    elegivel_sanitizacao_automatica == TRUE, "deterministico_alto",
+    status_espacial %in% c("referencia_temporal_ambigua", "referencia_insuficiente") & !pendencia_espacial, "limitacao_temporal_nao_impeditiva",    elegivel_sanitizacao_automatica == TRUE, "deterministico_alto",
     consenso_robusto_ua == TRUE & consenso_ambiguo_ua == FALSE & alerta_acuracia_gps == FALSE, "assistido_alto",
     consenso_ambiguo_ua == TRUE | alerta_ua_consenso_coincidente == TRUE, "ambiguo_revisao_obrigatoria",
     default = "assistido_limitado"
@@ -23017,7 +23052,7 @@ monitora_esp_plano_correcoes <- function(res) {
   v[, ..cols]
 }
 monitora_esp_ocorrencias_diagnosticas <- function(res) {
-  v <- data.table::as.data.table(data.table::copy(res$validacao))
+  v <- monitora_esp_classificar_alertas_temporais(res$validacao)
   if (!nrow(v)) return(data.table::data.table())
   ids <- intersect(c("id_coleta_espacial", "UC", "EA", "UA", "ANO", "COLETA"), names(v))
   out <- list()
@@ -23054,6 +23089,8 @@ monitora_esp_ocorrencias_diagnosticas <- function(res) {
     alerta_raio_rigoroso = "distância no intervalo entre o raio rigoroso e o operacional",
     alerta_acuracia_gps = "acurácia GPS acima do limite de triagem",
     alerta_comprimento_transecto = "comprimento do transecto fora da faixa operacional",
+    alerta_referencia_temporal_ambigua = "referência temporal ambígua; posições preservadas para conferência em campo, sem correção obrigatória",
+    alerta_referencia_insuficiente = "referência temporal insuficiente; ampliar evidência em futuras campanhas, sem correção obrigatória",
     alerta_referencia_limitada = "referência temporal limitada a duas campanhas",
     alerta_proximidade_outra_ua = "coleta próxima do consenso de outra UA",
     alerta_serie_temporal_secundaria = "série espacial secundária sem decisão determinística",
@@ -23068,7 +23105,7 @@ monitora_esp_ocorrencias_diagnosticas <- function(res) {
   ans[]
 }
 monitora_esp_resumo_validacao <- function(validacao) {
-  v <- data.table::as.data.table(validacao)
+  v <- monitora_esp_classificar_alertas_temporais(validacao)
   if (!nrow(v)) return(data.table::data.table(metrica = "coletas_avaliadas", valor = "0"))
   por_status <- v[, .(coletas = .N), by = status_espacial][order(-coletas)]
   por_status[, metrica := paste0("status__", status_espacial)]
@@ -23117,7 +23154,7 @@ monitora_esp_gravar_produtos <- function(res, momento = "pre_painel", output_dir
   if (is.null(exec_id)) exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
   base_dir <- file.path(output_dir, "validacao_espacial", momento)
   dir.create(base_dir, showWarnings = FALSE, recursive = TRUE)
-  val <- data.table::as.data.table(res$validacao)
+  val <- monitora_esp_classificar_alertas_temporais(res$validacao)
   if (!"pendencia_espacial" %in% names(val)) val[, pendencia_espacial := !(status_espacial %in% c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada"))]
   if (!"alerta_espacial" %in% names(val)) {
     alerta_raio_tmp <- if ("alerta_raio_rigoroso" %in% names(val)) as.logical(val$alerta_raio_rigoroso) else as.character(val$status_espacial) == "validada_com_alerta_raio_rigoroso"
@@ -26224,6 +26261,8 @@ monitora_pendencias_espaciais_indice <- function(validacao_espacial) {
     alerta_raio_rigoroso = "Alerta de distância espacial",
     alerta_acuracia_gps = "Alerta de acurácia do GPS",
     alerta_comprimento_transecto = "Alerta de comprimento do transecto",
+    alerta_referencia_temporal_ambigua = "Referência temporal ambígua (não impeditiva)",
+    alerta_referencia_insuficiente = "Referência temporal insuficiente (não impeditiva)",
     alerta_referencia_limitada = "Alerta de referência temporal limitada",
     alerta_proximidade_outra_ua = "Alerta de proximidade de outra UA",
     alerta_serie_temporal_secundaria = "Alerta de série espacial secundária",
@@ -52198,7 +52237,7 @@ monitora_qfield_geometria <- function(x, fonte) {
 monitora_qfield_projetar <- function(registros) {
   requeridos <- c("UC", "UA", "long_ini", "lat_ini", "long_fin", "lat_fin")
   if (!all(requeridos %in% names(registros))) stop("QField: projeção operacional sem identidade/coordenadas dos extremos.", call. = FALSE)
-  campos <- intersect(c(requeridos, "COLETA", "ANO", "PROTOCOLO", "CICLO", "CAMPANHA", "form_veg", "alt_ini", "alt_fin", "acc_ini", "acc_fin"), names(registros))
+  campos <- intersect(c(requeridos, "COLETA", "ANO", "PROTOCOLO", "CICLO", "CAMPANHA", "form_veg", "alt_ini", "alt_fin", "acc_ini", "acc_fin", "status_espacial", "pendencia_espacial", "situacao_qfield"), names(registros))
   d <- unique(data.table::as.data.table(registros)[, ..campos])
   coords <- c("long_ini", "lat_ini", "long_fin", "lat_fin")
   for (cc in coords) data.table::set(d, j = cc, value = suppressWarnings(as.numeric(d[[cc]])))
@@ -52206,11 +52245,21 @@ monitora_qfield_projetar <- function(registros) {
   if (!nrow(d) || any(!is.finite(as.matrix(d[, ..coords]))) || any(abs(d$long_ini) > 180 | abs(d$long_fin) > 180 | abs(d$lat_ini) > 85 | abs(d$lat_fin) > 85)) stop("QField: coordenadas ausentes ou fora de domínio; nenhuma foi descartada silenciosamente.", call. = FALSE)
   chaves <- unique(d[, c("UC", "UA", coords), with = FALSE])
   conflitos <- chaves[, .N, by = .(UC, UA)][N > 1L]
-  if (nrow(conflitos)) stop("QField: posições divergentes para UC/UA; confirmar referência espacial antes de gerar: ", paste(head(conflitos$UA, 12), collapse = ", "), call. = FALSE)
+  if (nrow(conflitos)) {
+    campos_alerta <- c("status_espacial", "pendencia_espacial", "COLETA", "ANO")
+    if (!all(campos_alerta %in% names(d))) stop("QField: alternativas exigem validação espacial rastreável.", call. = FALSE)
+    permitidos <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada", "referencia_temporal_ambigua", "referencia_insuficiente")
+    z <- d[UA %in% conflitos$UA]
+    if (anyNA(z$pendencia_espacial) || any(as.logical(z$pendencia_espacial)) || any(!z$status_espacial %in% permitidos) ||
+        any(z[, .(alerta = any(status_espacial %in% c("referencia_temporal_ambigua", "referencia_insuficiente"))), by = .(UC, UA)]$alerta == FALSE) ||
+        any(unique(z[, c("UC", "UA", "ANO", "COLETA", coords), with = FALSE])[, .N, by = .(UC, UA, ANO, COLETA)]$N > 1L))
+      stop("QField: posições divergentes exigem curadoria; apenas alternativas com alerta temporal isolado são permitidas.", call. = FALSE)
+  }
   meta <- setdiff(campos, c("UC", "UA", coords))
   juntar <- function(v) paste(sort(unique(as.character(v[!is.na(v) & nzchar(as.character(v))]))), collapse = " | ")
   d <- d[, c(lapply(.SD, juntar), list(referencias_observadas = as.character(jsonlite::toJSON(as.data.frame(.SD), dataframe = "rows", auto_unbox = TRUE, na = "null")))), by = c("UC", "UA", coords), .SDcols = meta]
   d[, Name := ifelse(grepl("^UA([-_ ]|$)", UA), as.character(UA), paste0("UA ", UA))]
+  if ("status_espacial" %in% names(d)) d[grepl("referencia_temporal_ambigua|referencia_insuficiente", status_espacial), Name := paste0(Name, " [referência temporal incerta]")]
   d[, origem := "projecao_espacial_operacional_em_memoria"]
   ini <- sf::st_as_sf(as.data.frame(d), coords = c("long_ini", "lat_ini"), crs = 4326, remove = FALSE)
   fin <- sf::st_as_sf(as.data.frame(d), coords = c("long_fin", "lat_fin"), crs = 4326, remove = FALSE)
@@ -52268,8 +52317,8 @@ monitora_qfield_referencia_navegacao <- function(registros, validacao_espacial =
     any(!grepl("^[0-9]{4}$", obs$ANO)) || any(!is.finite(as.matrix(obs[, ..coords])))) {
     stop("QField: identidade, ano ou coordenadas anuais ausentes/inválidas.", call. = FALSE)
   }
-  por_ano <- unique(obs[, c("UC", "UA", "ANO", coords), with = FALSE])[, .N, by = .(UC, UA, ANO)][N > 1L]
-  if (nrow(por_ano)) stop("QField: mais de um par de extremos para a mesma UA/ano; corrigir ou auditar as COLETAs: ", paste(head(por_ano$UA, 12L), collapse = ", "), call. = FALSE)
+  if (anyDuplicated(obs[, ..chave])) stop("QField: coordenadas conflitantes dentro da mesma COLETA.", call. = FALSE)
+  if (any(abs(obs$long_ini) > 180 | abs(obs$long_fin) > 180 | abs(obs$lat_ini) > 85 | abs(obs$lat_fin) > 85)) stop("QField: coordenadas fora do domínio cartográfico.", call. = FALSE)
   fonte_validacao <- "sem_validacao_espacial; exige_posicoes_exatas"
   if (!is.null(validacao_espacial)) {
     v <- data.table::as.data.table(data.table::copy(validacao_espacial))
@@ -52292,12 +52341,12 @@ monitora_qfield_referencia_navegacao <- function(registros, validacao_espacial =
     }
     n_coletas_ua <- obs[, .(n_coletas_ua = .N), by = .(UC, UA)]
     m <- merge(m, n_coletas_ua, by = c("UC", "UA"), sort = FALSE)
-    provisoria <- m$status_espacial == "referencia_insuficiente" & m$n_coletas_ua == 1L
+    provisoria <- m$status_espacial %in% c("referencia_insuficiente", "referencia_temporal_ambigua")
     operacionais <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada")
-    aceita <- (m$status_espacial %in% operacionais & as.logical(m$pendencia_espacial) == FALSE) | provisoria
+    aceita <- (m$status_espacial %in% operacionais | provisoria) & as.logical(m$pendencia_espacial) == FALSE
     aceita[is.na(aceita)] <- FALSE
     if (any(!aceita)) stop("QField: pendências espaciais pós-painel exigem curadoria antes do projeto: ", paste(head(unique(paste(m$UA[!aceita], m$ANO[!aceita], m$status_espacial[!aceita], sep = "/")), 12L), collapse = ", "), call. = FALSE)
-    m[, situacao_qfield := ifelse(provisoria, "observada_unica_sem_consenso_temporal", "aceita_conforme_validacao_espacial_pos_painel")]
+    m[, situacao_qfield := ifelse(provisoria, "alerta_temporal_posicao_observada_nao_confirmada", "aceita_conforme_validacao_espacial_pos_painel")]
     fonte_validacao <- "validacao_espacial_pos_painel_em_memoria"
   } else {
     divergentes <- unique(obs[, c("UC", "UA", coords), with = FALSE])[, .N, by = .(UC, UA)][N > 1L]
@@ -52307,14 +52356,22 @@ monitora_qfield_referencia_navegacao <- function(registros, validacao_espacial =
   }
   ultimo <- obs[, .(ANO_referencia = max(as.integer(ANO))), by = .(UC, UA)]
   selecionado <- merge(d, ultimo, by = c("UC", "UA"), sort = FALSE)
-  selecionado <- selecionado[as.integer(ANO) == ANO_referencia]
+  uas_alerta <- unique(m[status_espacial %in% c("referencia_insuficiente", "referencia_temporal_ambigua"), UA])
+  selecionado <- selecionado[as.integer(ANO) == ANO_referencia | UA %in% uas_alerta]
   selecionado[, ANO_referencia := NULL]
   auditoria <- merge(m, ultimo, by = c("UC", "UA"), sort = FALSE)
   auditoria[, `:=`(referencia_navegacao = ifelse(as.integer(ANO) == ANO_referencia, "S", "N"), origem_validacao = fonte_validacao)]
+  auditoria[UA %in% uas_alerta, referencia_navegacao := "alternativa_observada_sem_escolha_de_referencia"]
   auditoria <- auditoria[, .(UC, UA, ANO, COLETA, long_ini, lat_ini, long_fin, lat_fin,
                            ANO_referencia, referencia_navegacao, status_espacial,
                            pendencia_espacial, alerta_espacial, situacao_qfield, origem_validacao)]
-  list(registros = selecionado, auditoria = auditoria)
+  juntar_status <- function(x) {
+    x <- data.table::copy(x)
+    for (cc in chave) data.table::set(x, j = cc, value = as.character(x[[cc]]))
+    info <- auditoria[, c(chave, "status_espacial", "pendencia_espacial", "situacao_qfield"), with = FALSE]
+    merge(x, info, by = chave, sort = FALSE)
+  }
+  list(registros = juntar_status(selecionado), auditoria = auditoria, registros_campanhas = juntar_status(d))
 }
 monitora_qfield_descompactar <- function(arquivo, destino) {
   z <- zip::zip_list(arquivo)
@@ -52698,7 +52755,8 @@ monitora_qfield_buffers_internos <- function(uc, uas, auditoria_referencia, cons
     cons <- cons[as.character(UC) == uc]
   }
   if (!nrow(cons)) {
-    val <- data.table::as.data.table(data.table::copy(validacao_espacial))[as.character(UC) == uc]
+    val <- data.table::as.data.table(data.table::copy(validacao_espacial))
+    if (nrow(val)) val <- val[as.character(UC) == uc]
     req_v <- c("UC", "UA", "consenso_valido_ua", "consenso_ambiguo_ua", "inicio_lat_consenso_ua", "inicio_lon_consenso_ua", "fim_lat_consenso_ua", "fim_lon_consenso_ua")
     if (nrow(val) && all(req_v %in% names(val))) {
     cons <- unique(val[, .(
@@ -52711,7 +52769,18 @@ monitora_qfield_buffers_internos <- function(uc, uas, auditoria_referencia, cons
     } else cons <- data.table::data.table()
   }
   linhas <- lapply(uas, function(ua) {
-    con_ua <- cons[as.character(UA) == ua]
+    a_ua <- aud[as.character(UA) == ua]
+    if ("status_espacial" %in% names(a_ua) && any(a_ua$status_espacial %in% c("referencia_temporal_ambigua", "referencia_insuficiente"))) {
+      permitidos <- c("validada_espacialmente", "validada_com_alerta_raio_rigoroso", "coerente_com_referencia_temporal_limitada", "referencia_temporal_ambigua", "referencia_insuficiente")
+      if (!"pendencia_espacial" %in% names(a_ua) || anyNA(a_ua$pendencia_espacial) || any(as.logical(a_ua$pendencia_espacial)) || any(!a_ua$status_espacial %in% permitidos))
+        stop("QField: pendência concomitante impede o recorte de alternativas.", call. = FALSE)
+      pares <- unique(a_ua[, .(long_ini, lat_ini, long_fin, lat_fin)])
+      if (any(!is.finite(as.matrix(pares))) || any(abs(pares$long_ini) > 180 | abs(pares$long_fin) > 180 | abs(pares$lat_ini) > 85 | abs(pares$lat_fin) > 85)) stop("QField: alternativa sem coordenadas utilizáveis.", call. = FALSE)
+      return(pares[, .(UC = uc, UA = ua, raio_m = 500, lon_medio = (long_ini + long_fin)/2,
+        lat_medio = (lat_ini + lat_fin)/2, metodo_centro = "ponto_medio_de_cada_posicao_observada",
+        evidencia_consenso = "alternativas_temporais_sem_posicao_confirmada", n_coletas_consenso = NA_integer_)])
+    }
+    con_ua <- if (nrow(cons)) cons[as.character(UA) == ua] else data.table::data.table()
     if (nrow(con_ua) > 1L) {
     campos <- intersect(c("consenso_valido", "consenso_ambiguo", "inicio_lat_consenso", "inicio_lon_consenso", "fim_lat_consenso", "fim_lon_consenso", "n_coletas_consenso", "evidencia_consenso"), names(con_ua))
     con_ua <- unique(con_ua[, ..campos])
@@ -52740,7 +52809,7 @@ monitora_qfield_buffers_internos <- function(uc, uas, auditoria_referencia, cons
     metodo_centro = metodo, evidencia_consenso = evidencia, n_coletas_consenso = n_cons)
   })
   centros <- data.table::rbindlist(linhas)
-  if (nrow(centros) != length(uas) || anyDuplicated(centros$UA) || !setequal(centros$UA, uas)) stop("QField: centros internos não são unívocos por UA.", call. = FALSE)
+  if (!setequal(centros$UA, uas) || !nrow(centros)) stop("QField: centros internos não cobrem todas as UAs.", call. = FALSE)
   geoms <- lapply(seq_len(nrow(centros)), function(i) {
     lon <- centros$lon_medio[[i]]; lat <- centros$lat_medio[[i]]
     crs_local <- paste0("+proj=aeqd +lat_0=", format(lat, digits = 16, scientific = FALSE), " +lon_0=", format(lon, digits = 16, scientific = FALSE), " +datum=WGS84 +units=m +no_defs")
@@ -52949,7 +53018,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     entrada_uc <- if (isTRUE(entrada_plana) || !dir.exists(subpasta_legada)) entrada_dir else subpasta_legada
     sigla <- monitora_qfield_identificar(uc, entrada_uc)
     buffers_imagens <- NULL
-    anuais <- monitora_qfield_camadas_anuais(d, sigla)
+    anuais <- monitora_qfield_camadas_anuais(referencia$registros_campanhas, sigla)
     if (!is.null(origem_ensaio)) for (n in names(anuais)) anuais[[n]]$origem <- origem_ensaio
     adicionais <- if (isTRUE(importar)) monitora_qfield_classificar_adicionais(monitora_qfield_ler_adicionais(entrada_uc, scratch), entrada_uc, sigla) else monitora_qfield_classificar_adicionais(list(), tempfile("sem_manifesto_"), sigla)
     camadas <- list(); auditoria <- list(); validade <- list()

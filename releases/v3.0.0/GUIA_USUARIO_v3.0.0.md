@@ -52,6 +52,17 @@ pontos percentuais. Ausência de significância não é equivalência. A ordena�
 multivariada exploratória não identifica causas nem substitui o modelo
 longitudinal conjunto. Consulte o status de cada análise antes de interpretar.
 
+## Alertas temporais no QField
+
+Referência temporal ambígua ou insuficiente é alerta quando as coordenadas são
+utilizáveis. Preserve as observações e confirme os vergalhões em campo, sem
+correção artificial nem justificativa obrigatória para a limitação temporal.
+As camadas mantêm as alternativas por campanha e os rótulos indicam incerteza.
+Divergências, possível troca/inversão, coordenadas inválidas e conflitos continuam
+impedindo o projeto integral. Consulte as pendências e alertas do painel antes
+da geração; aceitar uma posição para navegação não a torna automaticamente
+elegível para análises científicas.
+
 ## Preservação e suporte
 
 O contrato XLSForm e a execução por um único arquivo R permanecem preservados.

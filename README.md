@@ -5,12 +5,16 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 ## Versão pública atual
 
 - Versão: `v3.0.0`
-- Build público atual: `v3.0.0-20260919-r08`
+- Build público atual: `v3.0.0-20260919-r09`
 - Script principal: [`monitora_campsav_alvo_global_v3.0.0.R`](monitora_campsav_alvo_global_v3.0.0.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
 - Cópia congelada: [`releases/v3.0.0/`](releases/v3.0.0/)
 - Notas da versão: [`RELEASE_NOTES_v3.0.0.md`](RELEASE_NOTES_v3.0.0.md)
 - Release no GitHub: [v3.0.0](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.0)
+
+Revisão r09: limitações de referência temporal passam a alertas quando as
+coordenadas são utilizáveis. Divergências e inconsistências espaciais continuam
+bloqueando o QField. Mesma versão pública, com manual e pacote atualizados.
 
 ## Manual e início rápido
 

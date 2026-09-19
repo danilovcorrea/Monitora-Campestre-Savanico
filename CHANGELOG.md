@@ -2,6 +2,15 @@
 
 ## v3.0.0 - 2026-09-19
 
+### Revisão substitutiva r09
+
+- Reclassifica limitações temporais como alertas condicionais; mantém divergências,
+  troca/inversão e coordenadas inválidas como bloqueios QField.
+- Preserva alternativas por campanha, atualiza recortes, painel e manual;
+  critérios científicos e produtos das UCs permanecem preservados.
+
+### Publicação inicial
+
 - Consolida módulos de fogo, clima, calendário e integração multivariada, com
   elegibilidade explícita, incerteza, equivalência exploratória e limites causais.
 - Padroniza mapas, índice com páginas/links, capa, metodologia e referências dos
