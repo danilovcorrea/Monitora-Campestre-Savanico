@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.0.0 - 2026-09-19
+
+- Consolida módulos de fogo, clima, calendário e integração multivariada, com
+  elegibilidade explícita, incerteza, equivalência exploratória e limites causais.
+- Padroniza mapas, índice com páginas/links, capa, metodologia e referências dos
+  relatórios analíticos; atualiza o manual de curadoria e produtos para iniciantes.
+- Preserva execução autônoma e tamanho inferior a 5 MB inclusive em CRLF.
+- Corrige diretório do manual, títulos após blocos condicionais e integração
+  espacial de grafias equivalentes da UC, preservando os dados e gates existentes.
+
 ## v2.9.26 - 2026-09-16
 
 ### Revisão substitutiva r04 - 2026-09-18
