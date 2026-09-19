@@ -58,3 +58,30 @@ caminhos relativos do projeto.
 
 O pacote público contém software e documentação. Dados e produtos de cada UC
 são entregues no ambiente institucional e não integram esta publicação.
+
+## Revisão substitutiva r09 — 19/09/2026
+
+Incorpora a candidata revisada na mesma versão pública **3.0.0**, com build
+`v3.0.0-20260919-r09`; substitui o build r08 nos downloads. O histórico do Git
+preserva a publicação anterior.
+
+- Referência temporal ambígua ou insuficiente passa a alerta não impeditivo
+  quando as coordenadas são utilizáveis e não há inconsistência concomitante.
+- Divergências dos extremos, possível troca de UA, inversão, coordenadas inválidas
+  e conflitos continuam bloqueando o projeto QField integral da UC.
+- Painel, plano, contadores, diagnósticos e manual adotam a classificação coerente.
+  Não é exigida correção artificial para uma limitação da evidência temporal.
+- As alternativas de navegação mantêm posição, ano, coleta e indicação de incerteza;
+  o recorte inclui círculos de 500 m por posição observada. Não escolhe um local
+  como verdadeiro nem amplia a elegibilidade das análises científicas.
+- A validação de cobertura do manual acompanha a redação atualizada dos recortes.
+
+Verificação: testes de estrutura do código, precedência dos bloqueios, painel,
+consensos, alternativas por campanha e GeoPackage; comparação somente de
+classificação nas 22 validações salvas. Foram reclassificadas 155 coletas como
+alertas e permanecem 48 coletas com pendências espaciais. Os sete projetos QField
+anteriormente ausentes continuam impedidos. Nenhuma atualização de UC, análise
+estatística ou projeto QField foi refeita nesta revisão.
+
+O R permanece autônomo e inferior a 5.000.000 bytes, inclusive em CRLF. O pacote
+continua restrito a software e documentação, sem bases institucionais.

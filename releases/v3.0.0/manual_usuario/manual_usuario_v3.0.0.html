@@ -2851,20 +2851,27 @@ metadados e tiles materializados precisam concordar. A classificação usa
 <strong>regional</strong>. Nome, pasta e extensão textual não substituem
 essa inspeção. Quando há detalhe, o script usa os consensos aceitos pela
 validação espacial para obter o ponto médio e produzir um círculo de 500
-m por UA; grava <code>recorte_imagens_500m.gpkg</code>, descarta tiles
-sem interseção e mascara a borda em WebP transparente. O MBTiles em
+m por posição de referência (ou por alternativa temporal observada);
+grava <code>recorte_imagens_500m.gpkg</code>, descarta tiles sem
+interseção e mascara a borda em WebP transparente. O MBTiles em
 <code>qfield_input/</code> permanece intocado. Um recorte anterior
 somente é reutilizado quando UC, UAs, raio, formato e impressão digital
 dos buffers coincidem.</p>
 <p>Nomes das camadas observadas: <code>UC_verg_ini_YYYY</code> e
-<code>UC_verg_fin_YYYY</code>, um ponto inicial e final por UA e ano nas
-coordenadas literais aceitas daquele ano. A variação normal do GPS é
-harmonizada somente pela validação espacial central; o módulo QField não
-cria tolerância concorrente. Pendências reais bloqueiam o projeto. Uma
-UA observada uma única vez pode constar provisoriamente, identificada na
-<code>auditoria_referencia_navegacao.csv</code>, sem alegação de
-consenso temporal. O KML de intercâmbio usa o último ano apenas como
-referência de navegação e não corrige a série histórica.</p>
+<code>UC_verg_fin_YYYY</code>. As posições mantêm UA, ano e COLETA nas
+coordenadas literais. Referência temporal ambígua ou insuficiente é
+alerta não impeditivo quando as coordenadas são utilizáveis; preserve as
+posições e confira os vergalhões em campo, sem correção artificial nem
+justificativa obrigatória. Divergências dos extremos, possível troca de
+UA, inversão e coordenadas inválidas ou conflitantes continuam
+bloqueando o projeto da UC. Nas UAs com alerta temporal, as alternativas
+aparecem nas camadas e no KML, com status e situação nos atributos; o
+recorte reúne círculos de 500 m em torno de cada posição observada. O
+centro de cada círculo é apenas o ponto médio do respectivo transecto,
+sem escolher uma posição como verdadeira. A auditoria preserva a
+rastreabilidade e as análises científicas mantêm seus critérios de
+elegibilidade. Nas demais UAs, o KML continua usando o último ano como
+referência operacional.</p>
 <p>Vetores comuns são importados como camadas adicionais somente leitura
 e conservam arquivo, camada e atributos; o script não presume que toda
 linha é estrada nem que todo ponto é PA. Para papel especial, use
