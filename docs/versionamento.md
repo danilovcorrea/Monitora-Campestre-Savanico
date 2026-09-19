@@ -1,9 +1,15 @@
 # Versionamento
 
-O projeto adota versionamento semântico público a partir da série `v2.0.0`.
+As versões públicas identificam conjuntos reproduzíveis de software e produtos.
+Cada publicação informa versão, build e hashes; rodadas anteriores são preservadas.
 
-- Alterações maiores de fluxo, produtos ou recursos públicos justificam incremento de versão menor.
-- Correções pontuais ou revisões editoriais podem justificar incremento de patch.
-- Iterações internas de desenvolvimento não precisam ser preservadas como versões públicas quando forem consolidadas em uma release limpa.
+- Correções localizadas recebem incremento de patch.
+- Ampliações compatíveis de recursos podem receber incremento menor.
+- A v3.0.0 inaugura um ciclo consolidado de análises integradas, cartografia,
+  relatórios e documentação, conforme decisão de versão do responsável pelo
+  projeto. Esse marco não implica incompatibilidade dos arquivos de entrada.
+- Iterações internas são consolidadas antes da publicação; não substituem
+  silenciosamente o arquivo executado em uma rodada já concluída.
 
-A versão `v2.2.0` consolida a linha de validação assistida posterior à última versão pública `v2.1.3`.
+O identificador de build e o SHA-256 permitem distinguir revisões de uma mesma
+candidata. A homologação registra os testes e as limitações efetivamente verificadas.

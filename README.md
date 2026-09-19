@@ -4,13 +4,19 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 
 ## Versão pública atual
 
-- Versão: `v2.9.26`
-- Build público atual: `v2.9.26-20260918-r04`
-- Script principal: [`monitora_campsav_alvo_global_v2.9.26.R`](monitora_campsav_alvo_global_v2.9.26.R)
+- Versão: `v3.0.0`
+- Build público atual: `v3.0.0-20260919-r08`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.0.R`](monitora_campsav_alvo_global_v3.0.0.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v2.9.26/`](releases/v2.9.26/)
-- Notas da versão: [`RELEASE_NOTES_v2.9.26.md`](RELEASE_NOTES_v2.9.26.md)
-- Release no GitHub: [v2.9.26](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.9.26)
+- Cópia congelada: [`releases/v3.0.0/`](releases/v3.0.0/)
+- Notas da versão: [`RELEASE_NOTES_v3.0.0.md`](RELEASE_NOTES_v3.0.0.md)
+- Release no GitHub: [v3.0.0](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.0)
+
+## Manual e início rápido
+
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.0.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.0.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.0.html).
 
 ## Finalidade
 
@@ -18,55 +24,32 @@ O script lê diferentes exportações do SISMONITORA, reconhece estruturas hist�
 
 A validação operacional de `registros_corrig.csv` usa o contrato consolidado dos XLSForms 2022, 2023, 2024 e 2025, com projeção final conforme o XLSForm 2025 e o template SISMONITORA. `registros_validados.csv` somente é materializado quando não restam pendências impeditivas.
 
-## Destaques da v2.9.26
+## Destaques da v3.0.0
 
-- A revisão substitutiva `r04` elimina falsos negativos de persistência ao
-  compactar a lista repetida de coletores: o gate passa a conferir a sequência
-  semântica ordenada nome–CPF por coleta, sem expor dados pessoais, e continua
-  bloqueando qualquer alteração material real. O relatório de validação também
-  passa a ser autônomo nos checkpoints parciais, inclusive em
-  `painel_incremental_registros_corrig`.
-- A revisão substitutiva `r03` corrige a ordem de carregamento do relatório de
-  validação nos checkpoints parciais. A homologação real da FNB no R 4.6.0 do
-  Windows gerou o relatório para 21.311 registros sem alterar contrato,
-  inicialização ou semântica das funções.
-- A revisão substitutiva `r02` reforça UTF-8 no Windows nos fluxos de CSV,
-  relatórios, QField e finalização, sem mudar o contrato XLSForm ou as decisões
-  semânticas. A rodada APA Ibirapuitã anteriormente falha foi concluída no
-  RStudio 2026.04 com R 4.6.0.
-- O relatório de validação apresenta histórico documentado de decisões,
-  modificações efetivas, exclusões e ações espaciais por sessão e por ano. Efeito
-  não comprovado é informado como não quantificável, nunca como zero presumido.
-- O relatório analítico melhora precisão de valores pequenos, documenta a
-  mudança do instrumento de serrapilheira em 2025, evita hipóteses de mudança
-  baseadas somente em estabilidade e incorpora análise complementar da época de
-  amostragem. A figura quantifica associação e sensibilidade; a recomendação
-  sobre linha de base não confunde falta de corte seguro com comparabilidade.
-- As evidências temporais usam todas as UAs comuns a cada par de campanhas;
-  painéis por ano de entrada permanecem como sensibilidade, sem substituir a
-  população principal. Formas de vida com zero toque deixam de ocupar tabelas.
-- A opção QField gera projeto offline de navegação com camadas anuais dos dois
-  vergalhões, imagem regional Sentinel e imagens detalhadas fornecidas pelo
-  usuário diretamente em `qfield_input/`, sem subpasta da UC nem nome obrigatório
-  para o MBTiles em execução com uma UC. A opção fica desligada por padrão;
-  posições divergentes só entram quando a validação espacial central as aceita.
-  O projeto não modifica os dados biológicos.
-- O zoom realmente materializado no MBTiles, e não seu nome, identifica a imagem
-  detalhada. O módulo deriva dos consensos espaciais um círculo de 500 m por UA,
-  recorta fisicamente os tiles, preserva a fonte e registra hashes, tiles e
-  redução. Camadas vetoriais colocadas na mesma pasta são incorporadas; camadas
-  lineares explicitamente declaradas com papel `acesso` tornam-se `UC_acessos`,
-  somente leitura.
-- No projeto QField, o mapa permanece em EPSG:3857 para compatibilidade com os
-  MBTiles; a interface de navegação exibe longitude e latitude em WGS 84,
-  graus decimais e seis casas.
-- `Google Satellite` volta a constar como mapa-base alternativo exclusivamente
-  online e inicialmente desativado. A camada requer internet e não é baixada,
-  empacotada nem usada para comprovar a cobertura dos fundos offline.
-- O início do RStudio, o contrato único/XLSForm 2025 e os módulos anteriores
-  permanecem preservados. O script segue abaixo de 5 MB também em CRLF.
+- Fogo e cobertura vegetal: histórico cartográfico ICMBio por UA, mapas com
+  contexto Sentinel, hipóteses condicionais de incêndio e queima prescrita,
+  equivalência exploratória de ±5/±10 pontos percentuais e regeneração pós-fogo.
+- Clima antecedente: obtenção e cache de dados NASA POWER, métricas por campanha,
+  suporte inferencial explícito e tratamento da replicação por célula e período.
+- Calendário e integração multivariada: análises condicionadas à extensão da série,
+  época, esforço e comparabilidade; distinção entre associação, exploração e
+  evidência causal. Testes sem suporte aparecem como não estimáveis.
+- Relatórios com capa sem número, índice com links e páginas, metodologia sucinta,
+  referências em padrão ABNT e discussão separada dos métodos. Mapas de fogo
+  compartilham os elementos cartográficos do mapa de continuidade das UAs.
+- QField com pontos de interesse e trajetos editáveis, importação de acessos e
+  imagens offline detalhadas fornecidas pelo usuário. Pendências espaciais reais
+  continuam impedindo a promoção do projeto.
+- Manual completo para iniciantes em PDF e HTML: preparação da rodada, curadoria,
+  equipe de coleta, justificativas, validação, análises e conferência dos produtos.
+- Execução autônoma por um único `.R`, abaixo de 5.000.000 bytes também em CRLF.
+  Dependências e recursos públicos habilitados são obtidos pelo próprio script.
 
-### Preservado da v2.9.24
+As decisões sobre fogo e clima dependem do desenho e dos dados disponíveis.
+Ausência de significância não demonstra equivalência; uma ordenação exploratória
+não substitui inferência longitudinal. Os relatórios documentam essas condições.
+
+## Preservado da v2.9.24
 
 - Exportações XLSX recentes do SISMONITORA localizam a aba biológica pelo
   esquema esperado, sem depender da posição da planilha e sem conversão
@@ -494,15 +477,15 @@ Uma publicação deve confirmar:
 
 ## Estrutura do repositório
 
-- `monitora_campsav_alvo_global_v2.9.26.R`: script versionado atual.
+- `monitora_campsav_alvo_global_v3.0.0.R`: script versionado atual.
 - `monitora_campsav_alvo_global.R`: script canônico atual.
 - `R_monitora_campsav_alvo_global.R` e `R/monitora_campsav_alvo_global.R`: espelhos canônicos.
 - `VERSION`: versão pública atual.
 - `CHANGELOG.md`: histórico público de mudanças.
-- `RELEASE_NOTES_v2.9.26.md`: notas da versão atual.
-- `GUIA_USUARIO_v2.9.26.md`: roteiro operacional resumido.
-- `release_assets/v2.9.26/`: conjunto mínimo de artefatos da release.
-- `releases/v2.9.26/`: cópia congelada da versão.
+- `RELEASE_NOTES_v3.0.0.md`: notas da versão atual.
+- `GUIA_USUARIO_v3.0.0.md`: roteiro operacional resumido.
+- `release_assets/v3.0.0/`: conjunto mínimo de artefatos da release.
+- `releases/v3.0.0/`: cópia congelada da versão.
 - `docs/`: políticas e documentação auxiliar.
 
 ## Uso auxiliar de IA generativa
@@ -518,7 +501,7 @@ Ferramentas de IA não substituem a validação humana, a execução local do sc
 ## Como citar
 
 ```text
-CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v2.9.26. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v2.9.26. Acesso em: DD mês AAAA.
+CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v3.0.0. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.0. Acesso em: DD mês AAAA.
 ```
 
 Repositório público: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
