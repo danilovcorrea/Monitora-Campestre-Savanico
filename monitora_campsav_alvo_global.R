@@ -202,8 +202,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "3.0.0"
-MONITORA_SCRIPT_BUILD_ID <- "v3.0.0-20260919-r09"
+MONITORA_SCRIPT_VERSAO <- "3.0.1"
+MONITORA_SCRIPT_BUILD_ID <- "v3.0.1-20260922-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -304,12 +304,13 @@ MONITORA_PASTA_DADOS_CLIMA <- Sys.getenv("MONITORA_PASTA_DADOS_CLIMA", "")
 MONITORA_OPCAO_ATUALIZAR_DADOS_CLIMA <- toupper(trimws(Sys.getenv("MONITORA_OPCAO_ATUALIZAR_DADOS_CLIMA", "N")))
 ### QField: projeto offline opcional, independente do KML e dos relatórios.
 ### S gera após a preparação espacial; N não carrega dependências do módulo.
-MONITORA_OPCAO_GERAR_PROJETO_QFIELD <- "N"
+### Bloqueios são informados no console e na auditoria, sem interromper os demais produtos.
+MONITORA_OPCAO_GERAR_PROJETO_QFIELD <- "S"
 ### Camadas KML/KMZ/GPKG/ZIP-shapefile e MBTiles em qfield_input/ (irmã de
 ### input). Para uma execução com uma UC, não há subpasta nem nome obrigatório.
 ### Um MBTiles direto dispensa manifesto; demais imagens
 ### em imagens/fontes_imagens.csv. Sentinel é contexto, não detalhe.
-MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD <- "N"
+MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD <- "S"
 MONITORA_FORMATOS_RELATORIOS_ANALITICOS <- c("rmd", "md", "html", "docx", "pdf")
 ### Caminho opcional do navegador usado somente para gerar PDF. Deixe vazio
 ### para autodetecção multiplataforma de Chrome, Chromium ou Edge. Quando
@@ -3587,7 +3588,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
   )), use.names = TRUE, fill = TRUE)
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
     variavel = c("MONITORA_OPCAO_GERAR_PROJETO_QFIELD", "MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD"),
-    valores = "S ou N; padrão N",
+    valores = "S ou N; padrão S",
     finalidade = c("Gera projeto local de navegação QField a partir da projeção espacial aceita, sem editar dados.", "Importa de qfield_input/ MBTiles e vetores KML, KMZ, GPKG ou ZIP-shapefile, fora do input biológico."),
     cuidados = c("N não acessa dependências do módulo. S exige uma imagem offline ativa, cobertura dos extremos e validação espacial coerente; não realiza upload.", "Em execução com uma UC, coloque os arquivos diretamente na pasta, sem subpasta ou nome obrigatório. MBTiles é classificado pelo zoom real: zoom_max_real >= 18 é detalhe. O detalhe é recortado internamente a um círculo de 500 m por UA; a fonte permanece intacta. Vetores genéricos são importados sem inferir significado; papéis PA/acesso exigem nome padronizado ou camadas_qfield.csv."))), use.names = TRUE, fill = TRUE)
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
@@ -3778,9 +3779,9 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "O manual é materializado antes da abertura do painel sempre que o modo de execução for orientado a painel ou quando `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'`. Assim, o usuário pode consultar o documento durante a curadoria.", "",
     "## O que pode e o que não pode ser editado", "", "O usuário deve editar somente as variáveis documentadas no bloco operacional inicial e os dados por meio dos controles do painel. Preserve o arquivo baixado, o `registros_corrig.csv`, a pasta `linhagem/`, os manifestos, as auditorias e os produtos canônicos. Não edite o corpo do script, a inicialização do RStudio, o contrato único, o XLSForm 2025, domínios de choices, regras de relevance, arquivos de linhagem ou CSVs do output para fazer uma ocorrência desaparecer. O contrato valida os registros; ele nunca deve ser alterado ou flexibilizado para acomodar erro do conjunto de dados. Quando a decisão biológica não for inequívoca, a ocorrência deve permanecer para curadoria ou justificativa, nunca ser inferida pelo código.", "",
     "Trabalhe preferencialmente em uma cópia local curta, fora da sincronização ativa do OneDrive. Depois de concluir e conferir, copie a pasta final para o diretório institucional. Não execute duas instâncias sobre a mesma pasta, não mova arquivos enquanto o R estiver escrevendo e não use **Stop** durante salvamento, promoção de produtos ou criação de ZIP.", "",
-    "## Projeto QField de navegação", "", "Ative `MONITORA_OPCAO_GERAR_PROJETO_QFIELD = 'S'` para criar `output/09_qfield/` após a preparação espacial, sem alterar dados. O padrão N não carrega o módulo. Com `MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD = 'S'`, uma execução contendo uma UC aceita diretamente em `qfield_input/` arquivos MBTiles e vetores KML, KMZ, GPKG ou ZIP de shapefile. Não crie subpasta com o nome da UC, não imponha nome ao MBTiles e não coloque esses arquivos no `input/` biológico.", "",
+    "## Projeto QField de navegação", "", "Ative `MONITORA_OPCAO_GERAR_PROJETO_QFIELD = 'S'` para criar `output/09_qfield/` após a preparação espacial, sem alterar dados. O padrão S solicita o módulo; bloqueios são registrados no console sem interromper os demais produtos. Com `MONITORA_OPCAO_IMPORTAR_CAMADAS_QFIELD = 'S'`, uma execução contendo uma UC aceita diretamente em `qfield_input/` arquivos MBTiles e vetores KML, KMZ, GPKG ou ZIP de shapefile. Não crie subpasta com o nome da UC, não imponha nome ao MBTiles e não coloque esses arquivos no `input/` biológico.", "",
     "Cada MBTiles direto é inspecionado como banco SQLite/MBTiles; metadados e tiles materializados precisam concordar. A classificação usa `zoom_max_real`: 18 ou mais é **detalhe**, 15–17 é **operacional** e 14 ou menos é **regional**. Nome, pasta e extensão textual não substituem essa inspeção. Quando há detalhe, o script usa os consensos aceitos pela validação espacial para obter o ponto médio e produzir um círculo de 500 m por posição de referência (ou por alternativa temporal observada); grava `recorte_imagens_500m.gpkg`, descarta tiles sem interseção e mascara a borda em WebP transparente. O MBTiles em `qfield_input/` permanece intocado. Um recorte anterior somente é reutilizado quando UC, UAs, raio, formato e impressão digital dos buffers coincidem.", "",
-    "Nomes das camadas observadas: `UC_verg_ini_YYYY` e `UC_verg_fin_YYYY`. As posições mantêm UA, ano e COLETA nas coordenadas literais. Referência temporal ambígua ou insuficiente é alerta não impeditivo quando as coordenadas são utilizáveis; preserve as posições e confira os vergalhões em campo, sem correção artificial nem justificativa obrigatória. Divergências dos extremos, possível troca de UA, inversão e coordenadas inválidas ou conflitantes continuam bloqueando o projeto da UC. Nas UAs com alerta temporal, as alternativas aparecem nas camadas e no KML, com status e situação nos atributos; o recorte reúne círculos de 500 m em torno de cada posição observada. O centro de cada círculo é apenas o ponto médio do respectivo transecto, sem escolher uma posição como verdadeira. A auditoria preserva a rastreabilidade e as análises científicas mantêm seus critérios de elegibilidade. Nas demais UAs, o KML continua usando o último ano como referência operacional.", "",
+    "Nomes exibidos das camadas observadas: `verg_ini_YYYY` e `verg_fin_YYYY`; nomes físicos preservam a UC. As posições mantêm UA, ano e COLETA nas coordenadas literais. Referência temporal ambígua ou insuficiente é alerta não impeditivo quando as coordenadas são utilizáveis; preserve as posições e confira os vergalhões em campo, sem correção artificial nem justificativa obrigatória. Divergências dos extremos, possível troca de UA, inversão e coordenadas inválidas ou conflitantes continuam bloqueando o projeto da UC. Nas UAs com alerta temporal, as alternativas aparecem nas camadas e no KML, com status e situação nos atributos; o recorte reúne círculos de 500 m em torno de cada posição observada. O centro de cada círculo é apenas o ponto médio do respectivo transecto, sem escolher uma posição como verdadeira. A auditoria preserva a rastreabilidade e as análises científicas mantêm seus critérios de elegibilidade. Nas demais UAs, o KML continua usando o último ano como referência operacional.", "",
     "Vetores comuns são importados como camadas adicionais somente leitura e conservam arquivo, camada e atributos; o script não presume que toda linha é estrada nem que todo ponto é PA. Para papel especial, use `camadas_qfield.csv` com `arquivo`, `camada` e `papel`: `pa_priorit_ini`, `pa_altern_ini` ou `acesso`; `sigla` é opcional. Os nomes padronizados dos PAs são `UC_PA_priorit_verg_ini` e `UC_PA_altern_verg_ini`, ambos referentes ao vergalhão inicial previsto. `apoio_campo.gpkg` contém `pontos_interesse` e `trajeto` editáveis; preserve uma cópia preenchida antes de substituir o projeto. `projeto_qfield.csv` pode declarar `UC,sigla`. Não importar projetos QGIS antigos, macros, ações ou links externos como se fossem dados.", "",
     "### Passo a passo do QField", "", "1. Execute uma UC por vez e mantenha a validação espacial habilitada. 2. Se houver imagem detalhada, copie o MBTiles original diretamente para `qfield_input/`; copie também estradas, trilhas, acessos, PAs ou pontos de interesse nos formatos aceitos. 3. Ative as duas opções QField quando houver arquivos externos; para projeto apenas com Sentinel gerado pelo script, a importação pode ficar em N. 4. Execute normalmente e aguarde a promoção do pacote: falha QField preserva os demais produtos e grava o motivo. 5. Abra `auditoria_imagens.csv`, `auditoria_recorte_circular.csv`, `auditoria_camadas.csv` e `auditoria_cobertura.csv`. Todos os extremos anuais precisam ter pixel válido. 6. Importe o ZIP numa pasta nova no aplicativo e confira nomes, símbolos, coordenadas em graus decimais, imagens, acessos e camadas editáveis.", "",
     "### Teste obrigatório do projeto QField", "", "Faça dois testes antes do campo. **Online:** habilite `Google Satellite`, confirme que é apenas visualização sob demanda e que não substitui os fundos locais. **Modo avião:** confirme que MBTiles detalhado/regional, extremos, escala, orientação e vetores essenciais continuam disponíveis. A camada Google inicia desativada, exige internet e nunca é baixada nem empacotada. Sentinel-2 possui informação nativa de 10 m e serve para contexto regional; zoom adicional não o transforma em imagem detalhada. Fonte, licença, data e resolução de uma imagem fornecida permanecem não declaradas quando o usuário não as informa.", "",
@@ -33698,8 +33699,15 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     if (length(ano) && "ANO" %in% names(v)) v <- v[as.character(ANO) %in% ano]
     v[]
     }
+    # Destinos respeitam filtros deliberados; coleta/lote lateral focam apenas mapa/tabela.
+    esp_base_destino_espacial <- shiny::reactive({
+    esp_choices_filtradas_por_parametros(
+      status = monitora_painel_valores_input(input$esp_filtro_status),
+      ua = monitora_painel_valores_input(input$esp_filtro_ua),
+      ano = monitora_painel_valores_input(input$esp_filtro_ano))
+    })
     esp_coletas_destino_choices_guiadas <- function() {
-    v <- esp_base_global_filtrada()
+    v <- esp_base_destino_espacial()
     if (!nrow(v)) return(character(0))
     v <- monitora_esp_filtrar_chave_ua(v, monitora_painel_valor(input$esp_ua_destino))
     if (isTRUE(input$esp_somente_pendencias)) {
@@ -33718,11 +33726,9 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     if (nzchar(coleta_fonte)) choices <- setdiff(choices, coleta_fonte)
     choices
     }
-    shiny::observeEvent(list(esp_base_global_filtrada(), esp_base_origem_espacial()), {
-    v <- esp_base_global_filtrada()
+    shiny::observeEvent(list(esp_base_destino_espacial(), esp_base_origem_espacial()), {
     choices_fonte <- monitora_esp_choices_ua_contextuais(esp_base_origem_espacial())
-    choices_destino <- monitora_esp_choices_ua_contextuais(esp_validacao_filtrada())
-    if (!length(choices_destino)) choices_destino <- choices_fonte
+    choices_destino <- monitora_esp_choices_ua_contextuais(esp_base_destino_espacial())
     sel_fonte <- shiny::isolate(monitora_painel_valor(input$esp_ua_fonte))
     sel_destino <- shiny::isolate(monitora_painel_valor(input$esp_ua_destino))
     try(shiny::freezeReactiveValue(input, "esp_ua_fonte"), silent = TRUE)
@@ -33731,7 +33737,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     try(shiny::updateSelectizeInput(session, "esp_ua_destino", choices = choices_destino, selected = if (sel_destino %in% unname(choices_destino)) sel_destino else character(0), server = TRUE), silent = TRUE)
     }, ignoreInit = FALSE)
     shiny::observeEvent(
-    list(input$esp_filtro_status, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
+    list(esp_base_global_filtrada(), input$esp_filtro_status, input$esp_somente_pendencias),
     {
       status <- monitora_painel_valores_input(input$esp_filtro_status)
       choices_ua <- esp_choices_chr(esp_choices_filtradas_por_parametros(status = status), "UA")
@@ -33744,23 +33750,27 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     ignoreInit = FALSE
     )
     shiny::observeEvent(
-    list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_ua_destino, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
+    list(esp_base_global_filtrada(), input$esp_filtro_status, input$esp_filtro_ua, input$esp_somente_pendencias),
     {
-      status <- monitora_painel_valores_input(input$esp_filtro_status)
-      ua <- monitora_painel_valores_input(input$esp_filtro_ua)
-      v_anos_destino <- esp_choices_filtradas_por_parametros(status = status, ua = ua)
-      v_anos_destino <- monitora_esp_filtrar_chave_ua(v_anos_destino, monitora_painel_valor(input$esp_ua_destino))
-      choices_ano_destino <- esp_choices_chr(v_anos_destino, "ANO")
+      v_anos_filtro <- esp_choices_filtradas_por_parametros(
+        status = monitora_painel_valores_input(input$esp_filtro_status),
+        ua = monitora_painel_valores_input(input$esp_filtro_ua))
+      choices_ano_filtro <- esp_choices_chr(v_anos_filtro, "ANO")
       sel_ano <- shiny::isolate(monitora_painel_valores_input(input$esp_filtro_ano))
+      try(shiny::freezeReactiveValue(input, "esp_filtro_ano"), silent = TRUE)
+      try(shiny::updateSelectizeInput(session, "esp_filtro_ano", choices = choices_ano_filtro, selected = intersect(sel_ano, choices_ano_filtro), server = TRUE), silent = TRUE)
+    }, ignoreInit = FALSE)
+    shiny::observeEvent(
+    list(esp_base_destino_espacial(), input$esp_ua_destino),
+    {
+      v_anos_destino <- monitora_esp_filtrar_chave_ua(esp_base_destino_espacial(), monitora_painel_valor(input$esp_ua_destino))
+      choices_ano_destino <- esp_choices_chr(v_anos_destino, "ANO")
       sel_ano_destino <- shiny::isolate(monitora_painel_valores_input(input$esp_lote_ano_destino))
       sel_ano_destino_guiado <- shiny::isolate(monitora_painel_valores_input(input$esp_ano_destino))
-      for (id in c("esp_filtro_ano", "esp_lote_ano_destino", "esp_ano_destino")) try(shiny::freezeReactiveValue(input, id), silent = TRUE)
-      try(shiny::updateSelectizeInput(session, "esp_filtro_ano", choices = choices_ano_destino, selected = intersect(sel_ano, choices_ano_destino), server = TRUE), silent = TRUE)
+      for (id in c("esp_lote_ano_destino", "esp_ano_destino")) try(shiny::freezeReactiveValue(input, id), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "esp_lote_ano_destino", choices = choices_ano_destino, selected = intersect(sel_ano_destino, choices_ano_destino), server = TRUE), silent = TRUE)
       try(shiny::updateSelectizeInput(session, "esp_ano_destino", choices = choices_ano_destino, selected = intersect(sel_ano_destino_guiado, choices_ano_destino), server = TRUE), silent = TRUE)
-    },
-    ignoreInit = FALSE
-    )
+    }, ignoreInit = FALSE)
     shiny::observeEvent(
     list(input$esp_ua_fonte, input$esp_filtro_ua, esp_base_origem_espacial()),
     {
@@ -33811,24 +33821,25 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     ignoreInit = FALSE
     )
     shiny::observeEvent(
-    list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_ano_destino, input$esp_ua_destino, input$esp_somente_pendencias, esp_coletas_escopo_painel()),
+    list(esp_base_destino_espacial(), input$esp_ano_destino, input$esp_ua_destino),
     {
       if (isTRUE(rv$reset_painel_em_andamento)) return(NULL)
       status <- monitora_painel_valores_input(input$esp_filtro_status)
       ua <- monitora_painel_valores_input(input$esp_filtro_ua)
       ano <- monitora_painel_valores_input(input$esp_ano_destino)
-      v_destino <- esp_choices_filtradas_por_parametros(status = status, ua = ua, ano = ano)
+      v_destino <- esp_base_destino_espacial()
+      if (length(ano) && "ANO" %in% names(v_destino)) v_destino <- v_destino[as.character(ANO) %in% ano]
       v_destino <- monitora_esp_filtrar_chave_ua(v_destino, monitora_painel_valor(input$esp_ua_destino))
       choices_coleta_destino <- esp_choices_chr(v_destino, "COLETA")
       sel_coleta_alvo <- shiny::isolate(monitora_painel_valor(input$esp_coleta_alvo))
       try(shiny::freezeReactiveValue(input, "esp_coleta_alvo"), silent = TRUE)
-      selecionada_destino <- if (length(choices_coleta_destino) == 1L) choices_coleta_destino else if (sel_coleta_alvo %in% choices_coleta_destino) sel_coleta_alvo else character(0)
+      selecionada_destino <- if (sel_coleta_alvo %in% choices_coleta_destino) sel_coleta_alvo else character(0)
       try(shiny::updateSelectizeInput(session, "esp_coleta_alvo", choices = choices_coleta_destino, selected = selecionada_destino, server = TRUE), silent = TRUE)
     },
     ignoreInit = FALSE
     )
     shiny::observeEvent(
-    list(input$esp_filtro_status, input$esp_filtro_ua, input$esp_filtro_ano, input$esp_ua_destino, input$esp_ano_destino, input$esp_somente_pendencias, input$esp_coleta_fonte, esp_coletas_escopo_painel()),
+    list(esp_base_destino_espacial(), input$esp_ua_destino, input$esp_ano_destino, input$esp_coleta_fonte),
     {
       if (isTRUE(rv$reset_painel_em_andamento)) return(NULL)
       choices_lote_destino <- esp_coletas_destino_choices_guiadas()
@@ -33849,16 +33860,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     sel_coletas <- shiny::isolate(monitora_painel_valores_input(input$esp_lote_coletas_alvo))
     try(shiny::updateSelectizeInput(session, "esp_lote_coletas_alvo", choices = choices_coleta, selected = intersect(sel_coletas, choices_coleta), server = TRUE), silent = TRUE)
     })
-    shiny::observeEvent(esp_coletas_escopo_painel(), {
-    if (isTRUE(rv$reset_painel_em_andamento)) return(NULL)
-    vals <- esp_coletas_escopo_painel()
-    if (length(vals) == 1L) {
-      try(shiny::updateSelectizeInput(session, "esp_coleta_alvo", selected = vals[1L]), silent = TRUE)
-    } else if (length(vals) > 1L) {
-      try(shiny::updateSelectizeInput(session, "esp_coleta_alvo", selected = character(0)), silent = TRUE)
-      try(shiny::updateSelectizeInput(session, "esp_coletas_destino", selected = vals), silent = TRUE)
-    }
-    }, ignoreInit = FALSE)
+    # O foco lateral não altera escolhas de destino já realizadas.
     shiny::observeEvent(input$esp_preencher_lote_destino, {
     choices_lote_destino <- esp_coletas_destino_choices_guiadas()
     if (!length(choices_lote_destino)) {
@@ -33928,14 +33930,17 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
     esp_linhas_destino_guiadas <- function() {
     esc <- monitora_painel_valor(input$esp_escopo_destino)
-    v <- esp_base_global_filtrada()
+    v <- esp_base_destino_espacial()
+    anos_guiados <- monitora_painel_valores_input(input$esp_ano_destino)
+    if (length(anos_guiados) && "ANO" %in% names(v)) v <- v[as.character(ANO) %in% anos_guiados]
     if (!nrow(v)) return(list(dt = data.table::data.table(), erro = "tabela espacial vazia"))
     v <- monitora_esp_filtrar_chave_ua(v, monitora_painel_valor(input$esp_ua_destino))
     coletas_destino_explicitas <- monitora_painel_valores_input(input$esp_coletas_destino)
     if (length(coletas_destino_explicitas)) {
+      if (!all(coletas_destino_explicitas %in% as.character(v$COLETA))) return(list(dt = data.table::data.table(), erro = "lote contém COLETA fora dos filtros de destino; revise a seleção"))
       alvo <- v[as.character(COLETA) %in% coletas_destino_explicitas]
     } else if (identical(esc, "pendencias_filtradas")) {
-      alvo <- esp_validacao_filtrada()
+      alvo <- v
     } else if (identical(esc, "lote_coletas")) {
       coletas <- monitora_painel_valores_input(input$esp_coletas_destino)
       if (!length(coletas)) return(list(dt = data.table::data.table(), erro = "selecione uma ou mais COLETAS destino para o lote ou clique em 'Usar COLETAS filtradas'"))
@@ -51897,8 +51902,10 @@ monitora_output_consolidar_legados_ja_organizados <- function(output_dir, exec_i
 }
 monitora_output_migrar_diretorios_legados <- function(output_dir, exec_id, contexto) {
   raizes <- data.table::data.table(
-    origem_rel = c("correcoes_campos", "validacao_espacial", "cache_painel", "relatorios_validacao", "03_auditorias/relatorios_validacao"),
-    destino_base = c(NA_character_, "04_validacao_espacial", "90_cache/cache_painel", "07_relatorio_validacao", "07_relatorio_validacao")
+    origem_rel = c("correcoes_campos", "validacao_espacial", "cache_painel", "relatorios_validacao", "03_auditorias/relatorios_validacao",
+      "diagnosticos_contrato_unico_registros_importados", "diagnosticos_pipes_contrato"),
+    destino_base = c(NA_character_, "04_validacao_espacial", "90_cache/cache_painel", "07_relatorio_validacao", "07_relatorio_validacao",
+      "03_auditorias/diagnosticos_contrato_unico_registros_importados", "03_auditorias/diagnosticos_pipes_contrato")
   )
   linhas <- list()
   for (ii in seq_len(nrow(raizes))) {
@@ -52972,6 +52979,14 @@ monitora_qfield_recorte_compativel <- function(inspecao, buffers, uc) {
     identical(as.character(inspecao$recorte_n_uas[[1L]]), n_uas) &&
     identical(as.character(inspecao$formato[[1L]]), "webp")
 }
+monitora_qfield_nome_anual_exibido <- function(camada) {
+  sub("^.+_(verg_(ini|fin)_[0-9]{4})$", "\\1", camada)
+}
+monitora_qfield_avisar <- function(motivo, uc = "", nivel = "AVISO") {
+  message("[QField][", nivel, "] ", if (nzchar(uc)) paste0(uc, ": ") else "", motivo,
+          " Demais produtos seguem normalmente.")
+  invisible(motivo)
+}
 monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FALSE, importar = FALSE,
                                entrada_dir = file.path(base_dir, "qfield_input"),
                                biologicos = file.path(base_dir, "input"), adquirir_sentinel = TRUE,
@@ -53020,7 +53035,8 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     buffers_imagens <- NULL
     anuais <- monitora_qfield_camadas_anuais(referencia$registros_campanhas, sigla)
     if (!is.null(origem_ensaio)) for (n in names(anuais)) anuais[[n]]$origem <- origem_ensaio
-    adicionais <- if (isTRUE(importar)) monitora_qfield_classificar_adicionais(monitora_qfield_ler_adicionais(entrada_uc, scratch), entrada_uc, sigla) else monitora_qfield_classificar_adicionais(list(), tempfile("sem_manifesto_"), sigla)
+    vetores_importados <- if (isTRUE(importar)) monitora_qfield_ler_adicionais(entrada_uc, scratch) else list()
+    adicionais <- monitora_qfield_classificar_adicionais(vetores_importados, if (isTRUE(importar)) entrada_uc else tempfile("sem_manifesto_"), sigla)
     camadas <- list(); auditoria <- list(); validade <- list()
     todas <- c(anuais, adicionais)
     originais_kml <- unique(unlist(lapply(adicionais,function(x)attr(x,"qfield_kml_original"))))
@@ -53043,6 +53059,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
       papel <- if (n %in% names(anuais)) "referencia" else attr(todas[[n]], "qfield_papel")
       tipo <- if (nrow(x)) as.character(sf::st_geometry_type(x)[1]) else attr(todas[[n]], "qfield_tipo")
       nome <- if (apoio) if (n=="pontos_interesse") "Pontos de interesse (editável)" else "Trajetos de campo (editável)" else if ("kml_placemark_xml" %in% names(todas[[n]]) && identical(papel,"adicional")) "Trajetos importados do KMZ/KML" else n
+      if (n %in% names(anuais)) nome <- monitora_qfield_nome_anual_exibido(n)
       camadas[[n]] <- list(arquivo = gpkg, camada = n, nome = nome, geometria = tipo, campos = names(x), papel = papel)
       auditoria[[n]] <- data.table::data.table(camada = n, nome_exibido = nome, papel = papel, editavel = apoio, feicoes = nrow(x), geometria = camadas[[n]]$geometria, crs = "EPSG:4326", origem = fonte)
       check <- sf::st_read(file.path(pacote, "dados", gpkg), layer = n, quiet = TRUE)
@@ -53085,6 +53102,12 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
         zoom_min, zoom_max, n_tiles_fonte = n_tiles, formato_fonte = formato, criterio_classificacao
       )]
       m <- data.table::rbindlist(list(m, m_auto), use.names = TRUE, fill = TRUE)
+    }
+    if (isTRUE(importar) && !length(vetores_importados) && !nrow(m)) {
+      motivo_importacao <- paste0("Nenhuma camada adicional válida encontrada em ", entrada_uc,
+        "; projeto continua com as referências dos dados e fundos disponíveis.")
+      monitora_qfield_avisar(motivo_importacao, uc)
+      writeLines(motivo_importacao, file.path(pacote, "AVISO_IMPORTACAO_CAMADAS.txt"), useBytes = TRUE)
     }
     if (isTRUE(importar) && (nrow(m) || file.exists(manifest))) {
       req <- c("arquivo", "papel", "fonte", "licenca", "resolucao_nativa_m", "data_imagem")
@@ -53190,7 +53213,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     monitora_qfield_escrever_qgs(qgs, uc, camadas, rasters, bb)
     texto <- c(paste0("PROJETO QFIELD — ", uc), "Produto de navegação; não valida nem corrige registros biológicos.", if (!is.null(origem_ensaio)) paste0("REFERÊNCIA PARA AVALIAÇÃO: ", origem_ensaio), "Importe o ZIP em uma pasta nova no QField. Referências vetoriais e imagens empacotadas são locais; apenas pontos_interesse e trajeto em apoio_campo.gpkg são editáveis. Google Satellite é alternativa exclusivamente online.", "Início: círculo azul/contorno branco. Fim: branco/contorno azul. Linha vermelha: ligação derivada, não trilha levantada.", "A navegação usa as coordenadas fornecidas e a precisão do GNSS. Nenhum vergalhão intermediário foi inventado.", "Consulte atributos de cada ponto, inclusive acurácia quando informada. Posições divergentes bloqueiam a UC.", "Camadas adicionais mantêm sua identidade de origem: pontos planejados não substituem extremos observados.", "Áreas elegíveis e limite oficial só existem se fornecidos; a extensão do fundo não define elegibilidade.", "Imagens: audite origem, data, licença e resolução em auditoria_imagens.csv; não redistribua fontes legadas sem autorização aplicável.", "Google Satellite inicia desativado, requer internet e apenas visualiza tiles sob demanda; não é baixado, empacotado ou usado para comprovar cobertura offline.", "Sentinel possui informação nativa de 10 m e não resolve vergalhões/obstáculos. Zoom maior não aumenta a resolução nativa.", "A cobertura verificada é pixel válido nos extremos; não comprova ausência de nuvens nem cobertura de todos os acessos/transectos.", "Confirme no QField em modo avião: símbolos, nomes, seleção/navegação, transições de zoom, orientação e escala nativas.", "Logos institucionais em assets/. A composição móvel não equivale à prancha analítica; use orientação/escala do aplicativo.", "O pacote não foi enviado ao QFieldCloud. Não editar nem substituir a rodada original.")
     texto <- sub("Posições divergentes bloqueiam a UC.", "Variações anuais aceitas pela validação espacial pós-painel são preservadas; pendências reais bloqueiam o projeto.", texto, fixed = TRUE)
-    texto <- c(texto, "Cada camada UC_verg_ini_YYYY e UC_verg_fin_YYYY contém um ponto por UA observada naquele ano, com as coordenadas literais da campanha. O KML de intercâmbio usa o último par observado como referência de navegação, não como correção da série histórica. A cobertura do fundo é verificada sobre todos os extremos anuais. Consulte auditoria_referencia_navegacao.csv para ANO/COLETA escolhidos, alertas e eventuais UAs observadas somente uma vez, sem consenso temporal.")
+    texto <- c(texto, "Cada camada exibida como verg_ini_YYYY e verg_fin_YYYY contém um ponto por UA observada naquele ano, com as coordenadas literais da campanha. O KML de intercâmbio usa o último par observado como referência de navegação, não como correção da série histórica. A cobertura do fundo é verificada sobre todos os extremos anuais. Consulte auditoria_referencia_navegacao.csv para ANO/COLETA escolhidos, alertas e eventuais UAs observadas somente uma vez, sem consenso temporal.")
     texto <- c(texto, "Os nomes anuais usam ANO dos dados de origem, não o ano de geração do projeto. Sigla é declarada em projeto_qfield.csv (UC,sigla); se ausente, usa-se o nome completo normalizado, sem inventar abreviação.", "PAs prioritários: vermelho; alternativos: laranja-claro. Ambos são vergalhões iniciais previstos, não coordenadas observadas de UAs. Não há camadas PA finais.", "Camadas antigas podem ser identificadas em camadas_qfield.csv (arquivo,camada,papel; sigla opcional para camada compartilhada). Papéis: pa_priorit_ini e pa_altern_ini. Nomes já padronizados UC_PA_priorit_verg_ini e UC_PA_altern_verg_ini dispensam esse manifesto.", "Nenhum PA foi excluído por proximidade ou nome parecido com uma UA. Importar o conjunto de PAs ainda previsto ou fornecer vínculo auditável em revisão futura.", "Apoio de campo: pontos_interesse (POINT) e trajeto (MULTILINESTRING), campos identificador/nome, obs e data_hora, cor roxa. Cópia separada e editável; não modifica referências ou dados biológicos. Se fornecido, apoio_campo.gpkg deve ter a estrutura documentada; senão, o projeto recebe camadas vazias.", "Antes de substituir ou atualizar o projeto, salvar o apoio_campo.gpkg preenchido pelos monitores. O manifesto registra hashes do momento da entrega; a edição em campo altera legitimamente o hash desse arquivo.")
     texto <- c(texto,"Pontos de interesse (editável) e Trajetos de campo (editável) aparecem no início da lista de camadas. Podem estar vazios: selecione a camada, ative a edição (lápis) e use adicionar feição. Camada vazia não exibe símbolos antes do primeiro registro. O arquivo apoio_campo.gpkg contém os registros de campo e deve ser preservado antes de trocar de projeto.","Trajetos gx:Track são importados em XYZ, mantendo as partes e a ordem dos vértices, sem interpolação. Os atributos kml_* e fontes_vetoriais preservam a origem e os metadados temporais; a linha de navegação não é uma análise de velocidade ou tempo. O nome Trajetos importados não presume que toda rota seja acesso a uma UA.")
     if (length(aud_recortes)) texto <- c(texto, "O fundo detalhado foi identificado pelo zoom real e recortado fisicamente aos buffers circulares de 500 m gerados em recorte_imagens_500m.gpkg a partir da referência espacial aceita. O MBTiles original em qfield_input não foi alterado; o projeto usa WebP com transparência fora dos círculos. Fonte e licença da imagem não foram inferidas. Compare auditoria_recorte_circular.csv e verifique o projeto no QField offline antes do campo.")
@@ -53209,6 +53232,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     if (file.exists(destino) || dir.exists(destino) || !file.rename(scratch, destino)) stop("QField: falha na promoção; área temporária preservada.", call. = FALSE)
     data.table::data.table(UC = uc, status = "gerado_para_homologacao_qfield", projeto = file.path(destino, "projeto", basename(qgs)), zip = file.path(destino, basename(zipfile)), bytes_zip = file.info(file.path(destino, basename(zipfile)))$size, segundos = proc.time()[["elapsed"]] - inicio, motivo = "")
     }, error = function(e) {
+    monitora_qfield_avisar(conditionMessage(e), uc, "BLOQUEADO")
     writeLines(conditionMessage(e), file.path(scratch, "FALHA_QFIELD.txt"), useBytes = TRUE)
     data.table::data.table(UC = uc, status = "bloqueado", projeto = "", zip = "", bytes_zip = 0, segundos = proc.time()[["elapsed"]] - inicio, motivo = conditionMessage(e))
     })
@@ -83228,7 +83252,10 @@ if (identical(toupper(trimws(Sys.getenv("MONITORA_OPCAO_GERAR_PROJETO_QFIELD", u
     qfield_consensos <- if (is.list(qfield_espacial)) qfield_espacial$consensos else NULL
     qfield_resultado <- monitora_qfield_gerar(registros_corrig_stat, MONITORA_OUTPUT_DIR, MONITORA_BASE_DIR, ativado = TRUE, importar = identical(qfield_importar, "S"), biologicos = unique(c(MONITORA_INPUT_DIR, file.path(MONITORA_BASE_DIR, "extracted"))), validacao_espacial = qfield_validacao, consensos_espaciais = qfield_consensos)
     for (qfield_i in seq_len(nrow(qfield_resultado))) monitora_log_registrar_evento("qfield", if (qfield_resultado$status[qfield_i] == "bloqueado") "ERRO" else "INFO", qfield_resultado$zip[qfield_i], paste(qfield_resultado$UC[qfield_i], qfield_resultado$status[qfield_i]), qfield_resultado$motivo[qfield_i])
-  }, error = function(e) monitora_log_registrar_evento("qfield", "ERRO", NA_character_, "Projeto QField não gerado; demais produtos preservados", conditionMessage(e)))
+  }, error = function(e) {
+    monitora_qfield_avisar(conditionMessage(e), nivel = "BLOQUEADO")
+    monitora_log_registrar_evento("qfield", "ERRO", NA_character_, "Projeto QField não gerado; demais produtos preservados", conditionMessage(e))
+  })
 }
 ### Cronometria explícita da finalização
 MONITORA_FINALIZACAO_INICIO <- Sys.time()

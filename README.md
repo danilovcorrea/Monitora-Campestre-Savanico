@@ -4,23 +4,27 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 
 ## Versão pública atual
 
-- Versão: `v3.0.0`
-- Build público atual: `v3.0.0-20260919-r09`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.0.R`](monitora_campsav_alvo_global_v3.0.0.R)
+- Versão: `v3.0.1`
+- Build: `v3.0.1-20260922-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.1.R`](monitora_campsav_alvo_global_v3.0.1.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.0/`](releases/v3.0.0/)
-- Notas da versão: [`RELEASE_NOTES_v3.0.0.md`](RELEASE_NOTES_v3.0.0.md)
-- Release no GitHub: [v3.0.0](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.0)
+- Cópia congelada: [`releases/v3.0.1/`](releases/v3.0.1/)
+- Notas: [`RELEASE_NOTES_v3.0.1.md`](RELEASE_NOTES_v3.0.1.md)
+- Release: [v3.0.1](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.1)
 
-Revisão r09: limitações de referência temporal passam a alertas quando as
-coordenadas são utilizáveis. Divergências e inconsistências espaciais continuam
-bloqueando o QField. Mesma versão pública, com manual e pacote atualizados.
+A versão corrige a atualização dos destinos espaciais no painel, encurta os
+rótulos anuais QField e ativa por padrão a geração do projeto e a importação de
+camadas. Impedimentos QField são informados no console e preservam a geração dos
+demais produtos. As auditorias opcionais são organizadas nas pastas finais.
+
+O ensaio operacional no RStudio Windows e a navegação em aparelho QField
+continuam pendentes; consulte a seção de homologação nas notas da versão.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.0.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.0.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.0.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.1.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.1.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.1.html).
 
 ## Finalidade
 

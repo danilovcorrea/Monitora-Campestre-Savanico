@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.0.1 - 2026-09-22
+
+- Corrige domínio, atualização e preservação de destinos espaciais no painel,
+  incluindo interação entre filtros, coleta lateral, ano e lote.
+- Encurta nomes exibidos dos extremos anuais QField para verg_ini_YYYY e
+  verg_fin_YYYY; preserva nomes físicos, coordenadas e estilos.
+- Ativa geração/importação QField por padrão e informa falhas no console sem
+  interromper os demais produtos.
+- Organiza duas pastas de auditorias opcionais sem relaxar os gates de integridade.
+- Atualiza manual e guia, preservando o contrato e os motores de análise.
+
 ## v3.0.0 - 2026-09-19
 
 ### Revisão substitutiva r09
