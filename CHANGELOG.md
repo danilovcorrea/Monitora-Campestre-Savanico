@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.0.2 - 2026-09-23
+
+- Promove a numeração editorial da candidata após rodadas integrais PNGSV, FNCS e PNCV.
+- Confere legendas de tabelas e figuras nos PDFs e os cinco formatos dos relatórios.
+- Atualiza manual e guia, preservando cálculos, contrato e limites LF/CRLF.
+- Documenta os bloqueios preexistentes de produtos opcionais e as pendências operacionais.
+
+## v3.0.2-rc01 - 2026-09-23 (candidata não publicada)
+
+- Numera tabelas, figuras e seções após a seleção final, sem reservar números para elementos omitidos.
+- Identifica e intitula tabelas dos módulos de fogo, clima e análises complementares.
+- Preserva tabelas editáveis no Word, compactando as largas sem descartar valores.
+- Evita perda de legendas de tabelas nas quebras de página do PDF.
+- Audita referências, sequências, associação entre legendas e objetos e validade dos arquivos de figuras.
+- Registra a composição editorial e impede que HTML reprovado origine PDF.
+- Mantém o contrato de 129 campos, os cálculos analíticos e o teto de 5 MB.
+
 ## v3.0.1 - 2026-09-22
 
 - Corrige domínio, atualização e preservação de destinos espaciais no painel,
