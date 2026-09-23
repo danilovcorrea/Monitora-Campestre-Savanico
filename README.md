@@ -2,6 +2,10 @@
 
 Rotinas em R para tratamento, auditoria, validação e análise de dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
 
+## Candidata local em desenvolvimento
+
+A candidata `v3.0.2-rc01` acrescenta numeração de tabelas e seções e validação editorial dos relatórios. Os scripts canônicos deste checkout correspondem à candidata, ainda não publicada. Consulte [notas e homologação](NOTAS_CANDIDATA_v3.0.2-rc01.md). A versão pública permanece v3.0.1.
+
 ## Versão pública atual
 
 - Versão: `v3.0.1`
