@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.0.2 - 2026-09-23
+
+- Promove a numeração editorial da candidata após rodadas integrais PNGSV, FNCS e PNCV.
+- Confere legendas de tabelas e figuras nos PDFs e os cinco formatos dos relatórios.
+- Atualiza manual e guia, preservando cálculos, contrato e limites LF/CRLF.
+- Documenta os bloqueios preexistentes de produtos opcionais e as pendências operacionais.
+
 ## v3.0.2-rc01 - 2026-09-23 (candidata não publicada)
 
 - Numera tabelas, figuras e seções após a seleção final, sem reservar números para elementos omitidos.

@@ -2,33 +2,30 @@
 
 Rotinas em R para tratamento, auditoria, validação e análise de dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
 
-## Candidata local em desenvolvimento
-
-A candidata `v3.0.2-rc01` acrescenta numeração de tabelas e seções e validação editorial dos relatórios. Os scripts canônicos deste checkout correspondem à candidata, ainda não publicada. Consulte [notas e homologação](NOTAS_CANDIDATA_v3.0.2-rc01.md). A versão pública permanece v3.0.1.
-
 ## Versão pública atual
 
-- Versão: `v3.0.1`
-- Build: `v3.0.1-20260922-r01`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.1.R`](monitora_campsav_alvo_global_v3.0.1.R)
+- Versão: `v3.0.2`
+- Build: `v3.0.2-20260923-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.2.R`](monitora_campsav_alvo_global_v3.0.2.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.1/`](releases/v3.0.1/)
-- Notas: [`RELEASE_NOTES_v3.0.1.md`](RELEASE_NOTES_v3.0.1.md)
-- Release: [v3.0.1](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.1)
+- Cópia congelada: [`releases/v3.0.2/`](releases/v3.0.2/)
+- Notas: [`RELEASE_NOTES_v3.0.2.md`](RELEASE_NOTES_v3.0.2.md)
+- Release: [v3.0.2](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.2)
 
-A versão corrige a atualização dos destinos espaciais no painel, encurta os
-rótulos anuais QField e ativa por padrão a geração do projeto e a importação de
-camadas. Impedimentos QField são informados no console e preservam a geração dos
-demais produtos. As auditorias opcionais são organizadas nas pastas finais.
+Tabelas, figuras e seções recebem numeração após a seleção do conteúdo, sem
+lacunas provocadas por elementos omitidos. As tabelas permanecem editáveis no
+Word e as legendas são preservadas nas quebras de página do PDF. A composição
+editorial é auditada por relatório e por UC. Dados e cálculos foram preservados.
 
-O ensaio operacional no RStudio Windows e a navegação em aparelho QField
-continuam pendentes; consulte a seção de homologação nas notas da versão.
+Os ensaios operacionais no RStudio Windows, Microsoft Word e QField móvel
+continuam pendentes. As notas distinguem testes aprovados e pendências de
+curadoria que impedem produtos opcionais nas bases de homologação.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.1.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.1.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.1.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.2.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.2.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.2.html).
 
 ## Finalidade
 

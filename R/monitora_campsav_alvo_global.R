@@ -202,8 +202,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "3.0.2-rc01"
-MONITORA_SCRIPT_BUILD_ID <- "v3.0.2-rc01-20260923-r01"
+MONITORA_SCRIPT_VERSAO <- "3.0.2"
+MONITORA_SCRIPT_BUILD_ID <- "v3.0.2-20260923-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),

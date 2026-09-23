@@ -1,6 +1,6 @@
 # Candidata v3.0.2-rc01 — numeração dos relatórios
 
-Build: `v3.0.2-rc01-20260923-r01`. Desenvolvimento concluído localmente; **não publicada**. Base: versão pública v3.0.1, commit `8d99c18d7d4c85594eeb9765f1ff5be9ad93b019`.
+Build: `v3.0.2-rc01-20260923-r01`. Registro histórico da candidata promovida à **v3.0.2**; consulte [fechamento das rodadas e pendências](RELEASE_NOTES_v3.0.2.md). Base: versão pública v3.0.1, commit `8d99c18d7d4c85594eeb9765f1ff5be9ad93b019`.
 
 ## Alterações
 
@@ -33,7 +33,9 @@ O teste PNB reutiliza conteúdo analítico e figuras da recuperação selada, em
 
 SHA-256 do script: `70f0a4bc0d1543d7da2ac4160281a63dd4fbafdcb14bd6671c4c47bbc429a4da`.
 
-## Limites e pendências
+## Limites e pendências no fechamento inicial da candidata
+
+As rodadas integrais e o pacote foram preparados posteriormente; o resultado atualizado está nas notas da v3.0.2.
 
 - Não foi executada nova rodada integral de processamento dos dados. O escopo é editorial e os cálculos foram preservados.
 - Abertura/uso operacional no RStudio Windows e inspeção no Microsoft Word permanecem pendentes; Rscript Windows e validação estrutural do DOCX não substituem esses ensaios.
