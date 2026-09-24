@@ -1,6 +1,6 @@
 # Programa Monitora — CBC/ICMBio
 # Plantas herbáceas e lenhosas das formações campestres e savânicas.
-# Versão 3.0.0 — curadoria, análises e produtos em um único arquivo R.
+# Versão 3.0.3-rc01 — curadoria, análises e produtos em um único arquivo R.
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
 ### SISMONITORA para o alvo Plantas Herbáceas e Lenhosas do Componente Campestre
 ### Savânico. Também pode abrir um painel Shiny para correções assistidas de
@@ -141,6 +141,68 @@
 ### si próprio. O corpo é avaliado no ambiente global, preservando a semântica
 ### histórica, sem iniciador, .Rprofile, projeto RStudio ou arquivo auxiliar.
 base::evalq({
+# Estado por execução; handlers locais não alteram opções nem handlers do RStudio.
+monitora_operacao_msg <- function(etapa, ...) {
+  message("[", format(Sys.time(), "%H:%M:%S"), "][", etapa, "] ", paste0(..., collapse = ""))
+}
+monitora_aviso_registrar <- function(w) {
+  estado <- get0("MONITORA_AVISOS_ESTADO", inherits = TRUE)
+  if (is.null(estado) || isTRUE(estado$gravando)) return(invisible(NULL))
+  estado$gravando <- TRUE
+  on.exit(estado$gravando <- FALSE)
+  etapa <- estado$etapa
+  msg <- conditionMessage(w)
+  chamada <- paste(deparse(conditionCall(w), width.cutoff = 160L), collapse = " ")
+  chave <- paste(etapa, msg, chamada, sep = "\r")
+  i <- match(chave, estado$chaves)
+  if (is.na(i)) {
+    estado$chaves <- c(estado$chaves, chave)
+    i <- length(estado$chaves)
+    estado$itens[[i]] <- data.frame(etapa = etapa, mensagem = msg, chamada = chamada,
+      ocorrencias = 0L, primeiro = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"), ultimo = "")
+    monitora_operacao_msg("AVISO", msg, " | etapa: ", etapa, "; detalhes em log/avisos_execucao_*.csv")
+  }
+  estado$itens[[i]]$ocorrencias <- estado$itens[[i]]$ocorrencias + 1L
+  estado$itens[[i]]$ultimo <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  pasta <- get0("MONITORA_LOG_DIR", ifnotfound = NULL, inherits = TRUE)
+  if (!is.null(pasta) && dir.exists(pasta)) {
+    arquivo <- file.path(pasta, paste0("avisos_execucao_", get0("MONITORA_EXEC_ID", ifnotfound = estado$id, inherits = TRUE), ".csv"))
+    tryCatch(utils::write.csv(do.call(rbind, estado$itens), arquivo, row.names = FALSE, fileEncoding = "UTF-8"),
+      error = function(e) message("[AVISO] Falha ao persistir avisos: ", conditionMessage(e)))
+  }
+  invisible(NULL)
+}
+monitora_relatorios_resolver_fase <- function(base_dir, fase) {
+  legado <- file.path(base_dir, if (fase == "pre_painel") "relatorios_pre_painel" else "relatorios_pos_correcoes")
+  raiz <- if (basename(base_dir) %in% c("correcoes_campos", "02_painel_correcoes")) dirname(base_dir) else base_dir
+  organizado <- file.path(raiz, "02_painel_correcoes", "ap", fase)
+  organizado_anterior <- file.path(raiz, "02_painel_correcoes", "relatorios_apoio_tematicos", fase)
+  caminhos <- unique(c(legado, organizado, organizado_anterior))
+  arqs <- unique(unlist(lapply(caminhos[dir.exists(caminhos)], list.files, full.names = TRUE, recursive = FALSE)))
+  arqs <- as.character(arqs)
+  arqs <- arqs[file.exists(arqs) & !dir.exists(arqs)]
+  if (!length(arqs)) return(setNames(character(), character()))
+  nomes <- vapply(basename(arqs), monitora_nome_arquivo_logico, character(1L))
+  for (n in unique(nomes[duplicated(nomes)])) {
+    if (length(unique(as.character(tools::md5sum(arqs[nomes == n])))) != 1L)
+      stop("Comparação pré/pós: fontes divergentes para ", fase, "/", n, "; resolver a duplicidade antes de comparar.", call. = FALSE)
+  }
+  setNames(arqs[!duplicated(nomes)], nomes[!duplicated(nomes)])
+}
+monitora_qfield_orientar_entrada <- function(base_dir, entrada_dir) {
+  invertida <- file.path(base_dir, "input_qfield")
+  if (dir.exists(invertida) && length(list.files(invertida, recursive = TRUE))) {
+    monitora_qfield_avisar(paste0("Encontrada a pasta input_qfield, que não é lida. Coloque os insumos em ",
+      entrada_dir, " e gere novamente o projeto para incorporá-los. Nenhum arquivo foi movido automaticamente."))
+  }
+}
+
+MONITORA_AVISOS_ESTADO <- new.env(parent = emptyenv())
+MONITORA_AVISOS_ESTADO$chaves <- character()
+MONITORA_AVISOS_ESTADO$itens <- list()
+MONITORA_AVISOS_ESTADO$etapa <- "inicializacao"
+MONITORA_AVISOS_ESTADO$id <- format(Sys.time(), "%Y%m%d_%H%M%S")
+withCallingHandlers({
 
 ### Inicialização sem eco no RStudio ----------------------------------------
 ### "Source with Echo" é uma preferência do IDE aplicada antes da primeira
@@ -202,8 +264,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "3.0.2"
-MONITORA_SCRIPT_BUILD_ID <- "v3.0.2-20260923-r01"
+MONITORA_SCRIPT_VERSAO <- "3.0.3"
+MONITORA_SCRIPT_BUILD_ID <- "v3.0.3-20260924-r01"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1605,7 +1667,7 @@ monitora_doc_historico_relatorio <- function(operacoes, registros, output_dir, d
   universos_etapas <- monitora_doc_universos_ocorrencias(registros, dados_esp)
   ocorrencias <- list()
   for (fase in c("pre_painel", "pos_painel")) {
-    arq <- file.path(output_dir, "02_painel_correcoes", "ocorrencias_diagnosticas", fase, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv"))
+    arq <- file.path(output_dir, "02_painel_correcoes", "oc", fase, paste0("registros_oc_", fase, ".csv"))
     if (!file.exists(arq)) next
     cab <- names(data.table::fread(arq, nrows = 0L, showProgress = FALSE))
     cols <- intersect(c("UC", "ANO", "COLETA", "monitora_row_id", "ponto_metro", "tipo_ocorrencia", "severidade"), cab)
@@ -1862,11 +1924,11 @@ monitora_doc_modos_passo_a_passo <- function(docs_dir = "manual_usuario") {
     "1) Usar registros_corrig.csv. 2) Reabrir painel. 3) Aplicar ajustes. 4) Gerar estatísticas/tabelas sem gráficos."
     ),
     conferir = c(
-    "output/01_produtos_dados/, output/02_painel_correcoes/, output/07_relatorio_validacao/, output/05_estatisticas/ e output/06_graficos/",
-    "produtos tabulares e output/07_relatorio_validacao/; PNGs não são esperados",
-    "estatísticas e output/07_relatorio_validacao/; gráficos não são esperados",
+    "output/01_produtos_dados/, output/02_painel_correcoes/, output/07_validacao/, output/05_estatisticas/ e output/06_graficos/",
+    "produtos tabulares e output/07_validacao/; PNGs não são esperados",
+    "estatísticas e output/07_validacao/; gráficos não são esperados",
     "output/01_produtos_dados/registros_corrig.csv e output/02_painel_correcoes/linhagem/",
-    "output/01_produtos_dados/registros_corrig.csv, output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/ e output/07_relatorio_validacao/",
+    "output/01_produtos_dados/registros_corrig.csv, output/02_painel_correcoes/oc/pos_painel/ e output/07_validacao/",
     "output/02_painel_correcoes/operacoes_sessao/ e relatórios pós-painel",
     "output/01_produtos_dados/registros_validados.csv, auditorias XLSForm e estatísticas",
     "produtos tabulares e relatório consolidado; PNGs não são esperados",
@@ -1949,7 +2011,7 @@ monitora_doc_rotinas_integrais <- function() {
 }
 monitora_doc_diretorios_saida <- function() {
   data.table::data.table(
-    diretorio = c("00_manifesto_execucao", "01_produtos_dados", "02_painel_correcoes", "03_auditorias", "04_validacao_espacial", "05_estatisticas", "06_graficos", "07_relatorio_validacao", "08_relatorios_analiticos", "09_qfield", "90_cache", "99_legacy_compat"),
+    diretorio = c("00_manifesto_execucao", "01_produtos_dados", "02_painel_correcoes", "03_aud", "04_validacao_espacial", "05_estatisticas", "06_graficos", "07_validacao", "08_analises", "09_qfield", "90_cache", "99_legacy_compat"),
     conteudo = c(
     "Manifestos, hashes e inventários que identificam a execução e seus produtos.",
     "Bases canônicas: registros importados, corrigidos, validados e derivados de integração.",
@@ -1981,7 +2043,7 @@ monitora_doc_diretorios_saida <- function() {
   )
 }
 monitora_doc_mapa_coletas <- function(registros_corrig, output_dir = "output", exec_id = format(Sys.time(), "%Y%m%d_%H%M%S")) {
-  dir_mapa <- monitora_doc_dir(output_dir, "07_relatorio_validacao", "figuras")
+  dir_mapa <- monitora_doc_dir(output_dir, "07_validacao", "figuras")
   dt <- data.table::as.data.table(registros_corrig)
   cols <- names(dt)
   pick <- function(pat) {
@@ -3282,6 +3344,9 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
     return(character())
   }
   out <- character()
+  causa_pdf <- "HTML ou dependências de renderização indisponíveis."
+  inicio_doc <- Sys.time()
+  monitora_operacao_msg("Documento", "Iniciando ", tipo_documento, "; formatos: ", paste(formatos, collapse = ", "))
   html <- sub("\\.Rmd$", ".html", rmd)
   if ("html" %in% formatos || "pdf" %in% formatos) {
     ok_html <- tryCatch({
@@ -3291,10 +3356,12 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
     )
     TRUE
     }, error = function(e) {
-    log_msg("Falha ao renderizar HTML: ", conditionMessage(e))
+    causa_pdf <<- paste0("HTML não gerado: ", conditionMessage(e))
+    log_msg(causa_pdf)
+    monitora_operacao_msg("Documento ERRO", causa_pdf)
     FALSE
     })
-    if (ok_html && file.exists(html)) {
+    if (ok_html && ok_html && file.exists(html)) {
     if ("html" %in% formatos) out <- c(out, html)
     log_msg("HTML gerado: ", html)
     }
@@ -3302,21 +3369,24 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
   if ("pdf" %in% formatos) {
     pdf <- sub("\\.Rmd$", ".pdf", rmd)
     ok_pdf <- FALSE
+    candidato_pdf <- tempfile("monitora_pdf_", tmpdir = dirname(pdf), fileext = ".pdf")
+    on.exit(unlink(candidato_pdf), add = TRUE)
     if (nzchar(Sys.which("xelatex"))) {
     ok_pdf <- tryCatch({
       monitora_posix_diagnosticar_etapa(
         "render_relatorio_pdf_xelatex",
-        rmarkdown::render(rmd, output_format = rmarkdown::pdf_document(toc = TRUE, number_sections = numerar_automaticamente, latex_engine = "xelatex"), output_file = basename(pdf), output_dir = dirname(pdf), quiet = TRUE)
+        rmarkdown::render(rmd, output_format = rmarkdown::pdf_document(toc = TRUE, number_sections = numerar_automaticamente, latex_engine = "xelatex"), output_file = basename(candidato_pdf), output_dir = dirname(pdf), quiet = TRUE)
       )
       TRUE
     }, error = function(e) {
-      log_msg("Falha ao gerar PDF via rmarkdown/pdf_document: ", conditionMessage(e))
+      causa_pdf <<- conditionMessage(e)
+      log_msg("Falha ao gerar PDF via rmarkdown/pdf_document: ", causa_pdf)
       FALSE
     })
     } else {
     log_msg("xelatex ausente; tentando PDF via HTML/pagedown.")
     }
-    if (!ok_pdf && requireNamespace("pagedown", quietly = TRUE) && file.exists(html)) {
+    if (!ok_pdf && requireNamespace("pagedown", quietly = TRUE) && ok_html && file.exists(html)) {
     try({
       html_txt <- readLines(html, warn = FALSE, encoding = "UTF-8")
       if (!any(grepl("rel=[\"'](?:shortcut )?icon[\"']", html_txt, ignore.case = TRUE, perl = TRUE))) {
@@ -3327,16 +3397,33 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
         }
       }
     }, silent = TRUE)
-    timeout_pdf <- suppressWarnings(as.numeric(Sys.getenv("MONITORA_PDF_CHROME_TIMEOUT_SEG", "20")))
-    if (!is.finite(timeout_pdf) || timeout_pdf < 3) timeout_pdf <- 20
-    ok_pdf <- tryCatch({ monitora_posix_diagnosticar_etapa("render_relatorio_pdf_chrome", pagedown::chrome_print(html, output = pdf, timeout = timeout_pdf)); TRUE }, error = function(e) {
-      log_msg("Falha ao gerar PDF via pagedown/chrome_print: ", conditionMessage(e))
+    timeout_pdf <- suppressWarnings(as.numeric(Sys.getenv("MONITORA_PDF_CHROME_TIMEOUT_SEG", "180")))
+    if (!is.finite(timeout_pdf) || timeout_pdf < 3) timeout_pdf <- 180
+    ok_pdf <- tryCatch({
+      navegador <- monitora_relatorios_analiticos_resolver_navegador()
+      if (!isTRUE(navegador$ok)) stop(navegador$mensagem)
+      resultado <- monitora_relatorios_analiticos_chrome_print_isolado(html, candidato_pdf,
+        browser = navegador$caminho, timeout = timeout_pdf)
+      log_msg(resultado$mensagem, " Duração: ", round(resultado$duracao_seg, 1), "s.")
+      if (!isTRUE(resultado$ok)) stop(resultado$mensagem)
+      TRUE
+    }, error = function(e) {
+      causa_pdf <<- conditionMessage(e)
+      log_msg("Falha ao gerar PDF via Chrome isolado: ", causa_pdf)
       FALSE
     })
+    }
+    ok_pdf <- isTRUE(ok_pdf) && file.exists(candidato_pdf) && isTRUE(file.info(candidato_pdf)$size > 1000)
+    if (ok_pdf) {
+      ok_pdf <- tryCatch({ monitora_doc_validacao_publicar(candidato_pdf, pdf); TRUE },
+        error = function(e) { causa_pdf <<- conditionMessage(e); FALSE })
     }
     if (ok_pdf && file.exists(pdf)) {
     out <- c(out, pdf)
     log_msg("PDF gerado: ", pdf)
+    aviso <- file.path(dirname(rmd), paste0("PDF_NAO_GERADO_", tools::file_path_sans_ext(basename(rmd)), ".txt"))
+    if (file.exists(aviso)) unlink(aviso)
+    monitora_operacao_msg("Documento", "PDF concluído: ", pdf)
     } else {
     aviso <- file.path(dirname(rmd), paste0("PDF_NAO_GERADO_", tools::file_path_sans_ext(basename(rmd)), ".txt"))
     writeLines(c(
@@ -3344,11 +3431,14 @@ monitora_doc_render_rmd <- function(rmd, formatos = c("html", "pdf"), tipo_docum
       paste0("Rmd: ", rmd),
       paste0("HTML: ", if (file.exists(html)) html else "não gerado"),
       paste0("Log de renderização: ", log_arq),
-      "Consulte o HTML/MD/JSON. A falha de PDF geralmente decorre de ausência de Chrome/pagedown funcional, LaTeX ou dependências de renderização."
+      paste0("Causa registrada: ", causa_pdf),
+      "Consulte os formatos gerados nesta execução. MONITORA_PDF_CHROME_TIMEOUT_SEG controla o prazo do Chrome (padrão 180s)."
     ), aviso, useBytes = TRUE)
     log_msg("PDF não gerado; aviso gravado em: ", aviso)
+    monitora_operacao_msg("Documento ERRO", causa_pdf, "; detalhes: ", aviso)
     }
   }
+  monitora_operacao_msg("Documento", tipo_documento, ": concluído em ", round(as.numeric(difftime(Sys.time(), inicio_doc, units = "secs")), 1), "s; formatos gerados: ", paste(tools::file_ext(out), collapse = ", "))
   out
 }
 monitora_doc_link_relativo <- function(path, label = NULL, docs_dir = "manual_usuario") {
@@ -3371,16 +3461,16 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "manual_usuario") {
     "Comparação contra oráculo"
     ),
     consultar_antes = c(
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Ocorrências diagnósticas pré-painel"),
-    monitora_doc_link_relativo("output/03_auditorias/completude/coletas_quarentenadas_por_incompletude_pre_painel.csv", "Auditoria de completude 101 pontos"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Ocorrências de nativa sem forma de vida"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Ocorrências de exótica sem forma de vida"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Ocorrências de seca/morta sem forma de vida"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pre_painel/", "Relatórios de outras formas de vida"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pre_painel/", "Relatório de exóticas pré-painel"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pre_painel/", "Relatório de exóticas com espécie vinculada"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pre_painel/", "Ocorrências diagnósticas pré-painel"),
+    monitora_doc_link_relativo("output/03_aud/completude/coletas_quarentenadas_por_incompletude_pre_painel.csv", "Auditoria de completude 101 pontos"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pre_painel/", "Ocorrências de nativa sem forma de vida"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pre_painel/", "Ocorrências de exótica sem forma de vida"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pre_painel/", "Ocorrências de seca/morta sem forma de vida"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pre_painel/", "Relatórios de outras formas de vida"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/ap/pre_painel/", "Relatório de exóticas pré-painel"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/ap/pre_painel/", "Relatório de exóticas com espécie vinculada"),
     monitora_doc_link_relativo("input/linhagem/correcoes_semanticas_consolidada.csv", "Ledger semântico consolidado reaplicado"),
-    monitora_doc_link_relativo("output/03_auditorias/replay_semantico/", "Diagnóstico de convergência com oráculo")
+    monitora_doc_link_relativo("output/03_aud/replay_semantico/", "Diagnóstico de convergência com oráculo")
     ),
     operacao_no_painel = c(
     "Selecionar a coleta/linha indicada, mover desconhecida para a categoria e forma tecnicamente correta ou aplicar operação em lote quando a decisão for comum ao escopo.",
@@ -3395,16 +3485,16 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "manual_usuario") {
     "Não editar como entrada. Usar apenas para verificar se a run atual convergiu com a run de referência."
     ),
     conferir_depois = c(
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/", "Ocorrências diagnósticas pós-painel"),
-    monitora_doc_link_relativo("output/03_auditorias/completude/", "Auditorias de completude pós-processamento"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/", "Relatórios pós-painel"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/", "Relatórios pós-painel"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/", "Relatórios pós-painel"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/ocorrencias_diagnosticas/pos_painel/", "Relatórios pós-painel de outras formas"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pos_painel/", "Relatório de exóticas pós-correções"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/relatorios_apoio_tematicos/pos_painel/", "Relatório de exóticas pós-correções"),
-    monitora_doc_link_relativo("output/02_painel_correcoes/auditorias_operacionais/auditoria_reaplicacao_correcoes_anteriores_ultima_execucao.csv", "Auditoria de reaplicação"),
-    monitora_doc_link_relativo("output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv", "Selo final de convergência com oráculo")
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pos_painel/", "Ocorrências diagnósticas pós-painel"),
+    monitora_doc_link_relativo("output/03_aud/completude/", "Auditorias de completude pós-processamento"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pos_painel/", "Relatórios pós-painel"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pos_painel/", "Relatórios pós-painel"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pos_painel/", "Relatórios pós-painel"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/oc/pos_painel/", "Relatórios pós-painel de outras formas"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/ap/pos_painel/", "Relatório de exóticas pós-correções"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/ap/pos_painel/", "Relatório de exóticas pós-correções"),
+    monitora_doc_link_relativo("output/02_painel_correcoes/aud/auditoria_reaplicacao_correcoes_anteriores_ultima_execucao.csv", "Auditoria de reaplicação"),
+    monitora_doc_link_relativo("output/03_aud/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv", "Selo final de convergência com oráculo")
     ),
     criterio_sucesso = c(
     "contador de forma de vida desconhecida = 0 e ausência de bloqueio em registros_corrig/registros_validados",
@@ -3428,9 +3518,9 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "manual_usuario") {
     "Falha recuperável ao salvar o painel"
     ),
     consultar_antes = c(
-    monitora_doc_link_relativo("output/03_auditorias/", "Auditorias do contrato e domínio"),
-    monitora_doc_link_relativo("output/03_auditorias/", "Auditoria da migração histórica de outros"),
-    monitora_doc_link_relativo("output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv", "Auditoria da equipe da COLETA"),
+    monitora_doc_link_relativo("output/03_aud/", "Auditorias do contrato e domínio"),
+    monitora_doc_link_relativo("output/03_aud/", "Auditoria da migração histórica de outros"),
+    monitora_doc_link_relativo("output/03_aud/cadastro/auditoria_sanitizacao_coletores.csv", "Auditoria da equipe da COLETA"),
     monitora_doc_link_relativo("output/04_validacao_espacial/", "Validação espacial pré/pós-painel"),
     monitora_doc_link_relativo("output/02_painel_correcoes/operacoes_sessao/cache_sessao/", "Checkpoint recuperável da sessão")
     ),
@@ -3442,9 +3532,9 @@ monitora_doc_roteiro_usuario <- function(docs_dir = "manual_usuario") {
     "Não fechar à força. Registrar a mensagem; o painel restaura os arquivos anteriores e preserva filas/justificativas no checkpoint."
     ),
     conferir_depois = c(
-    monitora_doc_link_relativo("output/03_auditorias/", "Domínio contratual pós-correção"),
-    monitora_doc_link_relativo("output/03_auditorias/", "Células migradas e bloqueios remanescentes"),
-    monitora_doc_link_relativo("output/07_relatorio_validacao/", "Padronização da equipe herdada e atual"),
+    monitora_doc_link_relativo("output/03_aud/", "Domínio contratual pós-correção"),
+    monitora_doc_link_relativo("output/03_aud/", "Células migradas e bloqueios remanescentes"),
+    monitora_doc_link_relativo("output/07_validacao/", "Padronização da equipe herdada e atual"),
     monitora_doc_link_relativo("output/04_validacao_espacial/pos_painel/", "Status espacial pós-painel"),
     monitora_doc_link_relativo("output/02_painel_correcoes/operacoes_sessao/", "Auditoria da falha e restauração")
     ),
@@ -3465,7 +3555,7 @@ monitora_manual_usuario_cobertura_validar <- function(conteudo) {
     "Justificar pendências", "justificativa em lote", "Validação espacial",
     "mudança de formação vegetacional", "registros_validados_importacao_sismonitora",
     "Sanitizações automáticas", "Solução de problemas", "Proteção de dados",
-    "output/07_relatorio_validacao/", "inventario_sessoes_linhagem.csv",
+    "output/07_validacao/", "inventario_sessoes_linhagem.csv",
     "checkpoint recuperável", "Incorporação de novas COLETAs",
     "O que pode e o que não pode ser editado", "Planilhas XLSX com abas adicionais",
     "uma única aba biológica", "Mapa dos diretórios de saída",
@@ -3499,7 +3589,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
   cfg <- data.table::data.table(
     variavel = c("MONITORA_MODO_EXECUCAO", "MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES", "MONITORA_OPCAO_GERAR_REGISTROS_IMPORTADOS", "MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS", "MONITORA_OPCAO_VALIDAR_ESPACIAL_COLETAS", "MONITORA_OPCAO_ABRIR_ABA_VALIDACAO_ESPACIAL", "MONITORA_OPCAO_GERAR_MANUAL_USUARIO", "MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", "MONITORA_FORMATOS_RELATORIO_VALIDACAO", "MONITORA_RESPONSAVEL_CORRECAO", "MONITORA_INSTITUICAO_RESPONSAVEL", "MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES", "MONITORA_ARQUIVO_CORRECOES_ANTERIORES", "MONITORA_OPCAO_GRAVAR_TRILHA_SEMANTICA_CORRECOES", "MONITORA_OPCAO_REABRIR_PAINEL_DO_CACHE", "MONITORA_CACHE_PAINEL_DIR", "MONITORA_CACHE_PAINEL_ARQUIVO"),
     valores = c("completo; sem_png; estatisticas_sem_graficos; ate_registros_corrig; painel_e_parar; abrir_painel_cache; registros_corrig_completo; registros_corrig_sem_png; registros_corrig_estatisticas_sem_graficos; painel_incremental_registros_corrig; painel_incremental_completo; painel_incremental_sem_png; painel_incremental_estatisticas_sem_graficos", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "S ou N", "html, pdf, md, rmd", "texto livre ou variável de ambiente", "texto livre; padrão ICMBio", "S ou N", "caminho para correcoes_semanticas.csv ou correcoes_campos.csv", "S ou N", "S ou N; compatibilidade histórica com reabertura de cache", "caminho opcional para pasta de cache", "arquivo opcional de cache"),
-    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em manual_usuario/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/07_relatorio_validacao/ após a organização final do output.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o ledger a reaplicar; se vazio, procura a trilha consolidada em input/linhagem/ e input/, depois os nomes legados aceitos.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
+    finalidade = c("Controla o fluxo principal e define se o script parte da entrada bruta, de cache ou de registros_corrig já existente.", "Solicita abertura do painel no modo completo; nos modos orientados a painel, o script força S independentemente desta opção.", "Materializa registros_importados.csv como snapshot saneado da entrada antes das correções finais.", "Gera registros_validados.csv compatível com contrato XLSForm/template SISMONITORA quando o produto corrigido está apto.", "Ativa validação espacial de COLETAS, relatórios espaciais, mapa e, quando aplicável, aba espacial do painel.", "Abre a aba espacial dentro do painel quando a validação espacial está habilitada e há suporte aos dados necessários.", "Gera o manual do usuário em manual_usuario/. Em modos com painel, o manual é materializado automaticamente antes da abertura do Shiny.", "Gera o relatório consolidado de validação em output/07_validacao/ após a organização final do output.", "Define os formatos dos produtos documentais gerados por R Markdown.", "Define responsável padrão pela correção; o relatório prioriza o responsável salvo no painel quando houver.", "Define instituição/equipe responsável; para uso institucional, o padrão automático é ICMBio.", "Reaplica operações semânticas de uma rodada anterior antes dos diagnósticos pré-painel e antes da abertura do Shiny.", "Define o ledger a reaplicar; se vazio, procura a trilha consolidada em input/linhagem/ e input/, depois os nomes legados aceitos.", "Grava uma trilha semântica consolidada das operações do painel para replay em versões futuras.", "Força reabertura de painel por cache em instalações antigas; na prática, prefira MONITORA_MODO_EXECUCAO = abrir_painel_cache.", "Permite apontar manualmente a pasta de cache quando o script não deve usar o local padrão.", "Permite apontar um cache específico para reabrir painel. Use com cautela para não reabrir cache de outro input."),
     cuidados = c("É a variável mais importante da execução. Modos de painel prevalecem sobre MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES.", "No modo completo, N impede o painel. Em painel_e_parar, abrir_painel_cache e painel_incremental_*, o painel abre mesmo se estiver N.", "Produto sensível; não publicar. Em modos com painel a geração bruta/saneada pode ser obrigatória para auditoria pré-painel.", "Não é substituto de revisão humana; depende de registros_corrig consistente e sem bloqueios impeditivos.", "A validação espacial depende de coordenadas detectáveis e deve ser interpretada junto com relatórios específicos.", "Se leaflet não estiver instalado, o script mantém tabela e relatórios, mas pode omitir mapa interativo.", "Não depende de dados reais e pode ser gerado isoladamente, mas em execução com painel fica disponível antes da edição.", "Produto local de governança; pode conter nomes de arquivos e caminhos locais.", "HTML é o formato técnico principal; PDF é preferencialmente gerado via HTML/pagedown para evitar tabelas largas.", "Preencha no painel ou por variável de ambiente. O valor digitado no painel tem prioridade.", "Evite deixar vazio em execução institucional.", "Use deliberadamente: replay muda o estado da base antes do painel. O relatório audita o arquivo reaplicado.", "Prefira correcoes_semanticas_consolidada.csv exportado pelo script; correcoes_campos.csv legado é aceito, mas pode depender mais da estrutura da rodada original.", "Mantenha ligado para preservar a intenção das operações independentemente da evolução posterior do script.", "Mantida para compatibilidade; o modo explícito é mais claro e auditável.", "Só use se souber qual cache pertence ao input atual.", "O uso de cache incorreto pode aplicar correções fora de contexto.")
   )
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
@@ -3528,7 +3618,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     cuidados = "Não depende de dados reais. O PDF permanece fora do caminho crítico e só é gerado ao término quando solicitado explicitamente."
   )]
   cfg[variavel == "MONITORA_OPCAO_GERAR_RELATORIO_VALIDACAO_CONSOLIDADO", `:=`(
-    finalidade = "Gera o relatório executivo no estado terminal da execução em output/07_relatorio_validacao/.",
+    finalidade = "Gera o relatório executivo no estado terminal da execução em output/07_validacao/.",
     cuidados = "Produto documental local. Uma falha de renderização é auditada, mas não interrompe nem invalida os produtos de dados já materializados."
   )]
   cfg <- data.table::rbindlist(list(cfg, data.table::data.table(
@@ -3551,7 +3641,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "SENTINEL2_PUBLICO ou GOOGLE_MAPS; padrão SENTINEL2_PUBLICO"
     ),
     finalidade = c(
-    "Gera relatórios analíticos sintético e detalhado por UC em output/08_relatorios_analiticos/, com tabelas editáveis e numeradas, esforço real, continuidade, séries anuais por UA e painéis inferenciais auditáveis. Seções, tabelas e figuras recebem números após a seleção do conteúdo, por UC e por relatório; itens omitidos não reservam números. O arquivo auditoria_numeracao registra os elementos incluídos e as tabelas não selecionadas. No Word, tabelas largas podem apresentar identificação e resultados em duas colunas, preservando os valores.",
+    "Gera relatórios analíticos sintético e detalhado por UC em output/08_analises/, com tabelas editáveis e numeradas, esforço real, continuidade, séries anuais por UA e painéis inferenciais auditáveis. Seções, tabelas e figuras recebem números após a seleção do conteúdo, por UC e por relatório; itens omitidos não reservam números. O arquivo auditoria_numeracao registra os elementos incluídos e as tabelas não selecionadas. No Word, tabelas largas podem apresentar identificação e resultados em duas colunas, preservando os valores.",
     "Define os formatos documentais. Rmd e Markdown preservam fontes editáveis; DOCX é editável em processadores de texto; HTML e PDF são produtos de leitura/publicação.",
     "Acrescenta ao relatório um mapa de continuidade sobre imagem orbital em cor natural.",
     "Seleciona a fonte do fundo orbital. SENTINEL2_PUBLICO consulta imagens Sentinel-2 L2A recentes, sem chave, conta ou cobrança; GOOGLE_MAPS mantém a alternativa autenticada."
@@ -3723,7 +3813,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "Gera operações atômicas por linha do repeat e preserva os demais integrantes.",
     "CPF inválido, parcial ou ambiguamente associado é removido sem inferência e documentado.",
     "Registra operações de tokens e limpa campos filhos somente quando o pai passa para Não.",
-    "Alimenta justificativas_pendencias_consolidada.csv e pendencias_remanescentes_com_justificativas.csv.",
+    "Alimenta justificativas_pendencias_consolidada.csv e pendencias_justificadas.csv.",
     "Não altera dados; apenas define a seleção corrente.",
     "Cada ocorrência recebe evento próprio; o lote inteiro só entra na sessão após validação transacional completa.",
     "A exclusão só substitui o estado da sessão após reconstrução e validação integral dos lotes remanescentes.",
@@ -3800,7 +3890,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     monitora_doc_rmd_table_chunk(arq_modos, "manual-modos", 100L, c("modo", "finalidade", "entrada_principal", "painel", "saida_esperada"), 40L), "",
     "## Passo a passo detalhado dos modos", "", "A tabela abaixo orienta a equipe sobre quando usar cada modo, quais passos executar e quais produtos verificar ao final. O objetivo é reduzir ambiguidade operacional durante a produção e durante transições de versão do script.", "", monitora_doc_rmd_table_chunk(arq_modos_passos, "manual-modos-passos", 100L, c("modo", "quando_usar", "passo_a_passo", "conferir"), 38L), "",
     "## Combinações recomendadas", "", "- Use `completo` + `MONITORA_OPCAO_ABRIR_PAINEL_CORRECOES = 'S'` quando quiser executar tudo e revisar pendências no painel durante a rodada.", "- Use `painel_e_parar` quando quiser dedicar a rodada à curadoria e só depois rodar estatísticas/produtos finais.", "- Use `abrir_painel_cache` para continuar uma curadoria sem repetir etapas pesadas de pré-processamento, desde que o cache pertença ao mesmo input.", "- Use `registros_corrig_completo`, `registros_corrig_sem_png` ou `registros_corrig_estatisticas_sem_graficos` quando já existir um `registros_corrig*.csv` validado em `input/` e não for necessário reconstruir a entrada bruta.", "- Use `painel_incremental_*` quando precisar reabrir o painel sobre um `registros_corrig*.csv` e depois seguir para checkpoint ou produtos finais.", "- Habilite `MONITORA_OPCAO_GERAR_REGISTROS_VALIDADOS = 'S'` apenas quando o objetivo incluir o produto contratual final e a base corrigida estiver sem bloqueios impeditivos.", "",
-    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/auditorias_operacionais/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_auditorias/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "`inventario_sessoes_linhagem.csv` distingue execuções/rodadas, sessões que criaram decisões semânticas e execuções sem novas decisões; também informa eventos herdados, reaplicados, atuais e acumulados. O relatório consolidado apresenta a mesma cronologia e os controles de integridade. A v2.9.7 preserva os metadados das sessões em `metadados_sessoes_painel_consolidado.csv`, assinado pelo manifesto; na primeira continuidade de uma cadeia legada, a recuperação histórica deve ser feita uma única vez a partir dos sidecars da cadeia canônica. Depois de consumida, a recuperação não é propagada: as rodadas seguintes copiam `registros_corrig.csv` e a pasta `output/02_painel_correcoes/linhagem/` completa para o novo `input/`. Ausências verdadeiras continuam declaradas, nunca inferidas.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
+    "# Replay semântico e curadoria continuada", "", "`correcoes_campos.csv` é o arquivo operacional de uma sessão do painel. A trilha durável é `correcoes_semanticas_consolidada.csv`: ela preserva decisões semânticas, escopo, alvos, ação, tokens, justificativa, autoria, versão do contrato e identificadores estáveis dos eventos. O contrato público atual é `correcoes_semanticas_v2` / `replay_semantico_v2`; versões futuras devem migrar explicitamente formatos anteriores antes de qualquer mutação.", "", "Há dois fluxos válidos e mutuamente exclusivos. (1) REPLAY: parta de uma cópia idêntica dos arquivos brutos/originais, leve somente `correcoes_semanticas_consolidada.csv` para `input/linhagem/`, mantenha `registros_corrig.csv` e os demais sidecars fora do input e use `MONITORA_OPCAO_REAPLICAR_CORRECOES_ANTERIORES = 'S'`. Os modos compatíveis são `completo`, `sem_png`, `estatisticas_sem_graficos`, `ate_registros_corrig` e `painel_e_parar`. (2) CONTINUIDADE: leve `registros_corrig.csv` e a pasta `linhagem` inteira da run anterior para `input/`, escolha um modo `painel_incremental_*` e mantenha o replay em `N`, porque o checkpoint já contém os efeitos materiais das decisões.", "", "Nunca combine replay ligado com `registros_corrig.csv`, `abrir_painel_cache` ou modo incremental. O script bloqueia essas combinações antes de alterar dados. Replay sem ledger, ledger vazio ou caminho explícito inexistente também interrompe a execução. Mantenha `MONITORA_OPCAO_REPLAY_DIAGNOSTICO_NAO_ABORTAR = 'N'` para uso normal; `S` serve apenas para investigação e não autoriza promover os produtos.", "", "Para validar uma transição contra uma run-oráculo, copie a pasta dessa run para `input/oraculo_replay/`, use `MONITORA_OPCAO_COMPARAR_REPLAY_COM_ORACULO = 'S'` e `MONITORA_OPCAO_REPLAY_ORACULO_ABORTAR_DIVERGENCIA = 'S'`. A comparação ocorre sobre `registros_corrig` final reconciliado, antes de sua exportação. Oráculo ausente, identidade não única ou qualquer diferença impedem a materialização; o oráculo nunca é usado como dado de entrada.", "", "No console, confirme `Replay semântico solicitado: SIM`, `Replay concluído` e, quando houver oráculo, `Gate final do oráculo de replay: convergente_com_oraculo`. Confira `output/02_painel_correcoes/aud/auditoria_validacao_replay_v2_ultima_execucao.csv`, `auditoria_preflight_replay_v2_ultima_execucao.csv`, `output/02_painel_correcoes/linhagem/aplicacoes_correcoes.csv`, `resumo_linhagem.csv` e `output/03_aud/replay_semantico/oraculo_replay_selo_convergencia_pos_replay_final_reconciliado.csv`. Todas as operações devem estar aplicáveis ou já satisfeitas; todas as aplicações, aplicadas ou já satisfeitas; o selo estrito deve registrar `replay_equivalente_ao_oraculo = SIM`.", "", "Na continuidade incremental, o ledger herdado não é recanonizado nem regravado: seus bytes e hashes são preservados. Novas decisões são anexadas, e `aplicacoes_correcoes.csv` acumula tanto as aplicações históricas quanto a aplicação bem-sucedida da sessão atual. O manifesto liga criptograficamente o `registros_corrig.csv` ao ledger. Para publicar `registros_validados.csv`, histórico ausente, manifesto ausente ou hash legado ausente exigem a dispensa institucional explícita; a dispensa não reconstrói o histórico.", "", "`inventario_sessoes_linhagem.csv` distingue execuções/rodadas, sessões que criaram decisões semânticas e execuções sem novas decisões; também informa eventos herdados, reaplicados, atuais e acumulados. O relatório consolidado apresenta a mesma cronologia e os controles de integridade. A v2.9.7 preserva os metadados das sessões em `metadados_sessoes_painel_consolidado.csv`, assinado pelo manifesto; na primeira continuidade de uma cadeia legada, a recuperação histórica deve ser feita uma única vez a partir dos sidecars da cadeia canônica. Depois de consumida, a recuperação não é propagada: as rodadas seguintes copiam `registros_corrig.csv` e a pasta `output/02_painel_correcoes/linhagem/` completa para o novo `input/`. Ausências verdadeiras continuam declaradas, nunca inferidas.", "", "Copie sempre a pasta `output/02_painel_correcoes/linhagem/` junto com o `registros_corrig.csv` correspondente. Não edite manualmente o ledger, o manifesto ou `aplicacoes_correcoes.csv`, nem misture arquivos de runs diferentes.", "",
     "# Mapa dos diretórios de saída", "", "A organização abaixo separa produtos canônicos, evidências de auditoria, relatórios e artefatos recuperáveis. Use `README_OUTPUT.txt` e `indice_produtos.csv` como inventário da execução; não procure a versão mais recente apenas pela data da pasta.", "", monitora_doc_rmd_table_chunk(arq_diretorios, "manual-diretorios-saida", 30L, c("diretorio", "conteudo", "acao_usuario"), 38L), "",
     "# Produtos de dados", "", "Os produtos abaixo representam estágios diferentes da mesma cadeia de processamento. Eles não devem ser confundidos: cada um tem escopo, pré-requisitos e finalidade próprios.", "", monitora_doc_rmd_table_chunk(arq_produtos, "manual-produtos", 20L, c("produto", "como_e_criado", "escopo", "pre_requisitos", "finalidade", "subsidia"), 38L), "",
     "## Relação entre os produtos", "", "`registros_importados_bruto.csv` documenta a leitura/montagem da entrada. `registros_importados.csv` documenta a entrada já saneada. `registros_importados_operacional_pre_painel.csv` documenta a camada operacional pós-tokenização/pré-painel e não substitui `registros_importados.csv`, `registros_corrig.csv` nem `registros_validados.csv`. `registros_corrig.csv` é a base operacional corrigida e auditável. `registros_validados.csv`, quando habilitado, é a projeção contratual final para integração/devolutiva.", "",
@@ -3811,7 +3901,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "## Justificar pendências", "", "A aba **Justificar pendências** documenta ocorrências que permanecem após a revisão por motivo legítimo. A justificativa não corrige, não oculta e não libera uma pendência impeditiva. Selecione um ou mais rótulos para que a tabela exiba somente as ocorrências correspondentes e use **Selecionar todas as pendências filtradas**; a seleção abrange todas as páginas e permanece vinculada a `ocorrencia_id`. Também é possível adicionar o conjunto filtrado à seleção atual. Revise os totais, marque a confirmação e aplique a classificação e a justificativa em lote. A inclusão é atômica: todas as ocorrências e os metadados do lote são validados antes de uma única atualização da sessão; qualquer falha rejeita o lote completo. Em **Justificativas adicionadas nesta sessão**, filtre e selecione uma, várias, todas as filtradas ou todas e use **Excluir justificativas selecionadas**. A exclusão também é atômica e reconstrói lotes parcialmente mantidos. Eventos já persistidos nunca são apagados; eventual revogação deve ser um novo evento auditável. Se uma falha recuperável ocorrer ao salvar, o painel permanece aberto, os arquivos anteriores são restaurados e um checkpoint recuperável integral preserva as filas de correções de campos, operações espaciais, justificativas e a auditoria exata da falha em `output/02_painel_correcoes/operacoes_sessao/cache_sessao/` após a organização do output. Na reabertura sobre a mesma base, esse checkpoint é restaurado automaticamente e só é removido após salvamento concluído ou descarte explícito. Use texto específico, verificável e com pelo menos 20 caracteres.", "",
     "## Validação espacial", "", "A aba de Validação espacial trabalha sempre no escopo integral da COLETA. Os filtros identificam origem e destino; quando o conjunto de filtros define uma única COLETA destino, ela é preenchida automaticamente. A prévia mostra somente as coordenadas realmente afetadas pela operação. **Limpar filtros** reinicia COLETAS, listas, coordenadas e seleções do módulo. Confira os CSVs e mapas em `output/04_validacao_espacial/` antes de salvar.", "",
     "## Situação dos dados e diagnósticos", "", "O status apresentado ao usuário é **não validado**, **em validação** ou **validado**. Ocorrências impeditivas precisam ser corrigidas antes de `registros_validados.csv`. Ocorrências de revisão podem permanecer, desde que avaliadas e justificadas. A mudança de formação vegetacional entre anos na mesma UA é uma ocorrência diagnóstica não impeditiva: pode decorrer de classificação inconsistente ou ser compatível com mudança ecológica, como adensamento lenhoso ou supressão, mas o diagnóstico isolado não demonstra causa e deve orientar verificação de campo e análise temporal. A vegetação seca ou morta também é registrada como revisão não impeditiva, por linha e forma de vida. O apoio à triagem inclui `relatorio_operacional_seca_morta_*`, sínteses por ano, por UA e ano e por forma de vida, além de trajetórias herbáceas e lenhosas entre campanhas amostradas; os produtos editáveis identificam as COLETAS amostradas e as COLETAS com ocorrência. `criterios_atendidos` registra todas as razões da triagem e `criterio_principal` preserva apenas a precedência operacional. `classificacao_triagem` distingue suspeita de falso positivo, ocorrência biologicamente plausível a revisar, falta de contexto, padrão persistente e revisão rotineira. Nenhuma classe confirma erro ou causa ecológica. Percentuais usam todos os pontos da COLETA ou da UA/ano como denominador. Registros estruturados e texto livre de fogo, impacto e manejo são exibidos somente como contexto associado: fenologia, seca, fogo, herbivoria e outros processos permanecem hipóteses, nunca causas atribuídas pelo diagnóstico.", "",
-    "# Sanitizações automáticas", "", "As sanitizações automáticas ocorrem antes do painel e são repetidas como critério idempotente antes dos produtos finais. Elas não substituem decisões ecológicas. Para coletores, o script reconhece somente formatos legados comprovados, transforma a equipe em repeat esparso e preserva CPF apenas quando um CPF válido está inequivocamente associado a um único nome. CPF parcial, inválido ou único para vários nomes é removido sem tentativa de adivinhação. A auditoria fica em `output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv`; ela registra contagens e motivos, sem expor nomes ou CPFs.", "",
+    "# Sanitizações automáticas", "", "As sanitizações automáticas ocorrem antes do painel e são repetidas como critério idempotente antes dos produtos finais. Elas não substituem decisões ecológicas. Para coletores, o script reconhece somente formatos legados comprovados, transforma a equipe em repeat esparso e preserva CPF apenas quando um CPF válido está inequivocamente associado a um único nome. CPF parcial, inválido ou único para vários nomes é removido sem tentativa de adivinhação. A auditoria fica em `output/03_aud/cadastro/auditoria_sanitizacao_coletores.csv`; ela registra contagens e motivos, sem expor nomes ou CPFs.", "",
     "O reparo histórico do token órfão `outros` em exótica é deliberadamente estreito. Ele só migra o texto para o ramo de outra espécie correspondente quando existe exatamente uma forma exótica válida, o destino contratual é único e não há valor conflitante; o texto informado é preservado. Qualquer ambiguidade permanece bloqueada para decisão humana. Isso não é conversão de **outra forma de vida** e não adiciona alias ao XLSForm atual. O contrato único continua inalterado.", "",
     "# Relatórios e auditorias", "",
     "## Relatório de validação", "", "O relatório de validação descreve a cadeia desde o input original até o produto final. O resumo separa arquivos da sessão atual e herdados, número de sessões e modificações do usuário, automáticas e técnicas. **Tratamentos herdados e atuais** precisam aparecer com sua origem: correção do usuário, transformação automática, auditoria, recuperação ou conciliação não são somadas como se fossem o mesmo tipo de inconsistência. As seções detalhadas apresentam histórico por ano, equipe da COLETA, exclusões e validação espacial quando existe evidência. Zero significa zero comprovado; ausência ou parcialidade documental deve ser apresentada como não quantificável/parcial, nunca convertida em zero. Antes de entregar, confira se os totais do resumo são compatíveis com as tabelas e se a linhagem informa cada sessão.", "",
@@ -3825,7 +3915,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
     "Se ocorrer erro, copie a mensagem integral e consulte primeiro o log, `auditoria_produtos_finais_ultima_execucao.csv` e a auditoria específica da etapa. Uma falha opcional de PDF, mapa orbital ou QField não autoriza declarar esse produto concluído, mas os produtos canônicos anteriores podem permanecer válidos quando a auditoria assim registrar. Não execute novamente por cima da mesma pasta sem entender o ponto de parada; faça uma cópia local e preserve o estado falho para diagnóstico.", "",
     "Falha no XLSX: confira a auditoria de abas e volte ao download original intacto. Falha do painel: preserve o checkpoint recuperável e não edite as filas manualmente. Falha de registros_validados: corrija o registro, não o contrato. Falha QField: confirme uma UC, as duas opções, `qfield_input/`, zoom real, cobertura, validação espacial e permissão da imagem. Falha de importação SISMONITORA: confira UC/ciclo/campanha, 101 pontos e política de UUID. Sanitização de coletores bloqueada: não associe CPF por hipótese. Avisos de pacote compilado em outra versão do R não equivalem, por si só, a erro do produto.", "",
     "# Proteção de dados", "", "Nome, CPF, UUID, caminhos locais e referências a fotografias podem ser dados sensíveis ou operacionais. Não publique `input/`, produtos de dados, caches, relatórios de validação ou logs sem triagem. As auditorias de sanitização de coletores não registram os valores pessoais. Compartilhe somente pelo diretório institucional autorizado e preserve a rastreabilidade da run.", "",
-    "# Conferência final", "", "Após uma execução com painel, conferir: `output/01_produtos_dados/registros_corrig.csv`; ocorrências pós-painel; `pendencias_remanescentes_com_justificativas.csv`; auditoria de sanitização de coletores; produtos espaciais quando habilitados; `registros_validados.csv` e seus XLSX opcionais; `registros_corrig_stat.csv`; toda a linhagem; o relatório consolidado em `output/07_relatorio_validacao/`; relatórios analíticos; projeto QField quando solicitado; e `auditoria_produtos_finais_ultima_execucao.csv`. Todos os produtos obrigatórios devem constar como presentes, não vazios e completos.", ""
+    "# Conferência final", "", "Após uma execução com painel, conferir: `output/01_produtos_dados/registros_corrig.csv`; ocorrências pós-painel; `pendencias_justificadas.csv`; auditoria de sanitização de coletores; produtos espaciais quando habilitados; `registros_validados.csv` e seus XLSX opcionais; `registros_corrig_stat.csv`; toda a linhagem; o relatório consolidado em `output/07_validacao/`; relatórios analíticos; projeto QField quando solicitado; e `auditoria_produtos_finais_ultima_execucao.csv`. Todos os produtos obrigatórios devem constar como presentes, não vazios e completos.", ""
   )
   novas_secoes <- c(
     "## Preparar uma atualização completa da UC",
@@ -3896,7 +3986,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
   pos_roteiro <- match("# Roteiro operacional do usuário", conteudo)
   stopifnot(!is.na(pos_roteiro))
   conteudo <- append(conteudo, c(novas_secoes, ""), after = pos_roteiro - 1L)
-  conteudo <- gsub("output/03_auditorias/relatorios_validacao/", "output/07_relatorio_validacao/", conteudo, fixed = TRUE)
+  conteudo <- gsub("output/03_aud/relatorios_validacao/", "output/07_validacao/", conteudo, fixed = TRUE)
   conteudo <- gsub("pasta `docs/`", "pasta `manual_usuario/`", conteudo, fixed = TRUE)
   conteudo <- gsub("roll-forward semântico", "continuidade semântica", conteudo, fixed = TRUE)
   conteudo <- gsub("Replay semântico", "Reaplicação semântica", conteudo, fixed = TRUE)
@@ -3916,7 +4006,7 @@ monitora_manual_usuario_gerar <- function(docs_dir = "manual_usuario", versao = 
   conteudo <- append(conteudo, c(
     "# Lista de conferência e glossário", "",
     "## Antes de executar", "", "- Trabalhar em cópia local exclusiva e confirmar que não há outra instância usando a pasta.", "- Confirmar modo, input e linhagem correspondentes.", "- Confirmar opções de produtos; deixar o PDF do manual em N quando não for necessário.", "- Preservar uma cópia do input e não editar CSVs de produto manualmente.", "- Se houver QField, separar arquivos espaciais em `qfield_input/` e confirmar que a execução contém uma UC.", "",
-    "## Antes de encerrar a rodada", "", "- Clicar em **Atualizar prévia integral** e revisar o resultado.", "- Conferir pendências impeditivas e justificativas das ocorrências de revisão.", "- Salvar e fechar o painel; confirmar `registros_corrig.csv` e a pasta `linhagem/`.", "- Consultar `output/07_relatorio_validacao/`, `README_OUTPUT.txt` e `indice_produtos.csv`.", "- Quando solicitado, conferir relatórios analíticos e testar o ZIP QField online e em modo avião.", "",
+    "## Antes de encerrar a rodada", "", "- Clicar em **Atualizar prévia integral** e revisar o resultado.", "- Conferir pendências impeditivas e justificativas das ocorrências de revisão.", "- Salvar e fechar o painel; confirmar `registros_corrig.csv` e a pasta `linhagem/`.", "- Consultar `output/07_validacao/`, `README_OUTPUT.txt` e `indice_produtos.csv`.", "- Quando solicitado, conferir relatórios analíticos e testar o ZIP QField online e em modo avião.", "",
     "## Glossário essencial", "", "- **COLETA:** conjunto integral de linhas de uma unidade amostral em uma campanha.", "- **Ocorrência impeditiva:** inconsistência que impede a geração de um produto validado.", "- **Ocorrência em revisão:** situação a conferir que pode permanecer quando avaliada e justificada.", "- **Linhagem:** histórico auditável que conecta decisões, aplicações e produtos entre rodadas.", "- **Prévia integral:** simulação atômica das operações pendentes antes do salvamento.", "- **Produto canônico:** cópia oficial do produto no diretório definido pelo contrato de saída.", ""
   ), after = length(conteudo))
   monitora_manual_usuario_cobertura_validar(conteudo)
@@ -3935,9 +4025,9 @@ monitora_doc_pendencias_justificadas_dt <- function(output_dir = "output") {
   x <- if (is.list(obj) && !is.null(obj$pendencias_remanescentes)) data.table::as.data.table(obj$pendencias_remanescentes) else data.table::data.table()
   if (!nrow(x)) {
     candidatos <- unique(c(
-    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(output_dir, "correcoes_campos"), inherits = TRUE), "pendencias_remanescentes_com_justificativas.csv"),
-    file.path(output_dir, "correcoes_campos", "pendencias_remanescentes_com_justificativas.csv"),
-    file.path(output_dir, "02_painel_correcoes", "operacoes_sessao", "pendencias_remanescentes_com_justificativas.csv")
+    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(output_dir, "correcoes_campos"), inherits = TRUE), "pendencias_justificadas.csv"),
+    file.path(output_dir, "correcoes_campos", "pendencias_justificadas.csv"),
+    file.path(output_dir, "02_painel_correcoes", "operacoes_sessao", "pendencias_justificadas.csv")
     ))
     hit <- candidatos[file.exists(candidatos)][1L]
     if (length(hit) && !is.na(hit)) {
@@ -3970,7 +4060,7 @@ monitora_doc_sanitizacao_coletores_dt <- function(output_dir = "output") {
   x <- data.table::as.data.table(get0("MONITORA_AUDITORIA_SANITIZACAO_COLETORES_SESSAO", ifnotfound = data.table::data.table(), inherits = TRUE))
   if (!nrow(x)) {
     candidatos <- c(
-    file.path(output_dir, "03_auditorias", "cadastro", "auditoria_sanitizacao_coletores.csv"),
+    file.path(output_dir, "03_aud", "cadastro", "auditoria_sanitizacao_coletores.csv"),
     file.path(output_dir, "auditorias", "cadastro", "auditoria_sanitizacao_coletores.csv")
     )
     hit <- candidatos[file.exists(candidatos)][1L]
@@ -4010,7 +4100,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
                                                           instituicao = get0("MONITORA_INSTITUICAO_RESPONSAVEL", ifnotfound = "ICMBio", inherits = TRUE),
                                                           formatos = get0("MONITORA_FORMATOS_RELATORIO_VALIDACAO", ifnotfound = c("html", "docx", "pdf"), inherits = TRUE),
                                                           previa_documental = FALSE) {
-  base_dir <- monitora_doc_dir(output_dir, "07_relatorio_validacao")
+  base_dir <- monitora_doc_dir(output_dir, "07_validacao")
   data_dir <- monitora_doc_dir(base_dir, "dados_apoio")
   exec_id <- monitora_doc_chr(exec_id, format(Sys.time(), "%Y%m%d_%H%M%S"))
   base_relatorio_logica <- paste0("relatorio_validacao_consolidado_", exec_id)
@@ -4019,7 +4109,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     base_dir,
     paste0(base_relatorio_logica, c(".Rmd", ".md", ".html", ".docx", ".pdf", ".json"))
   )
-  if (any(nchar(caminhos_documentais_logicos, type = "chars") > 240L)) {
+  if (TRUE) {
     base_relatorio_fisica <- "validacao_consolidado"
   }
   responsavel <- monitora_doc_resolver_responsavel(responsavel)
@@ -4170,8 +4260,8 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     )
   }
   arq_sanit_auto_usuario <- file.path(data_dir, "sanitizacoes_automaticas_para_leitura.csv"); monitora_doc_fwrite(sanitizacoes_usuario, arq_sanit_auto_usuario)
-  arq_pend_just <- file.path(data_dir, paste0("pendencias_remanescentes_com_justificativas_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$detalhe, arq_pend_just)
-  arq_pend_just_resumo <- file.path(data_dir, paste0("resumo_pendencias_remanescentes_com_justificativas_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$resumo, arq_pend_just_resumo)
+  arq_pend_just <- file.path(data_dir, paste0("pendencias_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$detalhe, arq_pend_just)
+  arq_pend_just_resumo <- file.path(data_dir, paste0("resumo_pendencias_", exec_id, ".csv")); monitora_doc_fwrite(pendencias_justificadas$resumo, arq_pend_just_resumo)
   arq_coletores <- file.path(data_dir, paste0("auditoria_sanitizacao_coletores_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacao_coletores$detalhe, arq_coletores)
   arq_coletores_resumo <- file.path(data_dir, paste0("resumo_sanitizacao_coletores_", exec_id, ".csv")); monitora_doc_fwrite(sanitizacao_coletores$resumo, arq_coletores_resumo)
   arq_replay_contrato <- file.path(data_dir, paste0("contrato_rollforward_semantico_", exec_id, ".csv")); monitora_doc_fwrite(replay_contrato, arq_replay_contrato)
@@ -4281,7 +4371,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     )
   }
   arq_refs_usuario <- file.path(data_dir, "evidencias_complementares_para_leitura.csv"); monitora_doc_fwrite(referencias_usuario, arq_refs_usuario)
-  dir_oraculo <- file.path(output_dir, "03_auditorias", "replay_semantico")
+  dir_oraculo <- file.path(output_dir, "03_aud", "replay_semantico")
   if (!dir.exists(dir_oraculo)) dir_oraculo <- file.path(output_dir, "correcoes_campos", "diagnostico_oraculo_replay")
   if (!dir.exists(dir_oraculo)) dir_oraculo <- file.path(output_dir, "02_painel_correcoes", "diagnostico_oraculo_replay")
   oraculo_files <- if (dir.exists(dir_oraculo)) list.files(dir_oraculo, recursive = TRUE, full.names = TRUE, all.files = FALSE) else character()
@@ -4343,7 +4433,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     if (validados_gerados) "- [registros_validados.csv](../01_produtos_dados/registros_validados.csv)" else "- `registros_validados.csv`: não materializado nesta execução.",
     "- [Histórico de correções](../02_painel_correcoes/linhagem/)",
     "- [Validação espacial](../04_validacao_espacial/)",
-    "- [Relatórios analíticos](../08_relatorios_analiticos/)",
+    "- [Relatórios analíticos](../08_analises/)",
     "- [Índice completo de produtos](../indice_produtos.csv)"
   )
   conteudo <- c(
@@ -4426,7 +4516,7 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
     "# Relatórios e evidências complementares", "", "O quadro resume os conjuntos disponíveis sem reproduzir no documento principal centenas de nomes técnicos. O inventário integral, com o caminho de cada arquivo, permanece no CSV de apoio e no índice geral da execução.", "", monitora_doc_rmd_table_chunk(arq_refs_usuario, "rel-referencias", 40L, c("Grupo", "Nº de arquivos", "Finalidade"), 58L), "", paste0("[Abrir o inventário completo das evidências](dados_apoio/", basename(arq_refs), ") · [Abrir o índice geral de produtos](../indice_produtos.csv)"), "",
     "# Conclusão e continuidade", "",
     paste0("A situação final desta execução é **", status_dados, "**. Para continuar uma validação incremental, copie conjuntamente `output/01_produtos_dados/registros_corrig.csv` e toda a pasta `output/02_painel_correcoes/linhagem/` para o próximo `input/`; não misture arquivos de rodadas diferentes."), "",
-    "A auditoria técnica completa permanece em `output/03_auditorias/`. Este relatório é uma síntese dirigida ao corpo técnico e não substitui os CSVs individualizados, o índice de produtos ou as regras do contrato único.", ""
+    "A auditoria técnica completa permanece em `output/03_aud/`. Este relatório é uma síntese dirigida ao corpo técnico e não substitui os CSVs individualizados, o índice de produtos ou as regras do contrato único.", ""
   )
   conteudo <- monitora_doc_numerar_secoes(conteudo)
   raiz_relatorio <- normalizePath(base_dir, winslash = "/", mustWork = FALSE)
@@ -4474,9 +4564,9 @@ monitora_relatorio_validacao_consolidado_gerar <- function(registros_corrig,
 monitora_relatorio_validacao_consolidado_registrar_falha <- function(msg, contexto = "execucao") {
   tryCatch({
     out_dir_err <- get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE)
-    base_dir_err <- file.path(out_dir_err, "07_relatorio_validacao")
+    base_dir_err <- file.path(out_dir_err, "07_validacao")
     dir.create(base_dir_err, showWarnings = FALSE, recursive = TRUE)
-    dir_aud_err <- file.path(out_dir_err, "03_auditorias", "execucao")
+    dir_aud_err <- file.path(out_dir_err, "03_aud", "execucao")
     dir.create(dir_aud_err, showWarnings = FALSE, recursive = TRUE)
     exec_id_err <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
     erro_dt <- data.table::data.table(
@@ -4499,7 +4589,7 @@ monitora_relatorio_validacao_consolidado_registrar_falha <- function(msg, contex
     paste0("Contexto: ", contexto),
     paste0("Motivo: ", msg),
     "Os produtos de dados e as demais auditorias não foram interrompidos por esta falha.",
-    paste0("Detalhe técnico: ../03_auditorias/execucao/", basename(arq_erro))
+    paste0("Detalhe técnico: ../03_aud/execucao/", basename(arq_erro))
     ), file.path(base_dir_err, "RELATORIO_NAO_GERADO.txt"), useBytes = TRUE)
     if (exists("monitora_log_registrar_evento", mode = "function", inherits = TRUE)) {
     monitora_log_registrar_evento("relatorio_validacao_consolidado", "ERRO", arq_erro, as.character(msg), "relatório consolidado não gerado; produtos principais não são afetados")
@@ -4524,12 +4614,12 @@ monitora_relatorio_validacao_consolidado_tentar <- function(registros_corrig, co
     if (exists("monitora_perf_registrar_checkpoint", mode = "function")) {
     monitora_perf_registrar_checkpoint(
       paste0("relatorio_validacao_consolidado_", contexto),
-      "relatório consolidado de validação gerado em output/07_relatorio_validacao/",
+      "relatório consolidado de validação gerado em output/07_validacao/",
       registros_corrig
     )
     }
     if (exists("monitora_correcao_console_msg", mode = "function")) {
-    monitora_correcao_console_msg("Relatório consolidado de validação gerado em output/07_relatorio_validacao/.")
+    monitora_correcao_console_msg("Relatório consolidado de validação gerado em output/07_validacao/.")
     }
     res
   }, error = function(e) {
@@ -8218,8 +8308,8 @@ monitora_correcao_sanitizar_placeholders_semanticos <- function(dt, linhas = NUL
     exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    arq_ult <- file.path(out_dir, "auditoria_sanitizacao_placeholders_semanticos_ultima_execucao.csv")
-    arq_log <- file.path(log_dir, paste0("auditoria_sanitizacao_placeholders_semanticos_", exec_id, ".csv"))
+    arq_ult <- file.path(out_dir, "aud_placeholders_ultima_execucao.csv")
+    arq_log <- file.path(log_dir, paste0("aud_placeholders_", exec_id, ".csv"))
     monitora_fwrite(audit, arq_ult, na = "")
     monitora_fwrite(audit, arq_log, na = "")
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -9651,8 +9741,8 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
  ### FIM auditoria por efeito diagnóstico final
   if (nrow(res) > 0L) {
     exec_id_pers <- if (exists("MONITORA_EXEC_ID", inherits = TRUE)) MONITORA_EXEC_ID else format(Sys.time(), "%Y%m%d_%H%M%S")
-    arq_log <- file.path(MONITORA_LOG_DIR, paste0("auditoria_persistencia_correcoes_", contexto, "_", exec_id_pers, ".csv"))
-    arq_ult <- file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_persistencia_correcoes_", contexto, "_ultima_execucao.csv"))
+    arq_log <- file.path(MONITORA_LOG_DIR, paste0("p_", contexto, "_", exec_id_pers, ".csv"))
+    arq_ult <- file.path(MONITORA_CORRECOES_DIR, paste0("p_", contexto, "_ultima_execucao.csv"))
     monitora_fwrite(res, arq_log, na = "")
     monitora_fwrite(res, arq_ult, na = "")
     monitora_correcao_gravar_resumo_operacoes_atomicas(audit, res, contexto = contexto)
@@ -9678,7 +9768,7 @@ monitora_correcao_auditar_persistencia_operacoes <- function(dt, audit, chaves =
     } else if (isTRUE(modo_replay_nao_abortivo)) {
       "diagnóstico não bloqueante ativo; execução continuará até o painel para coletar estado pós-replay"
     } else {
-      "execução bloqueada; revisar auditoria_persistencia_correcoes_*"
+      "execução bloqueada; revisar p_*"
     }
     monitora_log_registrar_evento(
       "persistencia_correcoes", nivel_persist, arq_log,
@@ -9754,12 +9844,12 @@ monitora_correcao_materializar_auditoria_persistencia_pos_export <- function(aud
     )
   }
   exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
-  nome_ult <- paste0("auditoria_persistencia_correcoes_", contexto, "_ultima_execucao.csv")
-  nome_exec <- paste0("auditoria_persistencia_correcoes_", contexto, "_", exec_id, ".csv")
+  nome_ult <- paste0("p_", contexto, "_ultima_execucao.csv")
+  nome_exec <- paste0("p_", contexto, "_", exec_id, ".csv")
   output_dir <- get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE)
   correcoes_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(output_dir, "02_painel_correcoes", "operacoes_sessao"), inherits = TRUE)
   log_dir <- get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE)
-  canonico_dir <- file.path(output_dir, "03_auditorias", "persistencia")
+  canonico_dir <- file.path(output_dir, "03_aud", "persistencia")
   destinos <- unique(c(
     file.path(correcoes_dir, nome_ult),
     file.path(log_dir, nome_exec),
@@ -9799,7 +9889,7 @@ monitora_correcao_auditoria_operacoes_atual <- function() {
   log_dir <- get0("MONITORA_LOG_DIR", ifnotfound = "log", inherits = TRUE)
   candidatos <- c(
     file.path(correcoes_dir, "auditoria_correcoes_campos_ultima_execucao.csv"),
-    file.path(output_dir, "02_painel_correcoes", "auditorias_operacionais", "auditoria_correcoes_campos_ultima_execucao.csv")
+    file.path(output_dir, "02_painel_correcoes", "aud", "auditoria_correcoes_campos_ultima_execucao.csv")
   )
   logs <- list.files(
     log_dir, pattern = "^auditoria_correcoes_campos_[0-9]{8}_[0-9]{6}[.]csv$",
@@ -10772,7 +10862,7 @@ monitora_publicacao_c_sincronizar_materiais_botanicos <- function(dt,
     aud,
     file.path(out_dir, "auditoria_materiais_botanicos_contrato.csv"),
     resumo,
-    file.path(out_dir, "auditoria_materiais_botanicos_contrato_resumo.csv")
+    file.path(out_dir, "aud_material_botanico.csv")
     )
   }
   invisible(aud)
@@ -10840,7 +10930,7 @@ monitora_publicacao_c_canonicalizar_alias_bromelioide <- function(dt,
     aud,
     file.path(out_dir, "auditoria_alias_bromelioide_contrato.csv"),
     resumo,
-    file.path(out_dir, "auditoria_alias_bromelioide_contrato_resumo.csv")
+    file.path(out_dir, "aud_bromelioide.csv")
     )
   }
   invisible(aud)
@@ -10948,8 +11038,8 @@ monitora_publicacao_c_canonicalizar_rotulos_listas_forma_vida <- function(
     exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    monitora_fwrite(aud, file.path(out_dir, "auditoria_canonicalizacao_rotulos_listas_forma_vida.csv"), na = "")
-    monitora_fwrite(aud, file.path(log_dir, paste0("auditoria_canonicalizacao_rotulos_listas_forma_vida_", exec_id, ".csv")), na = "")
+    monitora_fwrite(aud, file.path(out_dir, "aud_rotulos_forma_vida.csv"), na = "")
+    monitora_fwrite(aud, file.path(log_dir, paste0("aud_rotulos_forma_vida_", exec_id, ".csv")), na = "")
   }
   invisible(aud)
 }
@@ -11050,7 +11140,7 @@ monitora_publicacao_ad_gravar_proveniencia <- function(etapa,
     linhas_avaliadas = as.integer(linhas_avaliadas)[1L],
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
-  arq <- file.path(out_dir, "auditoria_reutilizacao_etapas_contratuais.csv")
+  arq <- file.path(out_dir, "aud_etapas_contratuais.csv")
   existe <- file.exists(arq) && isTRUE(file.info(arq)$size > 0L)
   try(data.table::fwrite(resumo, arq, append = existe, col.names = !existe, na = ""), silent = TRUE)
   invisible(resumo)
@@ -14242,7 +14332,7 @@ monitora_correcao_marcar_checkpoint_por_auditoria_operacoes <- function(resumo, 
            "; operacoes_usuario=", nrow(falhas_usuario),
            "; derivacoes_internas=", nrow(falhas_derivacao),
            "; registros_corrig permanece materializado como checkpoint e registros_validados fica bloqueado"),
-    "consultar auditoria_persistencia_correcoes_* e corrigir a causa sem descartar o checkpoint"
+    "consultar p_* e corrigir a causa sem descartar o checkpoint"
     )
   }
   invisible(nrow(falhas))
@@ -19939,8 +20029,8 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
     list(rel_regras_fechamento, rel_aplicacoes_fechamento),
     fill = TRUE, use.names = TRUE
   )
-  arq_fechamento_hierarquico <- file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_fechamento_hierarquico_r24_", MONITORA_EXEC_ID, ".csv"))
-  arq_fechamento_hierarquico_ult <- file.path(MONITORA_CORRECOES_DIR, "auditoria_fechamento_hierarquico_ultima_execucao.csv")
+  arq_fechamento_hierarquico <- file.path(MONITORA_CORRECOES_DIR, paste0("aud_fechamento_r24_", MONITORA_EXEC_ID, ".csv"))
+  arq_fechamento_hierarquico_ult <- file.path(MONITORA_CORRECOES_DIR, "aud_fechamento_ultima_execucao.csv")
   try(monitora_fwrite(rel_fechamento_hierarquico, arq_fechamento_hierarquico, na = ""), silent = TRUE)
   try(monitora_fwrite(rel_fechamento_hierarquico, arq_fechamento_hierarquico_ult, na = ""), silent = TRUE)
   assign("MONITORA_AUDITORIA_FECHAMENTO_HIERARQUICO_ULTIMA", rel_fechamento_hierarquico, envir = .GlobalEnv)
@@ -19975,7 +20065,7 @@ monitora_correcao_aplicar_arquivo <- function(dt, arquivo_correcao = MONITORA_AR
     if (nrow(erros_persist_objeto)) {
     MONITORA_PERSISTENCIA_DERIVACOES_PENDENTES <<- TRUE
     MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS <<- TRUE
-    monitora_log_registrar_evento("persistencia_correcoes", "ERRO", NA_character_, paste0(nrow(erros_persist_objeto), " falha(s) de persistência; checkpoint será materializado e registros_validados ficará bloqueado"), "consultar auditoria_persistencia_correcoes_pos_aplicacao_objeto_ultima_execucao.csv")
+    monitora_log_registrar_evento("persistencia_correcoes", "ERRO", NA_character_, paste0(nrow(erros_persist_objeto), " falha(s) de persistência; checkpoint será materializado e registros_validados ficará bloqueado"), "consultar p_pos_aplicacao_objeto_ultima_execucao.csv")
     }
     aud_sanhab_ap <- audit[grepl("^SANHAB", as.character(id_correcao))]
     pers_sanhab_ap <- if ("id_correcao" %in% names(persist_objeto_dt)) persist_objeto_dt[grepl("^SANHAB", as.character(id_correcao))] else data.table::data.table()
@@ -21067,7 +21157,7 @@ monitora_linhagem_finalizar <- function(arquivo_registros_saida = NA_character_)
   monitora_fwrite(inventario_sessoes$integridade, file.path(dir_lin, "integridade_sessoes_linhagem.csv"), na = "")
   auditoria_meta <- data.table::as.data.table(get0("MONITORA_METADADOS_SESSOES_RECUPERACAO_AUDITORIA", ifnotfound = NULL, inherits = TRUE))
   if (nrow(auditoria_meta)) {
-    dir_aud_meta <- file.path(out, "03_auditorias", "persistencia")
+    dir_aud_meta <- file.path(out, "03_aud", "persistencia")
     dir.create(dir_aud_meta, recursive = TRUE, showWarnings = FALSE)
     auditoria_meta[, `:=`(
     n_sessoes_consolidadas_saida = nrow(metadados_sessoes$dados),
@@ -21160,7 +21250,7 @@ monitora_linhagem_reassinar_pos_organizacao <- function(output_dir, contexto = "
     !identical(as.integer(conferido$event_count), as.integer(n_eventos))) {
     stop("Manifesto de linhagem não preservou a assinatura física pós-organização.", call. = FALSE)
   }
-  dir_aud <- file.path(output_dir, "03_auditorias", "persistencia")
+  dir_aud <- file.path(output_dir, "03_aud", "persistencia")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(data.table::data.table(
     contexto = as.character(contexto)[1L],
@@ -21205,10 +21295,10 @@ monitora_cadeia_dados_relatorio_gerar <- function(contexto = "fim_execucao") {
   }
   resumo_import <- ler_primeiro(c(
     file.path(out, "auditoria_registros_importados_resumo.csv"),
-    file.path(out, "03_auditorias", "importacao", "auditoria_registros_importados_resumo.csv"),
-    file.path(out, "03_auditorias", "execucao", "auditoria_registros_importados_resumo.csv")
+    file.path(out, "03_aud", "importacao", "auditoria_registros_importados_resumo.csv"),
+    file.path(out, "03_aud", "execucao", "auditoria_registros_importados_resumo.csv")
   ))
-  hashes <- ler_primeiro(c(file.path(out, "03_auditorias", "importacao", "auditoria_produtos_canonicos_md5.csv")))
+  hashes <- ler_primeiro(c(file.path(out, "03_aud", "importacao", "auditoria_produtos_canonicos_md5.csv")))
   resumo_produto <- function(nome) {
     if (!nrow(resumo_import) || !("produto" %in% names(resumo_import))) return(list(n_linhas = NA_integer_, n_colunas = NA_integer_))
     rr <- resumo_import[as.character(produto) == nome]
@@ -21269,8 +21359,8 @@ monitora_cadeia_dados_relatorio_gerar <- function(contexto = "fim_execucao") {
     "auditoria_registros_importados_resumo.csv; auditoria_compatibilidade_fontes_pre_dedup_*",
     "resumo_auditoria_pipe_pretokenizacao_*; auditoria_duplicidades_semanticas_*",
     "performance_execucao_*; auditorias de datas, ponto/metro, completude e ocorrências pré-painel",
-    "correcoes_semanticas_solicitadas_*; auditoria_conciliacao_semantica_operacoes_*; auditoria_sanitizacao_placeholders_semanticos_*; auditoria_sanitizacao_habito_obrigatorio_ausente_*; auditoria_fechamento_hierarquico_*; auditoria_persistencia_correcoes_*; ocorrências pós-painel",
-    "auditoria_pendencias_impeditivas_registros_corrig.csv; auditoria_registros_validados_*; manifesto_linhagem.json"
+    "correcoes_semanticas_solicitadas_*; auditoria_conciliacao_semantica_operacoes_*; aud_placeholders_*; auditoria_sanitizacao_habito_obrigatorio_ausente_*; aud_fechamento_*; p_*; ocorrências pós-painel",
+    "aud_pendencias_registros_corrig.csv; auditoria_registros_validados_*; manifesto_linhagem.json"
   )
   validados_pedido <- isTRUE(get0("MONITORA_GERAR_REGISTROS_VALIDADOS", ifnotfound = FALSE, inherits = TRUE))
   validados_gerado_run <- isTRUE(get0("MONITORA_REGISTROS_VALIDADOS_GERADO", ifnotfound = FALSE, inherits = TRUE))
@@ -21504,7 +21594,7 @@ monitora_oraculo_localizar <- function(subcaminhos) {
 monitora_oraculo_output_dir <- function() {
   file.path(
     get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
-    "03_auditorias", "replay_semantico"
+    "03_aud", "replay_semantico"
   )
 }
 monitora_oraculo_identidade <- function(dt) {
@@ -21778,7 +21868,7 @@ monitora_oraculo_comparar_registros_corrig <- function(dt_atual, fase = "pos_rep
     monitora_log_registrar_evento("oraculo_replay", nivel, file.path(out_dir, paste0("oraculo_registros_corrig_resumo_", fase, ".csv")), paste0("Comparação do registros_corrig pós-replay com oráculo: ", resumo$status_convergencia[1]), "não usa o oráculo como entrada; apenas audita a convergência")
   }
   if (isTRUE(get0("MONITORA_REPLAY_ORACULO_ABORTAR_DIVERGENCIA", ifnotfound = FALSE, inherits = TRUE)) && !identical(resumo$status_convergencia[1], "convergente_com_oraculo")) {
-    stop("Replay semântico divergiu do oráculo em registros_corrig final. Ver output/03_auditorias/replay_semantico/.", call. = FALSE)
+    stop("Replay semântico divergiu do oráculo em registros_corrig final. Ver output/03_aud/replay_semantico/.", call. = FALSE)
   }
   invisible(resumo[])
 }
@@ -21806,24 +21896,25 @@ monitora_replay_oraculo_validar_final <- function(dt_final, contexto = "pre_expo
     status <- as.character(resultado$status_convergencia[1L])
     message("[monitora] Gate final do oráculo de replay: ", status,
           " | contexto=", contexto,
-          " | relatórios=output/03_auditorias/replay_semantico/.")
+          " | relatórios=output/03_aud/replay_semantico/.")
   }
   invisible(resultado)
 }
 monitora_oraculo_resumo_ocorrencias_localizar <- function(fase_oraculo = "pos_painel") {
   nome <- paste0("resumo_ocorrencias_diagnosticas_", fase_oraculo, ".csv")
-  monitora_oraculo_localizar(c(
-    file.path("output_correcoes_campos", "ocorrencias_diagnosticas", fase_oraculo, nome),
-    file.path("output_correcoes_campos", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
-    file.path("output_correcoes_campos", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
-    file.path("output_02_painel_correcoes", "ocorrencias_diagnosticas", fase_oraculo, nome),
-    file.path("output_02_painel_correcoes", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
-    file.path("output_02_painel_correcoes", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
-    file.path("output/02_painel_correcoes", "ocorrencias_diagnosticas", fase_oraculo, nome),
-    file.path("output/02_painel_correcoes", "relatorios_pos_painel", "ocorrencias_diagnosticas", nome),
-    file.path("output/02_painel_correcoes", "relatorios_pos_correcoes", "ocorrencias_diagnosticas", nome),
+  candidatos <- c(
+    file.path("output_correcoes_campos", "oc", fase_oraculo, nome),
+    file.path("output_correcoes_campos", "relatorios_pos_painel", "oc", nome),
+    file.path("output_correcoes_campos", "relatorios_pos_correcoes", "oc", nome),
+    file.path("output_02_painel_correcoes", "oc", fase_oraculo, nome),
+    file.path("output_02_painel_correcoes", "relatorios_pos_painel", "oc", nome),
+    file.path("output_02_painel_correcoes", "relatorios_pos_correcoes", "oc", nome),
+    file.path("output/02_painel_correcoes", "oc", fase_oraculo, nome),
+    file.path("output/02_painel_correcoes", "relatorios_pos_painel", "oc", nome),
+    file.path("output/02_painel_correcoes", "relatorios_pos_correcoes", "oc", nome),
     nome
-  ))
+  )
+  monitora_oraculo_localizar(unique(c(candidatos, gsub("/oc/", "/ocorrencias_diagnosticas/", candidatos, fixed = TRUE))))
 }
 monitora_oraculo_comparar_resumo_ocorrencias <- function(fase_atual = "pre_painel", fase_oraculo = "pos_painel") {
   if (!isTRUE(get0("MONITORA_COMPARAR_REPLAY_COM_ORACULO", ifnotfound = FALSE, inherits = TRUE))) return(invisible(NULL))
@@ -21832,10 +21923,10 @@ monitora_oraculo_comparar_resumo_ocorrencias <- function(fase_atual = "pre_paine
   arq_ref <- monitora_oraculo_resumo_ocorrencias_localizar(fase_oraculo)
   nome_atual <- paste0("resumo_ocorrencias_diagnosticas_", fase_atual, ".csv")
   candidatos_atual <- c(
-    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "ocorrencias_diagnosticas", fase_atual, nome_atual),
-    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "relatorios_pre_painel", "ocorrencias_diagnosticas", nome_atual),
-    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "ocorrencias_diagnosticas", fase_atual, nome_atual),
-    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "relatorios_pre_painel", "ocorrencias_diagnosticas", nome_atual)
+    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "oc", fase_atual, nome_atual),
+    file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = "output/02_painel_correcoes", inherits = TRUE), "relatorios_pre_painel", "oc", nome_atual),
+    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "oc", fase_atual, nome_atual),
+    file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "02_painel_correcoes", "relatorios_pre_painel", "oc", nome_atual)
   )
   arq_atual <- candidatos_atual[file.exists(candidatos_atual)][1] %||% ""
   resumo <- data.table::data.table(
@@ -21926,16 +22017,16 @@ monitora_correcao_validar_dependencias <- function(dt, deps, dicionario = NULL) 
   regras_unicas <- unique(regras_brutas, by = c("parent_name", "token", "dependent_name", "fonte"))
   n_regras_unicas <- nrow(regras_unicas)
   if (n_regras_brutas > 0L) {
-    monitora_fwrite(regras_brutas, file.path(MONITORA_LOG_DIR, paste0("auditoria_dependencias_condicionais_regras_brutas_", MONITORA_EXEC_ID, ".csv")), na = "")
-    monitora_fwrite(regras_brutas, file.path(MONITORA_CORRECOES_DIR, "auditoria_dependencias_condicionais_regras_brutas_ultima_execucao.csv"), na = "")
-    monitora_fwrite(regras_unicas, file.path(MONITORA_LOG_DIR, paste0("auditoria_dependencias_condicionais_regras_unicas_", MONITORA_EXEC_ID, ".csv")), na = "")
-    monitora_fwrite(regras_unicas, file.path(MONITORA_CORRECOES_DIR, "auditoria_dependencias_condicionais_regras_unicas_ultima_execucao.csv"), na = "")
+    monitora_fwrite(regras_brutas, file.path(MONITORA_LOG_DIR, paste0("aud_regras_brutas_", MONITORA_EXEC_ID, ".csv")), na = "")
+    monitora_fwrite(regras_brutas, file.path(MONITORA_CORRECOES_DIR, "aud_regras_brutas_ultima_execucao.csv"), na = "")
+    monitora_fwrite(regras_unicas, file.path(MONITORA_LOG_DIR, paste0("aud_regras_unicas_", MONITORA_EXEC_ID, ".csv")), na = "")
+    monitora_fwrite(regras_unicas, file.path(MONITORA_CORRECOES_DIR, "aud_regras_unicas_ultima_execucao.csv"), na = "")
   }
   regras_todas <- monitora_correcao_resolver_dependencias(dt, deps, dicionario, incluir_bloqueadas = TRUE)
   if (nrow(regras_todas) > 0L) {
-    arq_regras <- file.path(MONITORA_LOG_DIR, paste0("auditoria_dependencias_condicionais_regras_resolvidas_", MONITORA_EXEC_ID, ".csv"))
+    arq_regras <- file.path(MONITORA_LOG_DIR, paste0("aud_regras_resolvidas_", MONITORA_EXEC_ID, ".csv"))
     monitora_fwrite(regras_todas, arq_regras, na = "")
-    monitora_fwrite(regras_todas, file.path(MONITORA_CORRECOES_DIR, "auditoria_dependencias_condicionais_regras_resolvidas_ultima_execucao.csv"), na = "")
+    monitora_fwrite(regras_todas, file.path(MONITORA_CORRECOES_DIR, "aud_regras_resolvidas_ultima_execucao.csv"), na = "")
   }
   regras <- regras_todas[status_regra == "ok"]
   n_deps <- nrow(regras)
@@ -21952,7 +22043,7 @@ monitora_correcao_validar_dependencias <- function(dt, deps, dicionario = NULL) 
     monitora_log_registrar_evento(
     "dependencias_condicionais", "INFO", NA_character_,
     paste0("Nenhuma regra condicional acionável para validação linha-a-linha; regras_brutas=", n_regras_brutas, "; regras_unicas=", n_regras_unicas, "; regras_resolvidas=", nrow(regras_todas)),
-    "OK; consultar auditoria_dependencias_condicionais_regras_resolvidas_* para universo completo"
+    "OK; consultar aud_regras_resolvidas_* para universo completo"
     )
     return(data.table::data.table())
   }
@@ -22030,7 +22121,7 @@ monitora_correcao_validar_dependencias <- function(dt, deps, dicionario = NULL) 
       "; regras_validadas_linha_a_linha=", n_deps,
       "; regras_documentadas_nao_validadas=", n_ignoradas
     ),
-    "corrigir críticas antes de validar; consultar auditoria_dependencias_condicionais_regras_resolvidas_* para universo completo"
+    "corrigir críticas antes de validar; consultar aud_regras_resolvidas_* para universo completo"
     )
   } else {
     monitora_log_registrar_evento("dependencias_condicionais", "INFO", NA_character_, "Nenhuma pendência condicional detectada nas regras mapeadas", "OK")
@@ -24580,7 +24671,7 @@ monitora_pre_painel_quarentenar_coletas_incompletas <- function(dt,
   if (!requireNamespace("data.table", quietly = TRUE)) return(list(dt = dt, auditoria = data.frame(), quarentenadas = character(0)))
   d <- data.table::as.data.table(dt)
   n <- nrow(d)
-  dir_comp <- file.path(output_dir, "03_auditorias", "completude")
+  dir_comp <- file.path(output_dir, "03_aud", "completude")
   dir_painel <- file.path(output_dir, "correcoes_campos", "relatorios_pre_painel", "completude")
   dir.create(dir_comp, recursive = TRUE, showWarnings = FALSE)
   dir.create(dir_painel, recursive = TRUE, showWarnings = FALSE)
@@ -24912,11 +25003,11 @@ monitora_correcao_conciliar_habito_historico_definitivo <- function(dt, meta_xls
   if (isTRUE(gravar) && nrow(audit)) {
     out_dir <- if (!is.null(output_dir)) output_dir else get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path("output", "correcoes_campos"), inherits = TRUE)
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-    arq_audit <- file.path(out_dir, paste0("auditoria_conciliacao_habito_historico_definitivo_", contexto, ".csv"))
+    arq_audit <- file.path(out_dir, paste0("aud_habito_", contexto, ".csv"))
     if (!identical(as.character(contexto)[1L], "pre_mascara_habito") || !file.exists(arq_audit)) {
     try(monitora_fwrite(audit, arq_audit, na = ""), silent = TRUE)
     }
-    arq_ultima <- file.path(out_dir, paste0("auditoria_conciliacao_habito_historico_definitivo_", contexto, "_ultima_avaliacao.csv"))
+    arq_ultima <- file.path(out_dir, paste0("aud_habito_", contexto, "_ultima_avaliacao.csv"))
     try(monitora_fwrite(audit, arq_ultima, na = ""), silent = TRUE)
   }
   data.table::setattr(dt, "monitora_habito_historico_conciliado", TRUE)
@@ -26971,7 +27062,7 @@ monitora_pendencias_justificativas_preparar <- function(
   if (nrow(snapshot)) snapshot[is.na(status_justificativa) | !nzchar(status_justificativa), status_justificativa := "sem_justificativa"]
   dir_saida <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
   arq_hist <- file.path(dir_saida, "justificativas_pendencias_consolidada.csv")
-  arq_snapshot <- file.path(dir_saida, "pendencias_remanescentes_com_justificativas.csv")
+  arq_snapshot <- file.path(dir_saida, "pendencias_justificadas.csv")
   list(
     historico = hist, pendencias_remanescentes = snapshot,
     arquivo_historico = arq_hist, arquivo_pendencias = arq_snapshot
@@ -27029,12 +27120,12 @@ monitora_diag_validar_ocorrencias_materializadas <- function(todos, fase, base_d
   }
   fase_rx <- gsub("([][{}()+*^$|\\?.])", "\\\\\\1", as.character(fase)[1L])
   arqs_tipo <- list.files(base_dir, pattern = paste0("^registros_.*_", fase_rx, "\\.csv$"), full.names = TRUE)
-  arqs_tipo <- arqs_tipo[!grepl(paste0("/registros_ocorrencias_diagnosticas_", fase_rx, "\\.csv$"), arqs_tipo)]
+  arqs_tipo <- arqs_tipo[!grepl(paste0("/registros_oc_", fase_rx, "\\.csv$"), arqs_tipo)]
   partes <- lapply(arqs_tipo, ler)
   erro_leitura <- vapply(partes, function(x) !is.null(attr(x, "erro_leitura")), logical(1L))
   tipos_materializados <- if (length(partes)) data.table::rbindlist(partes, fill = TRUE, use.names = TRUE) else data.table::data.table()
   chaves_tipos <- monitora_diag_chave_ocorrencia(tipos_materializados)
-  arquivo_unificado <- file.path(base_dir, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv"))
+  arquivo_unificado <- file.path(base_dir, paste0("registros_oc_", fase, ".csv"))
   unificado <- if (file.exists(arquivo_unificado)) ler(arquivo_unificado) else data.table::data.table()
   chaves_unificado <- monitora_diag_chave_ocorrencia(unificado)
   iguais_tipos <- !any(erro_leitura) && length(chaves_tipos) == length(chaves) && identical(sort(chaves_tipos), sort(chaves))
@@ -27082,8 +27173,8 @@ monitora_diag_validar_ocorrencias_materializadas <- function(todos, fase, base_d
     cobertura_tipos_ok = cobertura_tipos_ok,
     status = if (falha) "falha_integridade_materializacao_ocorrencias" else "ok_identidades_e_contagens_exatas"
   )
-  monitora_fwrite(aud, file.path(base_dir, paste0("auditoria_identidades_ocorrencias_diagnosticas_", fase, ".csv")), na = "")
-  if (falha) stop("Integridade dos relatórios de ocorrências diagnósticas falhou em ", fase, "; publicação de registros_validados bloqueada. Ver auditoria_identidades_ocorrencias_diagnosticas_", fase, ".csv.", call. = FALSE)
+  monitora_fwrite(aud, file.path(base_dir, paste0("aud_identidades_", fase, ".csv")), na = "")
+  if (falha) stop("Integridade dos relatórios de ocorrências diagnósticas falhou em ", fase, "; publicação de registros_validados bloqueada. Ver aud_identidades_", fase, ".csv.", call. = FALSE)
   assign("MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK", TRUE, envir = .GlobalEnv)
   aud
 }
@@ -27143,7 +27234,7 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
   if (is.null(base_dir)) {
     corr_dir <- get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE)
     pasta_fase <- if (grepl("^pre", fase)) "relatorios_pre_painel" else "relatorios_pos_painel"
-    base_dir <- file.path(corr_dir, pasta_fase, "ocorrencias_diagnosticas")
+    base_dir <- file.path(corr_dir, pasta_fase, "oc")
   }
   dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
   write_dt <- function(x, arquivo) {
@@ -27170,16 +27261,16 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     ponto_sem_interceptacao = "registros_ponto_sem_interceptacao_",
     nativa_sem_forma_vida = "registros_nativa_sem_forma_vida_",
     exotica_sem_forma_vida = "registros_exotica_sem_forma_vida_",
-    seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_vida_",
+    seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_",
     outra_forma_vida = "registros_outra_forma_vida_",
-    forma_vida_desconhecida_invalida = "registros_forma_vida_desconhecida_invalida_",
-    token_fora_dominio_contrato = "registros_token_fora_dominio_contrato_",
+    forma_vida_desconhecida_invalida = "registros_desconhecida_invalida_",
+    token_fora_dominio_contrato = "registros_token_dominio_",
     forma_vida_desconhecida = "registros_forma_vida_desconhecida_",
-    forma_vida_exotica_sem_especie = "registros_forma_vida_exotica_sem_especie_",
-    forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
-    solo_nu_com_outra_categoria = "registros_solo_nu_com_outra_categoria_",
-    habito_obrigatorio_ausente = "registros_habito_obrigatorio_ausente_",
-    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_",
+    forma_vida_exotica_sem_especie = "registros_exotica_sem_especie_",
+    forma_vida_exotica_com_especie = "registros_exotica_com_especie_",
+    solo_nu_com_outra_categoria = "registros_solo_conflito_",
+    habito_obrigatorio_ausente = "registros_habito_ausente_",
+    formacao_vegetacional_inconsistente_ua = "registros_formacao_ua_",
     seca_morta_em_revisao = "registros_seca_morta_em_revisao_"
   )
   catalogo[, arquivo := paste0(prefixos_arquivo_catalogo[tipo_ocorrencia], fase, ".csv")]
@@ -27567,7 +27658,7 @@ monitora_diag_rel_gerar_ocorrencias <- function(dt,
     x <- if (nrow(todos)) todos[tipo_ocorrencia == tp] else empty_rel()
     write_dt(x, arq)
   }
-  write_dt(todos, file.path(base_dir, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv")))
+  write_dt(todos, file.path(base_dir, paste0("registros_oc_", fase, ".csv")))
   monitora_diag_seca_morta_gravar_resumo(
     dt,
     if (nrow(todos)) todos[tipo_ocorrencia == "seca_morta_em_revisao"] else data.table::data.table(),
@@ -27648,16 +27739,16 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
     ponto_sem_interceptacao = "registros_ponto_sem_interceptacao_",
     nativa_sem_forma_vida = "registros_nativa_sem_forma_vida_",
     exotica_sem_forma_vida = "registros_exotica_sem_forma_vida_",
-    seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_vida_",
+    seca_morta_sem_forma_vida = "registros_seca_morta_sem_forma_",
     outra_forma_vida = "registros_outra_forma_vida_",
-    forma_vida_desconhecida_invalida = "registros_forma_vida_desconhecida_invalida_",
-    token_fora_dominio_contrato = "registros_token_fora_dominio_contrato_",
+    forma_vida_desconhecida_invalida = "registros_desconhecida_invalida_",
+    token_fora_dominio_contrato = "registros_token_dominio_",
     forma_vida_desconhecida = "registros_forma_vida_desconhecida_",
-    forma_vida_exotica_sem_especie = "registros_forma_vida_exotica_sem_especie_",
-    forma_vida_exotica_com_especie = "registros_forma_vida_exotica_com_especie_",
-    solo_nu_com_outra_categoria = "registros_solo_nu_com_outra_categoria_",
-    habito_obrigatorio_ausente = "registros_habito_obrigatorio_ausente_",
-    formacao_vegetacional_inconsistente_ua = "registros_formacao_vegetacional_inconsistente_ua_",
+    forma_vida_exotica_sem_especie = "registros_exotica_sem_especie_",
+    forma_vida_exotica_com_especie = "registros_exotica_com_especie_",
+    solo_nu_com_outra_categoria = "registros_solo_conflito_",
+    habito_obrigatorio_ausente = "registros_habito_ausente_",
+    formacao_vegetacional_inconsistente_ua = "registros_formacao_ua_",
     seca_morta_em_revisao = "registros_seca_morta_em_revisao_"
   )
   catalogo[, arquivo := paste0(prefixos[tipo_ocorrencia], fase, ".csv")]
@@ -27730,7 +27821,7 @@ monitora_diag_rel_gerar_ocorrencias_leve <- function(dt, fase = "pre_painel", ba
     x <- todos[tipo_ocorrencia == tp]
     monitora_diag_rel_write_dt(x, file.path(base_dir, catalogo$arquivo[ii]))
     }
-    monitora_diag_rel_write_dt(todos, file.path(base_dir, paste0("registros_ocorrencias_diagnosticas_", fase, ".csv")))
+    monitora_diag_rel_write_dt(todos, file.path(base_dir, paste0("registros_oc_", fase, ".csv")))
     monitora_diag_seca_morta_gravar_resumo(
     dt,
     if (nrow(todos)) todos[tipo_ocorrencia == "seca_morta_em_revisao"] else data.table::data.table(),
@@ -27814,7 +27905,7 @@ monitora_diag_rel_reutilizar_ocorrencias_pos_painel <- function(pre_result, base
   }
   monitora_diag_rel_write_dt(
     if (data.table::is.data.table(registros_pos)) registros_pos else data.table::data.table(),
-    file.path(base_dir_pos, paste0("registros_ocorrencias_diagnosticas_", fase_pos, ".csv"))
+    file.path(base_dir_pos, paste0("registros_oc_", fase_pos, ".csv"))
   )
   if (data.table::is.data.table(resumo_pos) && "severidade" %in% names(resumo_pos)) {
     monitora_diag_rel_write_dt(resumo_pos[severidade == "impeditiva"], file.path(base_dir_pos, paste0("resumo_ocorrencias_impeditivas_", fase_pos, ".csv")))
@@ -29323,7 +29414,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     dt,
     triagem_painel_unificada,
     contexto = "pre_painel",
-    base_dir = file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "diagnosticos"),
+    base_dir = file.path(MONITORA_OUTPUT_DIR, "03_aud", "diagnosticos"),
     falhar = TRUE,
     esperado_precomputado = attr(triagem_painel_unificada, "monitora_exoticas_canonicas", exact = TRUE)
   )
@@ -29539,7 +29630,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     length(coletas_triagem_por_tipo$formacao_vegetacional_inconsistente_ua), " para revisão de formação vegetacional na mesma UA."
   )
   tryCatch({
-    base_diag_pre <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pre_painel", "ocorrencias_diagnosticas")
+    base_diag_pre <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pre_painel", "oc")
     usar_diag_leve <- isTRUE(get0("MONITORA_OPCAO_RELATORIOS_DIAGNOSTICOS_PRE_PAINEL_LEVES", ifnotfound = "S", inherits = TRUE) == "S")
     MONITORA_RELATORIOS_DIAGNOSTICOS_PRE_PAINEL <<- if (usar_diag_leve) {
     monitora_diag_rel_gerar_ocorrencias_leve(
@@ -29562,7 +29653,7 @@ monitora_correcao_painel <- function(dt, meta_xls = NULL, arquivo_saida = MONITO
     }
   }, error = function(e) {
     assign("MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK", FALSE, envir = .GlobalEnv)
-    arq_erro <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pre_painel", "ocorrencias_diagnosticas", paste0("erro_relatorios_ocorrencias_diagnosticas_pre_painel_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".txt"))
+    arq_erro <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pre_painel", "oc", paste0("erro_relatorios_ocorrencias_diagnosticas_pre_painel_", get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE), ".txt"))
     dir.create(dirname(arq_erro), recursive = TRUE, showWarnings = FALSE)
     writeLines(conditionMessage(e), arq_erro, useBytes = TRUE)
     monitora_correcao_console_msg("ERRO ao gerar relatórios diagnósticos [pre_painel]: ", conditionMessage(e), ". Detalhes: ", arq_erro)
@@ -38566,6 +38657,7 @@ monitora_perf_tempo_acumulado <- function(now = Sys.time()) {
   total
 }
 monitora_perf_registrar_checkpoint <- function(etapa, detalhe = NA_character_, objeto = NULL) {
+  if (exists("MONITORA_AVISOS_ESTADO", inherits = TRUE)) MONITORA_AVISOS_ESTADO$etapa <- paste0("apos_", etapa)
   if (!isTRUE(MONITORA_PERF_ENABLED)) return(invisible(TRUE))
   now <- Sys.time()
   inicio <- MONITORA_PERF_LAST_TIME
@@ -39135,11 +39227,11 @@ monitora_produtos_resolver_pipes_por_ponto <- function(dt,
     n_linhas_falha_correcao = integer(), n_linhas_pipe_depois = integer(), exemplo_antes = character(), timestamp = character()
   )
   try({
-    dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    arq <- file.path(output_dir, "03_auditorias", "importacao", paste0("auditoria_pipes_", gsub("[^A-Za-z0-9]+", "_", produto), ".csv"))
+    arq <- file.path(output_dir, "03_aud", "importacao", paste0("aud_pipes_", gsub("[^A-Za-z0-9]+", "_", produto), ".csv"))
     data.table::fwrite(aud, arq, na = "")
-    data.table::fwrite(aud, file.path(log_dir, paste0("auditoria_pipes_", gsub("[^A-Za-z0-9]+", "_", produto), "_", exec_id, ".csv")), na = "")
+    data.table::fwrite(aud, file.path(log_dir, paste0("aud_pipes_", gsub("[^A-Za-z0-9]+", "_", produto), "_", exec_id, ".csv")), na = "")
   }, silent = TRUE)
   attr(d, "monitora_auditoria_pipes") <- aud
   d
@@ -39203,11 +39295,11 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
   }
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
   sufixo <- gsub("[^A-Za-z0-9]+", "_", produto_chr)
   if (ki) {
     achados_indet_dt <- data.table::rbindlist(achados_indet[seq_len(ki)], fill = TRUE, use.names = TRUE)
-    arq_indet <- file.path(output_dir, "03_auditorias", "importacao", paste0("pipe_indeterminado_", sufixo, ".csv"))
+    arq_indet <- file.path(output_dir, "03_aud", "importacao", paste0("pipe_indeterminado_", sufixo, ".csv"))
     try({
     data.table::fwrite(achados_indet_dt, arq_indet, na = "")
     data.table::fwrite(achados_indet_dt, file.path(log_dir, paste0("pipe_indeterminado_", sufixo, "_", exec_id, ".csv")), na = "")
@@ -39236,8 +39328,8 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
   try({
-    data.table::fwrite(resumo_pipe, file.path(output_dir, "03_auditorias", "importacao", paste0("auditoria_pipe_residual_resumo_", sufixo, ".csv")), na = "")
-    data.table::fwrite(resumo_pipe, file.path(log_dir, paste0("auditoria_pipe_residual_resumo_", sufixo, "_", exec_id, ".csv")), na = "")
+    data.table::fwrite(resumo_pipe, file.path(output_dir, "03_aud", "importacao", paste0("aud_pipe_", sufixo, ".csv")), na = "")
+    data.table::fwrite(resumo_pipe, file.path(log_dir, paste0("aud_pipe_", sufixo, "_", exec_id, ".csv")), na = "")
   }, silent = TRUE)
   if (!k) return(invisible(dados))
   achados_dt <- data.table::rbindlist(achados[seq_len(k)], fill = TRUE, use.names = TRUE)
@@ -39254,9 +39346,9 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     uas_exemplo = paste(utils::head(unique(UA[!is.na(UA) & nzchar(UA)]), 20L), collapse = " | "),
     valores_exemplo = paste(utils::head(unique(valor_residual[!is.na(valor_residual) & nzchar(valor_residual)]), 5L), collapse = " | ")
     ), by = .(produto, coluna, classificacao, orientacao)]
-    arq_resumo <- file.path(output_dir, "03_auditorias", "importacao", paste0("resumo_auditoria_pipe_pretokenizacao_", sufixo, ".csv"))
+    arq_resumo <- file.path(output_dir, "03_aud", "importacao", paste0("resumo_auditoria_pipe_pretokenizacao_", sufixo, ".csv"))
     arq_info <- if (isTRUE(detalhar_pretok)) {
-    file.path(output_dir, "03_auditorias", "importacao", paste0("auditoria_pipe_pretokenizacao_", sufixo, if (isTRUE(comprimir_pretok)) ".csv.gz" else ".csv"))
+    file.path(output_dir, "03_aud", "importacao", paste0("auditoria_pipe_pretokenizacao_", sufixo, if (isTRUE(comprimir_pretok)) ".csv.gz" else ".csv"))
     } else arq_resumo
     try({
     data.table::fwrite(resumo_pretok, arq_resumo, na = "")
@@ -39285,7 +39377,7 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
     }
     return(invisible(dados))
   }
-  arq_saida <- file.path(output_dir, "03_auditorias", "importacao", paste0("bloqueio_pipe_residual_", sufixo, ".csv"))
+  arq_saida <- file.path(output_dir, "03_aud", "importacao", paste0("bloqueio_pipe_residual_", sufixo, ".csv"))
   try({
     data.table::fwrite(achados_dt, arq_saida, na = "")
     data.table::fwrite(achados_dt, file.path(log_dir, paste0("bloqueio_pipe_residual_", sufixo, "_", exec_id, ".csv")), na = "")
@@ -39302,7 +39394,7 @@ monitora_bloquear_pipe_residual_produto <- function(dados,
   } else {
     data.table::data.table()
   }
-  arq_resumo_coleta_ua <- file.path(output_dir, "03_auditorias", "importacao", paste0("bloqueio_pipe_residual_resumo_coleta_ua_", sufixo, ".csv"))
+  arq_resumo_coleta_ua <- file.path(output_dir, "03_aud", "importacao", paste0("bloqueio_pipe_residual_resumo_coleta_ua_", sufixo, ".csv"))
   try({
     data.table::fwrite(resumo_coleta_ua, arq_resumo_coleta_ua, na = "")
     data.table::fwrite(resumo_coleta_ua, file.path(log_dir, paste0("bloqueio_pipe_residual_resumo_coleta_ua_", sufixo, "_", exec_id, ".csv")), na = "")
@@ -40179,13 +40271,6 @@ monitora_cache_gerar_relatorios_pos_se_preciso <- function(registros_corrig, arq
     try(monitora_fwrite(aud, file.path(MONITORA_CORRECOES_DIR, "relatorios_pos_correcoes_nao_gerados_sem_correcoes_novas.csv"), na = ""), silent = TRUE)
     return(invisible(aud))
   }
-  if (isTRUE(get0("MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS", ifnotfound = "S", inherits = TRUE) == "S") &&
-    !monitora_correcao_arquivo_afeta_relatorios_suporte(arquivo_correcoes)) {
-    MONITORA_RELATORIOS_SUPORTE_POS_CORRECOES <<- relatorios_pre
-    monitora_correcao_console_msg("Relatórios pós-correções de apoio pulados no modo ", modo, ": as correções não alteraram formas de vida, espécies, hábitos ou Encostam.")
-    monitora_perf_registrar_checkpoint("relatorios_suporte_pos_correcoes_pulados", paste0("relatórios pós-correções reutilizados sem recomputação no modo ", modo), registros_corrig)
-    return(invisible(relatorios_pre))
-  }
   if (!exists("monitora_relatorios_suporte_painel_gravar", mode = "function", inherits = TRUE)) {
     aud <- data.table::data.table(
     momento = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -40219,7 +40304,7 @@ monitora_cache_gerar_ocorrencias_diagnosticas_pos_painel <- function(registros_c
     ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"),
     inherits = TRUE
     ),
-    "relatorios_pos_painel", "ocorrencias_diagnosticas"
+    "relatorios_pos_painel", "oc"
   )
   dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
   out <- tryCatch(
@@ -40582,7 +40667,7 @@ monitora_registros_corrig_ler_csv_normalizado <- function(arquivo,
   exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
   try(monitora_fwrite(
     aud,
-    file.path(output_dir, "03_auditorias", "importacao", "auditoria_normalizacao_cabecalhos_registros_corrig.csv"),
+    file.path(output_dir, "03_aud", "importacao", "auditoria_normalizacao_cabecalhos_registros_corrig.csv"),
     na = ""
   ), silent = TRUE)
   try(monitora_fwrite(
@@ -41245,7 +41330,7 @@ monitora_io_auditar_midias_referenciadas <- function(dt, diretorios,
     n_arquivos_orfaos = if (nrow(tab_fis)) sum(!tab_fis$referenciada_em_registro) else 0L,
     n_basenames_duplicados = if (nrow(tab_fis)) data.table::uniqueN(tab_fis[n_arquivos_mesmo_basename > 1L, basename_midia]) else 0L
   )
-  prefixo <- file.path(output_dir, "03_auditorias", "importacao")
+  prefixo <- file.path(output_dir, "03_aud", "importacao")
   dir.create(prefixo, recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(resumo, file.path(prefixo, "auditoria_midias_resumo.csv"), na = "")
   monitora_fwrite(tab_fis, file.path(prefixo, "auditoria_midias_arquivos_fisicos.csv"), na = "")
@@ -43877,7 +43962,7 @@ monitora_coletores_repeat_auditoria_gravar <- function(auditoria,
   hist <- data.table::rbindlist(list(hist, aud), fill = TRUE, use.names = TRUE)
   hist <- unique(hist, by = c("contexto", "COLETA", "formato_origem", "status", "motivo_cpf"))
   assign("MONITORA_AUDITORIA_SANITIZACAO_COLETORES_SESSAO", hist, envir = .GlobalEnv)
-  dir_aud <- file.path(output_dir, "03_auditorias", "cadastro")
+  dir_aud <- file.path(output_dir, "03_aud", "cadastro")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(hist, file.path(dir_aud, "auditoria_sanitizacao_coletores.csv"), na = "")
@@ -43971,7 +44056,7 @@ monitora_coletores_repeat_sanitizar_legado <- function(dt,
   if (nrow(falhas) && isTRUE(abortar_nao_reconhecido)) {
     stop(
     "Sanitização de coletores bloqueada em ", data.table::uniqueN(falhas$COLETA),
-    " COLETA(s): formato legado não reconhecido de maneira inequívoca. Consulte output/03_auditorias/cadastro/auditoria_sanitizacao_coletores.csv.",
+    " COLETA(s): formato legado não reconhecido de maneira inequívoca. Consulte output/03_aud/cadastro/auditoria_sanitizacao_coletores.csv.",
     call. = FALSE
     )
   }
@@ -44177,7 +44262,7 @@ monitora_coletores_repeat_materializar_corrig <- function(dt,
   cols_tecnicas <- intersect(c(col_json, col_ver), names(dt))
   if (length(cols_tecnicas)) dt[, (cols_tecnicas) := NULL]
   aud <- data.table::rbindlist(audit[seq_len(kk)], fill = TRUE, use.names = TRUE)
-  dir_aud <- file.path(output_dir, "03_auditorias", "persistencia")
+  dir_aud <- file.path(output_dir, "03_aud", "persistencia")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   try(data.table::fwrite(aud, file.path(dir_aud, "auditoria_coletores_repeat_linhagem.csv"), na = ""), silent = TRUE)
@@ -44419,8 +44504,8 @@ monitora_registros_validados_gravar_bloqueios <- function(resumo = NULL,
                                                          exec_id = get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)) {
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(file.path(output_dir, "03_auditorias", "contrato_xlsform"), recursive = TRUE, showWarnings = FALSE)
-  dir.create(file.path(output_dir, "02_painel_correcoes", "ocorrencias_diagnosticas", "pos_painel"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(output_dir, "03_aud", "contrato_xlsform"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(output_dir, "02_painel_correcoes", "oc", "pos_painel"), recursive = TRUE, showWarnings = FALSE)
   linhas <- list()
   add <- function(origem, dt, atributo_col = "atributo", motivo_padrao = origem) {
     dd <- tryCatch(data.table::as.data.table(dt), error = function(e) data.table::data.table())
@@ -44454,24 +44539,24 @@ monitora_registros_validados_gravar_bloqueios <- function(resumo = NULL,
   )
   resumo_dt <- tryCatch(data.table::as.data.table(resumo), error = function(e) data.table::data.table())
   if (nrow(bloq)) {
-    data.table::fwrite(bloq, file.path(output_dir, "03_auditorias", "contrato_xlsform", "auditoria_registros_validados_bloqueios.csv"), sep = ",", quote = "auto", na = "")
+    data.table::fwrite(bloq, file.path(output_dir, "03_aud", "contrato_xlsform", "auditoria_registros_validados_bloqueios.csv"), sep = ",", quote = "auto", na = "")
     data.table::fwrite(bloq, file.path(log_dir, paste0("auditoria_registros_validados_bloqueios_", exec_id, ".csv")), sep = ",", quote = "auto", na = "")
   }
   if (nrow(resumo_dt)) {
     resumo_dt[, `:=`(produto = "registros_validados.csv", status_validacao = ifelse(any(suppressWarnings(as.integer(n_bloqueios)) > 0L, na.rm = TRUE), "bloqueado", "ok"), contexto_bloqueio = as.character(contexto)[1L])]
-    data.table::fwrite(resumo_dt, file.path(output_dir, "03_auditorias", "contrato_xlsform", "resumo_registros_validados_bloqueios.csv"), sep = ",", quote = "auto", na = "")
+    data.table::fwrite(resumo_dt, file.path(output_dir, "03_aud", "contrato_xlsform", "resumo_registros_validados_bloqueios.csv"), sep = ",", quote = "auto", na = "")
   }
   desc <- tryCatch(data.table::as.data.table(problemas_sanitizacao_desconhecida), error = function(e) data.table::data.table())
   if (nrow(desc)) {
     desc_out <- data.table::copy(desc)
     desc_out[, `:=`(exec_id = as.character(exec_id), tipo_ocorrencia = "desconhecida_dependente_sem_token", status = "bloqueia_registros_validados", timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))]
-    data.table::fwrite(desc_out, file.path(output_dir, "02_painel_correcoes", "ocorrencias_diagnosticas", "pos_painel", "registros_desconhecida_dependente_sem_token_pos_painel.csv"), sep = ",", quote = "auto", na = "")
+    data.table::fwrite(desc_out, file.path(output_dir, "02_painel_correcoes", "oc", "pos_painel", "registros_desconhecida_dependente_sem_token_pos_painel.csv"), sep = ",", quote = "auto", na = "")
   }
   assign("MONITORA_REGISTROS_VALIDADOS_BLOQUEADO", nrow(bloq) > 0L, envir = .GlobalEnv)
   assign("MONITORA_REGISTROS_VALIDADOS_BLOQUEIOS_ULTIMA", bloq, envir = .GlobalEnv)
   assign("MONITORA_REGISTROS_VALIDADOS_GERADO", FALSE, envir = .GlobalEnv)
   if (exists("monitora_publicacao_g_log", mode = "function") && nrow(bloq)) {
-    monitora_publicacao_g_log("registros_validados.csv bloqueado sem bloquear registros_corrig.csv [", contexto, "]: ", nrow(bloq), " linha(s) de auditoria de bloqueio; ver 03_auditorias/contrato_xlsform/auditoria_registros_validados_bloqueios.csv")
+    monitora_publicacao_g_log("registros_validados.csv bloqueado sem bloquear registros_corrig.csv [", contexto, "]: ", nrow(bloq), " linha(s) de auditoria de bloqueio; ver 03_aud/contrato_xlsform/auditoria_registros_validados_bloqueios.csv")
   }
   invisible(bloq)
 }
@@ -44782,7 +44867,7 @@ monitora_publicacao_aa_materializar_regras_xlsform21_corrig <- function(registro
   }
   aud <- if (length(auditoria)) data.table::rbindlist(auditoria, fill = TRUE, use.names = TRUE) else data.table::data.table()
   prob <- if (kp) data.table::rbindlist(problemas[seq_len(kp)], fill = TRUE, use.names = TRUE) else vazio_prob
-  dir_aud <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+  dir_aud <- file.path(output_dir, "03_aud", "contrato_xlsform")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   try(data.table::fwrite(aud, file.path(dir_aud, "auditoria_materializacao_regras_xlsform21_em_registros_corrig.csv"), na = ""), silent = TRUE)
@@ -45793,13 +45878,13 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
     mustWork = TRUE
   )
   caminhos_logicos <- file.path(dir_produtos_abs, contextos$nome_arquivo)
-  compactar_nome <- nchar(caminhos_logicos, type = "chars") > 210L
+  compactar_nome <- rep(TRUE, nrow(contextos))
   if (any(compactar_nome)) {
     contextos[compactar_nome, nome_arquivo := paste0(
     "sis_", contexto_id, ".xlsx"
     )]
     caminhos_compactos <- file.path(dir_produtos_abs, contextos$nome_arquivo)
-    compactar_mais <- nchar(caminhos_compactos, type = "chars") > 210L
+    compactar_mais <- rep(TRUE, nrow(contextos))
     contextos[compactar_mais, nome_arquivo := paste0(
     "s_", contexto_hash, ".xlsx"
     )]
@@ -45835,7 +45920,7 @@ monitora_planilha_importacao_sismonitora_gerar <- function(
     )
   }
   monitora_importacao_sismonitora_publicar_lote(temporarios, destinos)
-  dir_aud <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+  dir_aud <- file.path(output_dir, "03_aud", "contrato_xlsform")
   dir_manifesto <- file.path(output_dir, "00_manifesto_execucao")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(dir_manifesto, recursive = TRUE, showWarnings = FALSE)
@@ -46029,7 +46114,7 @@ monitora_planilha_importacao_sismonitora_gerar_seguro <- function(...) {
       demais_produtos_bloqueados = FALSE,
       timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
-    dir_aud <- file.path(out_dir, "03_auditorias", "contrato_xlsform")
+    dir_aud <- file.path(out_dir, "03_aud", "contrato_xlsform")
     dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
     try(monitora_fwrite(falha, file.path(dir_aud, "falha_planilha_importacao_sismonitora.csv"), na = ""), silent = TRUE)
     if (exists("monitora_log_registrar_evento", mode = "function")) {
@@ -46086,7 +46171,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
   dir.create(log_dir, showWarnings = FALSE, recursive = TRUE)
   if (!isTRUE(somente_auditar_contrato_corrig) &&
     !isTRUE(get0("MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK", ifnotfound = FALSE, inherits = TRUE))) {
-    dir_gate_diag <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+    dir_gate_diag <- file.path(output_dir, "03_aud", "contrato_xlsform")
     dir.create(dir_gate_diag, recursive = TRUE, showWarnings = FALSE)
     aud_gate_diag <- data.table::data.table(
     produto = "registros_validados.csv",
@@ -46123,7 +46208,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     }
   )
   if (!is.null(erro_gate_habito) || nrow(pend_habito_corrig) > 0L) {
-    dir_gate <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+    dir_gate <- file.path(output_dir, "03_aud", "contrato_xlsform")
     dir.create(dir_gate, recursive = TRUE, showWarnings = FALSE)
     aud_gate <- if (nrow(pend_habito_corrig)) data.table::as.data.table(pend_habito_corrig) else data.table::data.table(
     tipo = "falha_execucao_gate_habito_versionado",
@@ -46169,9 +46254,9 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     "falha_persistencia_derivacao_interna"
     }
     msg_persist <- if (falha_persist_usuario) {
-    "registros_validados.csv não será criado: uma ou mais operações do usuário não persistiram no registros_corrig.csv exportado. Não se trata de pendência impeditiva dos dados; consulte auditoria_persistencia_correcoes_* para identificar a operação."
+    "registros_validados.csv não será criado: uma ou mais operações do usuário não persistiram no registros_corrig.csv exportado. Não se trata de pendência impeditiva dos dados; consulte p_* para identificar a operação."
     } else {
-    "registros_validados.csv não será criado: uma derivação interna não persistiu no registros_corrig.csv exportado. Não se trata de pendência impeditiva dos dados; consulte auditoria_persistencia_correcoes_*."
+    "registros_validados.csv não será criado: uma derivação interna não persistiu no registros_corrig.csv exportado. Não se trata de pendência impeditiva dos dados; consulte p_*."
     }
     if (exists("monitora_publicacao_g_log", mode = "function")) {
     monitora_publicacao_g_log(msg_persist)
@@ -46207,7 +46292,7 @@ monitora_registros_validados_exportar <- function(registros_corrig,
     data.table::setcolorder(out_cache, cols)
     problemas_heranca_cache <- monitora_validados_validar_heranca_habitos(registros_corrig, out_cache)
     if (nrow(problemas_heranca_cache)) {
-    dir_gate <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+    dir_gate <- file.path(output_dir, "03_aud", "contrato_xlsform")
     dir.create(dir_gate, recursive = TRUE, showWarnings = FALSE)
     data.table::fwrite(problemas_heranca_cache, file.path(dir_gate, "auditoria_registros_validados_heranca_habitos.csv"), na = "")
     data.table::fwrite(problemas_heranca_cache, file.path(log_dir, paste0("auditoria_registros_validados_heranca_habitos_", exec_id, ".csv")), na = "")
@@ -46822,7 +46907,7 @@ monitora_publicacao_ab_normalizar_cpf_deterministico <- function(dt,
     aud_sessao <- aud_sessao[!duplicated(chave_aud)]
   }
   assign("MONITORA_AUDITORIA_CPF_SESSAO", aud_sessao, envir = .GlobalEnv)
-  dir_aud <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+  dir_aud <- file.path(output_dir, "03_aud", "contrato_xlsform")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   try(monitora_fwrite(aud_sessao, file.path(dir_aud, "auditoria_registros_corrig_normalizacao_cpf.csv"), na = ""), silent = TRUE)
@@ -46962,7 +47047,7 @@ monitora_publicacao_ab_normalizar_uuid_registro_deterministico <- function(dt,
     aud_sessao <- aud_sessao[!duplicated(chave_aud)]
   }
   assign("MONITORA_AUDITORIA_UUID_REGISTRO_SESSAO", aud_sessao, envir = .GlobalEnv)
-  dir_aud <- file.path(output_dir, "03_auditorias", "identidade")
+  dir_aud <- file.path(output_dir, "03_aud", "identidade")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   try(monitora_fwrite(aud_sessao, file.path(dir_aud, "auditoria_uuid_registro_resolucao_automatica.csv"), na = ""), silent = TRUE)
@@ -47137,11 +47222,11 @@ monitora_publicacao_ad_reutilizar_auditoria_pendencias <- function(dt,
   if (isTRUE(gravar)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    data.table::fwrite(audit, file.path(output_dir, "auditoria_pendencias_impeditivas_registros_corrig.csv"), na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
-    data.table::fwrite(audit, file.path(output_dir, "relatorio_detalhado_rejeicoes_validacao_registros_corrig.csv"), na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
+    data.table::fwrite(audit, file.path(output_dir, "aud_pendencias_registros_corrig.csv"), na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
+    data.table::fwrite(audit, file.path(output_dir, "rejeicoes_registros_corrig.csv"), na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
     data.table::fwrite(resumo, file.path(output_dir, "resumo_pendencias_impeditivas_registros_corrig.csv"), na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
     exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
-    try(data.table::fwrite(audit, file.path(log_dir, paste0("auditoria_pendencias_impeditivas_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
+    try(data.table::fwrite(audit, file.path(log_dir, paste0("aud_pendencias_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
     try(data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_pendencias_impeditivas_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
   }
   assign("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", nrow(audit) > 0L, envir = .GlobalEnv)
@@ -47466,14 +47551,14 @@ monitora_publicacao_ab_auditar_pendencias_impeditivas <- function(dt,
   if (isTRUE(gravar)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    arq_aud <- file.path(output_dir, "auditoria_pendencias_impeditivas_registros_corrig.csv")
-    arq_det <- file.path(output_dir, "relatorio_detalhado_rejeicoes_validacao_registros_corrig.csv")
+    arq_aud <- file.path(output_dir, "aud_pendencias_registros_corrig.csv")
+    arq_det <- file.path(output_dir, "rejeicoes_registros_corrig.csv")
     arq_res <- file.path(output_dir, "resumo_pendencias_impeditivas_registros_corrig.csv")
     data.table::fwrite(audit, arq_aud, na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
     data.table::fwrite(audit, arq_det, na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
     data.table::fwrite(resumo, arq_res, na = "", encoding = "UTF-8", bom = TRUE, eol = "\n")
     exec_id <- get0("MONITORA_EXEC_ID", ifnotfound = format(Sys.time(), "%Y%m%d_%H%M%S"), inherits = TRUE)
-    try(data.table::fwrite(audit, file.path(log_dir, paste0("auditoria_pendencias_impeditivas_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
+    try(data.table::fwrite(audit, file.path(log_dir, paste0("aud_pendencias_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
     try(data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_pendencias_impeditivas_registros_corrig_", exec_id, ".csv")), na = ""), silent = TRUE)
   }
   assign("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", nrow(audit) > 0L, envir = .GlobalEnv)
@@ -47683,7 +47768,7 @@ monitora_publicacao_ac_sanitizar_cadastro_nao_bloqueante <- function(dt,
     ch_o <- paste(occ$linha_indice, occ$atributo, sep = "||")
     occ <- occ[!(ch_o %in% ch_a)]
   }
-  dir_cad <- file.path(output_dir, "03_auditorias", "cadastro")
+  dir_cad <- file.path(output_dir, "03_aud", "cadastro")
   dir.create(dir_cad, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   aud_out <- if (exists("monitora_privacidade_sanitizar_auditoria", mode = "function")) monitora_privacidade_sanitizar_auditoria(aud, mascarar_exemplos = FALSE) else aud
@@ -47844,7 +47929,7 @@ monitora_publicacao_aa_preparar_validar_registros_corrig <- function(registros_c
     assign("MONITORA_REGISTROS_CORRIG_CONTRATO_CONTEXTO", paste0(contexto, "_checkpoint_com_pendencias_impeditivas"), envir = .GlobalEnv)
     assign("MONITORA_REGISTROS_VALIDADOS_GERADO", FALSE, envir = .GlobalEnv)
     if (exists("monitora_publicacao_ac_perf_checkpoint", mode = "function")) {
-    monitora_publicacao_ac_perf_checkpoint("auditoria_pendencias_impeditivas_registros_corrig", "pendências impeditivas detectadas; saneamento automático bloqueado e registros_corrig será checkpoint marcado", dt)
+    monitora_publicacao_ac_perf_checkpoint("aud_pendencias_registros_corrig", "pendências impeditivas detectadas; saneamento automático bloqueado e registros_corrig será checkpoint marcado", dt)
     }
     if (exists("monitora_registros_corrig_reordenar_colunas", mode = "function")) {
     monitora_registros_corrig_reordenar_colunas(dt)
@@ -48013,7 +48098,7 @@ monitora_registros_validados_materializado_sem_bloqueio <- function(output_dir =
   }
   caminhos_resumo <- unique(c(
     file.path(output_dir, "auditoria_registros_validados_resumo.csv"),
-    file.path(output_dir, "03_auditorias", "contrato_xlsform", "auditoria_registros_validados_resumo.csv"),
+    file.path(output_dir, "03_aud", "contrato_xlsform", "auditoria_registros_validados_resumo.csv"),
     file.path(output_dir, "99_legacy_compat", "auditoria_registros_validados_resumo.csv")
   ))
   n_bloq_arquivo <- NA_integer_
@@ -48299,8 +48384,8 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
   ano_col <- if (!is.null(chaves$ano) && !is.na(chaves$ano) && chaves$ano %in% names(dt)) chaves$ano else if ("ANO" %in% names(dt)) "ANO" else NA_character_
   uc_col <- if (!is.null(chaves$uc) && !is.na(chaves$uc) && chaves$uc %in% names(dt)) chaves$uc else if ("UC" %in% names(dt)) "UC" else NA_character_
   fase_segura <- gsub("[^A-Za-z0-9_]+", "_", as.character(fase))
-  saida_log_vazio <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
-  saida_out_vazio <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_ultima_execucao.csv"))
+  saida_log_vazio <- file.path(MONITORA_LOG_DIR, paste0("aud_coletas_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
+  saida_out_vazio <- file.path(MONITORA_OUTPUT_DIR, paste0("aud_coletas_duplicadas_", fase_segura, "_ultima_execucao.csv"))
   aud_vazio_template <- function() {
     data.table::data.table(
     UC = character(), UA = character(), ANO = character(),
@@ -48317,7 +48402,7 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
     try(monitora_fwrite(aud_vazio, saida_log_vazio, na = ""), silent = TRUE)
     try(monitora_fwrite(aud_vazio, saida_out_vazio, na = ""), silent = TRUE)
     if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
-    try(monitora_fwrite(aud_vazio, file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
+    try(monitora_fwrite(aud_vazio, file.path(MONITORA_CORRECOES_DIR, paste0("aud_coletas_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
     }
     monitora_log_registrar_evento("coletas_ua_ano_duplicadas", "INFO", saida_log_vazio, motivo, "CSV vazio gravado para auditoria pós-correções")
     aud_vazio
@@ -48435,12 +48520,12 @@ monitora_auditar_coletas_ua_ano_duplicadas <- function(dt, fase = "pos_correcoes
     acao_recomendada = "Resolver no painel: corrigir Data (data_hora), excluir COLETA equivocada, corrigir UA da COLETA ou revisar metadados superiores. Se Data (data_hora) for corrigida, DATA_MONITORA_PARSEADA e ANO são recalculados antes da trava pós-correções."
   ), by = .(UC, UA, ANO)]
   data.table::setorder(aud, UC, UA, ANO)
-  saida_log <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
-  saida_out <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, "_ultima_execucao.csv"))
+  saida_log <- file.path(MONITORA_LOG_DIR, paste0("aud_coletas_duplicadas_", fase_segura, "_", MONITORA_EXEC_ID, ".csv"))
+  saida_out <- file.path(MONITORA_OUTPUT_DIR, paste0("aud_coletas_duplicadas_", fase_segura, "_ultima_execucao.csv"))
   try(monitora_fwrite(aud, saida_log, na = ""), silent = TRUE)
   try(monitora_fwrite(aud, saida_out, na = ""), silent = TRUE)
   if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
-    try(monitora_fwrite(aud, file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
+    try(monitora_fwrite(aud, file.path(MONITORA_CORRECOES_DIR, paste0("aud_coletas_duplicadas_", fase_segura, ".csv")), na = ""), silent = TRUE)
   }
   msg <- paste0(
     nrow(aud), " combinação(ões) UC+UA+ANO com mais de uma COLETA detectada(s) em ", fase,
@@ -49050,7 +49135,7 @@ monitora_incorporacao_copiar_arvore <- function(origem, destino) {
 monitora_incorporacao_diagnostico_dir <- function() {
   file.path(
     get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
-    "03_auditorias", "incorporacao_novas_coletas"
+    "03_aud", "incorporacao_novas_coletas"
   )
 }
 monitora_incorporacao_publicar_diagnostico_filho <- function(
@@ -49070,7 +49155,7 @@ monitora_incorporacao_publicar_diagnostico_filho <- function(
     file.path(dir_aud, "inventario_fontes_novas_coletas.csv"), na = ""
     ), silent = TRUE)
   }
-  dir_aud_filho <- file.path(dir_tmp, "output", "03_auditorias")
+  dir_aud_filho <- file.path(dir_tmp, "output", "03_aud")
   if (dir.exists(dir_aud_filho)) {
     arquivos_diag <- unique(c(
     list.files(
@@ -49107,7 +49192,7 @@ monitora_incorporacao_publicar_diagnostico_filho <- function(
 monitora_incorporacao_auditoria_completude_filho <- function(dir_tmp) {
   candidatos <- c(
     file.path(
-    dir_tmp, "output", "03_auditorias", "completude",
+    dir_tmp, "output", "03_aud", "completude",
     "auditoria_completude_101_pontos_por_coleta_pre_painel.csv"
     ),
     file.path(
@@ -49387,8 +49472,8 @@ monitora_produtos_auditar_espelhos_canonicos <- function(output_dir = get0("MONI
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
   }), fill = TRUE)
-  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
-  try(data.table::fwrite(aud, file.path(output_dir, "03_auditorias", "importacao", "auditoria_produtos_canonicos_md5.csv"), na = ""), silent = TRUE)
+  dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  try(data.table::fwrite(aud, file.path(output_dir, "03_aud", "importacao", "auditoria_produtos_canonicos_md5.csv"), na = ""), silent = TRUE)
   invisible(aud)
 }
 monitora_produtos_copiar_canonico_para_raiz <- function(produto,
@@ -50767,12 +50852,12 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
   })
   if (is.null(diagnostico) || !data.table::is.data.table(diagnostico) || !nrow(diagnostico)) return(invisible(diagnostico))
   tryCatch({
-    dir_diag <- file.path(output_dir, "diagnosticos_contrato_unico_registros_importados")
+    dir_diag <- file.path(output_dir, "contrato")
     dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
     sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
     exec_id_chr <- as.character(exec_id)[1L]
-    caminho_mapa <- file.path(dir_diag, paste0("mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
+    caminho_mapa <- file.path(dir_diag, paste0("mapa_", sufixo, "_", exec_id_chr, ".csv"))
     data.table::fwrite(diagnostico, caminho_mapa, na = "")
     tem_severidade <- "severidade" %in% names(diagnostico)
     n_alta_severidade_bloqueante <- if (tem_severidade) {
@@ -50805,9 +50890,9 @@ monitora_registros_importados_diagnostico_contrato_unico <- function(registros_i
       n_alta_severidade_bloqueante
     )
     )
-    caminho_resumo <- file.path(dir_diag, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv"))
+    caminho_resumo <- file.path(dir_diag, paste0("resumo_mapa_", sufixo, "_", exec_id_chr, ".csv"))
     data.table::fwrite(resumo, caminho_resumo, na = "")
-    data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_mapa_observado_canonico_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+    data.table::fwrite(resumo, file.path(log_dir, paste0("resumo_mapa_", sufixo, "_", exec_id_chr, ".csv")), na = "")
     txt <- c(
     paste0("Diagnóstico de contrato único (03.5L-B/03.5L-C) -- contexto: ", as.character(contexto)[1L]),
     paste0("Gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
@@ -50911,12 +50996,12 @@ monitora_registros_importados_comparar_ordem_legado_vs_contrato <- function(regi
   })
   if (is.null(resultado)) return(invisible(NULL))
   tryCatch({
-    dir_diag <- file.path(output_dir, "diagnosticos_contrato_unico_registros_importados")
+    dir_diag <- file.path(output_dir, "contrato")
     dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
     sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
     exec_id_chr <- as.character(exec_id)[1L]
-    data.table::fwrite(resultado$comparacao, file.path(dir_diag, paste0("comparacao_ordem_legado_vs_contrato_", sufixo, "_", exec_id_chr, ".csv")), na = "")
-    data.table::fwrite(resultado$resumo, file.path(dir_diag, paste0("resumo_comparacao_ordem_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+    data.table::fwrite(resultado$comparacao, file.path(dir_diag, paste0("ordem_contrato_", sufixo, "_", exec_id_chr, ".csv")), na = "")
+    data.table::fwrite(resultado$resumo, file.path(dir_diag, paste0("resumo_ordem_", sufixo, "_", exec_id_chr, ".csv")), na = "")
     if (exists("monitora_log_registrar_evento", mode = "function")) {
     monitora_log_registrar_evento(
       "comparacao_ordem_contrato_unico_registros_importados", "INFO", dir_diag,
@@ -51206,13 +51291,13 @@ monitora_pipe_contrato_relatorio_optin <- function(registros, contexto = "pipeli
     return(invisible(resultado))
   }
   tryCatch({
-    dir_diag <- file.path(output_dir, "diagnosticos_pipes_contrato")
+    dir_diag <- file.path(output_dir, "pipes")
     dir.create(dir_diag, recursive = TRUE, showWarnings = FALSE)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
     sufixo <- gsub("[^A-Za-z0-9]+", "_", as.character(contexto)[1L])
     exec_id_chr <- as.character(exec_id)[1L]
     diag <- resultado$diagnostico
-    caminho_diag <- file.path(dir_diag, paste0("diagnostico_pipes_contrato_", sufixo, "_", exec_id_chr, ".csv"))
+    caminho_diag <- file.path(dir_diag, paste0("diag_pipes_", sufixo, "_", exec_id_chr, ".csv"))
     data.table::fwrite(diag, caminho_diag, na = "")
     resumo_detalhado <- resultado$resumo$detalhado_com_acao
     caminho_resumo <- file.path(dir_diag, paste0("resumo_pipes_contrato_", sufixo, "_", exec_id_chr, ".csv"))
@@ -51736,27 +51821,74 @@ monitora_produtos_auditar_espelhos_canonicos <- function(output_dir = get0("MONI
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     )
   }), fill = TRUE)
-  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
-  try(data.table::fwrite(aud, file.path(output_dir, "03_auditorias", "importacao", "auditoria_produtos_canonicos_md5.csv"), na = ""), silent = TRUE)
+  dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  try(data.table::fwrite(aud, file.path(output_dir, "03_aud", "importacao", "auditoria_produtos_canonicos_md5.csv"), na = ""), silent = TRUE)
   invisible(aud)
 }
+monitora_nome_arquivo_logico <- function(x) {
+  if (startsWith(x, "ocorrencias_seca_morta_linha_forma")) return(paste0("ocorrencias_seca_morta_linha_forma_relatorio_analitico", substring(x, 35)))
+  if (startsWith(x, "registros_desconhecida_invalida_")) return(paste0("registros_forma_vida_desconhecida_invalida_", substring(x, 33)))
+  if (startsWith(x, "aud_pendencias_registros_corrig")) return(paste0("auditoria_pendencias_impeditivas_registros_corrig", substring(x, 32)))
+  if (startsWith(x, "registros_seca_morta_sem_forma_")) return(paste0("registros_seca_morta_sem_forma_vida_", substring(x, 32)))
+  if (startsWith(x, "material_edicoes_retrospectivas")) return(paste0("material_botanico_edicoes_retrospectivas_documentadas", substring(x, 32)))
+  if (startsWith(x, "registros_exotica_sem_especie_")) return(paste0("registros_forma_vida_exotica_sem_especie_", substring(x, 31)))
+  if (startsWith(x, "registros_exotica_com_especie_")) return(paste0("registros_forma_vida_exotica_com_especie_", substring(x, 31)))
+  if (startsWith(x, "registros_exoticas_sem_forma")) return(paste0("registros_formas_vida_exoticas_sem_forma_detalhada", substring(x, 29)))
+  if (startsWith(x, "pendencias_justificadas.csv")) return(paste0("pendencias_remanescentes_com_justificativas.csv", substring(x, 28)))
+  if (startsWith(x, "resumo_exoticas_por_especie")) return(paste0("resumo_formas_vida_exoticas_por_campo_especie", substring(x, 28)))
+  if (startsWith(x, "rejeicoes_registros_corrig")) return(paste0("relatorio_detalhado_rejeicoes_validacao_registros_corrig", substring(x, 27)))
+  if (startsWith(x, "registros_habito_ausente_")) return(paste0("registros_habito_obrigatorio_ausente_", substring(x, 26)))
+  if (startsWith(x, "registros_token_dominio_")) return(paste0("registros_token_fora_dominio_contrato_", substring(x, 25)))
+  if (startsWith(x, "registros_solo_conflito_")) return(paste0("registros_solo_nu_com_outra_categoria_", substring(x, 25)))
+  if (startsWith(x, "material_composicao_base")) return(paste0("material_botanico_comparacoes_elegiveis_composicao_base", substring(x, 25)))
+  if (startsWith(x, "aud_coletas_duplicadas_")) return(paste0("auditoria_coletas_ua_ano_duplicadas_", substring(x, 24)))
+  if (startsWith(x, "aud_etapas_contratuais")) return(paste0("auditoria_reutilizacao_etapas_contratuais", substring(x, 23)))
+  if (startsWith(x, "aud_rotulos_forma_vida")) return(paste0("auditoria_canonicalizacao_rotulos_listas_forma_vida", substring(x, 23)))
+  if (startsWith(x, "registros_formacao_ua_")) return(paste0("registros_formacao_vegetacional_inconsistente_ua_", substring(x, 23)))
+  if (startsWith(x, "cmp_campos_alterados_")) return(paste0("comparacao_registros_campos_alterados_", substring(x, 22)))
+  if (startsWith(x, "aud_material_botanico")) return(paste0("auditoria_materiais_botanicos_contrato_resumo", substring(x, 22)))
+  if (startsWith(x, "metadados_seca_morta_")) return(paste0("metadados_relatorio_operacional_seca_morta_", substring(x, 22)))
+  if (startsWith(x, "aud_simbolos_anuais")) return(paste0("auditoria_simbolos_medias_anuais", substring(x, 20)))
+  if (startsWith(x, "resumo_pendencias_")) return(paste0("resumo_pendencias_remanescentes_com_justificativas_", substring(x, 19)))
+  if (startsWith(x, "aud_placeholders_")) return(paste0("auditoria_sanitizacao_placeholders_semanticos_", substring(x, 18)))
+  if (startsWith(x, "aud_identidades_")) return(paste0("auditoria_identidades_ocorrencias_diagnosticas_", substring(x, 17)))
+  if (startsWith(x, "aud_fechamento_")) return(paste0("auditoria_fechamento_hierarquico_", substring(x, 16)))
+  if (startsWith(x, "aud_bromelioide")) return(paste0("auditoria_alias_bromelioide_contrato_resumo", substring(x, 16)))
+  if (startsWith(x, "ordem_contrato_")) return(paste0("comparacao_ordem_legado_vs_contrato_", substring(x, 16)))
+  if (startsWith(x, "aud_grafias_uc")) return(paste0("auditoria_harmonizacao_grafias_uc_registros_relatorio", substring(x, 15)))
+  if (startsWith(x, "indice_apoio_")) return(paste0("indice_relatorios_suporte_painel_", substring(x, 14)))
+  if (startsWith(x, "registros_oc_")) return(paste0("registros_ocorrencias_diagnosticas_", substring(x, 14)))
+  if (startsWith(x, "resumo_ordem_")) return(paste0("resumo_comparacao_ordem_", substring(x, 14)))
+  if (startsWith(x, "cmp_resumos_")) return(paste0("comparacao_resumos_indices_", substring(x, 13)))
+  if (startsWith(x, "resumo_mapa_")) return(paste0("resumo_mapa_observado_canonico_", substring(x, 13)))
+  if (startsWith(x, "aud_regras_")) return(paste0("auditoria_dependencias_condicionais_regras_", substring(x, 12)))
+  if (startsWith(x, "diag_pipes_")) return(paste0("diagnostico_pipes_contrato_", substring(x, 12)))
+  if (startsWith(x, "aud_habito_")) return(paste0("auditoria_conciliacao_habito_historico_definitivo_", substring(x, 12)))
+  if (startsWith(x, "pendencias_")) return(paste0("pendencias_remanescentes_com_justificativas_", substring(x, 12)))
+  if (startsWith(x, "aud_pipes_")) return(paste0("auditoria_pipes_", substring(x, 11)))
+  if (startsWith(x, "aud_pipe_")) return(paste0("auditoria_pipe_residual_resumo_", substring(x, 10)))
+  if (startsWith(x, "cmp_reg_")) return(paste0("comparacao_registros_", substring(x, 9)))
+  if (startsWith(x, "mapa_")) return(paste0("mapa_observado_canonico_", substring(x, 6)))
+  if (startsWith(x, "p_")) return(paste0("auditoria_persistencia_correcoes_", substring(x, 3)))
+  x
+}
 monitora_output_classificar_arquivo_raiz <- function(bn) {
-  bn <- basename(as.character(bn)[1L])
+  bn <- monitora_nome_arquivo_logico(basename(as.character(bn)[1L]))
   if (bn %in% monitora_output_produtos_centrais()) return("01_produtos_dados")
   if (grepl("manifesto|performance|memoria|hardware|controle_recursos|relatorio_execucao", bn, ignore.case = TRUE)) return("00_manifesto_execucao")
-  if (grepl("^relatorio_validacao|RELATORIO_NAO_GERADO", bn, ignore.case = TRUE)) return("07_relatorio_validacao")
+  if (grepl("^relatorio_validacao|RELATORIO_NAO_GERADO", bn, ignore.case = TRUE)) return("07_validacao")
   if (grepl("cache|\\.rds$", bn, ignore.case = TRUE)) return("90_cache")
   if (grepl("espacial|\\.kml$|geometr|coordenad|mapa", bn, ignore.case = TRUE)) return("04_validacao_espacial")
   if (grepl("\\.(png|jpg|jpeg|svg|pdf)$|^indice_graficos|^graficos_temporais|auditoria_(layout_rotulos|simbolos_graficos)", bn, ignore.case = TRUE)) return("06_graficos")
   if (grepl("estat|bootstrap|permut|fdr|^cob_veg_|^prop_rel_|relatorio_textual_estatistico|esforco_amostral_temporal", bn, ignore.case = TRUE)) return("05_estatisticas")
-  if (grepl("registros_formas_vida|formas_vida_|outras_formas|relatorio_ocorrencia|resumo_.*formas|exoticas|desconhecida", bn, ignore.case = TRUE)) return("02_painel_correcoes/relatorios_apoio_tematicos/avulsos")
-  if (grepl("persistencia|operacoes_atomicas|colunas_protegidas", bn, ignore.case = TRUE)) return("03_auditorias/persistencia")
-  if (grepl("painel|correcoes_campos", bn, ignore.case = TRUE)) return("02_painel_correcoes/auditorias_operacionais")
-  if (grepl("completude", bn, ignore.case = TRUE)) return("03_auditorias/completude")
-  if (grepl("pendencias_impeditivas|impeditiva|relatorio_detalhado_rejeicoes|rejeicoes_validacao", bn, ignore.case = TRUE)) return("03_auditorias/pendencias_impeditivas")
-  if (grepl("xlsform|contrato|schema|template|validado|validados|dominio|condicion", bn, ignore.case = TRUE)) return("03_auditorias/contrato_xlsform")
-  if (grepl("pipe|importa|md5|fonte|dedup|arquivo.*csv|esquema_colunas", bn, ignore.case = TRUE)) return("03_auditorias/importacao")
-  if (grepl("^auditoria_|^resumo_achados", bn, ignore.case = TRUE)) return("03_auditorias/execucao")
+  if (grepl("registros_formas_vida|formas_vida_|outras_formas|relatorio_ocorrencia|resumo_.*formas|exoticas|desconhecida", bn, ignore.case = TRUE)) return("02_painel_correcoes/ap/avulsos")
+  if (grepl("persistencia|operacoes_atomicas|colunas_protegidas", bn, ignore.case = TRUE)) return("03_aud/persistencia")
+  if (grepl("painel|correcoes_campos", bn, ignore.case = TRUE)) return("02_painel_correcoes/aud")
+  if (grepl("completude", bn, ignore.case = TRUE)) return("03_aud/completude")
+  if (grepl("pendencias_impeditivas|impeditiva|relatorio_detalhado_rejeicoes|rejeicoes_validacao", bn, ignore.case = TRUE)) return("03_aud/pendencias_impeditivas")
+  if (grepl("xlsform|contrato|schema|template|validado|validados|dominio|condicion", bn, ignore.case = TRUE)) return("03_aud/contrato_xlsform")
+  if (grepl("pipe|importa|md5|fonte|dedup|arquivo.*csv|esquema_colunas", bn, ignore.case = TRUE)) return("03_aud/importacao")
+  if (grepl("^auditoria_|^resumo_achados", bn, ignore.case = TRUE)) return("03_aud/execucao")
   "99_legacy_compat"
 }
 monitora_output_mover_arquivo <- function(origem, destino) {
@@ -51784,45 +51916,46 @@ monitora_output_mover_arquivo <- function(origem, destino) {
 monitora_output_destino_correcao <- function(rel) {
   rel <- gsub("\\\\", "/", as.character(rel)[1L])
   bn <- basename(rel)
+  bn_logico <- monitora_nome_arquivo_logico(bn)
   if (grepl("^linhagem/", rel)) return(file.path("02_painel_correcoes", rel))
   if (grepl("^relatorios_pre_painel/completude/", rel)) {
-    return(file.path("03_auditorias/completude", sub("^relatorios_pre_painel/completude/", "", rel)))
+    return(file.path("03_aud/completude", sub("^relatorios_pre_painel/completude/", "", rel)))
   }
-  if (grepl("^relatorios_pre_painel/ocorrencias_diagnosticas/", rel)) {
-    return(file.path("02_painel_correcoes/ocorrencias_diagnosticas/pre_painel", sub("^relatorios_pre_painel/ocorrencias_diagnosticas/", "", rel)))
+  if (grepl("^relatorios_pre_painel/oc/", rel)) {
+    return(file.path("02_painel_correcoes/oc/pre_painel", sub("^relatorios_pre_painel/oc/", "", rel)))
   }
-  if (grepl("^relatorios_pos_painel/ocorrencias_diagnosticas/", rel)) {
-    return(file.path("02_painel_correcoes/ocorrencias_diagnosticas/pos_painel", sub("^relatorios_pos_painel/ocorrencias_diagnosticas/", "", rel)))
+  if (grepl("^relatorios_pos_painel/oc/", rel)) {
+    return(file.path("02_painel_correcoes/oc/pos_painel", sub("^relatorios_pos_painel/oc/", "", rel)))
   }
   if (grepl("^relatorios_pre_painel/", rel)) {
-    return(file.path("02_painel_correcoes/relatorios_apoio_tematicos/pre_painel", sub("^relatorios_pre_painel/", "", rel)))
+    return(file.path("02_painel_correcoes/ap/pre_painel", sub("^relatorios_pre_painel/", "", rel)))
   }
   if (grepl("^relatorios_pos_(correcoes|painel)/", rel)) {
-    return(file.path("02_painel_correcoes/relatorios_apoio_tematicos/pos_painel", sub("^relatorios_pos_(correcoes|painel)/", "", rel)))
+    return(file.path("02_painel_correcoes/ap/pos_painel", sub("^relatorios_pos_(correcoes|painel)/", "", rel)))
   }
   if (grepl("^debug_preview/", rel)) {
-    return(file.path("03_auditorias/diagnosticos_dev", sub("^debug_preview/", "", rel)))
+    return(file.path("03_aud/diagnosticos_dev", sub("^debug_preview/", "", rel)))
   }
   if (grepl("^diagnostico_oraculo_replay/", rel)) {
-    return(file.path("03_auditorias/replay_semantico", sub("^diagnostico_oraculo_replay/", "", rel)))
+    return(file.path("03_aud/replay_semantico", sub("^diagnostico_oraculo_replay/", "", rel)))
   }
   if (identical(bn, "correcoes_semanticas_consolidada.csv")) {
     return("02_painel_correcoes/operacoes_sessao/correcoes_semanticas_sessao_staging.csv")
   }
-  if (grepl("xlsform|schema|contrato|template|dependencias_condicionais|dicionario_xlsform", bn, ignore.case = TRUE)) {
-    return(file.path("03_auditorias/contrato_xlsform", bn))
+  if (grepl("xlsform|schema|contrato|template|dependencias_condicionais|dicionario_xlsform", bn_logico, ignore.case = TRUE)) {
+    return(file.path("03_aud/contrato_xlsform", bn))
   }
-  if (grepl("persistencia|operacoes_atomicas|colunas_protegidas", bn, ignore.case = TRUE)) {
-    return(file.path("03_auditorias/persistencia", bn))
+  if (grepl("persistencia|operacoes_atomicas|colunas_protegidas", bn_logico, ignore.case = TRUE)) {
+    return(file.path("03_aud/persistencia", bn))
   }
-  if (grepl("^dicionario_|^modelo_", bn, ignore.case = TRUE)) {
+  if (grepl("^dicionario_|^modelo_", bn_logico, ignore.case = TRUE)) {
     return(file.path("02_painel_correcoes/dicionarios_painel", bn))
   }
-  if (grepl("^auditoria_|^resumo_", bn, ignore.case = TRUE)) {
-    return(file.path("02_painel_correcoes/auditorias_operacionais", bn))
+  if (grepl("^auditoria_|^resumo_", bn_logico, ignore.case = TRUE)) {
+    return(file.path("02_painel_correcoes/aud", bn))
   }
-  if (grepl("registros_formas_vida|formas_vida_|outras_formas|relatorio_ocorrencia|exoticas|desconhecida", bn, ignore.case = TRUE)) {
-    return(file.path("02_painel_correcoes/relatorios_apoio_tematicos/avulsos", bn))
+  if (grepl("registros_formas_vida|formas_vida_|outras_formas|relatorio_ocorrencia|exoticas|desconhecida", bn_logico, ignore.case = TRUE)) {
+    return(file.path("02_painel_correcoes/ap/avulsos", bn))
   }
   file.path("02_painel_correcoes/operacoes_sessao", rel)
 }
@@ -51846,10 +51979,10 @@ monitora_output_consolidar_legados_ja_organizados <- function(output_dir, exec_i
   if (!dir.exists(base)) return(invisible(data.table::data.table()))
   fontes <- c(
     "relatorios_pre_painel", "relatorios_pos_correcoes", "relatorios_pos_painel", "debug_preview",
-    "relatorios_apoio_tematicos/legacy_raiz",
-    "relatorios_apoio_tematicos/pre_painel/ocorrencias_diagnosticas",
-    "relatorios_apoio_tematicos/pre_painel/completude",
-    "relatorios_apoio_tematicos/pos_painel/ocorrencias_diagnosticas"
+    "ap/legacy_raiz",
+    "ap/pre_painel/oc",
+    "ap/pre_painel/completude",
+    "ap/pos_painel/oc"
   )
   linhas <- list()
   for (fonte in fontes) {
@@ -51860,14 +51993,14 @@ monitora_output_consolidar_legados_ja_organizados <- function(output_dir, exec_i
     for (ff in arqs) {
     rel_interno <- substring(ff, nchar(raiz) + 2L)
     rel_legado <- file.path(fonte, rel_interno)
-    destino_rel <- if (identical(fonte, "relatorios_apoio_tematicos/legacy_raiz")) {
-      file.path("02_painel_correcoes/relatorios_apoio_tematicos/avulsos", rel_interno)
-    } else if (identical(fonte, "relatorios_apoio_tematicos/pre_painel/ocorrencias_diagnosticas")) {
-      file.path("02_painel_correcoes/ocorrencias_diagnosticas/pre_painel", rel_interno)
-    } else if (identical(fonte, "relatorios_apoio_tematicos/pre_painel/completude")) {
-      file.path("03_auditorias/completude", rel_interno)
-    } else if (identical(fonte, "relatorios_apoio_tematicos/pos_painel/ocorrencias_diagnosticas")) {
-      file.path("02_painel_correcoes/ocorrencias_diagnosticas/pos_painel", rel_interno)
+    destino_rel <- if (identical(fonte, "ap/legacy_raiz")) {
+      file.path("02_painel_correcoes/ap/avulsos", rel_interno)
+    } else if (identical(fonte, "ap/pre_painel/oc")) {
+      file.path("02_painel_correcoes/oc/pre_painel", rel_interno)
+    } else if (identical(fonte, "ap/pre_painel/completude")) {
+      file.path("03_aud/completude", rel_interno)
+    } else if (identical(fonte, "ap/pos_painel/oc")) {
+      file.path("02_painel_correcoes/oc/pos_painel", rel_interno)
     } else monitora_output_destino_correcao(rel_legado)
     mov <- monitora_output_mover_arquivo(ff, file.path(output_dir, destino_rel))
     linhas[[length(linhas) + 1L]] <- data.table::data.table(
@@ -51902,10 +52035,10 @@ monitora_output_consolidar_legados_ja_organizados <- function(output_dir, exec_i
 }
 monitora_output_migrar_diretorios_legados <- function(output_dir, exec_id, contexto) {
   raizes <- data.table::data.table(
-    origem_rel = c("correcoes_campos", "validacao_espacial", "cache_painel", "relatorios_validacao", "03_auditorias/relatorios_validacao",
-      "diagnosticos_contrato_unico_registros_importados", "diagnosticos_pipes_contrato"),
-    destino_base = c(NA_character_, "04_validacao_espacial", "90_cache/cache_painel", "07_relatorio_validacao", "07_relatorio_validacao",
-      "03_auditorias/diagnosticos_contrato_unico_registros_importados", "03_auditorias/diagnosticos_pipes_contrato")
+    origem_rel = c("correcoes_campos", "validacao_espacial", "cache_painel", "relatorios_validacao", "03_aud/relatorios_validacao",
+      "contrato", "pipes"),
+    destino_base = c(NA_character_, "04_validacao_espacial", "90_cache/cache_painel", "07_validacao", "07_validacao",
+      "03_aud/contrato", "03_aud/pipes")
   )
   linhas <- list()
   for (ii in seq_len(nrow(raizes))) {
@@ -51933,7 +52066,7 @@ monitora_output_migrar_diretorios_legados <- function(output_dir, exec_id, conte
         )
       } else {
         destino_rel <- file.path(
-          "99_legacy_compat", "migracoes_divergentes",
+          "99_legacy_compat", "div",
           gsub("[/\\\\]+", "_", raizes$origem_rel[ii]), rel
         )
         destino <- file.path(output_dir, destino_rel)
@@ -51963,8 +52096,8 @@ monitora_output_migrar_diretorios_legados <- function(output_dir, exec_id, conte
     caminho_origem_relativo = character(), destino_relativo = character(), md5_origem = character(),
     md5_destino = character(), hash_verificado = logical(), acao = character(), timestamp = character()
   )
-  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
-  data.table::fwrite(aud, file.path(output_dir, "03_auditorias", "importacao", "auditoria_output_migracao_arquivo_a_arquivo.csv"), na = "")
+  dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  data.table::fwrite(aud, file.path(output_dir, "03_aud", "importacao", "auditoria_output_migracao_arquivo_a_arquivo.csv"), na = "")
   invisible(aud)
 }
 monitora_output_reescrever_referencias <- function(output_dir, mapa) {
@@ -52027,8 +52160,8 @@ monitora_output_reescrever_referencias <- function(output_dir, mapa) {
     dirs_destino <- dirs_destino[nzchar(dirs_destino) & dirs_destino != "."]
     raizes_canonicas <- c(
     "00_manifesto_execucao", "01_produtos_dados", "02_painel_correcoes",
-    "03_auditorias", "04_validacao_espacial", "05_estatisticas",
-    "06_graficos", "07_relatorio_validacao", "08_relatorios_analiticos", "90_cache", "99_legacy_compat"
+    "03_aud", "04_validacao_espacial", "05_estatisticas",
+    "06_graficos", "07_validacao", "08_analises", "90_cache", "99_legacy_compat"
     )
     alvos_repeticao <- unique(c(raizes_canonicas, dirs_destino))
     for (dd in alvos_repeticao[order(nchar(alvos_repeticao), decreasing = TRUE)]) {
@@ -52060,7 +52193,7 @@ monitora_output_reescrever_referencias <- function(output_dir, mapa) {
   }
   aud <- if (length(linhas)) data.table::rbindlist(linhas) else data.table::data.table()
   if (nrow(aud)) {
-    data.table::fwrite(aud, file.path(output_dir, "03_auditorias", "importacao", "auditoria_referencias_pos_organizacao.csv"), na = "")
+    data.table::fwrite(aud, file.path(output_dir, "03_aud", "importacao", "auditoria_referencias_pos_organizacao.csv"), na = "")
   }
   invisible(aud)
 }
@@ -52908,11 +53041,18 @@ monitora_qfield_recortar_mbtiles <- function(fonte, destino, buffers, scratch) {
   bboxes <- t(vapply(seq_len(nrow(buffers)), function(i) as.numeric(sf::st_bbox(buffers[i, ])), numeric(4L)))
   h <- 20037508.342789244
   inicio <- proc.time()[["elapsed"]]
+  pulso <- inicio; processados <- 0L
+  monitora_operacao_msg("QField", "Recortando ", n_fonte, " tiles de ", basename(fonte), ".")
   n_destino <- 0L; n_parciais <- 0L; n_descartados <- 0L
   DBI::dbBegin(dst)
   repeat {
     tile <- DBI::dbFetch(rs, n = 1L)
     if (!nrow(tile)) break
+    processados <- processados + 1L
+    if (proc.time()[["elapsed"]] - pulso >= 15) {
+      monitora_operacao_msg("QField", "Recorte ", processados, "/", n_fonte, " tiles (", round(100 * processados / n_fonte), "%), ", round(proc.time()[["elapsed"]] - inicio), "s decorridos.")
+      pulso <- proc.time()[["elapsed"]]
+    }
     z <- as.integer(tile$zoom_level[[1L]]); col <- as.integer(tile$tile_column[[1L]]); linha <- as.integer(tile$tile_row[[1L]])
     if (!is.finite(z) || z < 0L || z > 20L || col < 0L || linha < 0L || col >= 2^z || linha >= 2^z) stop("QField: índice de tile fora do domínio Web Mercator.", call. = FALSE)
     y <- 2^z - 1 - linha; passo <- 2 * h / 2^z
@@ -53004,6 +53144,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
   usando_padrao_novo <- identical(normalizePath(entrada_dir, winslash = "/", mustWork = FALSE), normalizePath(entrada_nova, winslash = "/", mustWork = FALSE))
   if (isTRUE(usando_padrao_novo) && dir.exists(entrada_nova) && dir.exists(entrada_legada)) stop("QField: qfield_input e qfield_entrada existem simultaneamente; consolidar os insumos em qfield_input.", call. = FALSE)
   if (isTRUE(usando_padrao_novo) && !dir.exists(entrada_nova) && dir.exists(entrada_legada)) entrada_dir <- entrada_legada
+  if (isTRUE(importar)) monitora_qfield_orientar_entrada(base_dir, entrada_dir)
   monitora_qfield_isolar_entrada(entrada_dir, biologicos)
   if (!all(c("UC", "UA") %in% names(registros))) stop("QField: UC e UA obrigatórios.", call. = FALSE)
   ucs <- sort(unique(as.character(registros$UC)))
@@ -53015,8 +53156,9 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
   resultados <- list()
   for (uc in ucs) {
     inicio <- proc.time()[["elapsed"]]
+    monitora_operacao_msg("QField", "Iniciando projeto de ", uc, "; insumos: ", entrada_dir)
     slug <- paste0(monitora_qfield_slug(uc), "_", substr(digest::digest(uc, algo = "sha256", serialize = FALSE), 1, 8))
-    pasta_uc <- file.path(output_dir, "09_qfield", slug)
+    pasta_uc <- file.path(output_dir, "09_qfield", paste0("u_", substr(digest::digest(uc, algo = "sha256", serialize = FALSE), 1, 8)))
     dir.create(pasta_uc, recursive = TRUE, showWarnings = FALSE)
     scratch <- tempfile(".construcao_", tmpdir = pasta_uc); dir.create(scratch)
     res <- tryCatch({
@@ -53227,7 +53369,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     zip::zipr(zipfile, list.files(pacote, full.names = FALSE), root = pacote, include_directories = TRUE)
     zl <- zip::zip_list(zipfile)
     if (!all(c(fs, "manifesto_qfield.csv") %in% zl$filename)) stop("QField: ZIP não contém todos os arquivos.", call. = FALSE)
-    versao <- paste0("projeto_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", substr(digest::digest(man), 1, 8))
+    versao <- paste0("p_", substr(digest::digest(list(man, Sys.time(), tempfile())), 1, 12))
     destino <- file.path(pasta_uc, versao)
     if (file.exists(destino) || dir.exists(destino) || !file.rename(scratch, destino)) stop("QField: falha na promoção; área temporária preservada.", call. = FALSE)
     data.table::data.table(UC = uc, status = "gerado_para_homologacao_qfield", projeto = file.path(destino, "projeto", basename(qgs)), zip = file.path(destino, basename(zipfile)), bytes_zip = file.info(file.path(destino, basename(zipfile)))$size, segundos = proc.time()[["elapsed"]] - inicio, motivo = "")
@@ -53236,6 +53378,7 @@ monitora_qfield_gerar <- function(registros, output_dir, base_dir, ativado = FAL
     writeLines(conditionMessage(e), file.path(scratch, "FALHA_QFIELD.txt"), useBytes = TRUE)
     data.table::data.table(UC = uc, status = "bloqueado", projeto = "", zip = "", bytes_zip = 0, segundos = proc.time()[["elapsed"]] - inicio, motivo = conditionMessage(e))
     })
+    monitora_operacao_msg("QField", uc, ": ", res$status[[1L]], "; ", round(res$segundos[[1L]], 1), "s; ", if (nzchar(res$zip[[1L]])) res$zip[[1L]] else res$motivo[[1L]])
     resultados[[uc]] <- res
   }
   tab <- data.table::rbindlist(resultados, fill = TRUE)
@@ -53252,13 +53395,25 @@ monitora_output_papel_produto <- function(rel) {
   if (grepl("^02_painel_correcoes/operacoes_sessao/", rel)) return("evidencia_operacional_sessao")
   if (grepl("^90_cache/", rel)) return("cache_efemero")
   if (grepl("^99_legacy_compat/", rel)) return("compatibilidade_nao_canonica")
-  if (grepl("^03_auditorias/", rel)) return("auditoria")
-  if (grepl("^07_relatorio_validacao/dados_apoio/", rel)) return("dado_apoio_relatorio_validacao")
-  if (grepl("^07_relatorio_validacao/", rel)) return("relatorio_validacao")
+  if (grepl("^03_aud/", rel)) return("auditoria")
+  if (grepl("^07_validacao/dados_apoio/", rel)) return("dado_apoio_relatorio_validacao")
+  if (grepl("^07_validacao/", rel)) return("relatorio_validacao")
   if (grepl("^02_painel_correcoes/", rel)) return("produto_painel")
-  if (grepl("^08_relatorios_analiticos/", rel)) return("relatorio_analitico_opcional")
+  if (grepl("^08_analises/", rel)) return("relatorio_analitico_opcional")
   if (grepl("^09_qfield/", rel)) return("projeto_qfield_navegacao_opcional")
   "produto_categorizado"
+}
+monitora_caminho_windows_projetado <- function(arquivos, output_dir) {
+  destino <- trimws(Sys.getenv("MONITORA_DESTINO_COMPARTILHAMENTO", ""))
+  destino <- chartr(intToUtf8(92L), "/", destino)
+  raiz <- dirname(normalizePath(output_dir, winslash = "/", mustWork = FALSE))
+  if (!nzchar(destino)) destino <- sub("^/mnt/([a-zA-Z])/", "\\U\\1:/", raiz, perl = TRUE)
+  # Reserva portátil: todos os testes e índices usam ao menos 120 caracteres de raiz.
+  if (!grepl("^[A-Za-z]:/|^//", destino)) destino <- strrep("x", 120L)
+  destino <- sub("[/\\\\]+$", "", destino)
+  if (nchar(destino) < 120L) destino <- paste0(destino, strrep("x", 120L - nchar(destino)))
+  rel <- substring(arquivos, nchar(sub("[/\\\\]+$", "", output_dir)) + 2L)
+  paste0(destino, "/", basename(output_dir), "/", gsub("\\\\", "/", rel))
 }
 monitora_output_escrever_indice_produtos <- function(
   output_dir,
@@ -53293,12 +53448,10 @@ monitora_output_escrever_indice_produtos <- function(
   limite_office_windows <- ifelse(
     extensoes %in% c("xls", "xlsx", "csv"),
     210L,
-    ifelse(extensoes %in% c("doc", "docx", "pdf", "html", "htm"), 240L, NA_integer_)
+    ifelse(extensoes %in% c("doc", "docx", "pdf", "html", "htm"), 240L, 259L)
   )
-  comprimento_caminho <- nchar(
-    gsub("\\\\", "/", todos),
-    type = "chars"
-  )
+  caminho_windows <- monitora_caminho_windows_projetado(todos, output_dir)
+  comprimento_caminho <- nchar(caminho_windows, type = "chars")
   situacao_caminho_office <- ifelse(
     is.na(limite_office_windows),
     "nao_aplicavel",
@@ -53353,10 +53506,10 @@ monitora_output_escrever_indice_produtos <- function(
     papel_produto = "inventario_output",
     status_canonico = "canonico_autorreferente",
     produto_dados_canonico = FALSE,
-    comprimento_caminho_caracteres = nchar(indice_path, type = "chars"),
+    comprimento_caminho_caracteres = nchar(monitora_caminho_windows_projetado(indice_path, output_dir), type = "chars"),
     limite_recomendado_windows = 210L,
     situacao_caminho_office = if (
-    nchar(indice_path, type = "chars") <= 210L
+    nchar(monitora_caminho_windows_projetado(indice_path, output_dir), type = "chars") <= 210L
     ) "apto_abertura_windows" else "revisar_caminho_windows",
     tamanho_bytes = NA_real_,
     md5 = NA_character_,
@@ -53366,6 +53519,10 @@ monitora_output_escrever_indice_produtos <- function(
   ind <- data.table::rbindlist(list(ind, self), fill = TRUE, use.names = TRUE)
   data.table::setorder(ind, caminho_relativo)
   data.table::fwrite(ind, indice_path, na = "")
+  excessos <- sum(ind$situacao_caminho_office == "revisar_caminho_windows")
+  if (excessos) message("[CAMINHOS][AVISO] ", excessos, " produtos excedem o orçamento Windows/OneDrive. Consulte ", indice_path,
+    ". Informe MONITORA_DESTINO_COMPARTILHAMENTO com a raiz final e revise os caminhos; não homologar a entrega com excessos.")
+  else message("[CAMINHOS] Inventário dentro do orçamento Windows/OneDrive (CSV 210, documentos 240, demais 259).")
   duracao <- as.numeric(difftime(Sys.time(), inicio, units = "secs"))
   if (!is.finite(duracao) || duracao < 0) duracao <- NA_real_
   attr(ind, "duracao_indice_seg") <- duracao
@@ -53418,8 +53575,8 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     permitido_na_raiz = logical(), existe_destino = logical(), md5_origem = character(),
     md5_destino = character(), md5_ok = logical(), timestamp = character()
   )
-  dir.create(file.path(output_dir, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
-  data.table::fwrite(aud_raiz, file.path(output_dir, "03_auditorias", "importacao", "auditoria_output_raiz.csv"), na = "")
+  dir.create(file.path(output_dir, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  data.table::fwrite(aud_raiz, file.path(output_dir, "03_aud", "importacao", "auditoria_output_raiz.csv"), na = "")
   mapa_raiz_atual <- if (nrow(aud_raiz)) data.table::data.table(
     caminho_origem = file.path(output_dir, aud_raiz$arquivo),
     caminho_origem_relativo = aud_raiz$arquivo,
@@ -53468,12 +53625,12 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "00_manifesto_execucao" = "manifesto, desempenho e metadados da execução",
     "01_produtos_dados" = "produtos de dados canônicos",
     "02_painel_correcoes" = "operações, diagnósticos, relatórios do painel e linhagem",
-    "03_auditorias" = "auditorias técnicas, contrato, persistência e validação",
+    "03_aud" = "auditorias técnicas, contrato, persistência e validação",
     "04_validacao_espacial" = "produtos do módulo espacial",
     "05_estatisticas" = "produtos estatísticos",
     "06_graficos" = "figuras e índices gráficos",
-    "07_relatorio_validacao" = "relatório executivo de validação e dados de apoio editáveis",
-    "08_relatorios_analiticos" = "relatórios analíticos opcionais por UC e artefatos editáveis",
+    "07_validacao" = "relatório executivo de validação e dados de apoio editáveis",
+    "08_analises" = "relatórios analíticos opcionais por UC e artefatos editáveis",
     "09_qfield" = "projetos offline opcionais de navegação QField; ZIP, vetores, mapas e auditorias",
     "90_cache" = "cache efêmero do painel; não é produto de dados",
     "99_legacy_compat" = "compatibilidade excepcional; não é fonte canônica"
@@ -53501,12 +53658,12 @@ monitora_output_organizar_produtos <- function(output_dir = get0("MONITORA_OUTPU
     "Arquivos em operacoes_sessao/ são evidências da rodada e não substituem o histórico cumulativo.",
     "",
     "RELATÓRIO DE VALIDAÇÃO",
-    "Comece pelo HTML, DOCX ou PDF em 07_relatorio_validacao/. Rmd e Markdown preservam fontes editáveis adicionais. Em caminhos longos, consulte dados_apoio/metadados_caminho_relatorio.csv para a correspondência entre nome lógico e físico.",
-    "O detalhamento editável fica em 07_relatorio_validacao/dados_apoio/.",
+    "Comece pelo HTML, DOCX ou PDF em 07_validacao/. Rmd e Markdown preservam fontes editáveis adicionais. Em caminhos longos, consulte dados_apoio/metadados_caminho_relatorio.csv para a correspondência entre nome lógico e físico.",
+    "O detalhamento editável fica em 07_validacao/dados_apoio/.",
     "",
     "COMPATIBILIDADE DE CAMINHOS",
-    "Nomes físicos de relatórios e planilhas podem ser compactados automaticamente somente quando necessário para abertura no Windows; os nomes lógicos e a correspondência permanecem nos respectivos índices e manifestos.",
-    "As colunas comprimento_caminho_caracteres, limite_recomendado_windows e situacao_caminho_office do índice permitem identificar outros arquivos que dependam de uma pasta de execução mais curta.",
+    "Relatórios analíticos e diretórios auxiliares usam nomes físicos curtos desde a criação; os nomes lógicos e a correspondência permanecem nos respectivos índices e manifestos.",
+    "O índice avalia o destino Windows/OneDrive e reserva ao menos 120 caracteres para a raiz da rodada. MONITORA_DESTINO_COMPARTILHAMENTO permite informar um destino maior antes da execução; qualquer excesso aparece no console e deve ser resolvido antes da entrega.",
     "",
     "indice_produtos.csv inventaria todos os arquivos. A própria linha do índice não possui tamanho/hash por ser autorreferente."
   )
@@ -53659,7 +53816,7 @@ monitora_habito_preservar_caminhos_canonicos_pre_rotulo <- function(dt,
   marca_por_linha <- vapply(marca_lista, function(z) paste(sort(unique(z[!is.na(z) & nzchar(z)])), collapse = ";"), character(1L))
   data.table::set(dt, j = col_marca, value = marca_por_linha)
   aud <- data.table::rbindlist(auditoria, fill = TRUE, use.names = TRUE)
-  dir_aud <- file.path(output_dir, "03_auditorias", "contrato_xlsform")
+  dir_aud <- file.path(output_dir, "03_aud", "contrato_xlsform")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   try(monitora_fwrite(aud, file.path(dir_aud, "auditoria_preservacao_habitos_caminho_canonico_pre_rotulo.csv"), na = ""), silent = TRUE)
@@ -54933,13 +55090,13 @@ try({
     n_linhas_solo_nu_coexistente_depois = sum(.solo_nu_coexiste_035e(.monitora_encostam_depois_035e), na.rm = TRUE),
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
-  dir.create(file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao"), recursive = TRUE, showWarnings = FALSE)
-  monitora_fwrite(aud_encostam_035e, file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao", "auditoria_encostam_normalizacao_tokens.csv"))
+  dir.create(file.path(MONITORA_OUTPUT_DIR, "03_aud", "importacao"), recursive = TRUE, showWarnings = FALSE)
+  monitora_fwrite(aud_encostam_035e, file.path(MONITORA_OUTPUT_DIR, "03_aud", "importacao", "auditoria_encostam_normalizacao_tokens.csv"))
   monitora_fwrite(aud_encostam_035e, file.path(MONITORA_LOG_DIR, paste0("auditoria_encostam_normalizacao_tokens_", MONITORA_EXEC_ID, ".csv")))
   if (exists("monitora_log_registrar_evento", mode = "function")) {
     monitora_log_registrar_evento(
     "encostam_normalizacao_tokens", "INFO",
-    file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "importacao", "auditoria_encostam_normalizacao_tokens.csv"),
+    file.path(MONITORA_OUTPUT_DIR, "03_aud", "importacao", "auditoria_encostam_normalizacao_tokens.csv"),
     paste0("Encostam normalizado (Hotfix 03.5E): ", aud_encostam_035e$n_linhas_encostam_com_virgula_antes, " linha(s) com vírgula antes, ",
            aud_encostam_035e$n_linhas_encostam_com_virgula_depois, " depois; ", aud_encostam_035e$n_linhas_token_colado_suspeito, " token(s) colado(s) suspeito(s)."),
     "ver auditoria_encostam_normalizacao_tokens.csv"
@@ -57301,10 +57458,10 @@ monitora_relatorio_exoticas_gravar_tabelas_vazias <- function(output_dir, contro
   monitora_fwrite(data.table::data.table(), file.path(output_dir, "registros_formas_vida_exoticas_todos.csv"), na = "")
   monitora_fwrite(data.table::data.table(), file.path(output_dir, "registros_formas_vida_exoticas_sem_especies.csv"), na = "")
   monitora_fwrite(data.table::data.table(), file.path(output_dir, "registros_formas_vida_exoticas_com_especies.csv"), na = "")
-  monitora_fwrite(data.table::data.table(), file.path(output_dir, "registros_formas_vida_exoticas_sem_forma_detalhada.csv"), na = "")
+  monitora_fwrite(data.table::data.table(), file.path(output_dir, "registros_exoticas_sem_forma.csv"), na = "")
   monitora_fwrite(data.table::data.table(), file.path(output_dir, "resumo_formas_vida_exoticas_por_unidade.csv"), na = "")
   monitora_fwrite(data.table::data.table(forma_vida_exotica = character(), registros = integer()), file.path(output_dir, "resumo_formas_vida_exoticas_por_forma.csv"), na = "")
-  monitora_fwrite(data.table::data.table(campo_especie_exotica = especie_cols, registros_preenchidos_validos = integer(length(especie_cols))), file.path(output_dir, "resumo_formas_vida_exoticas_por_campo_especie.csv"), na = "")
+  monitora_fwrite(data.table::data.table(campo_especie_exotica = especie_cols, registros_preenchidos_validos = integer(length(especie_cols))), file.path(output_dir, "resumo_exoticas_por_especie.csv"), na = "")
 }
 monitora_relatorio_exoticas_gravar <- function(registros, output_dir = MONITORA_OUTPUT_DIR) {
   if (is.null(registros) || !nrow(registros)) return(invisible(NULL))
@@ -57529,7 +57686,7 @@ monitora_relatorio_exoticas_gravar <- function(registros, output_dir = MONITORA_
   monitora_fwrite(d_saida, file.path(output_dir, "registros_formas_vida_exoticas_todos.csv"), na = "")
   monitora_fwrite(d_sem, file.path(output_dir, "registros_formas_vida_exoticas_sem_especies.csv"), na = "")
   monitora_fwrite(d_com, file.path(output_dir, "registros_formas_vida_exoticas_com_especies.csv"), na = "")
-  monitora_fwrite(d_sem_forma, file.path(output_dir, "registros_formas_vida_exoticas_sem_forma_detalhada.csv"), na = "")
+  monitora_fwrite(d_sem_forma, file.path(output_dir, "registros_exoticas_sem_forma.csv"), na = "")
   by_cols <- intersect(c("UC", "CICLO", "CAMPANHA", "EA", "UA"), names(d))
   if (length(by_cols)) {
     resumo_ua <- d[, .(
@@ -57574,7 +57731,7 @@ monitora_relatorio_exoticas_gravar <- function(registros, output_dir = MONITORA_
   } else {
     resumo_campos_especies <- data.table::data.table(campo_especie_exotica = character(), registros_preenchidos_validos = integer(), registros_vinculados_a_forma = integer())
   }
-  monitora_fwrite(resumo_campos_especies, file.path(output_dir, "resumo_formas_vida_exoticas_por_campo_especie.csv"), na = "")
+  monitora_fwrite(resumo_campos_especies, file.path(output_dir, "resumo_exoticas_por_especie.csv"), na = "")
   controle_resumo <- data.table::rbindlist(list(
     controle_resumo,
     data.table::data.table(
@@ -57591,10 +57748,10 @@ monitora_relatorio_exoticas_gravar <- function(registros, output_dir = MONITORA_
       "registros_formas_vida_exoticas_todos.csv",
       "registros_formas_vida_exoticas_sem_especies.csv",
       "registros_formas_vida_exoticas_com_especies.csv",
-      "registros_formas_vida_exoticas_sem_forma_detalhada.csv",
+      "registros_exoticas_sem_forma.csv",
       "resumo_formas_vida_exoticas_por_unidade.csv",
       "resumo_formas_vida_exoticas_por_forma.csv",
-      "resumo_formas_vida_exoticas_por_campo_especie.csv"
+      "resumo_exoticas_por_especie.csv"
     )
     )
   ), fill = TRUE, use.names = TRUE)
@@ -57628,12 +57785,12 @@ monitora_relatorio_exoticas_gravar <- function(registros, output_dir = MONITORA_
     "- registros_formas_vida_exoticas_todos.csv: todos os registros triados.",
     "- registros_formas_vida_exoticas_sem_especies.csv: registros com exótica em Encostam + forma de vida exótica detalhada, mas sem espécie no atributo específico da forma.",
     "- registros_formas_vida_exoticas_com_especies.csv: registros com exótica em Encostam + forma de vida exótica detalhada + espécie vinculada ao atributo específico da forma.",
-    "- registros_formas_vida_exoticas_sem_forma_detalhada.csv: erro de dados; exótica em Encostam sem forma de vida exótica detalhada.",
+    "- registros_exoticas_sem_forma.csv: erro de dados; exótica em Encostam sem forma de vida exótica detalhada.",
     "- resumo_formas_vida_exoticas_por_unidade.csv: resumo por UC/CICLO/CAMPANHA/EA/UA, quando esses campos existem.",
     "- As tabelas detalhadas trazem colunas padronizadas de contexto: UC, EA, UA, CICLO, CAMPANHA, ANO, Data (data_hora), Ponto amostral e Ponto metro.",
     "- As tabelas detalhadas incluem anos_exotica_mesmo_ponto e anos_mesma_forma_exotica_mesmo_ponto para identificar recorrência temporal da exótica no mesmo ponto amostral.",
     "- resumo_formas_vida_exoticas_por_forma.csv: contagem por token de forma de vida exótica.",
-    "- resumo_formas_vida_exoticas_por_campo_especie.csv: preenchimento válido por campo de espécie exótica.",
+    "- resumo_exoticas_por_especie.csv: preenchimento válido por campo de espécie exótica.",
     "",
     "Colunas de forma de vida exótica usadas na auditoria:",
     if (length(forma_cols)) paste0("- ", forma_cols) else "- Nenhuma coluna específica de forma de vida exótica detectada.",
@@ -57732,7 +57889,7 @@ monitora_relatorios_suporte_painel_gravar <- function(registros, fase = "pre_pai
     atualizado_em = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
   if (nrow(indice)) data.table::setorder(indice, arquivo)
-  monitora_fwrite(indice, file.path(base_dir, paste0("indice_relatorios_suporte_painel_", fase, ".csv")), na = "")
+  monitora_fwrite(indice, file.path(base_dir, paste0("indice_apoio_", fase, ".csv")), na = "")
   if (exists("monitora_log_registrar_evento", mode = "function")) {
     monitora_log_registrar_evento(
     "relatorios_suporte_painel",
@@ -57749,16 +57906,17 @@ monitora_relatorios_comparar_pre_pos_correcoes <- function(base_dir = NULL) {
   base_dir <- if (is.null(base_dir)) {
     monitora_global_get("MONITORA_CORRECOES_DIR", file.path(monitora_global_get("MONITORA_OUTPUT_DIR", MONITORA_OUTPUT_DIR), "correcoes_campos"))
   } else base_dir
-  dir_pre <- file.path(base_dir, "relatorios_pre_painel")
-  dir_pos <- file.path(base_dir, "relatorios_pos_correcoes")
-  if (!dir.exists(dir_pre) || !dir.exists(dir_pos)) return(invisible(data.table::data.table()))
-  files_pre <- list.files(dir_pre, full.names = FALSE, recursive = FALSE)
-  files_pos <- list.files(dir_pos, full.names = FALSE, recursive = FALSE)
-  files <- sort(unique(c(files_pre, files_pos)))
-  files <- files[vapply(files, function(ff) {
-    caminhos <- c(file.path(dir_pre, ff), file.path(dir_pos, ff))
-    any(file.exists(caminhos) & !dir.exists(caminhos))
-  }, logical(1))]
+  pre <- monitora_relatorios_resolver_fase(base_dir, "pre_painel")
+  pos <- monitora_relatorios_resolver_fase(base_dir, "pos_painel")
+  if (!length(pre) || !length(pos)) {
+    motivo <- paste0("Comparação pré/pós não gerada: pré=", length(pre), "; pós=", length(pos),
+      " arquivo(s). Conferir relatórios de apoio em ", base_dir, " e na pasta organizada.")
+    monitora_operacao_msg("Comparação AVISO", motivo)
+    monitora_log_registrar_evento("comparacao_relatorios_pre_pos", "AVISO", base_dir, motivo, "gerar as duas fases antes de comparar")
+    return(invisible(data.table::data.table()))
+  }
+  caminho <- function(mapa, nome) if (nome %in% names(mapa)) unname(mapa[[nome]]) else file.path(base_dir, "__ausente__", nome)
+  files <- sort(unique(c(names(pre), names(pos))))
   md5 <- function(f) if (file.exists(f) && !dir.exists(f)) as.character(tools::md5sum(f)) else NA_character_
   nlin <- function(f) {
     if (!file.exists(f) || dir.exists(f)) return(NA_integer_)
@@ -57841,7 +57999,7 @@ monitora_relatorios_comparar_pre_pos_correcoes <- function(base_dir = NULL) {
   det_resumo <- list()
   for (ii in seq_along(files)) {
     ff <- files[ii]; classe <- tipo_arquivo(ff)
-    fpre <- file.path(dir_pre, ff); fpos <- file.path(dir_pos, ff)
+    fpre <- caminho(pre, ff); fpos <- caminho(pos, ff)
     a <- fread_seguro(fpre); b <- fread_seguro(fpos)
     hpre <- md5(fpre); hpos <- md5(fpos)
     fis_pre <- nlin(fpre); fis_pos <- nlin(fpos)
@@ -57932,21 +58090,21 @@ monitora_relatorios_comparar_pre_pos_correcoes <- function(base_dir = NULL) {
   det_res <- monitora_rbindlist_auditoria_comparacao(det_resumo, cols_res)
   arq_csv <- file.path(base_dir, "comparacao_relatorios_pre_pos_correcoes.csv")
   arq_txt <- file.path(base_dir, "relatorio_comparacao_pre_pos_correcoes.txt")
-  arq_rem <- file.path(base_dir, "comparacao_registros_removidos_pre_pos_correcoes.csv")
-  arq_add <- file.path(base_dir, "comparacao_registros_adicionados_pre_pos_correcoes.csv")
-  arq_alt <- file.path(base_dir, "comparacao_registros_campos_alterados_pre_pos_correcoes.csv")
-  arq_res <- file.path(base_dir, "comparacao_resumos_indices_pre_pos_correcoes.csv")
+  arq_rem <- file.path(base_dir, "cmp_reg_removidos_pre_pos_correcoes.csv")
+  arq_add <- file.path(base_dir, "cmp_reg_adicionados_pre_pos_correcoes.csv")
+  arq_alt <- file.path(base_dir, "cmp_campos_alterados_pre_pos_correcoes.csv")
+  arq_res <- file.path(base_dir, "cmp_resumos_pre_pos_correcoes.csv")
   monitora_fwrite(out, arq_csv, na = "")
   monitora_fwrite(det_rem, arq_rem, na = "")
   monitora_fwrite(det_add, arq_add, na = "")
   monitora_fwrite(det_alt, arq_alt, na = "")
   monitora_fwrite(det_res, arq_res, na = "")
-  monitora_fwrite(det_alt, file.path(base_dir, "comparacao_registros_alterados_pre_pos_correcoes.csv"), na = "")
+  monitora_fwrite(det_alt, file.path(base_dir, "cmp_reg_alterados_pre_pos_correcoes.csv"), na = "")
   linhas_txt <- c(
     "RELATÓRIO DE COMPARAÇÃO PRÉ vs. PÓS-CORREÇÕES",
     paste0("Gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
-    paste0("Diretório pré-painel: ", dir_pre),
-    paste0("Diretório pós-correções: ", dir_pos), "",
+    paste0("Diretório pré-painel: ", paste(unique(dirname(pre)), collapse = "; ")),
+    paste0("Diretório pós-correções: ", paste(unique(dirname(pos)), collapse = "; ")), "",
     paste0("Arquivos comparados: ", nrow(out)),
     paste0("Arquivos de registros com hash alterado: ", sum(out$classe_relatorio == "registro" & out$mudou_hash %in% TRUE, na.rm = TRUE)),
     paste0("Delta total de registros em relatórios de registros: ", sum(out[classe_relatorio == "registro", delta_registros], na.rm = TRUE)),
@@ -57961,6 +58119,7 @@ monitora_relatorios_comparar_pre_pos_correcoes <- function(base_dir = NULL) {
   if (exists("monitora_log_registrar_evento", mode = "function")) {
     monitora_log_registrar_evento("comparacao_relatorios_pre_pos", "INFO", arq_csv, paste0(nrow(out), " arquivo(s) comparado(s); detalhes de registros=", nrow(det_rem) + nrow(det_add) + nrow(det_alt), "; detalhes de resumos=", nrow(det_res)), "consultar CSV/TXT de comparação")
   }
+  monitora_operacao_msg("Comparação", nrow(out), " arquivos comparados; resultado: ", arq_csv)
   invisible(out)
 }
 if (identical(MONITORA_MODO_EXECUCAO, "abrir_painel_cache")) {
@@ -58005,6 +58164,7 @@ MONITORA_CORRECOES_REAPLICACAO_ARQUIVO_EXISTE <- isTRUE(get0("MONITORA_REAPLICAR
   isTRUE(monitora_correcao_arquivo_tem_operacoes(get0("MONITORA_ARQUIVO_CORRECOES_ANTERIORES", ifnotfound = "", inherits = TRUE)))
 MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS <- isTRUE(MONITORA_ABRIR_PAINEL_CORRECOES) ||
   isTRUE(MONITORA_GERAR_DICIONARIOS_CORRECOES) ||
+  isTRUE(MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL) ||
   isTRUE(MONITORA_CORRECOES_REAPLICACAO_ARQUIVO_EXISTE) ||
   isTRUE(MONITORA_APLICAR_CORRECOES_CAMPOS)
 MONITORA_META_XLSFORMS_CORRECOES <- list(
@@ -58126,7 +58286,7 @@ if (isTRUE(get0("MONITORA_GERAR_REGISTROS_IMPORTADOS_PRE_PAINEL", ifnotfound = F
   }
 }
 MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pre_correcoes", abortar = FALSE)
-monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pre_correcoes", "triagem pré-correções para múltiplas COLETAS na mesma UC+UA+ANO", registros_corrig)
+monitora_perf_registrar_checkpoint("aud_coletas_duplicadas_pre_correcoes", "triagem pré-correções para múltiplas COLETAS na mesma UC+UA+ANO", registros_corrig)
 MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS <- FALSE
 if (isTRUE(get0("MONITORA_VALIDAR_ESPACIAL_COLETAS", ifnotfound = FALSE, inherits = TRUE))) {
   monitora_esp_msg("Gerando validação espacial pré-painel.")
@@ -58229,14 +58389,14 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
     dependent_name = NA_character_, parent_name = NA_character_, token = NA_character_, fase_fechamento = "pre_painel"
     )
   }
-  arq_fech_pre <- file.path(MONITORA_CORRECOES_DIR, paste0("auditoria_fechamento_hierarquico_pre_painel_", MONITORA_EXEC_ID, ".csv"))
+  arq_fech_pre <- file.path(MONITORA_CORRECOES_DIR, paste0("aud_fechamento_pre_painel_", MONITORA_EXEC_ID, ".csv"))
   monitora_fwrite(MONITORA_AUDITORIA_FECHAMENTO_HIERARQUICO_PRE_PAINEL, arq_fech_pre, na = "")
   regras_fech_pre <- monitora_correcao_contrato_fechamento_hierarquico(registros_corrig)
   if (nrow(regras_fech_pre)) regras_fech_pre[, `:=`(tipo_registro = "regra_contratual", fase_fechamento = "contrato")]
   audit_fech_pre_rel <- data.table::copy(MONITORA_AUDITORIA_FECHAMENTO_HIERARQUICO_PRE_PAINEL)
   audit_fech_pre_rel[, tipo_registro := "sanitizacao_aplicada"]
   rel_fech_pre_completo <- data.table::rbindlist(list(regras_fech_pre, audit_fech_pre_rel), fill = TRUE, use.names = TRUE)
-  monitora_fwrite(rel_fech_pre_completo, file.path(MONITORA_CORRECOES_DIR, "auditoria_fechamento_hierarquico_ultima_execucao.csv"), na = "")
+  monitora_fwrite(rel_fech_pre_completo, file.path(MONITORA_CORRECOES_DIR, "aud_fechamento_ultima_execucao.csv"), na = "")
   assign("MONITORA_AUDITORIA_FECHAMENTO_HIERARQUICO_ULTIMA", rel_fech_pre_completo, envir = .GlobalEnv)
   monitora_perf_registrar_checkpoint(
     "fechamento_hierarquico_pre_painel",
@@ -58381,18 +58541,9 @@ if (isTRUE(MONITORA_DEVE_PROCESSAR_CORRECOES_CAMPOS)) {
     MONITORA_AUDITORIA_DEPENDENCIAS_CONDICIONAIS <- data.table::data.table()
   }
   if (isTRUE(MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL) && isTRUE(MONITORA_GERAR_RELATORIOS_POS_CORRECOES)) {
-    if (isTRUE(get0("MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS", ifnotfound = "S", inherits = TRUE) == "S") &&
-      isTRUE(MONITORA_CORRECOES_ARQUIVO_EXISTE) &&
-      !monitora_correcao_arquivo_afeta_relatorios_suporte(MONITORA_ARQUIVO_CORRECOES_CAMPOS)) {
-    MONITORA_RELATORIOS_SUPORTE_POS_CORRECOES <- MONITORA_RELATORIOS_SUPORTE_PRE_PAINEL
-    monitora_correcao_console_msg("Relatórios pós-correções de apoio pulados: as correções não alteraram formas de vida, espécies, hábitos ou Encostam.")
-    monitora_log_registrar_evento("relatorios_suporte_pos_correcoes", "INFO", NA_character_, "Relatórios pós-correções reutilizados do pré-painel por ausência de alteração relevante", "otimização de relatórios pós-correções")
-    monitora_perf_registrar_checkpoint("relatorios_suporte_pos_correcoes_pulados", "relatórios pós-correções reutilizados sem recomputação", registros_corrig)
-    } else {
     MONITORA_RELATORIOS_SUPORTE_POS_CORRECOES <- monitora_relatorios_suporte_painel_gravar(registros_corrig, fase = "pos_correcoes", atualizar_saida_principal = FALSE)
     MONITORA_COMPARACAO_RELATORIOS_PRE_POS_CORRECOES <- monitora_relatorios_comparar_pre_pos_correcoes(MONITORA_CORRECOES_DIR)
-    monitora_perf_registrar_checkpoint("relatorios_suporte_pos_correcoes", "relatórios de exóticas e apoio atualizados após painel/correções, com comparação pré/pós", registros_corrig)
-    }
+    monitora_perf_registrar_checkpoint("relatorios_suporte_pos_correcoes", "relatórios pós-correções gerados e comparados com o pré", registros_corrig)
   } else if (isTRUE(MONITORA_GERAR_RELATORIOS_SUPORTE_PAINEL)) {
     monitora_correcao_console_msg("Relatórios pós-correções completos foram pulados por MONITORA_GERAR_RELATORIOS_POS_CORRECOES=false; produtos principais seguem normalmente.")
     monitora_log_registrar_evento("relatorios_suporte_pos_correcoes", "INFO", NA_character_, "Relatórios pós-correções completos desativados por configuração", "use MONITORA_GERAR_RELATORIOS_POS_CORRECOES=true para validação final completa")
@@ -58459,12 +58610,12 @@ MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS <- isFALSE(MONITORA_DEVE_PROCESSA
 if (isTRUE(MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS)) {
   MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES <- data.table::copy(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_PRE_CORRECOES)
   fase_segura_reuso <- "pos_correcoes"
-  saida_log_reuso <- file.path(MONITORA_LOG_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura_reuso, "_", MONITORA_EXEC_ID, ".csv"))
-  saida_out_reuso <- file.path(MONITORA_OUTPUT_DIR, paste0("auditoria_coletas_ua_ano_duplicadas_", fase_segura_reuso, "_ultima_execucao.csv"))
+  saida_log_reuso <- file.path(MONITORA_LOG_DIR, paste0("aud_coletas_duplicadas_", fase_segura_reuso, "_", MONITORA_EXEC_ID, ".csv"))
+  saida_out_reuso <- file.path(MONITORA_OUTPUT_DIR, paste0("aud_coletas_duplicadas_", fase_segura_reuso, "_ultima_execucao.csv"))
   try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, saida_log_reuso, na = ""), silent = TRUE)
   try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, saida_out_reuso, na = ""), silent = TRUE)
   if (exists("MONITORA_CORRECOES_DIR", inherits = TRUE)) {
-    try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "auditoria_coletas_ua_ano_duplicadas_pos_correcoes.csv"), na = ""), silent = TRUE)
+    try(monitora_fwrite(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES, file.path(MONITORA_CORRECOES_DIR, "aud_coletas_duplicadas_pos_correcoes.csv"), na = ""), silent = TRUE)
   }
   if (nrow(MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES) > 0) {
     monitora_log_registrar_evento(
@@ -58485,9 +58636,9 @@ if (isTRUE(MONITORA_REUSAR_AUDITORIA_COLETAS_PRE_PARA_POS)) {
 } else {
   MONITORA_AUDITORIA_COLETAS_UA_ANO_DUPLICADAS_POS_CORRECOES <- monitora_auditar_coletas_ua_ano_duplicadas(registros_corrig, fase = "pos_correcoes", abortar = FALSE)
 }
-monitora_perf_registrar_checkpoint("auditoria_coletas_ua_ano_duplicadas_pos_correcoes", "auditoria pós-correções de múltiplas COLETAS na mesma UC+UA+ANO; pendências seguem para checkpoint marcado", registros_corrig)
+monitora_perf_registrar_checkpoint("aud_coletas_duplicadas_pos_correcoes", "auditoria pós-correções de múltiplas COLETAS na mesma UC+UA+ANO; pendências seguem para checkpoint marcado", registros_corrig)
 if (exists("monitora_diag_rel_gerar_ocorrencias", mode = "function")) {
-  MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pos_painel", "ocorrencias_diagnosticas")
+  MONITORA_BASE_DIR_OCORRENCIAS_POS_PAINEL <- file.path(get0("MONITORA_CORRECOES_DIR", ifnotfound = file.path(get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE), "correcoes_campos"), inherits = TRUE), "relatorios_pos_painel", "oc")
   MONITORA_REUTILIZAR_OCORRENCIAS_POS_PAINEL <- tryCatch({
     isTRUE(get0("MONITORA_OPCAO_OTIMIZAR_RELATORIOS_SUPORTE_POS", ifnotfound = "S", inherits = TRUE) == "S") &&
     is.list(get0("MONITORA_RELATORIOS_DIAGNOSTICOS_PRE_PAINEL", ifnotfound = NULL, inherits = TRUE)) &&
@@ -58649,7 +58800,7 @@ if (isTRUE(get0("MONITORA_REGISTROS_CORRIG_PENDENCIAS_IMPEDITIVAS", ifnotfound =
     if (exists("monitora_output_organizar_produtos", mode = "function")) {
     try(monitora_output_organizar_produtos(MONITORA_OUTPUT_DIR, MONITORA_EXEC_ID, contexto = "checkpoint_parcial_pendencias_impeditivas"), silent = TRUE)
     }
-    stop("Execução encerrada após checkpoint de registros_corrig.csv com pendências impeditivas; ver auditoria_pendencias_impeditivas_registros_corrig.csv.", call. = FALSE)
+    stop("Execução encerrada após checkpoint de registros_corrig.csv com pendências impeditivas; ver aud_pendencias_registros_corrig.csv.", call. = FALSE)
   }
 }
 ### - Incremento (motor único: estatísticas/gráficos)
@@ -58771,7 +58922,7 @@ monitora_stat_resolver_colunas_estruturais <- function(dt) {
     aud,
     file.path(
     get0("MONITORA_OUTPUT_DIR", ifnotfound = "output", inherits = TRUE),
-    "03_auditorias", "estatisticas", "auditoria_resolucao_colunas_estruturais_estatisticas.csv"
+    "03_aud", "estatisticas", "auditoria_resolucao_colunas_estruturais_estatisticas.csv"
     ),
     na = ""
   ), silent = TRUE)
@@ -58785,7 +58936,7 @@ monitora_stat_resolver_colunas_estruturais <- function(dt) {
     stop(
     "Preparação estatística interrompida antes de sumarizar: o contrato único não resolveu de forma segura e distinta as colunas estruturais. ",
     detalhe,
-    ". Ver output/03_auditorias/estatisticas/auditoria_resolucao_colunas_estruturais_estatisticas.csv.",
+    ". Ver output/03_aud/estatisticas/auditoria_resolucao_colunas_estruturais_estatisticas.csv.",
     call. = FALSE
     )
   }
@@ -59127,7 +59278,7 @@ monitora_stat_reconciliar_grafias_uc <- function(dt, output_dir = get0(
     alterou_dados_fonte = FALSE,
     regra = "equivalencia somente quando os rotulos diferem exclusivamente por da/de/do/das/dos; prevalece a grafia do ano mais recente e, em empate, a mais frequente"
   )]
-  dir_aud <- file.path(output_dir, "03_auditorias", "estatisticas")
+  dir_aud <- file.path(output_dir, "03_aud", "estatisticas")
   dir.create(dir_aud, recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(
     resumo,
@@ -61826,7 +61977,7 @@ if (length(MONITORA_PLOT_COLS_EXOTICA) && monitora_any_sum_cols_match(registros_
   )
   monitora_fwrite(
     MONITORA_AUDITORIA_GRAFICO_EXOTICAS_PROP_NAO_FINITA,
-    file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "estatisticas", "auditoria_grafico_exoticas_proporcao_nao_finita.csv"),
+    file.path(MONITORA_OUTPUT_DIR, "03_aud", "estatisticas", "auditoria_grafico_exoticas_proporcao_nao_finita.csv"),
     na = ""
   )
  ## Presença de formas de vida exóticas.
@@ -66606,6 +66757,21 @@ monitora_stat_adicionar_caption_painel <- function(plot_obj, caption, largura_to
   if (is.null(caption) || !nzchar(as.character(caption))) {
     return(list(plot = plot_obj, n_linhas_caption = 0L))
   }
+  dispositivo_anterior <- grDevices::dev.cur()
+  arquivo_medicao <- tempfile(fileext = ".png")
+  if (requireNamespace("ragg", quietly = TRUE)) {
+    ragg::agg_capture(width = largura_total_in, height = 7, units = "in", res = 96)
+  } else {
+    args_medicao <- list(filename = arquivo_medicao, width = largura_total_in, height = 7, units = "in", res = 96)
+    if (isTRUE(capabilities("cairo"))) args_medicao$type <- "cairo"
+    do.call(grDevices::png, args_medicao)
+  }
+  dispositivo_medicao <- grDevices::dev.cur()
+  on.exit({
+    if (dispositivo_medicao %in% grDevices::dev.list()) grDevices::dev.off(dispositivo_medicao)
+    if (dispositivo_anterior %in% grDevices::dev.list()) grDevices::dev.set(dispositivo_anterior)
+    unlink(arquivo_medicao)
+  }, add = TRUE)
   plot_sem_caption <- plot_obj +
     ggplot2::labs(caption = NULL) +
     ggplot2::theme(
@@ -66818,10 +66984,10 @@ if (isTRUE(MONITORA_DEVE_EXPORTAR_PNG) && (!exists("registros_corrig") || nrow(r
     row.names = FALSE
     )
   }
-  dir.create(file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "estatisticas"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(MONITORA_OUTPUT_DIR, "03_aud", "estatisticas"), recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(
     MONITORA_AUDITORIA_DISPONIBILIDADE_GRAFICOS,
-    file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "estatisticas", "auditoria_disponibilidade_graficos.csv"),
+    file.path(MONITORA_OUTPUT_DIR, "03_aud", "estatisticas", "auditoria_disponibilidade_graficos.csv"),
     row.names = FALSE
   )
   monitora_relatorio_gerar_textual_estatistico(file.path(MONITORA_OUTPUT_DIR, "relatorio_textual_estatistico.txt"))
@@ -66884,7 +67050,7 @@ if (isTRUE(MONITORA_DEVE_EXPORTAR_PNG) && (!exists("registros_corrig") || nrow(r
   }
   monitora_fwrite(
     MONITORA_AUDITORIA_DISPONIBILIDADE_GRAFICOS,
-    file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "estatisticas", "auditoria_disponibilidade_graficos.csv"),
+    file.path(MONITORA_OUTPUT_DIR, "03_aud", "estatisticas", "auditoria_disponibilidade_graficos.csv"),
     row.names = FALSE
   )
   monitora_rm_seguro("plot_i", "plot_nm", "plot_obj", "arquivo_plot", "catalogo_plots", "plots_omitidos", "arquivos_omitidos", "caminhos_omitidos", "stale", "pos_aud", "pos_aud_final")
@@ -67149,43 +67315,26 @@ monitora_relatorios_analiticos_destino_fisico <- function(
   periodo,
   limite_windows = 240L
 ) {
-  diretorio_logico <- file.path(output_dir, "08_relatorios_analiticos", uc_slug)
+  diretorio_logico <- file.path(output_dir, "08_analises", uc_slug)
   base_sint_logica <- paste0(
     "relatorio_analitico_sintetico_", uc_slug, "_", periodo
   )
   base_det_logica <- paste0(
     "relatorio_analitico_detalhado_", uc_slug, "_", periodo
   )
-  caminhos_docx <- file.path(
-    diretorio_logico,
-    paste0(c(base_sint_logica, base_det_logica), ".docx")
-  )
-  compactar <- any(
-    nchar(caminhos_docx, type = "chars") > as.integer(limite_windows)[1L]
-  )
-  if (!isTRUE(compactar)) {
-    return(list(
-    diretorio = diretorio_logico,
-    diretorio_id = uc_slug,
-    base_sint = base_sint_logica,
-    base_det = base_det_logica,
-    base_sint_logica = base_sint_logica,
-    base_det_logica = base_det_logica,
-    compactado = FALSE
-    ))
-  }
+  # Layout portátil permanente: o destino de compartilhamento pode ser maior.
   chave_uc <- paste0(
     nchar(enc2utf8(as.character(uc)[1L]), type = "bytes"),
     ":",
     enc2utf8(as.character(uc)[1L])
   )
   diretorio_id <- paste0(
-    "uc-",
+    "u_",
     substr(digest::digest(chave_uc, algo = "sha256", serialize = FALSE), 1L, 10L)
   )
   list(
     diretorio = file.path(
-    output_dir, "08_relatorios_analiticos", diretorio_id
+    output_dir, "08_analises", diretorio_id
     ),
     diretorio_id = diretorio_id,
     base_sint = "analitico_sintetico",
@@ -67203,16 +67352,7 @@ monitora_relatorios_analiticos_caminho_figura <- function(
   diretorio <- as.character(diretorio)[1L]
   nome_arquivo <- basename(as.character(nome_arquivo)[1L])
   caminho <- file.path(diretorio, nome_arquivo)
-  if (!identical(.Platform$OS.type, "windows")) return(caminho)
-  diretorio_abs <- normalizePath(
-    diretorio,
-    winslash = "/",
-    mustWork = FALSE
-  )
-  if (nchar(file.path(diretorio_abs, nome_arquivo), type = "chars") <=
-    as.integer(limite_windows)) {
-    return(caminho)
-  }
+  if (nchar(nome_arquivo, type = "chars") <= 64L) return(caminho)
   extensao <- tools::file_ext(nome_arquivo)
   sufixo_ext <- if (nzchar(extensao)) paste0(".", extensao) else ""
   base <- if (nzchar(extensao)) {
@@ -67225,9 +67365,7 @@ monitora_relatorios_analiticos_caminho_figura <- function(
     1L,
     12L
   )
-  orcamento <- as.integer(limite_windows) -
-    nchar(file.path(diretorio_abs, ""), type = "chars") -
-    nchar(sufixo_ext, type = "chars")
+  orcamento <- 64L - nchar(sufixo_ext, type = "chars")
   prefixo_max <- max(1L, orcamento - nchar(hash) - 1L)
   base <- gsub("[^[:alnum:]_-]+", "_", base)
   nome_compacto <- paste0(
@@ -68056,7 +68194,7 @@ monitora_relatorios_analiticos_figuras_incremento <- function(
     }
     data.table::fwrite(
       auditoria_simbolos_ano[, pos_primeiro_gate := NULL],
-      file.path(dir_painel, "auditoria_simbolos_medias_anuais.csv"),
+      file.path(dir_painel, "aud_simbolos_anuais.csv"),
       bom = TRUE,
       na = ""
     )
@@ -77837,6 +77975,7 @@ monitora_relatorios_analiticos_chrome_print_isolado <- function(
   timeout = 180
 ) {
   inicio <- Sys.time()
+  monitora_operacao_msg("PDF", "Iniciando ", basename(input), "; Chrome até ", timeout, "s; processo até ", timeout + 30, "s.")
   input <- normalizePath(input, winslash = "/", mustWork = TRUE)
   output <- normalizePath(output, winslash = "/", mustWork = FALSE)
   browser <- normalizePath(browser, winslash = "/", mustWork = TRUE)
@@ -77890,14 +78029,25 @@ monitora_relatorios_analiticos_chrome_print_isolado <- function(
   }
   if (identical(executor, "processx")) {
     resultado <- tryCatch(
-    processx::run(
-      command = rscript,
-      args = argumentos,
-      echo = FALSE,
-      error_on_status = FALSE,
-      windows_verbatim_args = FALSE,
-      timeout = (as.numeric(timeout) + 30) * 1000
-    ),
+    {
+      processo <- processx::process$new(command = rscript, args = argumentos,
+        stdout = log_filho, stderr = log_filho, windows_verbatim_args = FALSE, cleanup_tree = TRUE)
+      on.exit(if (processo$is_alive()) processo$kill_tree(), add = TRUE)
+      pulso <- Sys.time()
+      while (processo$is_alive()) {
+        processo$wait(timeout = 1000)
+        decorrido <- as.numeric(difftime(Sys.time(), inicio, units = "secs"))
+        if (decorrido > timeout + 30) {
+          processo$kill_tree()
+          stop("Processo PDF excedeu o limite externo de ", timeout + 30, "s.")
+        }
+        if (as.numeric(difftime(Sys.time(), pulso, units = "secs")) >= 15) {
+          monitora_operacao_msg("PDF", basename(input), ": renderização em andamento há ", round(decorrido), "s.")
+          pulso <- Sys.time()
+        }
+      }
+      list(status = processo$get_exit_status(), stdout = paste(readLines(log_filho, warn = FALSE), collapse = "\n"), stderr = "")
+    },
     error = function(e) e
     )
     if (inherits(resultado, "error")) {
@@ -77921,7 +78071,7 @@ monitora_relatorios_analiticos_chrome_print_isolado <- function(
       ),
       stdout = log_filho,
       stderr = log_filho,
-      wait = TRUE
+      wait = TRUE, timeout = as.numeric(timeout) + 30
     )),
     error = function(e) {
       writeLines(
@@ -77962,6 +78112,7 @@ monitora_relatorios_analiticos_chrome_print_isolado <- function(
     if (length(cauda)) paste0(": ", paste(cauda, collapse = " | ")) else "."
     )
   }
+  monitora_operacao_msg("PDF", if (ok) "Concluído" else "Falhou", " em ", round(duracao, 1), "s: ", basename(output))
   list(
     ok = isTRUE(ok),
     status_processo = status,
@@ -78780,7 +78931,7 @@ monitora_relatorios_analiticos_material_documentado <- function(base, stat, dir_
     series <- series[grupo_grafico == "material_botanico"]
   }
   data.table::fwrite(coleta, file.path(dir_relatorio, "material_botanico_elegibilidade_por_coleta.csv"), bom = TRUE, na = "")
-  data.table::fwrite(retros, file.path(dir_relatorio, "material_botanico_edicoes_retrospectivas_documentadas.csv"), bom = TRUE, na = "")
+  data.table::fwrite(retros, file.path(dir_relatorio, "material_edicoes_retrospectivas.csv"), bom = TRUE, na = "")
   data.table::fwrite(pares, file.path(dir_relatorio, "material_botanico_populacao_analitica.csv"), bom = TRUE, na = "")
   comparacoes <- if (nrow(long) && data.table::uniqueN(long$ANO) >= 2L) list(
     periodo = monitora_stat_comparar_anos_consecutivos(long),
@@ -79325,14 +79476,14 @@ monitora_relatorios_analiticos_epoca_figura <- function(modelo, cortes, arquivo)
 }
 # Módulos analíticos incorporados; nenhuma fonte externa é exigida.
 eval(parse(text=rawToChar(memDecompress(jsonlite::base64_dec(paste0(
-"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"
+"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"
 )),type="gzip"))),envir=environment())
 monitora_relatorios_analiticos_gerar <- function(
   registros,
@@ -79525,7 +79676,7 @@ monitora_relatorios_analiticos_gerar <- function(
   logos_relatorio <- monitora_relatorios_analiticos_materializar_logos(dir_relatorio)
   data.table::fwrite(
     harmonizacao_uc_registros$auditoria,
-    file.path(dir_relatorio, "auditoria_harmonizacao_grafias_uc_registros_relatorio.csv"),
+    file.path(dir_relatorio, "aud_grafias_uc.csv"),
     bom = TRUE,
     na = ""
   )
@@ -80149,7 +80300,7 @@ monitora_relatorios_analiticos_gerar <- function(
   seca_morta_analitica <- monitora_diag_seca_morta_ocorrencias_revisao(registros)
   data.table::fwrite(
     seca_morta_analitica,
-    file.path(dir_relatorio, "ocorrencias_seca_morta_linha_forma_relatorio_analitico.csv"),
+    file.path(dir_relatorio, "ocorrencias_seca_morta_linha_forma.csv"),
     bom = TRUE,
     na = ""
   )
@@ -81155,7 +81306,7 @@ monitora_relatorios_analiticos_gerar <- function(
   )
   data.table::fwrite(
     auditoria_simbolos_series,
-    file.path(dir_relatorio, "auditoria_simbolos_medias_anuais_relatorio.csv"),
+    file.path(dir_relatorio, "aud_simbolos_anuais_relatorio.csv"),
     bom = TRUE,
     na = ""
   )
@@ -82743,7 +82894,7 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
     ),
     error = function(e) {
     MONITORA_RELATORIOS_ANALITICOS_ERRO <<- conditionMessage(e)
-    erro_dir <- file.path(MONITORA_OUTPUT_DIR, "08_relatorios_analiticos")
+    erro_dir <- file.path(MONITORA_OUTPUT_DIR, "08_analises")
     dir.create(erro_dir, recursive = TRUE, showWarnings = FALSE)
     erro_arq <- file.path(erro_dir, "ERRO_relatorios_analiticos.csv")
     data.table::fwrite(
@@ -82765,6 +82916,7 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
       conditionMessage(e),
       "produtos centrais preservados; a auditoria final bloqueará a conclusão solicitada"
     )
+    monitora_operacao_msg("Relatórios ERRO", conditionMessage(e), "; registro: ", erro_arq, ". Demais produtos seguem; conclusão integral permanece bloqueada.")
     warning("Falha ao gerar relatórios analíticos: ", conditionMessage(e), call. = FALSE)
     NULL
     }
@@ -82787,7 +82939,7 @@ if (isTRUE(MONITORA_GERAR_RELATORIOS_ANALITICOS)) {
     "INFO",
     MONITORA_RELATORIOS_ANALITICOS_RESULTADO$diretorio,
     "relatórios analíticos sintético e detalhado gerados",
-    "consultar manifesto, índices e arquivos editáveis em 08_relatorios_analiticos"
+    "consultar manifesto, índices e arquivos editáveis em 08_analises"
     )
   }
 }
@@ -83393,7 +83545,7 @@ if (identical(toupper(trimws(Sys.getenv("MONITORA_OPCAO_GERAR_PROJETO_QFIELD", u
     if (!qfield_importar %in% c("S", "N")) stop("QField: opção de importação deve ser S ou N.")
     qfield_espacial <- monitora_esp_resultado_consumidores(
       get0("MONITORA_VALIDACAO_ESPACIAL_POS_PAINEL_RESULTADO", ifnotfound = NULL, inherits = TRUE),
-      registros_corrig_stat, file.path(MONITORA_OUTPUT_DIR, "03_auditorias", "harmonizacao_espacial_qfield"))
+      registros_corrig_stat, file.path(MONITORA_OUTPUT_DIR, "03_aud", "harmonizacao_espacial_qfield"))
     qfield_validacao <- if (is.list(qfield_espacial)) qfield_espacial$validacao else NULL
     qfield_consensos <- if (is.list(qfield_espacial)) qfield_espacial$consensos else NULL
     qfield_resultado <- monitora_qfield_gerar(registros_corrig_stat, MONITORA_OUTPUT_DIR, MONITORA_BASE_DIR, ativado = TRUE, importar = identical(qfield_importar, "S"), biologicos = unique(c(MONITORA_INPUT_DIR, file.path(MONITORA_BASE_DIR, "extracted"))), validacao_espacial = qfield_validacao, consensos_espaciais = qfield_consensos)
@@ -83619,19 +83771,19 @@ monitora_auditar_produtos_finais <- function() {
     produto_linha("RELATORIO_CADEIA_DADOS.md", file.path(out_dir, "00_manifesto_execucao", "cadeia_dados", "RELATORIO_CADEIA_DADOS.md"), "arquivo", TRUE, TRUE, 1L, "narrativa ponta a ponta input -> bruto -> importados -> corrig -> validados"),
     produto_linha("cadeia_dados_etapas_ultima_execucao.csv", file.path(out_dir, "00_manifesto_execucao", "cadeia_dados", "cadeia_dados_etapas_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "estado, dimensões, hashes disponíveis e evidências por etapa"),
     produto_linha("cadeia_dados_eventos_ultima_execucao.csv", file.path(out_dir, "00_manifesto_execucao", "cadeia_dados", "cadeia_dados_eventos_ultima_execucao.csv"), "arquivo", TRUE, TRUE, 1L, "transformações, avisos, bloqueios e ações da execução em ordem"),
-    produto_linha("auditoria_fechamento_hierarquico_ultima_execucao.csv", caminho_correcao_organizado("auditoria_fechamento_hierarquico_ultima_execucao.csv"), "arquivo", espera_rel_painel, espera_rel_painel, 1L, "regras ascendentes, ambiguidades recusadas e sanitizações automáticas aplicadas"),
+    produto_linha("aud_fechamento_ultima_execucao.csv", caminho_correcao_organizado("aud_fechamento_ultima_execucao.csv"), "arquivo", espera_rel_painel, espera_rel_painel, 1L, "regras ascendentes, ambiguidades recusadas e sanitizações automáticas aplicadas"),
     produto_linha("controle_recursos_ultima_execucao.csv", caminho_raiz_ou_organizado("controle_recursos_ultima_execucao.csv"), "arquivo", TRUE, FALSE, 1L, "controle de recursos/RAM"),
     produto_linha("relatorio_textual_estatistico.txt", caminho_raiz_ou_organizado("relatorio_textual_estatistico.txt"), "arquivo", TRUE, FALSE, 1L, "relatório textual estatístico"),
     produto_linha("indice_graficos.csv", caminho_raiz_ou_organizado("indice_graficos.csv"), "arquivo", TRUE, FALSE, 1L, "índice dos gráficos"),
     produto_linha("plots_png", png_dir, "diretorio", espera_png, TRUE, 1L, paste0("MONITORA_EXPORTAR_PNG_MODO=", modo_png)),
-    produto_linha("relatorios_analiticos", file.path(out_dir, "08_relatorios_analiticos"), "diretorio", espera_relatorios_analiticos, espera_relatorios_analiticos, 1L, "relatórios sintético e detalhado por UC em Rmd, Markdown, HTML, DOCX e PDF, índices de evidências, esforço real e mapas com elementos cartográficos profissionais"),
-    produto_linha("relatorio_validacao", file.path(out_dir, "07_relatorio_validacao"), "diretorio", espera_relatorio_validacao, FALSE, 1L, "relatório executivo de validação em diretório próprio; falha documental não bloqueia os produtos de dados"),
+    produto_linha("relatorios_analiticos", file.path(out_dir, "08_analises"), "diretorio", espera_relatorios_analiticos, espera_relatorios_analiticos, 1L, "relatórios sintético e detalhado por UC em Rmd, Markdown, HTML, DOCX e PDF, índices de evidências, esforço real e mapas com elementos cartográficos profissionais"),
+    produto_linha("relatorio_validacao", file.path(out_dir, "07_validacao"), "diretorio", espera_relatorio_validacao, FALSE, 1L, "relatório executivo de validação em diretório próprio; falha documental não bloqueia os produtos de dados"),
     produto_linha("UAs_registros_corrig_stat.kml", caminho_raiz_ou_organizado("UAs_registros_corrig_stat.kml"), "arquivo", espera_kml, FALSE, 1L, "KML linhas inicial-final"),
     produto_linha("UAs_verg_ini_verg_fin.kml", caminho_raiz_ou_organizado("UAs_verg_ini_verg_fin.kml"), "arquivo", espera_kml, FALSE, 1L, "KML pontos inicial/final"),
-    produto_linha("relatorios_pre_painel", file.path(out_dir, "02_painel_correcoes", "relatorios_apoio_tematicos", "pre_painel"), "diretorio", espera_rel_painel, FALSE, 1L, "relatórios de apoio antes do painel"),
-    produto_linha("relatorios_pos_correcoes", file.path(out_dir, "02_painel_correcoes", "relatorios_apoio_tematicos", "pos_painel"), "diretorio", espera_rel_painel, FALSE, 1L, "relatórios de apoio após correções"),
+    produto_linha("relatorios_pre_painel", file.path(out_dir, "02_painel_correcoes", "ap", "pre_painel"), "diretorio", espera_rel_painel, FALSE, 1L, "relatórios de apoio antes do painel"),
+    produto_linha("relatorios_pos_correcoes", file.path(out_dir, "02_painel_correcoes", "ap", "pos_painel"), "diretorio", espera_rel_painel, FALSE, 1L, "relatórios de apoio após correções"),
     produto_linha("comparacao_relatorios_pre_pos_correcoes.csv", caminho_correcao_organizado("comparacao_relatorios_pre_pos_correcoes.csv"), "arquivo", espera_rel_painel, FALSE, 1L, "comparação pré/pós-correções"),
-    produto_linha("auditoria_colunas_protegidas_pos_correcoes", file.path(out_dir, "03_auditorias", "persistencia"), "diretorio", TRUE, FALSE, 1L, "diretório canônico de auditorias de persistência/colunas protegidas")
+    produto_linha("auditoria_colunas_protegidas_pos_correcoes", file.path(out_dir, "03_aud", "persistencia"), "diretorio", TRUE, FALSE, 1L, "diretório canônico de auditorias de persistência/colunas protegidas")
   )
   aud <- data.table::rbindlist(produtos, fill = TRUE, use.names = TRUE)
   idx_relatorio_validacao_aud <- which(
@@ -83651,7 +83803,7 @@ monitora_auditar_produtos_finais <- function() {
     j = "observacao",
     value = paste0(
       aud$observacao[idx_relatorio_validacao_aud],
-      "; consulte 07_relatorio_validacao/RELATORIO_NAO_GERADO.txt e 03_auditorias/execucao/ERRO_relatorio_validacao_consolidado_*.csv"
+      "; consulte 07_validacao/RELATORIO_NAO_GERADO.txt e 03_aud/execucao/ERRO_relatorio_validacao_consolidado_*.csv"
     )
     )
   }
@@ -83839,7 +83991,7 @@ monitora_plot_fechar_dispositivos_residuais <- function() {
   )
   caminho_auditoria <- file.path(
     monitora_dir_global_obrigatorio("MONITORA_OUTPUT_DIR", criar = TRUE),
-    "03_auditorias", "execucao", "auditoria_dispositivos_graficos_residuais.csv"
+    "03_aud", "execucao", "auditoria_dispositivos_graficos_residuais.csv"
   )
   dir.create(dirname(caminho_auditoria), recursive = TRUE, showWarnings = FALSE)
   monitora_fwrite(auditoria, caminho_auditoria, na = "")
@@ -83928,7 +84080,7 @@ monitora_finalizacao_marcar(
 )
 dir_auditoria_execucao_final <- file.path(
   MONITORA_OUTPUT_DIR,
-  "03_auditorias",
+  "03_aud",
   "execucao"
 )
 dir.create(dir_auditoria_execucao_final, recursive = TRUE, showWarnings = FALSE)
@@ -84025,6 +84177,11 @@ if (!is.null(MONITORA_ERRO_ORGANIZACAO_FINAL)) {
     call. = FALSE
   )
 }
+if (length(MONITORA_AVISOS_ESTADO$itens)) {
+  monitora_operacao_msg("Avisos", sum(vapply(MONITORA_AVISOS_ESTADO$itens, function(x) x$ocorrencias, integer(1L))),
+    " ocorrências em ", length(MONITORA_AVISOS_ESTADO$itens), " grupos; consulte ",
+    file.path(MONITORA_LOG_DIR, paste0("avisos_execucao_", MONITORA_EXEC_ID, ".csv")), ".")
+}
 if (!is.null(MONITORA_ERRO_AUDITORIA_PRODUTOS_FINAIS)) {
   nome_auditoria_final <- "auditoria_produtos_finais_ultima_execucao.csv"
   caminho_auditoria_final <- file.path(
@@ -84032,7 +84189,7 @@ if (!is.null(MONITORA_ERRO_AUDITORIA_PRODUTOS_FINAIS)) {
     if (exists("monitora_output_classificar_arquivo_raiz", mode = "function")) {
     monitora_output_classificar_arquivo_raiz(nome_auditoria_final)
     } else {
-    "03_auditorias/execucao"
+    "03_aud/execucao"
     },
     nome_auditoria_final
   )
@@ -84057,4 +84214,5 @@ message(sprintf(
 ))
 } ### Fim do bloco protegido por MONITORA_EXECUCAO_ENCERRADA_CONTROLADAMENTE
 }
+}, warning = monitora_aviso_registrar)
 }, envir = .GlobalEnv)
