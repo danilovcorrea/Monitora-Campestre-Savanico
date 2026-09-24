@@ -1,6 +1,6 @@
 # Candidata 3.0.3-rc01 — recuperação PNM e EET
 
-Em desenvolvimento e homologação local; não publicada. Base: tag pública v3.0.2 (d8df53d). Dados institucionais ficam somente nas áreas locais de homologação/entrega.
+Registro histórico da candidata promovida à v3.0.3; consulte [notas da publicação](RELEASE_NOTES_v3.0.3.md). Base: tag pública v3.0.2 (d8df53d). Dados institucionais ficam somente nas áreas locais de homologação/entrega.
 
 ## Correções
 
@@ -48,7 +48,7 @@ Os dados corrigidos são idênticos às fontes por SHA256. Durante a migração 
 
 A EET conserva a rodada r01 completa e incorpora somente relatórios de apoio/comparação já gerados na r02 sobre dados idênticos, conforme ORIGEM_CONSOLIDACAO.json. O PNM concluiu em r03 a homologação interrompida externamente em r02 (saída 0, 2.033 s). O build r04 posterior ajusta caminhos e seus leitores; foi testado por funções, migração e conferência de vínculos, sem repetir as análises. CODIGO.json distingue a fonte executada da candidata entregue. Os manuais PDF foram atualizados exclusivamente a partir do HTML com caminhos revisados.
 
-Gates: comparação pré/pós em layouts antigo/organizado/misto e nomes longos/curtos; ausência e ambiguidade; nove cenários HTTP; PDF isolado e rejeição de resultado antigo; cache íntegro/adulterado/incompleto; 256 combinações editoriais; contrato 129; classificação de produtos; índice e destino Windows com contrabarras; Unicode/dispositivo gráfico; análise sintática e limite LF/CRLF. Testes focalizados também executados no R Windows. Execuções integrais realizadas em Linux. Interface interativa do RStudio e navegação no aparelho QField não ensaiadas nesta etapa. Candidata não publicada.
+Gates: comparação pré/pós em layouts antigo/organizado/misto e nomes longos/curtos; ausência e ambiguidade; nove cenários HTTP; PDF isolado e rejeição de resultado antigo; cache íntegro/adulterado/incompleto; 256 combinações editoriais; contrato 129; classificação de produtos; índice e destino Windows com contrabarras; Unicode/dispositivo gráfico; análise sintática e limite LF/CRLF. Testes focalizados também executados no R Windows. Execuções integrais realizadas em Linux. Interface interativa do RStudio e navegação no aparelho QField não ensaiadas nesta etapa. A publicação posterior está registrada nas notas da v3.0.3.
 
 Avisos: os avisos Unicode da rodada histórica EET r01 permanecem nos logs; a correção passou nos testes e o PNM r03 não os reproduziu. GDAL QUALITY refere-se ao driver intermediário: formato, integridade e cobertura das imagens finais passaram. A reprojeção de vetores durante a extração é registrada; não muda os dados biológicos. Avisos geom_text/geom_col/geom_label de elementos ausentes ou fora da escala e tabelas auxiliares sem colunas ficam preservados para rastreabilidade, sem convertê-los em dados inventados. O alerta estimativo de corte do PNG 45 PNM foi inspecionado visualmente: não foi observado corte na imagem exportada. Isso não equivale a uma revisão científica independente de todas as figuras.
 
