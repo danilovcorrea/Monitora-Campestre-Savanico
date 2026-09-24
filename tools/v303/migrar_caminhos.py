@@ -58,7 +58,7 @@ def migrar(src,dst,windows,aplicar=False):
  if (src/'ORIGEM_CONSOLIDACAO.json').exists():aliases+=json.loads((src/'ORIGEM_CONSOLIDACAO.json').read_text())['raizes_referencias']
  for a,b in renames.items():
   replacements[a]=b;replacements[a.removeprefix('output/')]=b.removeprefix('output/')
-  
+
   for alias in aliases:replacements[alias+"/"+a]=windows.rstrip("/")+"/"+b
   if Path(a).name!=Path(b).name:
    na,nb=Path(a).name,Path(b).name
