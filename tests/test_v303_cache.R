@@ -1,0 +1,20 @@
+suppressPackageStartupMessages(library(data.table))
+source('tests/helpers_test_funcoes.R');e<-monitora_test_funcoes('R_monitora_campsav_alvo_global.R')$env
+sys.source('artifacts/v303/modulos_candidata.R',e)
+base<-commandArgs(TRUE)[1];ponteiros<-list.files(base,pattern='_ativo_.*[.]json$',full.names=TRUE)
+stopifnot(length(ponteiros)==1L);pointer<-jsonlite::fromJSON(ponteiros[1]);uc<-pointer$UC
+pasta<-file.path(base,sub('_ativo_.*$','',basename(ponteiros[1])))
+e$MONITORA_OPCAO_ATUALIZAR_DADOS_FOGO<-'N';e$monitora_fogo_api<-function(...)stop('rede não deve ser consultada com snapshot íntegro')
+ativo<-e$monitora_fogo_obter_snapshot(pasta,uc);fonte<-e$monitora_fogo_ler_snapshot(ativo,uc)
+stopifnot(nrow(fonte$cobertura)==17L,setequal(fonte$cobertura$ano,2010:2026))
+root<-'artifacts/v303/cache';dir.create(root,recursive=TRUE,showWarnings=FALSE)
+tmp<-tempfile('snapshot_',tmpdir=root);dir.create(tmp);stopifnot(all(file.copy(list.files(ativo,full.names=TRUE),tmp,recursive=TRUE)))
+cat(' ',file=file.path(tmp,'snapshot.json'),append=TRUE)
+err<-tryCatch(e$monitora_fogo_ler_snapshot(tmp,uc),error=conditionMessage);stopifnot(is.character(err),grepl('integridade',err))
+unlink(file.path(tmp,'manifesto_ucs.csv'))
+err<-tryCatch(e$monitora_fogo_ler_snapshot(tmp,uc),error=conditionMessage);stopifnot(is.character(err),grepl('incompleto',err))
+# Promoção interrompida bloqueia leitura; não retorna ao snapshot anterior.
+pasta_tmp<-file.path(root,'cache');lock<-paste0(normalizePath(pasta_tmp,mustWork=FALSE),'_ativo_',digest::digest(uc,algo='xxhash64'),'.json.promocao')
+writeLines('{}',lock)
+err<-tryCatch(e$monitora_fogo_cache_vigente(pasta_tmp,uc),error=conditionMessage);stopifnot(is.character(err),grepl('promoção',err));unlink(lock)
+cat('PASS cache: aquisição real com 17 anos validada; reutilização sem rede; adulteração, incompletude e promoção interrompida rejeitadas. Registros=',nrow(fonte$aaf),'\n')
