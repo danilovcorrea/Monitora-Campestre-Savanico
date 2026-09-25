@@ -1,0 +1,12 @@
+args<-commandArgs(TRUE);stopifnot(length(args)==1L);root<-normalizePath(args[1]);files<-list.files(file.path(root,'output/08_analises'),pattern='^analitico_.*[.]html$',recursive=TRUE,full.names=TRUE)
+stopifnot(length(files)==2);result<-list()
+for(p in files){
+ d<-xml2::read_html(p);norm<-function(x)trimws(gsub('[[:space:]]+',' ',x));expected<-lapply(xml2::xml_find_all(d,'.//table'),function(t)list(id=xml2::xml_attr(t,'aria-labelledby'),rows=as.list(norm(xml2::xml_text(xml2::xml_find_all(t,'./tbody/tr'))))))
+ s<-chromote::ChromoteSession$new();s$Page$navigate(paste0('file://',p));s$Page$loadEventFired()
+ s$Runtime$evaluate("new Promise(resolve=>{let prev=-1,stable=0,n=0;let t=setInterval(()=>{n++;let count=document.querySelectorAll('.pagedjs_page').length;if(count>0&&count===prev)stable++;else stable=0;prev=count;if(stable>8||n>180){clearInterval(t);resolve(count)}},500)})",awaitPromise=TRUE)
+ js<-paste0("JSON.stringify((()=>{let expected=",jsonlite::toJSON(expected,auto_unbox=TRUE),";let all=[...document.querySelectorAll('.pagedjs_page table')];let norm=x=>x.replace(/\\s+/g,' ').trim();return{pages:document.querySelectorAll('.pagedjs_page').length,numericErrors:[...document.querySelectorAll('.pagedjs_page td.monitora-numero')].filter(t=>t.scrollWidth>t.clientWidth+1).map(t=>t.textContent),layout:all.map(t=>{let p=t.closest('.pagedjs_page'),a=p.querySelector('.pagedjs_area'),r=t.getBoundingClientRect(),b=a.getBoundingClientRect();return{page:p.dataset.pageNumber,id:t.getAttribute('aria-labelledby'),headers:t.querySelectorAll('thead tr').length,right:r.right-b.right,left:b.left-r.left}}).filter(x=>x.headers>1||x.right>2||x.left>2),missing:expected.flatMap(t=>{let got=all.filter(x=>x.getAttribute('aria-labelledby')===t.id).flatMap(x=>[...x.querySelectorAll('tbody tr')].map(r=>norm(r.textContent)));return t.rows.filter(r=>r&&!got.includes(r)).map(r=>({id:t.id,row:r}))})}})())")
+ z<-jsonlite::fromJSON(s$Runtime$evaluate(js,returnByValue=TRUE)$result$value,simplifyVector=FALSE);s$close();z$arquivo<-basename(p);result[[basename(p)]]<-z
+}
+jsonlite::write_json(result,file.path(root,'AUDITORIA_PAGINACAO.json'),auto_unbox=TRUE,pretty=TRUE)
+stopifnot(all(vapply(result,function(x)length(x$layout)==0 && length(x$missing)==0 && length(x$numericErrors)==0,logical(1L))))
+cat('PASS: tabelas paginadas sem extrapolar margens, sem cabeçalhos duplicados e com todas as linhas preservadas.\n')

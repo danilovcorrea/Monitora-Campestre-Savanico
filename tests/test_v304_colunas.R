@@ -1,0 +1,5 @@
+source('tests/helpers_v304.R');e<-monitora_v304_funcoes('R_monitora_campsav_alvo_global.R')
+d<-xml2::read_html('<html><head></head><body><table><tr><td>52</td><td>1e-05</td><td>≤0,05</td><td>NE</td><td>Texto longo para quebrar</td></tr></table></body></html>')
+e$monitora_relatorios_analiticos_html_colunas(d)
+t<-xml2::xml_find_all(d,'.//td');stopifnot(all(xml2::xml_attr(t[1:4],'class')=='monitora-numero'),is.na(xml2::xml_attr(t[5],'class')))
+cat('PASS: valores numéricos, notação científica e NE permanecem inteiros; texto mantém quebra.\n')
