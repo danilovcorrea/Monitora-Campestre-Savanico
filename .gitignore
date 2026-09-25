@@ -13,3 +13,8 @@ input/
 /artifacts/v302_numeracao/unit/
 
 /tools/v303/__pycache__/
+
+/artifacts/v304/
+/tools/v304/__pycache__/
+
+/tools/__pycache__/

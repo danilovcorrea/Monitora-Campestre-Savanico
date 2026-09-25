@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.0.4 - 2026-09-25
+
+- Corrige hábito por protocolo, movimentos em lote e PDF incremental.
+- Melhora séries temporais, rótulos, campanha/indicador e paginação dos relatórios.
+- Mantém pastas reconhecíveis, arquivos curtos e script abaixo de 5 MB inclusive CRLF.
+- Confere 22/22 produtos FNB e PNM; registra homologação por etapas e pendências manuais.
+
 ## v3.0.3 - 2026-09-24
 
 - Corrige comparação pré/pós e recuperação de consultas de fogo e PDF.

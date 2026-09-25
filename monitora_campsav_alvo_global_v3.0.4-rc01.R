@@ -1,6 +1,6 @@
 # Programa Monitora — CBC/ICMBio
 # Plantas herbáceas e lenhosas das formações campestres e savânicas.
-# Versão 3.0.4 — curadoria, análises e produtos em um único arquivo R.
+# Versão 3.0.4-rc01 — curadoria, análises e produtos em um único arquivo R.
 ### Este script lê, padroniza, audita, deduplica, corrige e analisa registros do
 ### SISMONITORA para o alvo Plantas Herbáceas e Lenhosas do Componente Campestre
 ### Savânico. Também pode abrir um painel Shiny para correções assistidas de
@@ -264,8 +264,8 @@ MONITORA_DISPOSITIVOS_GRAFICOS_INICIAIS <- unname(as.integer(grDevices::dev.list
 ### Identificação inequívoca da entrega executada. Este valor deve aparecer no
 ### console no início de toda run e permite distinguir cópias antigas com o mesmo
 ### nome de arquivo. Não reutilizar o identificador após qualquer patch funcional.
-MONITORA_SCRIPT_VERSAO <- "3.0.4"
-MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"
+MONITORA_SCRIPT_VERSAO <- "3.0.4-rc01"
+MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-rc01-20260925-r08"
 MONITORA_OCORRENCIAS_DIAGNOSTICAS_INTEGRIDADE_OK <- FALSE
 try(message(
   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
