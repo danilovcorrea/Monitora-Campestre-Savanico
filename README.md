@@ -4,29 +4,23 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 
 ## Versão pública atual
 
-- Versão: `v3.0.3`
-- Build: `v3.0.3-20260924-r01`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.3.R`](monitora_campsav_alvo_global_v3.0.3.R)
+- Versão: `v3.0.4`
+- Build: `v3.0.4-20260925-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.4.R`](monitora_campsav_alvo_global_v3.0.4.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.3/`](releases/v3.0.3/)
-- Notas: [`RELEASE_NOTES_v3.0.3.md`](RELEASE_NOTES_v3.0.3.md)
-- Release: [v3.0.3](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.3)
+- Cópia congelada: [`releases/v3.0.4/`](releases/v3.0.4/)
+- Notas: [`RELEASE_NOTES_v3.0.4.md`](RELEASE_NOTES_v3.0.4.md)
+- Release: [v3.0.4](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.4)
 
-Esta versão corrige a comparação pré/pós, melhora a recuperação de consultas de
-fogo e a geração de PDF, detalha o progresso e os avisos no console e reduz os
-caminhos dos produtos para compartilhamento no OneDrive. Mantém numeração
-contínua dos relatórios e o contrato de 129 campos.
+Esta versão corrige movimentos de formas de vida em protocolos históricos, PDF incremental, paginação e legibilidade das séries temporais. Explicita a campanha nas tabelas e conserva numeração contínua, dados e contrato de 129 campos. Pastas reconhecíveis e arquivos curtos respeitam os limites Windows/OneDrive.
 
-As entregas de Taiamã e Mapinguari tiveram todos os produtos esperados conferidos.
-Os ensaios interativos no RStudio Windows, Microsoft Word e QField móvel e a
-homologação por UUID no SISMONITORA continuam pendentes. Consulte as notas para
-a abrangência dos testes e a distinção entre código executado e revisão de nomes.
+As entregas FNB e PNM tiveram 22/22 produtos conferidos. A homologação por etapas e as pendências de RStudio Windows, Word, QField móvel e atualização por UUID no SISMONITORA estão registradas nas notas da versão.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.3.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.3.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.3.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.4.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.4.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.4.html).
 
 ## Finalidade
 
@@ -487,15 +481,15 @@ Uma publicação deve confirmar:
 
 ## Estrutura do repositório
 
-- `monitora_campsav_alvo_global_v3.0.0.R`: script versionado atual.
+- `monitora_campsav_alvo_global_v3.0.4.R`: script versionado atual.
 - `monitora_campsav_alvo_global.R`: script canônico atual.
 - `R_monitora_campsav_alvo_global.R` e `R/monitora_campsav_alvo_global.R`: espelhos canônicos.
 - `VERSION`: versão pública atual.
 - `CHANGELOG.md`: histórico público de mudanças.
-- `RELEASE_NOTES_v3.0.0.md`: notas da versão atual.
-- `GUIA_USUARIO_v3.0.0.md`: roteiro operacional resumido.
-- `release_assets/v3.0.0/`: conjunto mínimo de artefatos da release.
-- `releases/v3.0.0/`: cópia congelada da versão.
+- `RELEASE_NOTES_v3.0.4.md`: notas da versão atual.
+- `GUIA_USUARIO_v3.0.4.md`: roteiro operacional resumido.
+- `release_assets/v3.0.4/`: conjunto mínimo de artefatos da release.
+- `releases/v3.0.4/`: cópia congelada da versão.
 - `docs/`: políticas e documentação auxiliar.
 
 ## Uso auxiliar de IA generativa
