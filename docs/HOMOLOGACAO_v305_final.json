@@ -1,0 +1,150 @@
+{
+  "data": "2026-09-29",
+  "status": "PASS",
+  "promocao": {
+    "status": "PASS",
+    "versao": "3.0.5",
+    "build": "v3.0.5-20260929-r01",
+    "sha256_candidata": "d5c3699a07aac3f0da7d0526c47cd15807d3795252be0faabed9edca4c494f8e",
+    "sha256": "a991c144ac09e7faa94b4c48d95e623a72a3a0d4c524ecbb8599da902d8ff348",
+    "bytes_lf": 4896594,
+    "bytes_crlf": 4980820,
+    "alteracoes": "Somente três identificadores de versão/build; reversibilidade byte a byte confirmada."
+  },
+  "paginas_pdf_word": 588,
+  "celulas_por_formato": 8619,
+  "testes": [
+    {
+      "teste": "comparabilidade",
+      "codigo": 0,
+      "segundos": 3.8
+    },
+    {
+      "teste": "contrato",
+      "codigo": 0,
+      "segundos": 4.1
+    },
+    {
+      "teste": "editorial",
+      "codigo": 0,
+      "segundos": 2.7
+    },
+    {
+      "teste": "larguras",
+      "codigo": 0,
+      "segundos": 2.5
+    },
+    {
+      "teste": "numeracao",
+      "codigo": 0,
+      "segundos": 10.6
+    },
+    {
+      "teste": "reprodutibilidade",
+      "codigo": 0,
+      "segundos": 5.5
+    },
+    {
+      "teste": "siglas_figuras",
+      "codigo": 0,
+      "segundos": 0.4
+    },
+    {
+      "teste": "retrato",
+      "codigo": 0,
+      "segundos": 4.9
+    },
+    {
+      "teste": "r09",
+      "codigo": 0,
+      "segundos": 2.2
+    },
+    {
+      "teste": "titulos_word",
+      "codigo": 0
+    },
+    {
+      "teste": "contrato_publico",
+      "codigo": 0
+    },
+    {
+      "teste": "parse_publico_windows",
+      "codigo": 0
+    }
+  ],
+  "rodadas": [
+    {
+      "uc": "FNB",
+      "status": "PASS",
+      "produtos": "22/22",
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 19,
+          "word_paginas": 17,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 553
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 94,
+          "word_paginas": 90,
+          "tabelas": 40,
+          "figuras": 56,
+          "celulas": 2758
+        }
+      },
+      "revisao_visual": "APROVADA"
+    },
+    {
+      "uc": "PNI",
+      "status": "PASS",
+      "produtos": "22/22",
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 17,
+          "word_paginas": 16,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 334
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 66,
+          "word_paginas": 62,
+          "tabelas": 38,
+          "figuras": 37,
+          "celulas": 1542
+        }
+      },
+      "revisao_visual": "APROVADA"
+    },
+    {
+      "uc": "PNM",
+      "status": "PASS",
+      "produtos": "22/22",
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 19,
+          "word_paginas": 18,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 549
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 88,
+          "word_paginas": 82,
+          "tabelas": 39,
+          "figuras": 50,
+          "celulas": 2883
+        }
+      },
+      "revisao_visual": "APROVADA"
+    }
+  ],
+  "auditoria_pnm": {
+    "replays": 9,
+    "dados_e_estimativas_centrais_preservados": true,
+    "comparacoes_editoriais_com_classe_alterada": 12,
+    "contrastes_composicao_com_classe_alterada": 2
+  },
+  "escopo_visual": "Amostragem dirigida complementada por cobertura automática integral; não se declara inspeção visual individual de todas as páginas."
+}

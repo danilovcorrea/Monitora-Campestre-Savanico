@@ -120,6 +120,8 @@ monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_
   for(p in xml2::xml_find_all(doc,'.//w:body/w:p',ns)) {
     pp<-prop(p,'pPr');style<-xml2::xml_attr(xml2::xml_find_first(pp,'./w:pStyle',ns),'val');if(is.na(style))style<-''
     if(length(xml2::xml_find_all(p,'.//w:drawing',ns))) {add(pp,'<w:keepNext/><w:spacing w:before="180" w:after="90"/>');next}
+    # O marcador vazio da figura não deve separar o título do conteúdo seguinte.
+    if(!nzchar(trimws(text(p))) && length(xml2::xml_find_all(p,'./w:bookmarkStart[starts-with(@w:name,"monitora-fig-") or starts-with(@w:name,"monitora-tab-")]',ns))) {add(pp,'<w:keepNext/>');next}
     if(grepl('^Heading',style)) {add(pp,'<w:keepNext/>');next}
     if(startsWith(text(p),'Figura ')) {xml2::xml_remove(xml2::xml_find_all(pp,'./w:keepNext|./w:spacing',ns));add(pp,'<w:spacing w:before="60" w:after="240"/>')}
   }

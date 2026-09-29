@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.0.5 - 2026-09-29
+
+- Revê apresentação e equivalência dos relatórios Word/PDF, mantendo retrato e figuras temporais completas.
+- Organiza siglas e glossário, centraliza valores e corrige índice e continuidade dos títulos no Word.
+- Corrige comparabilidade das categorias gerais harmonizadas, preservando proveniência e elegibilidade histórica do material botânico.
+- Homologa FNB, PNI e PNM com todos os produtos e script abaixo de 5 MB em LF/CRLF.
+
 ## v3.0.4 - 2026-09-25
 
 - Corrige hábito por protocolo, movimentos em lote e PDF incremental.

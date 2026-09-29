@@ -7,7 +7,7 @@ def change(a,b,n=1):
  assert s.count(a)==n,(a[:100],s.count(a));s=s.replace(a,b)
 change('# Versão 3.0.4 —','# Versão 3.0.5-rc01 —')
 change('MONITORA_SCRIPT_VERSAO <- "3.0.4"','MONITORA_SCRIPT_VERSAO <- "3.0.5-rc01"')
-change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r10"')
+change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r12"')
 # Manter matriz tabular e parágrafos reais no Word.
 change('    if (length(cab) <= 6L) return(bloco)','    return(bloco)')
 change('    return(c(paste0("> ", paragrafos), ""))','    return(c(paste(paragrafos, collapse="\\n\\n"), ""))')
@@ -102,6 +102,8 @@ b=module.index('        mv<-c("## Trajetória',a)
 module=module[:a]+'''        f2<-file.path(dir_figuras,"multivariada_trajetoria_eixos_comuns.png")
         monitora_v305_figura_trajetoria(centro,100*pc$sdev[1:2]^2/sum(pc$sdev^2),f2)
 '''+module[b:]
+import runpy
+module=runpy.run_path(str(root/'tools/v305/comparabilidade.py'))['revisar'](module)
 for name in ['siglas_figuras.R','editorial_aux.R','editorial.R','layout.R','evidencia.R','trajetoria.R']:
  module+='\n'+(root/'tools/v305'/name).read_text()
 enc=base64.b64encode(gzip.compress(module.encode(),9,mtime=0)).decode()
