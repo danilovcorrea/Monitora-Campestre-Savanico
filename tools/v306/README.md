@@ -36,3 +36,9 @@ A inspeção visual do Word detectou um cabeçalho órfão após a ampliação d
 Formações identificadas em colunas próprias são apresentadas como Campestre e Savânica na camada comum de tabelas, inclusive nas opcionais. A normalização atua na cópia de apresentação; preserva dados, ausências, outros valores e frases corridas. Os cabeçalhos HTML/PDF passam a usar alinhamento vertical central, acompanhando o Word, sem alterar o alinhamento horizontal.
 
 Verificação pontual com o formatador real e tabela HTML: rótulos, preservação do objeto de entrada e estilos. Nenhum relatório de PNM foi regenerado nesta revisão. Artefato r03: 4.895.281 bytes em LF / 4.979.515 em CRLF, abaixo de 5.000.000 bytes. Permanece candidata não publicada.
+
+## Revisão r04 — concisão do estado da cobertura
+
+Retiradas da seção Estado da cobertura vegetal as inserções “Resultados descritivos das séries” e “Síntese dos contrastes entre períodos”, incluindo suas enumerações. Figuras, tabelas, contextualização e interpretação anterior permanecem. A alteração acompanha o tema categorias gerais também no sintético, sem depender do número da seção. As sínteses de outros temas permanecem fora deste ajuste.
+
+Verificação em memória com o formatador real e os produtos existentes de PNM: ausência dos dois blocos e preservação dos elementos originais. Nenhum relatório regenerado. Artefato r04: 4.895.317 bytes LF / 4.979.551 bytes CRLF; permanece candidata não publicada.

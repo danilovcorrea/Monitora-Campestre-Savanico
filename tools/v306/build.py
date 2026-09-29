@@ -7,7 +7,7 @@ def replace(a,b):
  assert s.count(a)==1,(a[:90],s.count(a));s=s.replace(a,b)
 replace('# Versão 3.0.5 —','# Versão 3.0.6-rc01 —')
 replace('MONITORA_SCRIPT_VERSAO <- "3.0.5"','MONITORA_SCRIPT_VERSAO <- "3.0.6-rc01"')
-replace('MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-20260929-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.6-rc01-20260929-r03"')
+replace('MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-20260929-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.6-rc01-20260929-r04"')
 replace('  conteudo <- monitora_v305_editorial(conteudo, dir_relatorio, base_nome)','  conteudo <- monitora_v306_limpar_notas(conteudo, dir_relatorio)\n  conteudo <- monitora_v306_editorial(conteudo, dir_relatorio)\n  conteudo <- monitora_v306_amplo(conteudo, dir_relatorio)\n  conteudo <- monitora_v305_editorial(conteudo, dir_relatorio, base_nome)\n  conteudo <- monitora_v306_notas_finais(conteudo)')
 replace('paste0("Clima e trajetória: ",complementos_obj$resumo)','paste0("Clima — transições entre coletas: ",complementos_obj$resumo)')
 replace('  composicao_linha_base <- trocar_material(composicao_linha_base, material_documentado$comparacoes$composicao_base)', '  composicao_linha_base <- trocar_material(composicao_linha_base, material_documentado$comparacoes$composicao_base)\n  data.table::fwrite(mudanca_periodo, file.path(dir_relatorio, \"nar_contrastes.csv\"), bom=TRUE)\n  data.table::fwrite(composicao_periodo, file.path(dir_relatorio, \"nar_composicao.csv\"), bom=TRUE)\n  data.table::fwrite(data.table::data.table(fogo=fogo_obj$status, clima=clima_obj$status), file.path(dir_relatorio, \"nar_contexto.csv\"), bom=TRUE)')

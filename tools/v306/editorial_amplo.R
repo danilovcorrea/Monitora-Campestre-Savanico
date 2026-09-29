@@ -178,7 +178,8 @@ monitora_v306_amplo <- function(x,p) {
   }
   # Pares de métricas compartilham a síntese, com valores e formações explícitos.
   mapa<-c(categorias_gerais='categorias_gerais',herbaceas_lenhosas='herbaceas_lenhosas',formas_vida_nativas='formas_nativas',formas_vida_exoticas='formas_exoticas',formas_vida_secas_mortas='formas_secas_mortas',material_botanico='material_botanico')
-  for(g in names(mapa)) {
+  # Estado da cobertura: manter figuras e interpretação, sem as duas enumerações adicionais.
+  for(g in setdiff(names(mapa),'categorias_gerais')) {
     i<-monitora_v306_fig_pos(x,paste0('src="figuras/(cobertura|proporcao)_',mapa[g],'_serie_temporal[.]png'))
     if(length(i)){m<-c(if(any(grepl('figuras/cobertura_',x[i],fixed=TRUE)))'cobertura',if(any(grepl('figuras/proporcao_',x[i],fixed=TRUE)))'proporcao_relativa');x<-monitora_v306_apos(x,i,monitora_v306_series(p,g,m))}
     i<-monitora_v306_fig_pos(x,paste0('src="figuras/evidencia_estatistica_',g,'_'))
