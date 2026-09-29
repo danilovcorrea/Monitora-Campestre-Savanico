@@ -46,13 +46,13 @@ monitora_v305_html_base <- monitora_relatorios_analiticos_html_colunas
 monitora_relatorios_analiticos_html_colunas <- function(doc) {
   monitora_v305_html_base(doc)
   xml2::xml_add_child(xml2::xml_find_first(doc,".//head"),"style",
-    "@page{size:A4 portrait}table{table-layout:fixed!important;font-size:9pt!important}td,th{overflow-wrap:normal!important;word-break:normal!important;hyphens:none;vertical-align:top}th{font-size:8.5pt!important}td.monitora-numero{text-align:right}td.monitora-codigo{text-align:center}td.monitora-caminho{overflow-wrap:anywhere!important}div.monitora-bloco-tabela{break-inside:auto!important;page-break-inside:auto!important}.monitora-legenda-tabela{break-inside:avoid!important;page-break-inside:avoid!important;break-after:avoid!important}table.monitora-tabela-curta,div.monitora-bloco-tabela.monitora-tabela-curta{break-inside:avoid!important;page-break-inside:avoid!important}table{break-before:avoid!important}thead{display:table-header-group;break-inside:avoid;break-after:avoid}tbody>tr:first-child{break-before:avoid}tr{break-inside:avoid}figure{margin:6mm 0!important;break-inside:avoid}figcaption{margin-top:3mm}")
+    "@page{size:A4 portrait}table{table-layout:fixed!important;font-size:9pt!important}td,th{overflow-wrap:normal!important;word-break:normal!important;hyphens:none;vertical-align:top}th{font-size:8.5pt!important}.monitora-centro{text-align:center!important}.monitora-texto{text-align:left!important}td.monitora-caminho{overflow-wrap:anywhere!important}div.monitora-bloco-tabela{break-inside:auto!important;page-break-inside:auto!important}.monitora-legenda-tabela{break-inside:avoid!important;page-break-inside:avoid!important;break-after:avoid!important}table.monitora-tabela-curta,div.monitora-bloco-tabela.monitora-tabela-curta{break-inside:avoid!important;page-break-inside:avoid!important}table{break-before:avoid!important}thead{display:table-header-group;break-inside:avoid;break-after:avoid}tbody>tr:first-child{break-before:avoid}tr{break-inside:avoid}figure{margin:6mm 0!important;break-inside:avoid}figcaption{margin-top:3mm}")
   for(tab in xml2::xml_find_all(doc,".//table")) {
     cab<-xml2::xml_text(xml2::xml_find_all(tab,"./thead/tr[1]/th"));rows<-xml2::xml_find_all(tab,"./tbody/tr")
     if(!length(cab)||!length(rows))next
     vals<-lapply(rows,function(row)xml2::xml_text(xml2::xml_find_all(row,"./td")))
     if(any(lengths(vals)!=length(cab)))stop("Tabela HTML com células inconsistentes")
-    m<-do.call(rbind,vals);w<-monitora_v305_larguras(cab,m)
+    m<-do.call(rbind,vals);w<-monitora_v305_larguras(cab,m);centro<-monitora_v305_colunas_centrais(cab,m)
     altura_estimada<-sum(apply(sweep(nchar(m),2,pmax(5,(w$larguras-140)/(w$fonte*10)),"/"),1,function(v)max(ceiling(v))))*w$fonte*1.35+nrow(m)*6+60
     if(nrow(m)<=24L&&altura_estimada<640) {
       xml2::xml_set_attr(tab,"class",paste(na.omit(xml2::xml_attr(tab,"class")),"monitora-tabela-curta"))
@@ -62,11 +62,18 @@ monitora_relatorios_analiticos_html_colunas <- function(doc) {
     for(q in xml2::xml_find_all(tab,".//td|.//th"))xml2::xml_set_attr(q,"style",paste0("font-size:",w$fonte,"pt!important;padding:3px!important"))
     xml2::xml_remove(xml2::xml_find_all(tab,"./colgroup"));cg<-xml2::xml_add_child(tab,"colgroup",.where=0)
     for(v in w$larguras)xml2::xml_add_child(cg,"col",style=paste0("width:",round(100*v/w$total,3),"%"))
+    for(j in seq_along(cab)) {
+      for(cell in c(as.list(xml2::xml_find_all(tab,"./thead/tr[1]/th"))[j],lapply(rows,function(row)xml2::xml_find_all(row,"./td")[[j]]))) {
+        cl<-xml2::xml_attr(cell,"class");if(is.na(cl))cl<-""
+        cl<-gsub("monitora-numero|monitora-codigo|monitora-centro|monitora-texto","",cl)
+        xml2::xml_set_attr(cell,"class",paste(cl,if(centro[j])"monitora-centro"else"monitora-texto"))
+      }
+    }
     for(j in seq_along(cab)) for(row in rows) {
       td<-xml2::xml_find_all(row,"./td")[[j]];v<-xml2::xml_text(td)
       if(grepl("[0-9]{4};[0-9]{4}",v))xml2::xml_text(td)<-gsub(";",";\u200B",v,fixed=TRUE)
       cl<-xml2::xml_attr(td,"class");if(is.na(cl))cl<-""
-      if(grepl("^Ano|Campanha|UAs|^Nº|^Data",cab[j]))cl<-paste(cl,"monitora-codigo")
+
       if(grepl("[/\\\\]|[.]csv|[.]png|[.]xlsx",v))cl<-paste(cl,"monitora-caminho")
       xml2::xml_set_attr(td,"class",cl)
     }
@@ -87,7 +94,7 @@ monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_
     if(length(rows)<2L)next
     if(any(lengths(cells)!=length(cab)))stop('Tabela Word com matriz irregular')
     m<-do.call(rbind,lapply(cells[-1L],function(cs)vapply(cs,text,character(1))))
-    width<-monitora_v305_larguras(cab,m);pr<-prop(tab,'tblPr')
+    width<-monitora_v305_larguras(cab,m);centro<-monitora_v305_colunas_centrais(cab,m);pr<-prop(tab,'tblPr')
     xml2::xml_remove(xml2::xml_find_all(pr,'./w:tblW|./w:tblLayout|./w:tblInd|./w:tblBorders|./w:tblCellMar|./w:jc',ns))
     add(pr,paste0('<w:tblW w:type="dxa" w:w="',width$total,'"/><w:tblLayout w:type="fixed"/><w:jc w:val="center"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar>'))
     add(pr,paste0('<w:tblBorders>',paste0('<w:',c('top','left','bottom','right','insideH','insideV'),' w:val="single" w:sz="4" w:color="BCC9C3"/>',collapse=''),'</w:tblBorders>'))
@@ -102,7 +109,7 @@ monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_
         c<-cells[[i]][[j]];cp<-prop(c,'tcPr');xml2::xml_remove(xml2::xml_find_all(cp,'./w:tcW|./w:shd|./w:vAlign',ns));add(cp,paste0('<w:tcW w:type="dxa" w:w="',width$larguras[j],'"/><w:vAlign w:val="center"/><w:shd w:fill="',if(i==1)'24543C'else if(i%%2L)'F3F7F4'else'FFFFFF','"/>'))
         for(t in xml2::xml_find_all(c,'.//w:t',ns)){v0<-xml2::xml_text(t);if(grepl('[0-9]{4};[0-9]{4}',v0))xml2::xml_text(t)<-gsub(';',';\u200B',v0,fixed=TRUE)}
         v<-text(c);num<-grepl('^[−+<>=≤≥±0-9eE.,% ()/:–-]+$|^(NA|NE)$',v)
-        align<-if(i>1&&grepl('^Ano|Campanha|UAs|^Nº|^Data',cab[j]))'center'else if(i>1&&num)'right'else'left'
+        align<-if(centro[j])'center'else'left'
         for(p in xml2::xml_find_all(c,'./w:p',ns)){pp<-prop(p,'pPr');xml2::xml_remove(xml2::xml_find_all(pp,'./w:jc|./w:spacing|./w:keepNext',ns));add(pp,paste0('<w:jc w:val="',align,'"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'))}
         for(run in xml2::xml_find_all(c,'.//w:r',ns)){rp2<-prop(run,'rPr');xml2::xml_remove(xml2::xml_find_all(rp2,'./w:sz|./w:szCs|./w:color',ns));add(rp2,paste0('<w:sz w:val="',width$fonte*2,'"/><w:szCs w:val="',width$fonte*2,'"/><w:color w:val="',if(i==1)'FFFFFF'else'24332D','"/>'));if(i==1)add(rp2,'<w:b/>')}
       }

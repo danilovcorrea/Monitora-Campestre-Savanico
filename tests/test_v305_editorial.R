@@ -20,5 +20,5 @@ cat('PASS: contexto por indicador, ressalva no sintético, sigla composta e OOXM
 
 x<-c('# Resumo','<figure><img src="figuras/evidencia_estatistica_teste.png"><figcaption>Painel.</figcaption></figure>','# Referências')
 y<-e$monitora_v305_editorial(x,dir,'graficos');a<-fread(file.path(dir,'siglas_graficos.csv'))
-stopifnot(all(c('LB','AUM','RED','EST','INC','PAR','MUD','EST-C','H')%in%a$sigla),which(grepl('distância de Hellinger',y))[1]<which(startsWith(y,'<figure')))
-cat('PASS: abreviações dos painéis raster inventariadas e definidas antes da primeira figura.\n')
+stopifnot(all(c('LB','AUM','RED','EST','INC','PAR','MUD','EST-C','H')%in%a$sigla),which(grepl('distância de Hellinger',y))[1]>which(startsWith(y,'<figure')))
+cat('PASS: abreviações dos painéis raster inventariadas e definidas na nota da primeira figura.\n')

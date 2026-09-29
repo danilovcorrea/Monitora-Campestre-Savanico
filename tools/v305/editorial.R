@@ -38,7 +38,7 @@ monitora_v305_catalogo_base <- monitora_relatorios_analiticos_catalogo_tabelas
 monitora_relatorios_analiticos_catalogo_tabelas <- function() {
   x<-monitora_v305_catalogo_base()
   for(id in intersect(c("herbaceas-lenhosas","nativas","exoticas","secas-mortas","material","estado-prioritario"),names(x)))x[id]<-paste0(x[id]," na campanha mais recente disponível")
-  c(x,glossario="Glossário de siglas, unidades e símbolos utilizados")
+  c(x,stats::setNames(monitora_v305_grupos_glossario(),paste0("glossario-",seq_len(7))))
 }
 monitora_v305_rotulo_coluna <- function(x) {
   mapa<-c(analise="Análise",motivo="Motivo",Formacao="Formação",Data_inicial="Data inicial",Data_final="Data final",inicio="Ano inicial",fim="Ano final",anos="Anos",fracao_rede_final="Fração da rede final",criterio="Critério",Hipotese="Hipótese",Situacao="Situação",Posicoes="Posições",Poligonos="Polígonos",Extrapolacoes="Extrapolações",Simbolo="Símbolo",form_veg="Formação",indicador="Indicador",metrica="Métrica",status="Situação")
@@ -56,11 +56,16 @@ monitora_relatorios_analiticos_kable <- function(x,id,align=NULL) {
   out
 }
 monitora_v305_editorial <- function(conteudo,dir_relatorio,base_nome) {
-  x<-unlist(strsplit(paste(conteudo,collapse="\n"),"\n",fixed=TRUE));out<-character();siglas<-monitora_v305_siglas();usadas<-character();audit<-list();em_codigo<-FALSE;em_refs<-FALSE;exoticas_aviso<-FALSE
+  x<-monitora_v305_normalizar_indice(conteudo);out<-character();siglas<-monitora_v305_siglas();usadas<-character();audit<-list();em_codigo<-FALSE;em_refs<-FALSE;exoticas_aviso<-FALSE;tabela_defs<-character();tabela_em_curso<-FALSE;tabela_id<-NULL
   # Só o corpo participa; capa, código, referências e URLs não consomem definições.
   inicio<-which(grepl("^# [^#]",x))[1];if(is.na(inicio))stop("Relatório sem corpo editorial.")
   for(i in seq_along(x)) {
-    l<-x[i]
+    l<-x[i];nota_elemento<-character()
+    if(tabela_em_curso && !startsWith(l,"|")) {
+      if(length(tabela_defs))out<-c(out,"",paste0("Nota da [[tabela:",tabela_id,"]]: ",paste(tabela_defs,collapse="; "),"."),"")
+      tabela_defs<-character();tabela_em_curso<-FALSE
+    }
+    if(startsWith(l,"|"))tabela_em_curso<-TRUE
     if(grepl("^```",l))em_codigo<-!em_codigo
     if(grepl("^# Referências",l))em_refs<-TRUE
     ativo<-i>=inicio&&!em_codigo&&!em_refs&&!startsWith(l,"<!--")
@@ -78,17 +83,33 @@ monitora_v305_editorial <- function(conteudo,dir_relatorio,base_nome) {
       # Abreviações emitidas na legenda dos painéis raster também pertencem ao relatório.
       if(startsWith(l,"<figure")&&grepl('src="[^"]*evidencia_estatistica_',l))encontradas<-unique(c(encontradas,c('LB','AUM','RED','EST','INC','PAR','MUD','EST-C','H')))
       if(nrow(mapa))encontradas<-unique(c(encontradas,mapa$sigla))
-      novas<-encontradas[!encontradas%in%usadas]
-      # Nota antecedente mantém cabeçalhos compactos e acompanha a primeira ocorrência.
-      if(length(novas)) {
-        nota<-paste0("**Siglas nesta leitura:** ",paste(paste0(unname(siglas[novas])," (",novas,")"),collapse="; "),".")
-        if(startsWith(l,"|") || startsWith(l,"Table:")) {
-          pos<-max(c(0L,which(startsWith(out,"<!-- monitora-tabela "))))
-          if(pos>0L)out<-append(out,c(nota,""),after=pos-1L)else out<-c(out,"",nota,"")
-        } else out<-c(out,"",nota,"")
-        for(k in novas)audit[[length(audit)+1L]]<-data.frame(sigla=k,significado=siglas[[k]],linha_fonte=i,primeira_ocorrencia=l,stringsAsFactors=FALSE)
-        usadas<-c(usadas,novas)
+      novas<-encontradas[!monitora_v305_familia_sigla(encontradas)%in%monitora_v305_familia_sigla(usadas)]
+      novas<-novas[!duplicated(monitora_v305_familia_sigla(novas))]
+      # Definir no texto; notas pertencem somente ao elemento tabular/gráfico.
+      nota_elemento<-character()
+      if(startsWith(l,"<figure") || startsWith(l,"|") || startsWith(l,"Table:")) {
+        if(length(novas)) {
+          defs<-paste(paste0(unname(siglas[novas])," (",novas,")"),collapse="; ")
+          if(startsWith(l,"<figure")) {
+            relativo<-sub('^.*src="([^"]+)".*$','\\1',l)
+            id<-paste0("fig-",substr(digest::digest(relativo,algo="sha256",serialize=FALSE),1,16))
+            nota_elemento<-paste0("Nota da [[figura:",id,"]]: ",defs,".")
+          } else {
+            pos<-max(c(0L,which(startsWith(out,"<!-- monitora-tabela "))))
+            if(pos>0L) {
+              id<-sub('^<!-- monitora-tabela ([^ ]+).*$','\\1',out[pos])
+              tabela_id<-id;tabela_defs<-c(tabela_defs,defs)
+            }
+          }
+        }
+      } else {
+        z<-monitora_v305_siglas_no_texto(l,siglas,usadas);l<-z$texto
       }
+      if(length(novas)) {
+        for(k in novas)audit[[length(audit)+1L]]<-data.frame(sigla=k,significado=siglas[[k]],linha_fonte=i,primeira_ocorrencia=l,stringsAsFactors=FALSE)
+        usadas<-unique(c(usadas,novas))
+      }
+      usadas<-unique(c(usadas,encontradas))
       if(!exoticas_aviso && grepl('exótic',l,ignore.case=TRUE) && (grepl('^#{1,3} |^<figure|^Table:|^[|]',l))) {
         nota<-'A presença registrada de plantas exóticas, isoladamente, não demonstra invasão biológica. Avaliar identidade, estabelecimento, expansão e impactos com evidências adicionais.'
         pos<-if(startsWith(l,'|')||startsWith(l,'Table:'))max(c(0L,which(startsWith(out,'<!-- monitora-tabela '))))else 0L
@@ -103,15 +124,25 @@ monitora_v305_editorial <- function(conteudo,dir_relatorio,base_nome) {
     }
     # Separadores explícitos para títulos, figuras e listas em todos os destinos.
     if(grepl("^#{1,6} |^<figure|^[-*] ",l))out<-c(out,"")
-    out<-c(out,l)
+    out<-c(out,l,if(length(nota_elemento))c("",nota_elemento,""))
   }
   institucionais<-intersect(c('ICMBio','CBC'),names(siglas));institucionais<-institucionais[vapply(institucionais,function(k)any(grepl(k,x[seq_len(inicio)],fixed=TRUE)),logical(1))]
   for(k in setdiff(institucionais,usadas)){j<-which(grepl(k,x[seq_len(inicio)],fixed=TRUE))[1L];audit[[length(audit)+1L]]<-data.frame(sigla=k,significado=siglas[[k]],linha_fonte=j,primeira_ocorrencia=x[j],stringsAsFactors=FALSE)}
   usadas<-unique(c(usadas,institucionais))
   if(length(usadas)) {
-    gl<-data.frame(Sigla=usadas,`Significado e uso`=unname(siglas[usadas]),check.names=FALSE)
-    out<-c(out,"","# Glossário de siglas, unidades e símbolos","","As definições descrevem o uso neste relatório; não substituem os métodos e suas condições de validade.","",monitora_relatorios_analiticos_kable(gl,id="glossario"),"",
-      "**Unidades e símbolos:** %: porcentagem; p.p. (ou pp nos gráficos): pontos percentuais; mm: milímetro; cm: centímetro; m: metro; km: quilômetro; °C: grau Celsius; kPa: quilopascal; N/S/L/O: norte/sul/leste/oeste; n: número de observações identificado no contexto; p: valor de p; q: valor de p ajustado conforme o método declarado; Δ: diferença; R²: coeficiente de determinação. Cobertura vegetal e proporção relativa têm denominadores distintos; variação em pontos percentuais não equivale a variação percentual relativa.","")
+    out<-c(out,"",'<div class="page-break"></div>',"","# Glossário de siglas, unidades e símbolos","","Organização por tema e, dentro de cada bloco, em ordem alfabética pela sigla. Os símbolos seguem seu nome por extenso.","")
+    unidades<-c(`%`="porcentagem",`p.p. / pp`="pontos percentuais",mm="milímetro",cm="centímetro",m="metro",km="quilômetro",`°C`="grau Celsius",kPa="quilopascal",`N/S/L/O`="norte/sul/leste/oeste",n="número de observações identificado no contexto",p="valor de p",q="valor de p ajustado conforme o método declarado",`Δ`="diferença",`R²`="coeficiente de determinação")
+    grupos<-monitora_v305_grupos_glossario();categoria<-vapply(usadas,monitora_v305_grupo_sigla,integer(1))
+    for(g in seq_along(grupos)) {
+      termos<-if(g==7L)names(unidades)else usadas[categoria==g]
+      if(!length(termos))next
+      significado<-if(g==7L)unidades[termos]else siglas[termos]
+      chave<-if(g==7L)significado else termos
+      ordem<-order(tolower(iconv(chave,to="ASCII//TRANSLIT")),termos,method="radix")
+      gl<-data.frame(Sigla=termos[ordem],`Significado e uso`=unname(significado[ordem]),check.names=FALSE)
+      out<-c(out,"",monitora_relatorios_analiticos_kable(gl,id=paste0("glossario-",g)),"")
+    }
+    out<-c(out,"Cobertura vegetal e proporção relativa têm denominadores distintos; variação em pontos percentuais não equivale a variação percentual relativa.","")
     data.table::fwrite(data.table::rbindlist(audit),file.path(dir_relatorio,paste0("siglas_",base_nome,".csv")),bom=TRUE)
   }
   out

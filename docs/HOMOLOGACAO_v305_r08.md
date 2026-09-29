@@ -33,3 +33,7 @@ Script: 4.893.965 bytes LF; 4.978.191 bytes CRLF; ambos abaixo de 5.000.000 byte
 ## Economia aplicada
 
 Não foram reexecutadas consultas externas ou análises científicas já disponíveis. Operações determinísticas foram agrupadas, saídas resumidas e testes repetidos somente após alterações relevantes. Não foram utilizados novos subagentes. Nenhuma troca automática de modelo ou de esforço do agente principal é alegada.
+
+## Retificação após avaliação do usuário
+
+A auditoria posterior identificou páginas com apenas o fólio entre capa e índice: PNM detalhado 2–6; sintético 2–8; FNB/PNI detalhados 2–3 e sintéticos 2–4. O teste então usado contava o rodapé como conteúdo e não detectou o defeito. A aprovação documental r08 foi incompleta quanto a esse critério. A revisão r09 corrige a reconstrução do índice e acrescenta um detector que desconsidera margens e rodapés, com reprodução do defeito anterior. A avaliação da revisão e os demais gates permanecem pendentes.

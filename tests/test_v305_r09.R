@@ -1,0 +1,20 @@
+source('tools/v305/carregar.R');e<-monitora_v305_carregar();d<-tempdir();sig<-e$monitora_v305_siglas()
+f<-function(x,used=character())e$monitora_v305_siglas_no_texto(x,sig,used)$texto
+stopifnot(f('As UAs e UAs.')=='As unidades amostrais (UAs) e UAs.')
+stopifnot(f('As unidades amostrais (UAs) e unidade amostral (UA).')=='As unidades amostrais (UAs) e UA.')
+stopifnot(f('unidade de conservação (UC)', 'UC')=='UC')
+stopifnot(f('interceptação linear por pontos (LPI) e LPI.')=='interceptação linear por pontos (LPI) e LPI.')
+stopifnot(f('`UA` https://exemplo/UC <a href="UA">UC</a>')=='`UA` https://exemplo/UC <a href="UA">unidade de conservação (UC)</a>')
+stopifnot(f('Associação global não estimável: NE: sem dados.')=='Associação global não estimável (NE): sem dados.')
+x<-c('<div class="cover">Capa</div>','<div class="page-break"></div>','<div class="monitora-indice">','# Índice','</div>','<div class="page-break"></div>','# Resumo','Texto.')
+a<-e$monitora_v305_normalizar_indice(x)
+for(i in 1:4){a<-e$monitora_relatorios_analiticos_indice(a);a<-e$monitora_v305_normalizar_indice(a)}
+stopifnot(!any(grepl('page-break|monitora-indice',a)),any(a=='Texto.'))
+m<-matrix(c('2025','Campestre','1,2','NA','2026','Savânica','3,5','NE'),nrow=2,byrow=TRUE)
+stopifnot(identical(e$monitora_v305_colunas_centrais(c('Ano','Formação','Cobertura','Estimativa'),m),c(TRUE,FALSE,TRUE,TRUE)))
+y<-e$monitora_v305_editorial(c('# Resumo','As UAs e IC95% descrevem a UC.','# Métodos','Cada unidade amostral (UA) tem dados.','# Referências'),d,'r09')
+stopifnot(!any(grepl('Siglas nesta leitura',y)),sum(grepl('unidades amostrais [(]UAs[)]',y))==1,any(y=='Cada UA tem dados.'))
+stopifnot(all(vapply(names(sig),e$monitora_v305_grupo_sigla,integer(1))%in%1:6),e$monitora_v305_grupo_sigla('PA (localizador)')==5L,e$monitora_v305_grupo_sigla('PA')==2L)
+cat('PASS: primeira ocorrência contextual, definições existentes, links intactos, índice sem acúmulo, alinhamento por coluna e blocos temáticos.\n')
+
+stopifnot(identical(e$monitora_v305_familia_sigla(c('UA','UAs','PA (localizador)')),c('UA','UA','PA (localizador)')))
