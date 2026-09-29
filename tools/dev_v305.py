@@ -7,7 +7,7 @@ def change(a,b,n=1):
  assert s.count(a)==n,(a[:100],s.count(a));s=s.replace(a,b)
 change('# Versão 3.0.4 —','# Versão 3.0.5-rc01 —')
 change('MONITORA_SCRIPT_VERSAO <- "3.0.4"','MONITORA_SCRIPT_VERSAO <- "3.0.5-rc01"')
-change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r09"')
+change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r10"')
 # Manter matriz tabular e parágrafos reais no Word.
 change('    if (length(cab) <= 6L) return(bloco)','    return(bloco)')
 change('    return(c(paste0("> ", paragrafos), ""))','    return(c(paste(paragrafos, collapse="\\n\\n"), ""))')
@@ -97,7 +97,12 @@ module=module.replace('if (nrow(por_modalidade)) monitora_relatorios_analiticos_
 # URL codificada, rótulo com colchetes balanceados sem ativar TeX.
 module=module.replace('87\\\\[2614:VPOSDM\\\\]2.0.CO;2','87%5B2614:VPOSDM%5D2.0.CO;2')
 module=module.replace('[https://doi.org/10.1890/0012-9658(2006)87%5B2614:VPOSDM%5D2.0.CO;2]', '[10.1890/0012-9658(2006)87[2614:VPOSDM]2.0.CO;2]')
-for name in ['siglas_figuras.R','editorial_aux.R','editorial.R','layout.R','evidencia.R']:
+a=module.index('        pp<-ggplot2::ggplot(centro,ggplot2::aes(Eixo1,Eixo2')
+b=module.index('        mv<-c("## Trajetória',a)
+module=module[:a]+'''        f2<-file.path(dir_figuras,"multivariada_trajetoria_eixos_comuns.png")
+        monitora_v305_figura_trajetoria(centro,100*pc$sdev[1:2]^2/sum(pc$sdev^2),f2)
+'''+module[b:]
+for name in ['siglas_figuras.R','editorial_aux.R','editorial.R','layout.R','evidencia.R','trajetoria.R']:
  module+='\n'+(root/'tools/v305'/name).read_text()
 enc=base64.b64encode(gzip.compress(module.encode(),9,mtime=0)).decode()
 s=s[:s.index('\n',start)+1]+',\n'.join('"'+v+'"' for v in textwrap.wrap(enc,12000))+s[last:]
