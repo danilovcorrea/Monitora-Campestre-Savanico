@@ -18,3 +18,6 @@ input/
 /tools/v304/__pycache__/
 
 /tools/__pycache__/
+
+/artifacts/v305/
+/tools/v305/__pycache__/
