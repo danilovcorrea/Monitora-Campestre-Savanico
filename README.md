@@ -4,23 +4,23 @@ Rotinas em R para tratamento, auditoria, validação e análise de dados do **Al
 
 ## Versão pública atual
 
-- Versão: `v3.0.5`
-- Build: `v3.0.5-20260929-r01`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.5.R`](monitora_campsav_alvo_global_v3.0.5.R)
+- Versão: `v3.0.6`
+- Build: `v3.0.6-20260929-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.6.R`](monitora_campsav_alvo_global_v3.0.6.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.5/`](releases/v3.0.5/)
-- Notas: [`RELEASE_NOTES_v3.0.5.md`](RELEASE_NOTES_v3.0.5.md)
-- Release: [v3.0.5](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.5)
+- Cópia congelada: [`releases/v3.0.6/`](releases/v3.0.6/)
+- Notas: [`RELEASE_NOTES_v3.0.6.md`](RELEASE_NOTES_v3.0.6.md)
+- Release: [v3.0.6](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.6)
 
-Esta versão revisa os relatórios analíticos em Word e PDF: conteúdo equivalente, índices conferidos, valores centralizados, retrato, figuras temporais completas e glossário temático. Corrige a comparabilidade das categorias gerais harmonizadas sem perder a origem histórica dos dados.
+Esta versão aprimora a interpretação das análises multivariadas e as sínteses específicas de cada UC. Revê a sequência editorial, a terminologia da amostragem, as notas e a apresentação das tabelas em Word e PDF, preservando numeração dinâmica, retrato e os cálculos científicos.
 
-FNB, PNI e PNM tiveram todos os produtos conferidos, incluindo os documentos no Word nativo. A homologação por etapas e os limites operacionais estão registrados nas notas da versão.
+FNB, PNI e PNM tiveram execução integral e conferência dos produtos, incluindo os documentos no Word nativo. Os gates e limites da homologação estão registrados nas notas da versão.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.5.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.5.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.5.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.6.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.6.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.6.html).
 
 ## Finalidade
 
@@ -481,15 +481,15 @@ Uma publicação deve confirmar:
 
 ## Estrutura do repositório
 
-- `monitora_campsav_alvo_global_v3.0.5.R`: script versionado atual.
+- `monitora_campsav_alvo_global_v3.0.6.R`: script versionado atual.
 - `monitora_campsav_alvo_global.R`: script canônico atual.
 - `R_monitora_campsav_alvo_global.R` e `R/monitora_campsav_alvo_global.R`: espelhos canônicos.
 - `VERSION`: versão pública atual.
 - `CHANGELOG.md`: histórico público de mudanças.
-- `RELEASE_NOTES_v3.0.5.md`: notas da versão atual.
-- `GUIA_USUARIO_v3.0.5.md`: roteiro operacional resumido.
-- `release_assets/v3.0.5/`: conjunto mínimo de artefatos da release.
-- `releases/v3.0.5/`: cópia congelada da versão.
+- `RELEASE_NOTES_v3.0.6.md`: notas da versão atual.
+- `GUIA_USUARIO_v3.0.6.md`: roteiro operacional resumido.
+- `release_assets/v3.0.6/`: conjunto mínimo de artefatos da release.
+- `releases/v3.0.6/`: cópia congelada da versão.
 - `docs/`: políticas e documentação auxiliar.
 
 ## Uso auxiliar de IA generativa

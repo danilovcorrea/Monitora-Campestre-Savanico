@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.0.6 - 2026-09-29
+
+- Revê interpretação multivariada, sínteses específicas por UC e sequência editorial.
+- Esclarece época de amostragem, reamostragens e continuidade das UAs; preserva referências dinâmicas.
+- Corrige duplicação de notas, apresentação das formações e alinhamento/continuidade dos cabeçalhos.
+- Homologa FNB, PNI e PNM, mantendo dados, linhagem e o script abaixo de 5 MB.
+
 ## v3.0.5 - 2026-09-29
 
 - Revê apresentação e equivalência dos relatórios Word/PDF, mantendo retrato e figuras temporais completas.

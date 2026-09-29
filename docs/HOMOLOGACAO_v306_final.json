@@ -1,0 +1,86 @@
+{
+  "versao": "3.0.6",
+  "build": "v3.0.6-20260929-r01",
+  "fonte": {
+    "status": "PASS",
+    "versao": "3.0.6",
+    "build": "v3.0.6-20260929-r01",
+    "sha256_candidata": "93140d0b398e514305e2ab31aa3c568ef76880cce3d31b425c5c08d08948ee84",
+    "sha256": "454cb8f1d6f74ec8df2695236add1206080f869a3209c8a09aa92af9b6186d45",
+    "bytes_lf": 4895302,
+    "bytes_crlf": 4979536,
+    "alteracoes": "Somente três identificadores de versão/build; reversibilidade byte a byte confirmada."
+  },
+  "ucs": [
+    {
+      "uc": "FNB",
+      "status": "PASS",
+      "ciencia_csv_identicos": 87,
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 21,
+          "word_paginas": 19,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 553
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 103,
+          "word_paginas": 97,
+          "tabelas": 40,
+          "figuras": 56,
+          "celulas": 2760
+        }
+      },
+      "revisao_visual": "APROVADA",
+      "produtos": 22
+    },
+    {
+      "uc": "PNI",
+      "status": "PASS",
+      "ciencia_csv_identicos": 82,
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 19,
+          "word_paginas": 17,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 334
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 72,
+          "word_paginas": 68,
+          "tabelas": 38,
+          "figuras": 37,
+          "celulas": 1544
+        }
+      },
+      "revisao_visual": "APROVADA",
+      "produtos": 22
+    },
+    {
+      "uc": "PNM",
+      "status": "PASS",
+      "ciencia_csv_identicos": 84,
+      "relatorios": {
+        "analitico_sintetico": {
+          "pdf_paginas": 21,
+          "word_paginas": 20,
+          "tabelas": 13,
+          "figuras": 8,
+          "celulas": 549
+        },
+        "analitico_detalhado": {
+          "pdf_paginas": 100,
+          "word_paginas": 94,
+          "tabelas": 39,
+          "figuras": 50,
+          "celulas": 2885
+        }
+      },
+      "revisao_visual": "APROVADA",
+      "produtos": 22
+    }
+  ],
+  "escopo": "Execução integral da candidata r04, produtos científicos comparados byte a byte, paridade documental e Word nativo; revisão visual dirigida. Sem nova curadoria."
+}

@@ -1,6 +1,6 @@
 # Candidata 3.0.6-rc01 — revisão narrativa
 
-Estado: desenvolvimento para avaliação de PNM; não publicada. A aprovação editorial do usuário e os demais gates de promoção continuam pendentes.
+Estado: candidata r04 homologada integralmente em FNB, PNI e PNM e promovida a 3.0.6. Registros abaixo descrevem as etapas anteriores; resultado final em `docs/HOMOLOGACAO_v306_final.md`.
 
 ## Escopo
 
@@ -42,3 +42,7 @@ Verificação pontual com o formatador real e tabela HTML: rótulos, preservaç�
 Retiradas da seção Estado da cobertura vegetal as inserções “Resultados descritivos das séries” e “Síntese dos contrastes entre períodos”, incluindo suas enumerações. Figuras, tabelas, contextualização e interpretação anterior permanecem. A alteração acompanha o tema categorias gerais também no sintético, sem depender do número da seção. As sínteses de outros temas permanecem fora deste ajuste.
 
 Verificação em memória com o formatador real e os produtos existentes de PNM: ausência dos dois blocos e preservação dos elementos originais. Nenhum relatório regenerado. Artefato r04: 4.895.317 bytes LF / 4.979.551 bytes CRLF; permanece candidata não publicada.
+
+## Homologação e promoção
+
+A execução integral r04 nas três UCs foi aprovada com os gates documentais e científicos, revisão independente da narrativa e inspeção visual dirigida. A promoção usa `tools/promover_v306.py` e altera exclusivamente três identificadores. Evidências institucionais permanecem fora do repositório.
