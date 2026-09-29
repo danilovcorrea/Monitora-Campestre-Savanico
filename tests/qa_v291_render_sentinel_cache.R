@@ -34,6 +34,11 @@ coletar <- function(expr) {
   invisible(NULL)
 }
 invisible(lapply(as.list(arvore), coletar))
+# Candidatas com módulos incorporados requerem o carregador completo de definições.
+if (any(grepl("monitora_v305_registrar_siglas_figura",readLines(script,warn=FALSE),fixed=TRUE))) {
+  source("tools/v305/carregar.R")
+  funcoes <- monitora_v305_carregar(script)
+}
 list2env(as.list.environment(funcoes, all.names = TRUE), envir = .GlobalEnv)
 linhas_cabecalho_script <- readLines(script, n = 500L, warn = FALSE, encoding = "UTF-8")
 extrair_constante_script <- function(nome, padrao) {
