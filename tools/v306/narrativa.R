@@ -60,6 +60,7 @@ monitora_v306_secao <- function(x,p) {
     if(nrow(aj)) {
       aa<-aj[escala=='pontos_percentuais'];total<-aa[bloco=='Conjunto'];bb<-aa[bloco!='Conjunto'];ss<-aj[escala=='padronizada_sensibilidade' & bloco!='Conjunto']
       if(nrow(total))resumo_aj<-c(resumo_aj,paste0('A [[tabela:multivariada-ajustes]] mostra ajuste conjunto de ',num(100*total$R2_descritivo[1]),'% da variação entre UAs nas mudanças dos cinco indicadores. Os ',num(100*(1-total$R2_descritivo[1])),'% restantes não são representados pelo conjunto neste recorte. Ambos são resultados dentro da amostra, sem validação causal.'))
+      resumo_aj<-c(resumo_aj,'Para compreender a associação conjunta, cada bloco foi avaliado isoladamente e pela sua contribuição adicional na presença dos demais. A associação isolada descreve o ajuste usando somente aquele bloco; o incremento exclusivo corresponde à perda de ajuste quando ele é retirado do conjunto. Os percentuais abaixo compartilham informação e não devem ser somados.','')
       for(bl in c('Epoca','Clima','Fogo','Contexto')) {
         q<-bb[bloco==bl]
         if(nrow(q))resumo_aj<-c(resumo_aj,paste0('- ',monitora_v306_bloco(bl),': associação isolada de ',num(100*q$R2_descritivo[1]),'%; incremento exclusivo de ',num(100*q$incremento_exclusivo[1]),'% após considerar os demais blocos.',if(q$posto[1]==0)' Os preditores deste bloco são constantes no painel; ausência de incremento não demonstra ausência de efeito.'else''))
@@ -74,7 +75,7 @@ monitora_v306_secao <- function(x,p) {
     j<-grep('^<figure.*multivariada_ordenacao_exploratoria',assoc)
     if(length(j)) {
       eo<-ler('mv_ord_eixos');co<-ler('mv_ord_cargas');ref<-monitora_v306_ref_fig('multivariada_ordenacao_exploratoria')
-      antes<-c(paste0('**Como ler a ',ref,'.** Cada ponto é uma UA, posicionada pela parcela ajustada das diferenças entre os extremos. Proximidade indica semelhança nessa parcela ajustada; não significa coberturas totais iguais nem ausência de mudança. As cores identificam formações, que também podem integrar o bloco Contexto.'),'')
+      antes<-c(paste0('Na ',ref,', cada ponto representa uma UA, posicionada pela parcela ajustada das diferenças entre os extremos. Proximidade indica semelhança nessa parcela ajustada; não significa coberturas totais iguais nem ausência de mudança. As cores identificam formações, que também podem integrar o bloco Contexto.'),'')
       depois<-character()
       if(nrow(eo)>=2L)depois<-c(depois,paste0('Os dois primeiros eixos representam ',num(sum(eo$parcela_ajustada_pct[1:2]),2),'% da parcela ajustada (',num(eo$parcela_ajustada_pct[1],2),'% e ',num(eo$parcela_ajustada_pct[2],2),'%), equivalentes a ',num(sum(eo$variacao_total_pct[1:2])),'% da variação total das diferenças. A figura resume apenas essa projeção; não substitui o ajuste conjunto da tabela.'))
       if(nrow(co))for(k in c('Eixo1','Eixo2')) {
@@ -117,7 +118,7 @@ monitora_v306_secao <- function(x,p) {
       }
       depois<-c(depois,'Os deslocamentos são descritivos e sua comparação usa somente os dois eixos exibidos. Retorno no gráfico não demonstra equivalência ecológica ou regeneração; afastamento não identifica a causa da mudança. Anos ausentes não são ligados e o sentido dos eixos não é comparável entre UCs.')
     }
-    traj<-c(traj[1],'',texto,'',paragrafos(antes),traj[fig],'',paragrafos(depois))
+    traj<-c(traj[1],'',texto,'',traj[fig],'',paragrafos(antes),paragrafos(depois))
   }
   conclusao<-c('## Discussão integrada e alcance dos achados','')
   if(nrow(painel)&&length(assoc)&&nrow(aj)) {
@@ -133,6 +134,7 @@ monitora_v306_secao <- function(x,p) {
   c(intro,rec,'',assoc,'',traj,'',paragrafos(conclusao))
 }
 monitora_v306_editorial <- function(conteudo,dir_relatorio) {
+  if(any(grepl('<!-- monitora-v306-revisado -->',conteudo,fixed=TRUE)))return(conteudo)
   x<-strsplit(paste(conteudo,collapse='\n'),'\n',fixed=TRUE)[[1]]
   # O resumo executivo conserva a informação climática, com identificação inequívoca.
   x<-gsub('Clima e trajetória:','Clima — transições entre coletas:',x,fixed=TRUE)
