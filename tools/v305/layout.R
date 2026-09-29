@@ -24,42 +24,47 @@ monitora_v305_ordenar_ooxml <- function(doc) {
   invisible(doc)
 }
 # Dimensões em twips; conteúdo científico não é reduzido nem serializado.
-monitora_v305_larguras <- function(cab,mat,portrait=9978L,landscape=14658L) {
-  cab<-as.character(cab);minimos<-pesos<-numeric(length(cab))
-  for(j in seq_along(cab)) {
-    vals<-as.character(mat[,j]);vals<-vals[!is.na(vals)];words<-unlist(strsplit(paste(c(cab[j],vals),collapse=" "),"[[:space:]/_-]+"));long<-max(c(4,nchar(words)),na.rm=TRUE)
-    numero<-length(vals)>0&&all(grepl("^[−+<>=≤≥±0-9eE.,% ()/:–-]+$|^(NA|NE)$",vals))
-    minimos[j]<-if(numero)max(760,150+85*max(nchar(vals)))else max(1050,min(1800,140+85*long))
-    if(grepl("^Ano|Campanha",cab[j]))minimos[j]<-max(850,minimos[j])
-    if(grepl("Formação",cab[j]))minimos[j]<-max(1250,minimos[j])
-    if(grepl("Data",cab[j]))minimos[j]<-max(1500,minimos[j])
-    if(grepl("Módulo",cab[j]))minimos[j]<-max(1700,minimos[j])
-    pesos[j]<-sqrt(max(c(nchar(cab[j]),pmin(nchar(vals),80)),na.rm=TRUE))
+monitora_v305_larguras <- function(cab,mat,portrait=9978L) {
+  cab<-as.character(cab);stopifnot(length(cab)>0L,ncol(mat)==length(cab))
+  # Medir palavras inteiras no dispositivo tipográfico, preservando o retrato.
+  dev<-tempfile(fileext=".pdf");grDevices::cairo_pdf(dev,family="sans");on.exit({grDevices::dev.off();unlink(dev)},add=TRUE)
+  tokens<-lapply(seq_along(cab),function(j){
+    v<-c(cab[j],as.character(mat[,j]));v<-v[!is.na(v)]
+    v<-gsub("https?://[^ ]+|[^ ]+[.](csv|xlsx|png|zip)","arquivo",v)
+    unlist(strsplit(paste(v,collapse=" "),"[[:space:];]+"))
+  })
+  for(fonte in seq(9,7,by=-.5)) {
+    minimos<-vapply(tokens,function(v)max(c(420,graphics::strwidth(v,units="inches",cex=fonte/12)*1440+140)),numeric(1))
+    if(sum(minimos)<=portrait)break
   }
-  larga<-sum(minimos)>portrait || length(cab)>=8L
-  total<-if(larga)landscape else portrait
-  if(sum(minimos)>total)stop("Tabela excede largura editorial disponível; requer divisão explícita de colunas: ",paste(cab,collapse=" | "),call.=FALSE)
-  w<-minimos+floor((total-sum(minimos))*pesos/sum(pesos));w[length(w)]<-w[length(w)]+total-sum(w)
-  list(larguras=as.integer(w),paisagem=larga,total=total,minimos=minimos)
+  if(sum(minimos)>portrait)stop("Tabela não cabe em retrato com fonte mínima de 7 pt; revisar cabeçalhos e conteúdo editorial: ",paste(cab,collapse=" | "),call.=FALSE)
+  pesos<-vapply(seq_along(cab),function(j)sqrt(max(c(nchar(cab[j]),pmin(nchar(as.character(mat[,j])),80)),na.rm=TRUE)),numeric(1))
+  w<-floor(minimos+(portrait-sum(minimos))*pesos/sum(pesos));w[length(w)]<-w[length(w)]+portrait-sum(w)
+  list(larguras=as.integer(w),paisagem=FALSE,total=portrait,minimos=minimos,fonte=fonte)
 }
 monitora_v305_html_base <- monitora_relatorios_analiticos_html_colunas
 monitora_relatorios_analiticos_html_colunas <- function(doc) {
   monitora_v305_html_base(doc)
   xml2::xml_add_child(xml2::xml_find_first(doc,".//head"),"style",
-    "@page tabela-larga{size:A4 landscape;margin:14mm 16mm}table{table-layout:fixed!important;font-size:9pt!important}td,th{overflow-wrap:normal!important;word-break:normal!important;hyphens:none;vertical-align:top}th{font-size:8.5pt!important}td.monitora-numero{text-align:right}td.monitora-codigo{text-align:center}td.monitora-caminho{overflow-wrap:anywhere!important}div.monitora-bloco-tabela{break-inside:auto!important;page-break-inside:auto!important}table.monitora-larga{page:tabela-larga}.monitora-legenda-tabela:has(+ table.monitora-larga){page:tabela-larga}div.monitora-bloco-tabela:has(table.monitora-larga){page:tabela-larga}.monitora-legenda-tabela{break-inside:avoid!important;page-break-inside:avoid!important;break-after:avoid!important}div.monitora-bloco-tabela:has(tbody>tr:last-child:nth-child(-n+10)){break-inside:avoid!important;page-break-inside:avoid!important}table{break-before:avoid!important}thead{display:table-header-group;break-inside:avoid;break-after:avoid}tbody>tr:first-child{break-before:avoid}tr{break-inside:avoid}figure{margin:6mm 0!important;break-inside:avoid}figcaption{margin-top:3mm}")
-  # Após a paginação: manter folha física e caixa externa coerentes com a área paisagem.
-  xml2::xml_add_child(xml2::xml_find_first(doc,".//body"),"script","(function(){if(!window.Paged)return;class MonitoraFolhas extends Paged.Handler{afterRendered(){let s=document.createElement('style');s.id='monitora-folhas-fisicas';s.textContent='@page monitoraPortrait{size:A4 portrait;margin:0}@page monitoraLandscape{size:A4 landscape;margin:0}.pagedjs_tabela-larga_page{--pagedjs-width:297mm;--pagedjs-height:210mm;--pagedjs-width-right:297mm;--pagedjs-width-left:297mm;--pagedjs-height-right:210mm;--pagedjs-height-left:210mm;--pagedjs-pagebox-width:297mm;--pagedjs-pagebox-height:210mm}.pagedjs_tabela-larga_page,.pagedjs_tabela-larga_page .pagedjs_sheet{width:297mm!important;height:210mm!important;min-height:0!important;max-height:none!important}@media print{.pagedjs_page{page:monitoraPortrait!important}.pagedjs_tabela-larga_page{page:monitoraLandscape!important}}';document.head.append(s)}}Paged.registerHandlers(MonitoraFolhas)})();")
+    "@page{size:A4 portrait}table{table-layout:fixed!important;font-size:9pt!important}td,th{overflow-wrap:normal!important;word-break:normal!important;hyphens:none;vertical-align:top}th{font-size:8.5pt!important}td.monitora-numero{text-align:right}td.monitora-codigo{text-align:center}td.monitora-caminho{overflow-wrap:anywhere!important}div.monitora-bloco-tabela{break-inside:auto!important;page-break-inside:auto!important}.monitora-legenda-tabela{break-inside:avoid!important;page-break-inside:avoid!important;break-after:avoid!important}table.monitora-tabela-curta,div.monitora-bloco-tabela.monitora-tabela-curta{break-inside:avoid!important;page-break-inside:avoid!important}table{break-before:avoid!important}thead{display:table-header-group;break-inside:avoid;break-after:avoid}tbody>tr:first-child{break-before:avoid}tr{break-inside:avoid}figure{margin:6mm 0!important;break-inside:avoid}figcaption{margin-top:3mm}")
   for(tab in xml2::xml_find_all(doc,".//table")) {
     cab<-xml2::xml_text(xml2::xml_find_all(tab,"./thead/tr[1]/th"));rows<-xml2::xml_find_all(tab,"./tbody/tr")
     if(!length(cab)||!length(rows))next
     vals<-lapply(rows,function(row)xml2::xml_text(xml2::xml_find_all(row,"./td")))
     if(any(lengths(vals)!=length(cab)))stop("Tabela HTML com células inconsistentes")
     m<-do.call(rbind,vals);w<-monitora_v305_larguras(cab,m)
-    if(w$paisagem)xml2::xml_set_attr(tab,"class",paste(xml2::xml_attr(tab,"class"),"monitora-larga"))
+    altura_estimada<-sum(apply(sweep(nchar(m),2,pmax(5,(w$larguras-140)/(w$fonte*10)),"/"),1,function(v)max(ceiling(v))))*w$fonte*1.35+nrow(m)*6+60
+    if(nrow(m)<=24L&&altura_estimada<640) {
+      xml2::xml_set_attr(tab,"class",paste(na.omit(xml2::xml_attr(tab,"class")),"monitora-tabela-curta"))
+      wrapper<-xml2::xml_parent(tab);cl<-xml2::xml_attr(wrapper,"class");if(is.na(cl))cl<-""
+      xml2::xml_set_attr(wrapper,"class",paste(cl,"monitora-tabela-curta"))
+    }
+    for(q in xml2::xml_find_all(tab,".//td|.//th"))xml2::xml_set_attr(q,"style",paste0("font-size:",w$fonte,"pt!important;padding:3px!important"))
     xml2::xml_remove(xml2::xml_find_all(tab,"./colgroup"));cg<-xml2::xml_add_child(tab,"colgroup",.where=0)
     for(v in w$larguras)xml2::xml_add_child(cg,"col",style=paste0("width:",round(100*v/w$total,3),"%"))
     for(j in seq_along(cab)) for(row in rows) {
       td<-xml2::xml_find_all(row,"./td")[[j]];v<-xml2::xml_text(td)
+      if(grepl("[0-9]{4};[0-9]{4}",v))xml2::xml_text(td)<-gsub(";",";\u200B",v,fixed=TRUE)
       cl<-xml2::xml_attr(td,"class");if(is.na(cl))cl<-""
       if(grepl("^Ano|Campanha|UAs|^Nº|^Data",cab[j]))cl<-paste(cl,"monitora-codigo")
       if(grepl("[/\\\\]|[.]csv|[.]png|[.]xlsx",v))cl<-paste(cl,"monitora-caminho")
@@ -77,8 +82,6 @@ monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_
   add<-function(p,x,where=Inf){for(n in xml2::xml_children(node(x)))xml2::xml_add_child(p,n,.where=where)}
   prop<-function(p,tag) {q<-xml2::xml_find_first(p,paste0('./w:',tag),ns);if(inherits(q,'xml_missing')) {add(p,paste0('<w:',tag,'/>'),0);q<-xml2::xml_find_first(p,paste0('./w:',tag),ns)};q}
   text<-function(p)paste(xml2::xml_text(xml2::xml_find_all(p,'.//w:t',ns)),collapse='')
-  sect<-xml2::xml_find_first(doc,'.//w:body/w:sectPr',ns)
-  section<-function(land=FALSE){q<-monitora_v305_clonar_xml(sect);xml2::xml_remove(xml2::xml_find_all(q,'./w:pgSz|./w:type',ns));add(q,paste0('<w:type w:val="nextPage"/><w:pgSz w:w="',if(land)16838 else 11906,'" w:h="',if(land)11906 else 16838,'" w:orient="',if(land)'landscape'else'portrait','"/>'));q}
   for(tab in xml2::xml_find_all(doc,'.//w:body/w:tbl',ns)) {
     rows<-xml2::xml_find_all(tab,'./w:tr',ns);cells<-lapply(rows,function(z)xml2::xml_find_all(z,'./w:tc',ns));cab<-vapply(cells[[1]],text,character(1))
     if(length(rows)<2L)next
@@ -86,36 +89,26 @@ monitora_relatorios_analiticos_docx_preservar_linhas_tabela <- function(arquivo_
     m<-do.call(rbind,lapply(cells[-1L],function(cs)vapply(cs,text,character(1))))
     width<-monitora_v305_larguras(cab,m);pr<-prop(tab,'tblPr')
     xml2::xml_remove(xml2::xml_find_all(pr,'./w:tblW|./w:tblLayout|./w:tblInd|./w:tblBorders|./w:tblCellMar|./w:jc',ns))
-    add(pr,paste0('<w:tblW w:type="dxa" w:w="',width$total,'"/><w:tblLayout w:type="fixed"/><w:jc w:val="center"/><w:tblCellMar><w:top w:w="75" w:type="dxa"/><w:left w:w="75" w:type="dxa"/><w:bottom w:w="75" w:type="dxa"/><w:right w:w="75" w:type="dxa"/></w:tblCellMar>'))
+    add(pr,paste0('<w:tblW w:type="dxa" w:w="',width$total,'"/><w:tblLayout w:type="fixed"/><w:jc w:val="center"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar>'))
     add(pr,paste0('<w:tblBorders>',paste0('<w:',c('top','left','bottom','right','insideH','insideV'),' w:val="single" w:sz="4" w:color="BCC9C3"/>',collapse=''),'</w:tblBorders>'))
     grid<-prop(tab,'tblGrid');xml2::xml_remove(xml2::xml_children(grid));for(v in width$larguras)add(grid,paste0('<w:gridCol w:w="',v,'"/>'))
     for(i in seq_along(rows)) {
       rp<-prop(rows[[i]],'trPr');xml2::xml_remove(xml2::xml_find_all(rp,'./w:trHeight|./w:cantSplit',ns))
       # Linhas excepcionalmente altas podem continuar na página seguinte.
       altura<-max(vapply(seq_along(cab),function(j)ceiling(nchar(text(cells[[i]][[j]]))/max(8,(width$larguras[j]-150)/90)),numeric(1)))*240+150
-      if(altura<if(width$paisagem)8500 else 13000)add(rp,'<w:cantSplit/>')
+      if(altura<13000)add(rp,'<w:cantSplit/>')
       if(i==1L)add(rp,'<w:tblHeader/>')
       for(j in seq_along(cab)) {
         c<-cells[[i]][[j]];cp<-prop(c,'tcPr');xml2::xml_remove(xml2::xml_find_all(cp,'./w:tcW|./w:shd|./w:vAlign',ns));add(cp,paste0('<w:tcW w:type="dxa" w:w="',width$larguras[j],'"/><w:vAlign w:val="center"/><w:shd w:fill="',if(i==1)'24543C'else if(i%%2L)'F3F7F4'else'FFFFFF','"/>'))
+        for(t in xml2::xml_find_all(c,'.//w:t',ns)){v0<-xml2::xml_text(t);if(grepl('[0-9]{4};[0-9]{4}',v0))xml2::xml_text(t)<-gsub(';',';\u200B',v0,fixed=TRUE)}
         v<-text(c);num<-grepl('^[−+<>=≤≥±0-9eE.,% ()/:–-]+$|^(NA|NE)$',v)
         align<-if(i>1&&grepl('^Ano|Campanha|UAs|^Nº|^Data',cab[j]))'center'else if(i>1&&num)'right'else'left'
         for(p in xml2::xml_find_all(c,'./w:p',ns)){pp<-prop(p,'pPr');xml2::xml_remove(xml2::xml_find_all(pp,'./w:jc|./w:spacing|./w:keepNext',ns));add(pp,paste0('<w:jc w:val="',align,'"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'))}
-        for(run in xml2::xml_find_all(c,'.//w:r',ns)){rp2<-prop(run,'rPr');xml2::xml_remove(xml2::xml_find_all(rp2,'./w:sz|./w:szCs|./w:color',ns));add(rp2,paste0('<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="',if(i==1)'FFFFFF'else'24332D','"/>'));if(i==1)add(rp2,'<w:b/>')}
+        for(run in xml2::xml_find_all(c,'.//w:r',ns)){rp2<-prop(run,'rPr');xml2::xml_remove(xml2::xml_find_all(rp2,'./w:sz|./w:szCs|./w:color',ns));add(rp2,paste0('<w:sz w:val="',width$fonte*2,'"/><w:szCs w:val="',width$fonte*2,'"/><w:color w:val="',if(i==1)'FFFFFF'else'24332D','"/>'));if(i==1)add(rp2,'<w:b/>')}
       }
     }
     caption<-xml2::xml_find_first(tab,'preceding-sibling::w:p[1]',ns);add(prop(caption,'pPr'),'<w:keepNext/>')
-    if(width$paisagem) {
-      anchor<-caption
-      repeat {
-        prev<-xml2::xml_find_first(anchor,'preceding-sibling::*[1]',ns)
-        if(inherits(prev,'xml_missing')||xml2::xml_name(prev)!='p')break
-        bk<-xml2::xml_attr(xml2::xml_find_all(prev,'.//w:bookmarkStart',ns),'name')
-        if(!any(grepl('^monitora-tab-',bk))&&!startsWith(text(prev),'Siglas nesta leitura:'))break
-        anchor<-prev
-      }
-      before<-xml2::xml_add_sibling(anchor,xml2::xml_children(node('<w:p><w:pPr/></w:p>'))[[1]],.where='before');xml2::xml_add_child(prop(before,'pPr'),section(FALSE))
-      after<-xml2::xml_add_sibling(tab,xml2::xml_children(node('<w:p><w:pPr/></w:p>'))[[1]],.where='after');xml2::xml_add_child(prop(after,'pPr'),section(TRUE))
-    }
+
   }
   for(p in xml2::xml_find_all(doc,'.//w:body/w:p',ns)) {
     pp<-prop(p,'pPr');style<-xml2::xml_attr(xml2::xml_find_first(pp,'./w:pStyle',ns),'val');if(is.na(style))style<-''

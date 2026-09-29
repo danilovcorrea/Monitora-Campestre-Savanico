@@ -7,7 +7,7 @@ def change(a,b,n=1):
  assert s.count(a)==n,(a[:100],s.count(a));s=s.replace(a,b)
 change('# Versão 3.0.4 —','# Versão 3.0.5-rc01 —')
 change('MONITORA_SCRIPT_VERSAO <- "3.0.4"','MONITORA_SCRIPT_VERSAO <- "3.0.5-rc01"')
-change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r07"')
+change('MONITORA_SCRIPT_BUILD_ID <- "v3.0.4-20260925-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-rc01-20260929-r08"')
 # Manter matriz tabular e parágrafos reais no Word.
 change('    if (length(cab) <= 6L) return(bloco)','    return(bloco)')
 change('    return(c(paste0("> ", paragrafos), ""))','    return(c(paste(paragrafos, collapse="\\n\\n"), ""))')
@@ -15,6 +15,14 @@ change('  editorial <- monitora_relatorios_analiticos_numerar(conteudo, dir_rela
 change('    if(nrow(visitas_obj$modelos))paste0("Calendário: ",paste(unique(visitas_obj$modelos$motivo),collapse="; "),"."))','    if(nrow(visitas_obj$modelos))monitora_v305_calendario(visitas_obj$modelos))')
 # Métrica repetida por achado: evita depender do título de um bloco em outra página.
 change('paste0("- ", vapply(seq_len(nrow(z)), function(ii) frase_achado_item(z[ii]), character(1L)))','paste0("- **", z$tipo_metrica_label, "** — ", vapply(seq_len(nrow(z)), function(ii) frase_achado_item(z[ii]), character(1L)))')
+# Uma figura por tema/métrica, com todos os resultados na página em retrato.
+a=s.index('    dados_integrais <- data.table::copy(dados_plot)');b=s.index('    audit <- data.table::copy(dados_plot)',a)
+s=s[:a]+'''    arquivo <- monitora_relatorios_analiticos_caminho_figura(dir_figuras,paste0("evidencia_estatistica_",id,".png"))
+    monitora_v305_figura_evidencia(dados_plot,titulo,arquivo,paleta,cfg_num)
+'''+s[b:]
+a=s.index('  painel_inferencial <- function(');b=s.index('  temas_inferenciais <-',a)
+z=s[a:b];assert z.count('    }\n    invisible(NULL)')==1
+z=z.replace('    }\n    invisible(NULL)','    invisible(NULL)');s=s[:a]+z+s[b:]
 # A capa é a primeira seção; páginas paisagem não devem receber rodapé de capa.
 a=s.index('monitora_relatorios_analiticos_docx_adequar_capa <- function(');b=s.index('\nmonitora_relatorios_analiticos_conteudo_docx <-',a)
 z=s[a:b];assert 'for (secao in secoes)' in z;z=z.replace('for (secao in secoes)','for (secao in head(secoes,1L))');s=s[:a]+z+s[b:]
@@ -89,7 +97,7 @@ module=module.replace('if (nrow(por_modalidade)) monitora_relatorios_analiticos_
 # URL codificada, rótulo com colchetes balanceados sem ativar TeX.
 module=module.replace('87\\\\[2614:VPOSDM\\\\]2.0.CO;2','87%5B2614:VPOSDM%5D2.0.CO;2')
 module=module.replace('[https://doi.org/10.1890/0012-9658(2006)87%5B2614:VPOSDM%5D2.0.CO;2]', '[10.1890/0012-9658(2006)87[2614:VPOSDM]2.0.CO;2]')
-for name in ['siglas_figuras.R','editorial.R','layout.R']:
+for name in ['siglas_figuras.R','editorial.R','layout.R','evidencia.R']:
  module+='\n'+(root/'tools/v305'/name).read_text()
 enc=base64.b64encode(gzip.compress(module.encode(),9,mtime=0)).decode()
 s=s[:s.index('\n',start)+1]+',\n'.join('"'+v+'"' for v in textwrap.wrap(enc,12000))+s[last:]

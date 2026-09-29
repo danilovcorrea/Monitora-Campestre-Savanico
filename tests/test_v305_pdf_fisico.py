@@ -2,7 +2,7 @@ from pathlib import Path
 from pypdf import PdfReader
 import json,sys,re,unicodedata
 sys.stdout.reconfigure(encoding='utf-8');d=Path(sys.argv[1]);out=d/'output/08_analises';audit=json.loads((out/'AUDITORIA_PAGINACAO.json').read_text(encoding='utf-8'));results=[]
-def norm(s):return re.sub(r'\s+','',unicodedata.normalize('NFKC',s)).replace('−','-').replace('\xad','')
+def norm(s):return re.sub(r'\s+','',unicodedata.normalize('NFKC',s)).replace('−','-').replace('\xad','').replace('\u200b','')
 for name,a in audit.items():
  p=next(out.rglob(name.replace('.html','.pdf')));reader=PdfReader(p);assert len(reader.pages)==len(a['folhas']);errors=[];cells=0
  for page,m in zip(reader.pages,a['folhas']):

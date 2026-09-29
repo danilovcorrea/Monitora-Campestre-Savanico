@@ -5,5 +5,5 @@ monitora_v305_carregar <- function(script='R_monitora_campsav_alvo_global.R') {
  s<-readLines(script,warn=FALSE);start<-grep('^eval[(]parse[(]text=rawToChar[(]memDecompress',s);stopifnot(length(start)==1L)
  end<-start+which(grepl('envir=environment',s[(start+1L):length(s)],fixed=TRUE))[1L]
  code<-paste(s[start:end],collapse='\n');eval(parse(text=code),e)
- e$MONITORA_SCRIPT_VERSAO<-'3.0.5-rc01';e$MONITORA_SCRIPT_BUILD_ID<-'v3.0.5-rc01-20260929-r07';e
+ e$MONITORA_SCRIPT_VERSAO<-'3.0.5-rc01';e$MONITORA_SCRIPT_BUILD_ID<-'v3.0.5-rc01-20260929-r08';e
 }
