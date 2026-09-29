@@ -7,7 +7,7 @@ def replace(a,b):
  assert s.count(a)==1,(a[:90],s.count(a));s=s.replace(a,b)
 replace('# Versão 3.0.5 —','# Versão 3.0.6-rc01 —')
 replace('MONITORA_SCRIPT_VERSAO <- "3.0.5"','MONITORA_SCRIPT_VERSAO <- "3.0.6-rc01"')
-replace('MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-20260929-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.6-rc01-20260929-r02"')
+replace('MONITORA_SCRIPT_BUILD_ID <- "v3.0.5-20260929-r01"','MONITORA_SCRIPT_BUILD_ID <- "v3.0.6-rc01-20260929-r03"')
 replace('  conteudo <- monitora_v305_editorial(conteudo, dir_relatorio, base_nome)','  conteudo <- monitora_v306_limpar_notas(conteudo, dir_relatorio)\n  conteudo <- monitora_v306_editorial(conteudo, dir_relatorio)\n  conteudo <- monitora_v306_amplo(conteudo, dir_relatorio)\n  conteudo <- monitora_v305_editorial(conteudo, dir_relatorio, base_nome)\n  conteudo <- monitora_v306_notas_finais(conteudo)')
 replace('paste0("Clima e trajetória: ",complementos_obj$resumo)','paste0("Clima — transições entre coletas: ",complementos_obj$resumo)')
 replace('  composicao_linha_base <- trocar_material(composicao_linha_base, material_documentado$comparacoes$composicao_base)', '  composicao_linha_base <- trocar_material(composicao_linha_base, material_documentado$comparacoes$composicao_base)\n  data.table::fwrite(mudanca_periodo, file.path(dir_relatorio, \"nar_contrastes.csv\"), bom=TRUE)\n  data.table::fwrite(composicao_periodo, file.path(dir_relatorio, \"nar_composicao.csv\"), bom=TRUE)\n  data.table::fwrite(data.table::data.table(fogo=fogo_obj$status, clima=clima_obj$status), file.path(dir_relatorio, \"nar_contexto.csv\"), bom=TRUE)')
@@ -22,6 +22,15 @@ module=gzip.decompress(base64.b64decode(''.join(parts))).decode()
 def hook(a,b):
  global module
  assert module.count(a)==1,(a[:80],module.count(a));module=module.replace(a,b)
+hook('  if(is.data.frame(x)) {x<-as.data.frame(x);names(x)<-monitora_v305_rotulo_coluna(names(x))}', '''  if(is.data.frame(x)) {
+    x<-as.data.frame(x);names(x)<-monitora_v305_rotulo_coluna(names(x))
+    for(j in which(names(x)%in%c("Formação","formacao"))) {
+      v<-as.character(x[[j]]);ch<-tolower(iconv(trimws(v),from="",to="ASCII//TRANSLIT"))
+      hit<-!is.na(ch)&ch%in%c("campestre","savanica")
+      v[hit]<-monitora_relatorio_rotulo_formacao(v[hit],TRUE);x[[j]]<-v
+    }
+  }''')
+hook('th{font-size:8.5pt!important}', 'th{font-size:8.5pt!important;vertical-align:middle!important}')
 hook('  salvar(w,"painel_selecionado")','  salvar(w,"painel_selecionado")\n  monitora_v306_meta_painel(w,es,blocos,dir_relatorio)')
 hook('    salvar(pontos,"ordenacao_exploratoria")','    salvar(pontos,"ordenacao_exploratoria")\n    monitora_v306_meta_ordenacao(s,Y,dir_relatorio)')
 hook('        centro[,form_veg:=monitora_relatorio_rotulo_formacao(form_veg,TRUE)]','        monitora_v306_meta_trajetoria(pc,w,ww,centro,dir_relatorio)\n        centro[,form_veg:=monitora_relatorio_rotulo_formacao(form_veg,TRUE)]')

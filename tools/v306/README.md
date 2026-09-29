@@ -30,3 +30,9 @@ Conferências executadas na preparação de PNM: preservação dos CSVs científ
 Verificações adicionais: `Rscript tests/test_v306_contextos.R`. Evidências r02 em `pnm_v306_r02_20260929`, fora do Git. Para PNM foram reaproveitados 147 CSVs idênticos aos da revisão anterior; somente duas figuras de época foram redesenhadas para atualizar os textos. Os dois relatórios foram regenerados em Rmd, Markdown, HTML, PDF e DOCX. A revisão independente reconciliou as sínteses prioritárias, de fogo, correlações climáticas, transições e predição com os CSVs. A aprovação editorial do usuário e os demais gates de promoção permanecem pendentes.
 
 A inspeção visual do Word detectou um cabeçalho órfão após a ampliação dos textos. A revisão r02 vincula cada cabeçalho à primeira linha de dados, mantendo o restante da tabela paginável. Há teste de regressão e conferência nativa em todas as tabelas de PNM.
+
+## Revisão r03 — consistência das tabelas
+
+Formações identificadas em colunas próprias são apresentadas como Campestre e Savânica na camada comum de tabelas, inclusive nas opcionais. A normalização atua na cópia de apresentação; preserva dados, ausências, outros valores e frases corridas. Os cabeçalhos HTML/PDF passam a usar alinhamento vertical central, acompanhando o Word, sem alterar o alinhamento horizontal.
+
+Verificação pontual com o formatador real e tabela HTML: rótulos, preservação do objeto de entrada e estilos. Nenhum relatório de PNM foi regenerado nesta revisão. Artefato r03: 4.895.281 bytes em LF / 4.979.515 em CRLF, abaixo de 5.000.000 bytes. Permanece candidata não publicada.
