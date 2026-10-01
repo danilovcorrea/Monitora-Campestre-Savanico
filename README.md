@@ -2,6 +2,12 @@
 
 Rotinas em R para tratamento, auditoria, validação e análise de dados do **Alvo Global Plantas Herbáceas e Lenhosas, Nativas e Exóticas** do **Componente Campestre Savânico** do Programa Monitora.
 
+## Planejamento amostral, cartografia e navegação em campo
+
+A ferramenta independente **Monitora Campestre Savânico - Alvo Global - Planejamento e Desenho Amostral, Cartografia e navegação em campo** está disponível no repositório [Monitora-Planejamento-Amostral](https://github.com/danilovcorrea/Monitora-Planejamento-Amostral). Ela reúne planejamento, projetos QGIS/QField, mapas, vetores, tabelas e relatórios; este repositório mantém o tratamento e as análises dos dados biológicos.
+
+**[Manual do usuário em HTML](https://danilovcorrea.github.io/Monitora-Planejamento-Amostral/)** · [Manual em PDF](https://danilovcorrea.github.io/Monitora-Planejamento-Amostral/manual_usuario.pdf) · [Baixar a ferramenta](https://github.com/danilovcorrea/Monitora-Planejamento-Amostral/releases/latest).
+
 ## Versão pública atual
 
 - Versão: `v3.0.6`
