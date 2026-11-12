@@ -1,0 +1,46 @@
+{
+  "status": "PUBLICACAO_APROVADA_NO_ESCOPO_DEFINIDO",
+  "version": "3.0.7",
+  "build": "v3.0.7-20261112-r01",
+  "candidate_sha256": "1e9553262e04592b6f7dfdb0634641fca734a818d1a31fc464301cf9f639cf99",
+  "public_sha256": "db6333c5e275af245e7d8d069f8bdeb259acf1cae4d46de7187b53fe475816d2",
+  "bytes_LF": 4915963,
+  "bytes_CRLF": 4999772,
+  "decimal_limit": 5000000,
+  "only_three_identifier_changes_from_reviewed_candidate": true,
+  "full_homologation": false,
+  "dynamic_all_13_modes": "Fora do escopo por determinação do usuário; não se atribui aprovação a modos não executados.",
+  "user_review": "Índice funcional confirmado; prévia de estilo Word/PDF r09 entregue e publicação autorizada posteriormente.",
+  "checks": {
+    "static_R_Linux_Windows": "PASS",
+    "reference_files_preserved": 457,
+    "public_functional_test_suites": 7,
+    "style_focal_checks": 16,
+    "manual_APAI_inherited_events": 61,
+    "manual_APAI_new_events": 1221,
+    "manual_APAI_final_vigentes": 1282,
+    "manual_APAI_remaining_unjustified": 781,
+    "inherited_event_columns_preserved": 19,
+    "separate_technical_continuity_events": 2063,
+    "detailed_preview_tables": 36,
+    "detailed_preview_media": 43,
+    "detailed_preview_PAGEREF_fields": 17,
+    "source_modules_preserved": 7,
+    "science_not_recalculated_for_editorial_preview": true
+  },
+  "known_limits": {
+    "institutional_delivery_path_gate": "NAO_APROVADO: três excessos por rodada APAI (CSV212>210;RDS/TIF271>259). Essas pastas não integram a publicação.",
+    "all_modes_full_UI": "Não comprovados integralmente; ações de registro/salvamento/continuidade auditadas nas manuais.",
+    "QField_device_and_SIS_import": "Não repetidos nesta revisão.",
+    "historical_2063_events": "Duas manuais não migraram automaticamente histórico ausente da primeira entrada; prova técnica de2063 é separada.",
+    "cross_environment_numerics": "Diferenças FNB investigadas com reproduções controladas por ambiente; não equivale a identidade byte a byte de todos os CSV históricos."
+  },
+  "public_package": {
+    "zip": "Monitora_v3.0.7.zip",
+    "sha256": "77ad94b00d53be264fe0d098e7cb5ab4b7aa34685c3290dc060bbb14b7865af8",
+    "bytes": 1992379,
+    "files": 10,
+    "contains_institutional_data": false
+  },
+  "evidence_policy": "Bases, relatórios e logs institucionais preservados fora do Git e dos anexos públicos."
+}

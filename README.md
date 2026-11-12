@@ -10,23 +10,33 @@ A ferramenta independente **Monitora Campestre Savânico - Alvo Global - Planeja
 
 ## Versão pública atual
 
-- Versão: `v3.0.6`
-- Build: `v3.0.6-20260929-r01`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.6.R`](monitora_campsav_alvo_global_v3.0.6.R)
+- Versão: `v3.0.7`
+- Build: `v3.0.7-20261112-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.7.R`](monitora_campsav_alvo_global_v3.0.7.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.6/`](releases/v3.0.6/)
-- Notas: [`RELEASE_NOTES_v3.0.6.md`](RELEASE_NOTES_v3.0.6.md)
-- Release: [v3.0.6](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.6)
+- Cópia congelada: [`releases/v3.0.7/`](releases/v3.0.7/)
+- Notas: [`RELEASE_NOTES_v3.0.7.md`](RELEASE_NOTES_v3.0.7.md)
+- Release: [v3.0.7](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.7)
 
-Esta versão aprimora a interpretação das análises multivariadas e as sínteses específicas de cada UC. Revê a sequência editorial, a terminologia da amostragem, as notas e a apresentação das tabelas em Word e PDF, preservando numeração dinâmica, retrato e os cálculos científicos.
+Esta versão corrige a continuidade das justificativas de pendências entre rodadas. Ocorrências com justificativa vigente continuam disponíveis para consulta e deixam de aparecer na seleção para novo registro. O diagnóstico e a severidade são preservados; novas ocorrências do mesmo tipo continuam sujeitas à avaliação.
 
-FNB, PNI e PNM tiveram execução integral e conferência dos produtos, incluindo os documentos no Word nativo. Os gates e limites da homologação estão registrados nas notas da versão.
+Para continuar uma rodada, transporte juntos os registros corrigidos e toda a pasta de linhagem da saída anterior. As justificativas de não resolução têm histórico próprio, separado do ledger de correções dos dados. Histórico legado não transportado exige recuperação auditável a partir das fontes correspondentes.
+
+Os relatórios analíticos em Word passam a usar Arial e a paleta verde nos títulos, índice e links, harmonizando a apresentação com o PDF. Tabelas, figuras, referências dinâmicas e conteúdo científico são preservados.
+
+A validação no escopo aprovado reuniu continuidade manual na APAI, testes técnicos e revisão da prévia Word/PDF pelo usuário. Não representa homologação integral dos 13 modos. As notas da versão registram a cobertura, as pendências remanescentes e os limites de caminhos das entregas institucionais.
+
+### Preservado da v3.0.6
+
+A v3.0.6 aprimorou a interpretação das análises multivariadas e as sínteses específicas de cada UC, com revisão da sequência editorial, da terminologia da amostragem, das notas e da apresentação das tabelas em Word e PDF. Preservou numeração dinâmica, retrato e cálculos científicos.
+
+Na homologação da v3.0.6, FNB, PNI e PNM tiveram execução integral e conferência dos produtos, incluindo os documentos no Word nativo. Essas evidências pertencem à versão anterior; não constituem novas rodadas da v3.0.7.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.6.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.6.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.6.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.7.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.7.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.7.html).
 
 ## Finalidade
 
@@ -487,15 +497,15 @@ Uma publicação deve confirmar:
 
 ## Estrutura do repositório
 
-- `monitora_campsav_alvo_global_v3.0.6.R`: script versionado atual.
+- `monitora_campsav_alvo_global_v3.0.7.R`: script versionado atual.
 - `monitora_campsav_alvo_global.R`: script canônico atual.
 - `R_monitora_campsav_alvo_global.R` e `R/monitora_campsav_alvo_global.R`: espelhos canônicos.
 - `VERSION`: versão pública atual.
 - `CHANGELOG.md`: histórico público de mudanças.
-- `RELEASE_NOTES_v3.0.6.md`: notas da versão atual.
-- `GUIA_USUARIO_v3.0.6.md`: roteiro operacional resumido.
-- `release_assets/v3.0.6/`: conjunto mínimo de artefatos da release.
-- `releases/v3.0.6/`: cópia congelada da versão.
+- `RELEASE_NOTES_v3.0.7.md`: notas da versão atual.
+- `GUIA_USUARIO_v3.0.7.md`: roteiro operacional resumido.
+- `release_assets/v3.0.7/`: conjunto mínimo de artefatos da release.
+- `releases/v3.0.7/`: cópia congelada da versão.
 - `docs/`: políticas e documentação auxiliar.
 
 ## Uso auxiliar de IA generativa
@@ -511,7 +521,7 @@ Ferramentas de IA não substituem a validação humana, a execução local do sc
 ## Como citar
 
 ```text
-CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v3.0.0. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.0. Acesso em: DD mês AAAA.
+CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v3.0.7. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.7. Acesso em: DD mês AAAA.
 ```
 
 Repositório público: https://github.com/danilovcorrea/Monitora-Campestre-Savanico

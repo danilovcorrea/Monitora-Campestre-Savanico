@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.0.7 - 2026-11-12
+
+- Preserva justificativas na linhagem e retira ocorrências vigentes da seleção para novo registro, mantendo diagnóstico e severidades.
+- Verifica histórico e cache, renova o estado a cada Source e protege a gravação conjunta de dados e linhagem.
+- Preserva fontes de relatórios de apoio e registra as cópias legadas compactadas.
+- Harmoniza os relatórios analíticos em Word com Arial e paleta verde em títulos, índice e links, preservando conteúdo científico e referências.
+- Valida continuidade manual APAI e prévia gráfica no escopo aprovado; mantém explícitos os modos não executados e os avisos de caminho das entregas institucionais.
+
 ## v3.0.6 - 2026-09-29
 
 - Revê interpretação multivariada, sínteses específicas por UC e sequência editorial.

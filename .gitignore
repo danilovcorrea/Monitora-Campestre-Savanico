@@ -24,3 +24,9 @@ input/
 
 /artifacts/v306/
 /tools/v306/__pycache__/
+
+# Preparação e evidências locais da v3.0.7
+/.preparacao_v307/
+/.publicacao_v307_r09_20261112/
+/artifacts/v307/
+/tools/v307/__pycache__/
