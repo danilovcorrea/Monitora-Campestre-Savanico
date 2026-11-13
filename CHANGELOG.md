@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.0.8 - 2026-11-13
+
+- Divide evidências temporais extensas em partes legíveis, com fonte mínima de 7 pontos, sem descartar resultados.
+- Incorpora todas as partes em HTML, Word e PDF, com legendas/referências próprias e contagem estatística preservada.
+- Reconcilia páginas, células e hashes e protege os relatórios paginados durante a organização final do output.
+- Preserva a continuidade das justificativas da 3.0.7, o contrato, a linhagem e os cálculos científicos.
+- Registra conclusão manual PNB e publicação autorizada no escopo disponível, com fatal em outro ambiente ainda indeterminado, projeções de caminhos e cobertura de modos/UCs explicitamente limitadas.
+
 ## v3.0.7 - 2026-11-12
 
 - Preserva justificativas na linhagem e retira ocorrências vigentes da seleção para novo registro, mantendo diagnóstico e severidades.

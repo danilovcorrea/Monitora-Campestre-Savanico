@@ -10,33 +10,41 @@ A ferramenta independente **Monitora Campestre Savânico - Alvo Global - Planeja
 
 ## Versão pública atual
 
-- Versão: `v3.0.7`
-- Build: `v3.0.7-20261112-r01`
-- Script principal: [`monitora_campsav_alvo_global_v3.0.7.R`](monitora_campsav_alvo_global_v3.0.7.R)
+- Versão: `v3.0.8`
+- Build: `v3.0.8-20261113-r01`
+- Script principal: [`monitora_campsav_alvo_global_v3.0.8.R`](monitora_campsav_alvo_global_v3.0.8.R)
 - Script canônico: [`monitora_campsav_alvo_global.R`](monitora_campsav_alvo_global.R)
-- Cópia congelada: [`releases/v3.0.7/`](releases/v3.0.7/)
-- Notas: [`RELEASE_NOTES_v3.0.7.md`](RELEASE_NOTES_v3.0.7.md)
-- Release: [v3.0.7](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.7)
+- Cópia congelada: [`releases/v3.0.8/`](releases/v3.0.8/)
+- Notas: [`RELEASE_NOTES_v3.0.8.md`](RELEASE_NOTES_v3.0.8.md)
+- Release: [v3.0.8](https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.8)
 
-Esta versão corrige a continuidade das justificativas de pendências entre rodadas. Ocorrências com justificativa vigente continuam disponíveis para consulta e deixam de aparecer na seleção para novo registro. O diagnóstico e a severidade são preservados; novas ocorrências do mesmo tipo continuam sujeitas à avaliação.
+Esta versão permite apresentar conjuntos extensos de evidências temporais em partes numeradas, com fonte interna mínima de 7 pontos. Quando todos os resultados cabem, a figura permanece em uma página; conjuntos maiores são distribuídos sem descartar células ou reduzir o texto abaixo do limite de legibilidade.
+
+Todas as partes entram no relatório detalhado, com legendas, numeração e referências próprias em HTML, Word e PDF. A conferência reconcilia resultados, páginas, arquivos e hashes. Cada tema mantém sua identidade analítica, sem multiplicar a contagem de resultados estatísticos. A organização final preserva os componentes desses relatórios diante de referências legadas com nomes de arquivo coincidentes.
+
+A candidata concluiu uma rodada manual PNB no modo `painel_incremental_completo`, com fogo, clima e Sentinel ativos, no R 4.6.0/data.table 1.18.4. A auditoria confirmou 10 documentos analíticos, 59 páginas de figuras e 1.238 resultados. A publicação foi autorizada com o escopo e os limites registrados nas [notas da versão](RELEASE_NOTES_v3.0.8.md); não constitui homologação irrestrita dos 13 modos ou de todas as UCs.
+
+Um encerramento fatal em outra tentativa PNB, com R 4.6.2, permanece sem causa determinada. O término normal em outro ambiente não demonstra sua correção. Também permanecem oito avisos de projeção de caminhos CSV para compartilhamento, e a aprovação manual dos índices Word desta revisão não foi inferida dos testes automáticos.
+
+### Preservado da v3.0.7
+
+A continuidade das justificativas permanece ativa: ocorrências com justificativa vigente continuam disponíveis para consulta e deixam de aparecer na seleção para novo registro. Diagnóstico e severidade são preservados; novas ocorrências do mesmo tipo continuam sujeitas à avaliação.
 
 Para continuar uma rodada, transporte juntos os registros corrigidos e toda a pasta de linhagem da saída anterior. As justificativas de não resolução têm histórico próprio, separado do ledger de correções dos dados. Histórico legado não transportado exige recuperação auditável a partir das fontes correspondentes.
 
-Os relatórios analíticos em Word passam a usar Arial e a paleta verde nos títulos, índice e links, harmonizando a apresentação com o PDF. Tabelas, figuras, referências dinâmicas e conteúdo científico são preservados.
-
-A validação no escopo aprovado reuniu continuidade manual na APAI, testes técnicos e revisão da prévia Word/PDF pelo usuário. Não representa homologação integral dos 13 modos. As notas da versão registram a cobertura, as pendências remanescentes e os limites de caminhos das entregas institucionais.
+Os relatórios Word preservam Arial e a paleta verde nos títulos, índice e links, acompanhando o PDF. Tabelas editáveis, referências dinâmicas e conteúdo científico permanecem preservados. As provas manuais APAI e a aprovação gráfica da v3.0.7 pertencem àquela versão; não são novas homologações desta publicação.
 
 ### Preservado da v3.0.6
 
 A v3.0.6 aprimorou a interpretação das análises multivariadas e as sínteses específicas de cada UC, com revisão da sequência editorial, da terminologia da amostragem, das notas e da apresentação das tabelas em Word e PDF. Preservou numeração dinâmica, retrato e cálculos científicos.
 
-Na homologação da v3.0.6, FNB, PNI e PNM tiveram execução integral e conferência dos produtos, incluindo os documentos no Word nativo. Essas evidências pertencem à versão anterior; não constituem novas rodadas da v3.0.7.
+Na homologação da v3.0.6, FNB, PNI e PNM tiveram execução integral e conferência dos produtos, incluindo os documentos no Word nativo. Essas evidências pertencem à versão anterior; não constituem novas rodadas desta publicação.
 
 ## Manual e início rápido
 
-Consulte o [guia operacional](GUIA_USUARIO_v3.0.7.md), o
-[manual completo em PDF](manual_usuario/manual_usuario_v3.0.7.pdf) ou a
-[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.7.html).
+Consulte o [guia operacional](GUIA_USUARIO_v3.0.8.md), o
+[manual completo em PDF](manual_usuario/manual_usuario_v3.0.8.pdf) ou a
+[versão navegável em HTML](manual_usuario/manual_usuario_v3.0.8.html).
 
 ## Finalidade
 
@@ -267,7 +275,7 @@ não substitui inferência longitudinal. Os relatórios documentam essas condiç
 
 ## Revise as opções antes de cada execução
 
-Os padrões da v2.9.16 representam a continuidade incremental integral usada pela
+Os padrões operacionais representam a continuidade incremental integral usada pela
 equipe de curadoria. Eles ativam painel, validação espacial, produtos de dados,
 planilhas SISMONITORA, manual e relatórios analíticos. **Antes de cada execução,
 revise o modo e todas as variáveis `MONITORA_OPCAO_*` no bloco inicial.** Desative
@@ -370,17 +378,17 @@ Não extraia ZIPs manualmente e não misture produtos antigos com a entrada brut
 ## Uso básico
 
 1. Crie uma pasta limpa de execução.
-2. Copie `monitora_campsav_alvo_global_v2.9.18.R` para a raiz.
+2. Copie `monitora_campsav_alvo_global_v3.0.8.R` para a raiz.
 3. Crie `input/` e coloque apenas os arquivos de entrada pertinentes.
 4. Ajuste o bloco operacional do início do script, se necessário.
-5. Execute no RStudio ou com `Rscript monitora_campsav_alvo_global_v2.9.18.R`.
+5. Execute no RStudio ou com `Rscript monitora_campsav_alvo_global_v3.0.8.R`.
 6. Confira os produtos em `output/`, o manual em `manual_usuario/`, o relatório
-   de validação em `output/07_relatorio_validacao/` e a trilha técnica em
+   de validação em `output/07_validacao/` e a trilha técnica em
    `log/`.
 
 ## Modos de execução
 
-A v2.9.18 preserva os 13 modos públicos:
+A versão atual preserva os 13 modos públicos:
 
 - `completo`
 - `sem_png`
@@ -448,8 +456,8 @@ as próximas rodadas não repetem a migração e seguem o fluxo incremental norm
 - `output/04_validacao_espacial/`: consensos, alertas, correções, mapas e KMLs, quando habilitados.
 - `output/05_estatisticas/`: tabelas e relatórios estatísticos.
 - `output/06_graficos/`: produtos gráficos.
-- `output/07_relatorio_validacao/`: relatório consolidado de validação em HTML e PDF, figuras e tabelas de apoio em linguagem voltada ao público técnico.
-- `output/08_relatorios_analiticos/`: relatórios sintético e detalhado, tabelas,
+- `output/07_validacao/`: relatório consolidado de validação em HTML e PDF, figuras e tabelas de apoio em linguagem voltada ao público técnico.
+- `output/08_analises/`: relatórios sintético e detalhado, tabelas,
   figuras, mapas e auditorias, quando o módulo for habilitado.
 - `output/04_validacao_espacial/`: também recebe os KML/KMZ de UAs, estatísticas e áreas operacionais de proteção.
 - `manual_usuario/`: manual do usuário em Rmd e HTML; o PDF só é produzido quando a opção independente for explicitamente ativada.
@@ -497,15 +505,15 @@ Uma publicação deve confirmar:
 
 ## Estrutura do repositório
 
-- `monitora_campsav_alvo_global_v3.0.7.R`: script versionado atual.
+- `monitora_campsav_alvo_global_v3.0.8.R`: script versionado atual.
 - `monitora_campsav_alvo_global.R`: script canônico atual.
 - `R_monitora_campsav_alvo_global.R` e `R/monitora_campsav_alvo_global.R`: espelhos canônicos.
 - `VERSION`: versão pública atual.
 - `CHANGELOG.md`: histórico público de mudanças.
-- `RELEASE_NOTES_v3.0.7.md`: notas da versão atual.
-- `GUIA_USUARIO_v3.0.7.md`: roteiro operacional resumido.
-- `release_assets/v3.0.7/`: conjunto mínimo de artefatos da release.
-- `releases/v3.0.7/`: cópia congelada da versão.
+- `RELEASE_NOTES_v3.0.8.md`: notas da versão atual.
+- `GUIA_USUARIO_v3.0.8.md`: roteiro operacional resumido.
+- `release_assets/v3.0.8/`: conjunto mínimo de artefatos da release.
+- `releases/v3.0.8/`: cópia congelada da versão.
 - `docs/`: políticas e documentação auxiliar.
 
 ## Uso auxiliar de IA generativa
@@ -521,7 +529,7 @@ Ferramentas de IA não substituem a validação humana, a execução local do sc
 ## Como citar
 
 ```text
-CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v3.0.7. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.7. Acesso em: DD mês AAAA.
+CORRÊA, Danilo V. Monitora Campestre-Savânico — Alvo Global. Versão v3.0.8. GitHub, 2026. Disponível em: https://github.com/danilovcorrea/Monitora-Campestre-Savanico/releases/tag/v3.0.8. Acesso em: DD mês AAAA.
 ```
 
 Repositório público: https://github.com/danilovcorrea/Monitora-Campestre-Savanico
