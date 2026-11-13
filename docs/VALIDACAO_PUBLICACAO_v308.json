@@ -1,0 +1,65 @@
+{
+  "version": "3.0.8",
+  "build": "v3.0.8-20261113-r01",
+  "candidate_sha256": "9b1db7075c09eaf3b0c23611b88e1c5fd88f085d506ddcf157eddf146a57f402",
+  "public_sha256": "0dcbacc8841d9fd58e5b9fcd3c500589bc6f14ce2f2b0d31c3b3d1eeaf820ca1",
+  "bytes_lf": 4799986,
+  "bytes_crlf": 4880527,
+  "maximum_decimal_bytes": 5000000,
+  "reversible_three_identifiers_only": true,
+  "aliases_identical": [
+    "monitora_campsav_alvo_global_v3.0.8.R",
+    "monitora_campsav_alvo_global.R",
+    "R_monitora_campsav_alvo_global.R",
+    "R/monitora_campsav_alvo_global.R"
+  ],
+  "decision_sha256": "7cd2aa7e8bd6c6e9138b1e046dbc5ef3a326003cf0e8ab7225f9044fda77a3e5",
+  "new_homologation_performed": false,
+  "full_homologation": false,
+  "status": "PUBLICACAO_AUTORIZADA_NO_ESCOPO_DOCUMENTADO",
+  "user_authorization": "Publicação autorizada sem novas homologações.",
+  "previous_public_version": "3.0.7",
+  "checks": {
+    "promoted_source": "Somente três identificadores, reversão byte a byte e AST estática conferidas; sem Source.",
+    "static_publication_Linux": "PASS",
+    "static_publication_Windows": "PASS",
+    "previous_candidate_checks": {
+      "synthetic_cases_each_platform": 17,
+      "synthetic_assertions_each_platform": 5892,
+      "real_PNB_assertions_each_platform": 2673,
+      "physical_document_checks": 478,
+      "evidence_pages": 59,
+      "evidence_results": 1238
+    },
+    "manual_PNB": {
+      "candidate": "3.0.8-dev_r04",
+      "R": "4.6.0 ucrt",
+      "data_table": "1.18.4",
+      "normal_completion_and_prompt": true,
+      "indexed_file_hashes_verified": 1027,
+      "expected_products_ok": 22,
+      "analytical_products": 10,
+      "fire_climate_and_Sentinel_executed": true
+    },
+    "independent_promotion_review": "PASS"
+  },
+  "known_limits": {
+    "other_environment_R_4_6_2_fatal": "Causa e correção não determinadas; sucesso em outro ambiente não isola R, hardware, bibliotecas ou estado de sessão.",
+    "portable_output_paths": "Oito projeções CSV212–228>210; caminhos locais122–138. Essa entrega institucional não integra o pacote de software.",
+    "manual_Word_destinations": "Conferência manual desta revisão não comprovada pelos artefatos; não se presume aprovação humana.",
+    "all_modes_and_UCs": "Não ampliados por determinação do usuário; homologação global não declarada.",
+    "Windows_memory_telemetry": "RAM/RSS ausentes nos coletores herdados; exaustão não comprovada nem excluída.",
+    "QField_and_SISMONITORA_functional_acceptance": "Não reexecutados nesta publicação."
+  },
+  "institutional_data_in_public_package": false,
+  "evidence_policy": "Dados, logs, relatórios, fixtures institucionais, caminhos pessoais e métricas da conta preservados fora do pacote público.",
+  "public_package": {
+    "zip": "Monitora_v3.0.8.zip",
+    "sha256": "8e7da22de580f7bff3eff0e3d7664b174408e20e9840af0bda87ae67fd657854",
+    "bytes": 1993556,
+    "files": 10,
+    "source_data_absent": true,
+    "crc_pass": true,
+    "frozen_copy_equal": true
+  }
+}

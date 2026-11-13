@@ -1,0 +1,24 @@
+{
+  "version": "3.0.8-dev_r04",
+  "baseline": "monitora_campsav_alvo_global_v3.0.7.R",
+  "baseline_sha256": "db6333c5e275af245e7d8d069f8bdeb259acf1cae4d46de7187b53fe475816d2",
+  "candidate": "monitora_campsav_alvo_global_v3.0.8-dev_r04.R",
+  "sha256": "9b1db7075c09eaf3b0c23611b88e1c5fd88f085d506ddcf157eddf146a57f402",
+  "bytes_lf": 4800006,
+  "bytes_crlf": 4880547,
+  "maximum_bytes": 5000000,
+  "compression_ast_equal": true,
+  "source_sha256": {
+    "tools/v308/evidencia.R": "8de3acbb44c966beaca003a638b2bcbf96e964c6b4e65027aa14eb8027fc11cb",
+    "tools/v308/integracao_figuras.R": "917a0ca0907972be4242c6061039122fe799a5a7efd0d9d71fba0f80fa2bed55"
+  },
+  "patches": [
+    "# Versão 3.0.7 —",
+    "MONITORA_SCRIPT_VERSAO <- \"3.0.7\"",
+    "MONITORA_SCRIPT_BUILD_ID <- \"v3.0.7-20261112-r01\"",
+    "monitora_relatorios_analiticos_gerar",
+    "monitora_relatorios_analiticos_renderizar",
+    "monitora_output_reescrever_referencias"
+  ],
+  "public_aliases_changed": false
+}
